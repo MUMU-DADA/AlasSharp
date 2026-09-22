@@ -120,3 +120,54 @@ C# 拿不到可用坐标。两个方向：
 
 顺带修掉一个脚本 bug：辅助函数 `op(name, **args)` 与业务参数 `name=` 撞名
 （`TypeError: op() got multiple values for argument 'name'`）→ 形参改名 `_op`。
+
+## 真相（第三轮）：`bar_opened()` 量的是**亮度**，不是素材匹配 —— 前两个假设都错了
+
+成组量素材（浮层打开时，阈值 0.85）：
+
+| 素材 | 分数 | 是否 ALAS 的判定依据 |
+| --- | --- | --- |
+| `FLEET_PREPARATION` / `FLEET_1_CHOOSE` / `FLEET_1_CLEAR` | **0.99** | ✅ 用（都正常） |
+| `FLEET_1_BAR`（下拉） | 0.02 ↔ 0.51 | ❌ **不用** |
+| `FLEET_1_IN_USE` | 0.21 | ❌ **不用** |
+| `FLEET_1_ADVICE` | 0.47 | ❌ 不用 |
+| `FLEET_1_HARD_SATIESFIED` | 低 | ❌ 不用 |
+
+上游源码给出了真正的判据：
+
+```python
+def bar_opened(self):
+    """If dropdown menu appears."""
+    # Check the brightness of the rightest column of the bar area.
+    luma = rgb2gray(self.main.image_crop(self._bar.button, copy=False))[:, -1]
+    # FLEET_PREPARATION is about 146~155
+    return np.sum(luma > 168) / luma.size > 0.5
+
+def in_use(self):        # 定义在 FleetOperator 里
+    image = self.main.image_crop(self._in_use.button, copy=False)
+    ...
+    return np.std(gray.flatten(), ddof=1) > self.FLEET_IN_USE_STD   # 27
+```
+
+- **"下拉是否打开" = 裁 `_bar.button` 矩形 → 最右一列亮度 >168 的占比 > 0.5**（纯亮度，无模板）
+- **"舰队是否使用中" = 裁 `_in_use.button` → 像素标准差 > 27**（纯统计，无模板）
+
+死循环的确切位置：
+
+```python
+def open(self):                      # "Activate dropdown menu for fleet selection."
+    click_timer = Timer(3, count=6)  # ← 点满 6 次 → GameTooManyClickError
+    while 1:
+        if self.bar_opened(): break  # 亮度判定不过 → 永不 break
+        if click_timer.reached(): main.device.click(self._choose)
+```
+
+### 因此修法方向要改（重要）
+
+**不是"做素材变体"**（前两轮我按这个方向想，是错的），而是修**几何/亮度**：
+1. 量出真实帧在 `_bar.button`（经 `load_offset(FLEET_1_CLEAR)` 调整后）那块区域的
+   最右列亮度占比，与 0.5 阈值对比；
+2. 若占比不足 → 说明**下拉在本客户端的位置/尺寸与上游预期不同**，
+   需要调整 `_bar` 的 area（或改 `bar_opened()` 的判据），而不是换模板图。
+
+安全：全程未点「立刻前往」、未进入战斗、油量未变（24831）。

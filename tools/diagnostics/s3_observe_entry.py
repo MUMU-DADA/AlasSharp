@@ -101,13 +101,18 @@ def main():
     # 2) 观测
     t0 = time.time()
     i = 0
-    while time.time() - t0 < 45:
+    while time.time() - t0 < 26:
         i += 1
         snap(f'{i:02d}')
-        print('T%02d %4.1fs pages=%-20s PREP=%-6s CHOOSE=%-6s BAR=%-6s OVERLAY=%s' % (
-            i, time.time() - t0, ','.join(op('page_current').get('hit') or [])[:20],
-            score('map/MAP_PREPARATION'), score('map/FLEET_1_CHOOSE'),
-            score('map/FLEET_1_BAR'), score('map/FLEET_PREPARATION')), flush=True)
+        # 成组量舰队素材：目的是找出**哪些**素材低于 ALAS 的 0.85 阈值（只量 BAR 不够）
+        assets = ('map/MAP_PREPARATION', 'map/FLEET_PREPARATION', 'map/FLEET_1_CHOOSE',
+                  'map/FLEET_1_CLEAR', 'map/FLEET_1_BAR', 'map/FLEET_1_IN_USE',
+                  'map/FLEET_1_ADVICE', 'map/FLEET_1_HARD_SATIESFIED')
+        vals = {a.split('/')[-1]: score(a) for a in assets}
+        low = [k for k, v in vals.items() if v < 0.85]
+        print('T%02d %4.1fs %s' % (i, time.time() - t0,
+              ' '.join('%s=%.2f' % (k, v) for k, v in vals.items())), flush=True)
+        print('       低于0.85: %s' % (','.join(low) or '无'), flush=True)
         time.sleep(1.8)
     try:
         proc.wait(timeout=60)
