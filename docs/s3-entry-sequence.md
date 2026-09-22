@@ -888,3 +888,26 @@ ABORT_NET unfinished_dialog=false / red_frac=0.0   ← 收尾安全网未误报
 | 3-2 | 32 | `data/fixtures/inmap_3-2.png` |
 
 **剩余待验（本账号可达范围）**：2-3、2-4、3-3、3-4（每关约 1 分钟、10 油，流程已固化）。
+
+### ✅ 2-2 上跑完整计划成功 —— 第二个被 S3 端到端驱动的关卡
+
+```
+COVER 2-2 tier=C ready=False methods=['battle_0','battle_3'] incomplete=['battle_3']
+PLAN stage=2-2 tier=C elapsed=118.9s stopped_early=False campaign_end=None
+  R1 battle_0 48491.7 ok | R1 battle_3 9570.1 ok | R1 enemies_left=3
+  R2 battle_0 41773.2 ok | R2 battle_3 9704.3 ok
+AFTER pages=['page_campaign']    ← 跑完时游戏已自己回到战役页（**无需人工撤退**）
+归位 page_main ✓
+```
+
+**要点**：
+
+1. **又 4 次真实战斗经上游代码执行成功**（`battle_0`/`battle_3` 各两轮，累计 9 次以上），
+   `stopped_early=False`（无一步出错）；
+2. **收尾无需干预**：跑完时游戏已回到 `page_campaign` —— 说明出击被正常结束
+   （这也再次印证了"真正结束出击"是批量可行的前提，而计划跑完本身就会结束它）；
+3. **`enemies_left` 依旧不可靠**（一直报 3），再次印证既定结论：
+   **完成信号要用上游语义**（`CampaignEnd` / `map_clear_percentage`），不要用我的本地标志计数；
+4. 本轮 `max_rounds=2` 封顶（未设更大），所以 `campaign_end=None` 是"到轮数上限"而不是失败。
+
+**批量跑计划进度**：**2-1 ✅（CampaignEnd 清图）**、**2-2 ✅（2 轮 4 步，游戏自行结束）**。
