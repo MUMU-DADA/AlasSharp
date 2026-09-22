@@ -803,6 +803,11 @@ internal static class Program
                     Console.WriteLine($"[任务证据] mode={task.Evidence["mode"]} detected={detected} " +
                                       $"grid_count={task.Evidence["grid_count"]} " +
                                       $"来源={task.Evidence["source"]}");
+                // 周期任务调度状态：报"总共几个任务、几个开着"（明细在工件里，不在这里刷屏）
+                if (task.Evidence["enabled_count"] is System.Text.Json.Nodes.JsonNode enabled)
+                    Console.WriteLine($"[任务证据] 任务={task.Evidence["task_count"]} 启用={enabled} " +
+                                      $"无Scheduler={task.Evidence["no_scheduler_count"]} " +
+                                      $"来源={task.Evidence["config_source"]}");
             }
             if (task.ArtifactPath is not null) Console.WriteLine($"[任务工件] {task.ArtifactPath}");
         }
