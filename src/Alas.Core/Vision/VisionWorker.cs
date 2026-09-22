@@ -65,6 +65,13 @@ public sealed class TemplateMatchResult
     [JsonPropertyName("button_area")] public List<double> ButtonArea { get; set; } = new();
 }
 
+public sealed class ButtonCenter
+{
+    [JsonPropertyName("asset")] public string Asset { get; set; } = "";
+    [JsonPropertyName("button")] public List<double> Button { get; set; } = new();
+    [JsonPropertyName("center")] public List<int> Center { get; set; } = new();
+}
+
 public sealed class PageInfo
 {
     [JsonPropertyName("page")] public string Page { get; set; } = "";

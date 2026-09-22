@@ -12,6 +12,7 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
         string dataDir = Environment.GetEnvironmentVariable("ALAS_DATA")
                          ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
                              "..", "..", "..", "..", "..", "data"));

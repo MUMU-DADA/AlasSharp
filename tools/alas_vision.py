@@ -159,6 +159,25 @@ def op_screenshot_scale(args):
     _state['image'] = cv2.resize(image, None, fx=f, fy=f)
     return {'factor': f, 'before': before, 'after': list(_state['image'].shape)}
 
+def op_asset_button_center(args):
+    """
+    取上游 Button 的**点击坐标**（`button` 区域中心）。
+
+    分层原则：坐标由上游的素材/规则给出，**C# 只负责把它点下去**。
+    这样"点哪里"这件事始终只有一个真值来源，不会在移植中漂移。
+    """
+    btn = _resolve(args['asset'])
+    area = getattr(btn, 'button', None) or getattr(btn, 'area', None)
+    if area is None:
+        raise ValueError(f'{args["asset"]} 没有 button/area')
+    x1, y1, x2, y2 = [float(v) for v in area]
+    return {
+        'asset': args['asset'],
+        'button': [x1, y1, x2, y2],
+        'center': [int(round((x1 + x2) / 2)), int(round((y1 + y2) / 2))],
+        'name': getattr(btn, 'name', None),
+    }
+
 def op_page_list(args):
     """列出上游 module/ui/page.py 定义的页面及其 check_button（识图规则的入口）。"""
     import module.ui.page as page_mod
@@ -353,6 +372,7 @@ OPS = {
     'screenshot_set': op_screenshot_set,
     'asset_info': op_asset_info,
     'page_list': op_page_list,
+    'asset_button_center': op_asset_button_center,
     'page_appear': op_page_appear,
     'screenshot_scale': op_screenshot_scale,
     'appear_on': op_appear_on,

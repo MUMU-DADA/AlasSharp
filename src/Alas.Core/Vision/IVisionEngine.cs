@@ -25,6 +25,8 @@ public interface IVisionEngine : IDisposable
     ScaleResult ScaleScreenshot(double factor);
     /// <summary>列出上游 module/ui/page.py 的页面规则。</summary>
     PageListResult PageList();
+    /// <summary>取上游素材的点击坐标（button 区域中心）—— 坐标由上游规则给出。</summary>
+    ButtonCenter AssetButtonCenter(string asset);
     /// <summary>**按上游 UI.ui_page_appear 的原规则**判定当前页面（模板匹配，非颜色检查）。</summary>
     PageAppearResult PageAppear(string page);
     AppearResult AppearOn(string asset, int threshold = 10, bool detail = false);
@@ -95,6 +97,8 @@ public abstract class VisionEngineBase : IVisionEngine
     public string SetServer(string server) => Call("set_server", new { server })["server"]!.GetValue<string>();
     public ScreenshotInfo LoadScreenshot(string path) => Call<ScreenshotInfo>("screenshot_load", new { path });
     public PageListResult PageList() => Call<PageListResult>("page_list");
+    public ButtonCenter AssetButtonCenter(string asset)
+        => Call<ButtonCenter>("asset_button_center", new { asset });
     public PageAppearResult PageAppear(string page) => Call<PageAppearResult>("page_appear", new { page });
     public ScaleResult ScaleScreenshot(double factor)
         => Call<ScaleResult>("screenshot_scale", new { factor });
