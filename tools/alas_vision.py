@@ -1578,7 +1578,12 @@ def op_s3_run_plan(args):
     _round = 0
     while True:
         _round += 1
-        for _step_name in out['plan_steps']:
+        # **改用上游自己的调度入口**：`campaign_base.run()` 的循环体就是
+        #   `for _ in range(20): execute_a_battle()`（收到 CampaignEnd 即停）
+        # 只调 IR 里的 `battle_0`/`battle_6` 等于只做了上游逻辑的一小部分 → **清不完**
+        # （用户实测反馈"并没有完全打完"，根因即此）。轮数由 max_rounds 控制，
+        # 上游默认 20 —— 建议调用方传 `--max-rounds 20`。
+        for _step_name in ('execute_a_battle',):
             if _t.time() - t_start > max_s:
                 steps.append({'round': _round, 'step': _step_name, 'skipped': '超过 max_seconds'})
                 break
