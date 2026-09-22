@@ -6,8 +6,8 @@
     "note": "2-1 支援图拉岛，6x4(F4)，用户停稳后抓图。检出 grids=24/24、shape=[5,3]，与 IR 严格一致，一格不缺"
   },
   "map_shape_9x6.png": {
-    "chapter": null,
-    "name": "待用户确认（9x6 / shape I6）",
-    "note": "用户切换到的不同形状地图：9x6(I6)。检出 grids=48、shape=[8,5] 与 IR 的 I6 严格一致；缺 6 格为 UI 遮挡（左列 (0,4)(0,5) + 右列 (8,2..5)）。IR 里 shape=I6 的章节有 44 个，需要用户确认是哪一关才能写死对照"
+    "chapter": "campaign_main/campaign_10_4.json",
+    "name": "10-4",
+    "note": "用户切换到的不同形状地图：10-4，9x6(I6)。检出 grids=48、shape=[8,5] 与 IR 的 I6 严格一致；缺 6 格为 UI 遮挡（左列 (0,4)(0,5) + 右列 (8,2..5)）"
   }
 }

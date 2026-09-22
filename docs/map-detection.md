@@ -13,8 +13,8 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 | 大世界单应性 | ✅ | `GlobeDetection.load` 成功并给出单应矩阵 |
 | 坐标往返自检 | ✅ | screen→globe→screen 误差 < 1e-6（同一变换的逆）
 | 非地图负样本 | ✅ | 非地图画面返回"未检测到 + 原因"，不崩 |
-| 地图正样本 | ✅ 1 张检测到网格 | 需要真机地图画面（见下） |
-| 检测 vs 关卡 IR | ✅ 1 张一致 | 检出的格数/形状必须与该关卡声明的 map_data 一致 |
+| 地图正样本 | ✅ 2 张检测到网格 | 需要真机地图画面（见下） |
+| 检测 vs 关卡 IR | ✅ 2 张一致 | 检出的格数/形状必须与该关卡声明的 map_data 一致 |
 
 ## 素材链明细
 
@@ -85,6 +85,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 | --- | --- | --- | --- | --- |
 | `map_2_1.png` | — | — | False | No vertical line detected |
 | `map_settled.png` | — | — | True |  |
+| `map_shape_9x6.png` | — | — | True |  |
 | `os_map.png` | — | — | False | Vanish point and distant point too close |
 
 ## 正样本从哪来（这是完成 S2 验收的唯一缺口）
