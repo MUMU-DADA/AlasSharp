@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-"""周期任务域的数据源验收：上游任务目录（`task_catalog` op）。
+"""周期任务域的数据源验收：上游任务目录（`task_catalog`）。
 
-周期任务（科研/建造/委托/每日…）的清单与分组定义在上游 `task.yaml` 里，并由上游生成器
-变成 `args.json`。本项目**不另维护一份任务表**，所以这里做的是**两个来源互相对拍**：
+**两个来源不是一回事**（第一版脚本把两者当同一集合比对，被自己的对拍当场证伪）：
 
-  A. `task_catalog` op 用上游 loader 读 `task.yaml` 得到的任务名集合（源）
-  B. 上游生成产物 `module/config/argument/args.json` 里的任务名集合（生成结果）
+  A. `task.yaml` 的顶层键 —— 是**分组**（本机 9 个）
+  B. 生成产物 `args.json` —— 是**扁平任务清单**（本机 68 个），"有哪些任务"看这个
 
-A ⊆ B（源里的任务都要落到生成物里）且两者数量一致时才算对得上；
-差集要打印出来 —— 只报"不一致"没法定位是源漏读还是生成物过期。
+所以本脚本不再假设两者相等，而是：把差异如实打印（供做周期任务域时确认用哪个），
+再验 C# 任务路径报出来的数与**独立读出的**两个来源一致，并钉住一条关键不变量 ——
+**分组集合与任务集合不同**（上游若改了目录结构，这条会红，提示重读 docs/tasks.md）。
 
 用法：
     python tools/diagnostics/verify_task_catalog.py
@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -74,6 +76,54 @@ def main() -> int:
     groups = catalog.get('groups') or {}
     print(f"  带分组信息的顶层键：{len(groups)} 个"
           + (f"，例：{list(groups.items())[:2]}" if groups else ''))
+
+    # ---- 第二段：C# 任务路径（`kind = "task_catalog"`）—— 与**独立读出的**两个来源对拍。
+    # 为什么两段都要：第一段验宿主 op（Python 侧），这一段验产品路径（队列里的任务）；
+    # 都对着同一份上游数据，才能把"任务报的数对不对"钉死。
+    print()
+    print('=== C# 任务路径（队列里的 task_catalog）===')
+    exe = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+    if not exe.is_file():
+        print(f'[跳过] 未构建 {exe.relative_to(ROOT)}（先 dotnet build）—— 任务路径未验。')
+    else:
+        with tempfile.TemporaryDirectory(prefix='alas-task-catalog-') as tmp:
+            tmpdir = Path(tmp)
+            queue_file = tmpdir / 'queue.json'
+            queue_file.write_text(json.dumps({'tasks': [
+                {'id': 'catalog', 'kind': 'task_catalog', 'input': {'limit': 3}}]},
+                ensure_ascii=False), encoding='utf-8')
+            artifacts = tmpdir / 'artifacts'
+            executed = subprocess.run([str(exe), 'queue', '--file', str(queue_file),
+                                       '--artifacts', str(artifacts)],
+                                      capture_output=True, text=True, encoding='utf-8',
+                                      errors='replace', timeout=300)
+            task_artifact = next(iter(sorted(artifacts.glob('*/task-catalog.json'))), None)
+            if executed.returncode != 0 or task_artifact is None:
+                failures.append(f'任务路径没跑通：退出码={executed.returncode}')
+                print(f"  FAIL 任务路径  ← {(executed.stdout or '')[-200:]}")
+            else:
+                document = json.loads(task_artifact.read_text(encoding='utf-8'))
+                evidence = document.get('evidence') or {}
+                expected_tasks = set(json.loads(args_json.read_text(encoding='utf-8')).keys())
+                task_checks = [
+                    ('任务结论 succeeded', document.get('outcome') == 'succeeded',
+                     f"outcome={document.get('outcome')} error={document.get('error')}"),
+                    ('任务数与独立数一致', evidence.get('task_count') == len(expected_tasks),
+                     f"任务={evidence.get('task_count')} 独立={len(expected_tasks)}"),
+                    # 关键不变量：分组集合与任务集合**不是同一回事** —— 这条如果哪天成立，
+                    # 说明上游改了目录结构，docs/tasks.md 里那段结论要跟着重写。
+                    ('分组确实是分组（与任务集合不同）',
+                     bool(evidence.get('groups')) and set(evidence.get('groups') or []) == source_names
+                     and set(evidence.get('groups') or []) != expected_tasks,
+                     f"groups={evidence.get('groups')}"),
+                    ('样本取自任务表', all(t in expected_tasks
+                                        for t in evidence.get('task_sample') or []),
+                     f"sample={evidence.get('task_sample')}"),
+                ]
+                for name, ok, detail in task_checks:
+                    print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+                    if not ok:
+                        failures.append(f'{name}: {detail}')
 
     print()
     if failures:
