@@ -1064,3 +1064,11 @@ S3 累计：**6 个关卡**端到端驱动（2-1/2-2/2-3/2-4/3-1/3-2），真实
 
 **批量候选更新**：1-3(18 格) / 1-4(21 格) 仍**待验**（比 1-2 大、比 2-1 小，处在灰区）；
 第 3 章的 3-3/3-4/3-5 亦待验。
+
+
+### 1-4 实测（21 格，灰区关键点）
+
+本关实测：PLAN stage=1-4 tier=A elapsed=13.1s stopped_early=False ; ensure_chapter         ms=155.5     ok ; abort_unfinished       ms=None      ok ; get_entrance           ms=0.0       ok ; enter_map              ms=7513.6    ok ; map_init               ms=5078.2    err=MapDetectionError: Vanish point and distant point ; battle_0               ms=None      ok ; AFTER pages=['page_campaign']
+
+灰区判读：成功集最小为 2-1 的 24 格；失败集为 1-1(7)/1-2(15)。1-4 的 21 格正好夹在中间 ——
+它的结果决定"阈值大概卡在哪"（若成功 => 阈值约 21–24；若失败 => 小图问题延伸到 21）。
