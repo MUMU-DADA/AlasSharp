@@ -1,0 +1,150 @@
+# -*- coding: utf-8 -*-
+"""R2 活动域验收：活动章节清点（`kind = "event_state"`，纯离线）。
+
+活动域的价值全在"清点得**准**"上，所以这里做的是**两个独立推导互相对拍**：
+  A. C# 任务从 S0 契约里筛出来的活动章节数与分层（生产路径）
+  B. 本脚本直接从同一份 `data/campaign_index.json` 里数一遍（独立实现）
+两者必须一致 —— 否则不是"清点风格不同"，而是有一侧读错了契约。
+
+另外验两条口径：
+  * **"没有活动"是有效状态**：前缀匹配不到任何章节时记 `Succeeded` + `matched=0`，不是失败；
+  * `only_complete=true` 时列出的条目必须真的都是计划完整的。
+
+用法：
+    python tools/diagnostics/verify_event_state.py
+契约文件不存在时显式跳过（不静默通过）。
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]
+DATA = ROOT / 'data'
+sys.path.insert(0, str(ROOT / 'tools'))
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
+EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+INDEX = DATA / 'campaign_index.json'
+PREFIX = 'event_'
+
+
+def load_index_chapters():
+    """从契约里取出章节列表（兼容两种结构：顶层 chapters，或 catalog.campaign.chapters）。"""
+    document = json.loads(INDEX.read_text(encoding='utf-8'))
+    for candidate in (document.get('chapters'),
+                      (document.get('campaign') or {}).get('chapters'),
+                      (document.get('catalog') or {}).get('campaign', {}).get('chapters')):
+        if isinstance(candidate, list) and candidate:
+            return candidate
+    # 兜底：找第一个"元素是含 source 字段的对象"的列表
+    for value in document.values():
+        if isinstance(value, list) and value and isinstance(value[0], dict) \
+                and 'source' in value[0]:
+            return value
+    raise SystemExit('契约结构不认识：找不到章节列表')
+
+
+def main() -> int:
+    if not EXE.is_file():
+        print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先运行 dotnet build）')
+        return 1
+    if not INDEX.is_file():
+        print(f'[跳过] 没有 {INDEX.relative_to(ROOT)}（先跑 tools/export_upstream_data.py）；'
+              f'活动域清点未跑。')
+        return 0
+
+    chapters = load_index_chapters()
+    expected = [c for c in chapters if PREFIX in str(c.get('source', ''))]
+    expected_complete = [c for c in expected if c.get('plan_complete') is True]
+    expected_tiers = {}
+    for chapter in expected:
+        tier = chapter.get('tier') or '?'
+        expected_tiers[tier] = expected_tiers.get(tier, 0) + 1
+    print(f'=== 活动域清点（契约 {len(chapters)} 章，其中 {PREFIX}* {len(expected)} 章）===')
+
+    failures: list[str] = []
+    with TemporaryDirectory(prefix='alas-event-state-') as tmp:
+        tmpdir = Path(tmp)
+        queue_file = tmpdir / 'queue.json'
+        queue_file.write_text(json.dumps({'tasks': [
+            {'id': 'events-all', 'kind': 'event_state',
+             'input': {'folder_prefix': PREFIX, 'only_complete': False, 'limit': 5}},
+            {'id': 'events-complete', 'kind': 'event_state',
+             'input': {'folder_prefix': PREFIX, 'only_complete': True, 'limit': 5}},
+            {'id': 'events-none', 'kind': 'event_state',
+             'input': {'folder_prefix': 'no_such_prefix_zzz'}},
+        ]}, ensure_ascii=False, indent=1), encoding='utf-8')
+        artifacts = tmpdir / 'artifacts'
+        proc = subprocess.run([str(EXE), 'queue', '--file', str(queue_file),
+                               '--artifacts', str(artifacts)],
+                              capture_output=True, text=True, encoding='utf-8',
+                              errors='replace', timeout=300)
+        if proc.returncode != 0:
+            failures.append(f'alashub queue 退出码 {proc.returncode}')
+            print((proc.stdout or '')[-1200:])
+        run_dirs = sorted(p for p in artifacts.glob('*') if p.is_dir())
+        if not run_dirs:
+            print('**失败**：没有产出运行目录')
+            return 1
+        run_dir = run_dirs[-1]
+
+        def evidence(task_id):
+            path = run_dir / f'task-{task_id}.json'
+            if not path.is_file():
+                failures.append(f'缺少工件 task-{task_id}.json')
+                return {}
+            document = json.loads(path.read_text(encoding='utf-8'))
+            if document.get('outcome') != 'succeeded':
+                failures.append(f'{task_id} 结论 {document.get("outcome")}'
+                                f'（{document.get("error")}）')
+            return document.get('evidence') or {}
+
+        all_events = evidence('events-all')
+        complete_events = evidence('events-complete')
+        none_events = evidence('events-none')
+
+        checks = [
+            ('章节总数一致', all_events.get('chapters_total') == len(chapters),
+             f"C#={all_events.get('chapters_total')} 独立数={len(chapters)}"),
+            ('活动章节数一致', all_events.get('matched') == len(expected),
+             f"C#={all_events.get('matched')} 独立数={len(expected)}"),
+            ('分层一致', (all_events.get('by_tier') or {}) == expected_tiers,
+             f"C#={all_events.get('by_tier')} 独立数={expected_tiers}"),
+            ('only_complete 只列完整计划',
+             complete_events.get('matched') == len(expected_complete)
+             and all(item.get('plan_complete') is True
+                     for item in complete_events.get('listed') or []),
+             f"C#={complete_events.get('matched')} 独立数={len(expected_complete)}"),
+            ('列出的条目可直接执行',
+             all('.' in str(item.get('chapter', ''))
+                 for item in all_events.get('listed') or []),
+             f"listed={all_events.get('listed')}"),
+            ('没匹配到也算成功（有效状态）', none_events.get('matched') == 0,
+             f"matched={none_events.get('matched')}"),
+        ]
+        for name, ok, detail in checks:
+            print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+            if not ok:
+                failures.append(f'{name}: {detail}')
+
+    print()
+    if failures:
+        print(f'结果: FAIL（{len(failures)} 项）')
+        for item in failures:
+            print(f'  - {item}')
+        return 1
+    print('结果: OK（清点与独立数一致、only_complete 语义正确、没活动算有效状态）')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
