@@ -1195,3 +1195,17 @@ S3 累计：**6 个关卡**端到端驱动（2-1/2-2/2-3/2-4/3-1/3-2），真实
 归位 page_main ✓
 
 意义：多关连跑从 2 关扩到 3 关仍一次通过 => **常驻驱动（同进程 + 每关前复位）在规模上稳定**。
+
+
+### 一条命令跑完整批：首关前也自动导航（仅真跑时）
+
+改动：campaign 命令在**真跑**时，首关前也先 Goto("page_campaign")（此前要人工先跑
+goto page_campaign）；**dry-run 不做任何导航**（已实测：dry-run 输出里
+[前置]/[复位] 出现 0 次 —— dry-run 不应有游戏副作用）。
+
+实测（游戏当时停在 page_main，命令内部自己导航）：
+[前置    ] 第 1 关前回战役页 success=True | [plan    ] campaign.campaign_main.campaign_2_4 stage=2-4 tier=C dry_run=False | [结果    ] elapsed=116.2s stopped_early=False stop_reason= campaign_end=
+归位 page_main ✓
+
+=> 至此整条链是一条命令：lashub campaign "章A,章B" --run --allow-actions --adb .. --serial ..
+（自动导航 → 逐关执行 → 每关间自动复位 → 可配合 --repeat 循环清图）。

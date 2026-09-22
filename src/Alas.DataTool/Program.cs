@@ -121,10 +121,13 @@ internal static class Program
                 int campIdx = 0;
                 foreach (var one in stageList)
                 {
-                    if (campIdx > 0 && campNav is not null)
+                    // 首关前也导航（此前要人工先跑 goto page_campaign）；**只在真跑时做** ——
+                    // dry-run 不应有任何游戏副作用。
+                    if (campNav is not null && campRun)
                     {
                         var nav = campNav.Goto("page_campaign");
-                        Console.WriteLine($"[复位    ] 第 {campIdx + 1} 关前回战役页 success={nav.Success}");
+                        Console.WriteLine($"[{(campIdx == 0 ? "前置" : "复位")}    ] " +
+                                          $"第 {campIdx + 1} 关前回战役页 success={nav.Success}");
                     }
                     campIdx++;
                     var r = vision.RunCampaignPlan(one, dryRun: !campRun, allowActions: campAllow,
