@@ -149,6 +149,37 @@ internal static class Program
                 PrintQueueReport(queueResult, requests);
                 return queueResult.FailedCount == 0 ? 0 : 1;
             }
+            if (command == "report")
+            {
+                // R2：把一次运行的工件读回来 —— 只读汇总 + 证据完整性检查（不重判通关）。
+                string? reportRun = null, reportArtifacts = null, reportJson = null;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--run") reportRun = args[i + 1];
+                    if (args[i] == "--artifacts") reportArtifacts = args[i + 1];
+                    if (args[i] == "--json") reportJson = args[i + 1];
+                }
+                if (reportRun is null && reportArtifacts is not null)
+                    reportRun = Alas.Runtime.RunReport.LatestRun(reportArtifacts);
+                if (reportRun is null)
+                {
+                    Console.WriteLine("用法: report --run <运行目录> [--json <报告.json>] "
+                                      + "（或 report --artifacts <工件根目录> 取最新一次运行）");
+                    return 2;
+                }
+                var report = Alas.Runtime.RunReport.Build(reportRun);
+                PrintRunReport(report);
+                if (reportJson is not null)
+                {
+                    string full = Path.GetFullPath(reportJson);
+                    Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                    File.WriteAllText(full, report.ToJson().ToJsonString(
+                        new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                    Console.WriteLine($"[报告工件] {full}");
+                }
+                // 报告本身的产出与"这次运行成没成功"无关：读得出来就成功（0）。
+                return report.Findings.Any(f => f.Code == "run_not_found") ? 1 : 0;
+            }
             if (command == "selftest-runtime")
             {
                 // R1 运行时自检：替身宿主，不启动 Python、不连设备。
@@ -540,6 +571,30 @@ internal static class Program
         if (ir.Unresolved.Count > 0)
             Console.WriteLine("未解析   : " + string.Join(" | ", ir.Unresolved));
         return 0;
+    }
+
+    /// <summary>运行报告排版：事实来自工件，判定仍是结果合同的那一份（报告不重判）。</summary>
+    private static void PrintRunReport(Alas.Runtime.RunReport report)
+    {
+        Console.WriteLine($"[运行    ] {report.RunDirectory}");
+        Console.WriteLine($"[模式    ] dry_run={report.DryRun} 工件={report.FileCount} " +
+                          $"宿主启动={report.HostStartCount?.ToString() ?? "?"} " +
+                          $"设备配置={report.DeviceConfigureCount?.ToString() ?? "?"}");
+        if (report.QueueOutcome is not null)
+            Console.WriteLine($"[队列    ] outcome={report.QueueOutcome} 任务={report.Tasks} " +
+                              $"成功={report.TasksSucceeded} 失败={report.TasksFailed} 跳过={report.TasksSkipped}");
+        if (report.BatchOutcome is not null)
+            Console.WriteLine($"[批次    ] outcome={report.BatchOutcome} 关卡={report.Stages} " +
+                              $"通关={report.StagesCleared}");
+        Console.WriteLine($"[日志    ] 条目={report.LogEntries} 错误={report.LogErrors} 警告={report.LogWarnings}");
+        foreach (var item in report.Items)
+            Console.WriteLine($"[条目    ] {item.ToJsonString()}");
+        if (report.Findings.Count == 0)
+            Console.WriteLine("[发现    ] 无（证据链完整、没有失败项）");
+        else
+            foreach (var finding in report.Findings)
+                Console.WriteLine($"[发现    ] {finding.Code}: {finding.Detail}");
+        Console.WriteLine($"[结论    ] 有失败={report.HasFailures} 证据完整={report.EvidenceComplete}");
     }
 
     /// <summary>

@@ -90,6 +90,8 @@ def main() -> int:
         "账号状态任务域": ROOT / "src/Alas.Core/Tasks/AccountStateTask.cs",
         "任务域说明": ROOT / "docs/tasks.md",
         "账号状态验收": ROOT / "tools/diagnostics/verify_account_state.py",
+        "运行报告": ROOT / "src/Alas.Core/Runtime/RunReport.cs",
+        "运行报告验收": ROOT / "tools/diagnostics/verify_report.py",
     }
     for label, path in required.items():
         if not path.is_file():

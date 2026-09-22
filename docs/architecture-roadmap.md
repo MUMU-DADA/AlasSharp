@@ -86,6 +86,7 @@
 | 第二个域：账号状态（只读） | `AccountStateTask.cs` + 宿主 `account_state` op：当前页面/在图内/服务器/配置要点 | `verify_account_state.py`（真机存盘帧，无设备） |
 | 可恢复状态 | 逐任务 `state.json` + `--resume` 跳过已完成任务 | `queue_resume_skips_completed_task` |
 | CLI 入口 | `alashub queue --file`；与 `campaign` 共用 `ParseRunFlags` | `verify_architecture.py`（参数解析共享） |
+| 结果可追溯（报告的只读层） | `Alas.Core/Runtime/RunReport.cs` + `alashub report`：工件 → 结构化事实 + 证据完整性 findings | `verify_report.py`（含缺工件/缺日志/目录不存在三个反例） |
 
 **R2 未完成**：
 

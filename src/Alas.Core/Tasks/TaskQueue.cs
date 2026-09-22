@@ -233,9 +233,12 @@ public sealed class TaskQueue
             queue.Outcome = "failed";
             return;
         }
-        if (queue.Tasks.All(t => t.Outcome == TaskOutcome.Succeeded))
+        if (queue.Tasks.All(t => t.Outcome is TaskOutcome.Succeeded or TaskOutcome.DryRun))
         {
-            queue.Outcome = "succeeded";
+            // dry-run 与真跑混在一队里是正常的（只读任务在 dry-run 下也真的完成了）：
+            // 只要每个任务都"按预期做完了"就算整队成功，有 dry-run 分量时标 dry_run。
+            queue.Outcome = queue.Tasks.Any(t => t.Outcome == TaskOutcome.DryRun)
+                ? "dry_run" : "succeeded";
             return;
         }
         if (queue.Tasks.All(t => t.Outcome is TaskOutcome.DryRun or TaskOutcome.Skipped))

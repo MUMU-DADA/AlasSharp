@@ -214,7 +214,8 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 `device` / `goto`（真机导航，见 `docs/navigation.md`）/ `map`（S2 地图识别，见 `docs/map-detection.md`）/
 `map-ir`（关卡 IR 校验）/ `capture`（设备通道对比，见 `docs/device-engine.md`）/
 `contract`（结果合同离线裁决，见 `docs/result-contract.md`）/
-`queue`（任务队列，见 `docs/tasks.md`）/ `selftest-runtime`（运行时离线自检，见 `docs/runtime.md`）。
+`queue`（任务队列，见 `docs/tasks.md`）/ `selftest-runtime`（运行时离线自检，见 `docs/runtime.md`）/
+`report`（运行报告与证据完整性检查，见 `docs/runtime.md`）。
 
 **S3（上游规则驱动，见 [适配说明](docs/s3-upstream-adaptation.md)）**：
 生产路径直接调用上游 `CampaignRun.load_campaign()`，完整合并章节 `Config`，

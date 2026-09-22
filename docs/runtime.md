@@ -51,7 +51,34 @@ CLI（`alashub campaign`）现在只做三件事：解析参数 → `AlasSession
 失败帧仍然由上游侧写在同一个运行目录里（`failure_frame` 指向它），
 因此"结果 → 步骤 → 调用栈 → 现场帧"整条链在**一个目录**里闭合。
 
-## 五、已知边界
+## 六、运行报告（工件的只读汇总）
+
+```powershell
+alashub report --run <运行目录> [--json <报告.json>]
+alashub report --artifacts <工件根目录>        # 取最新一次运行
+```
+
+报告做两件事，都是**只读**（不跑游戏、不改工件、不重判通关）：
+
+1. **汇总事实**：队列/批次结论、逐任务与逐关卡条目、日志计数（条目/错误/警告）、
+   宿主与设备初始化次数、工件数量；
+2. **查证据完整性**：把发现写成机器可读的 findings：
+
+| finding 码 | 含义 |
+| --- | --- |
+| `missing_artifact` | 引用的工件不存在（证据链断了） |
+| `relocated_artifact` | 工件随运行目录搬迁（同名文件就在本目录，不算缺失） |
+| `unreadable_artifact` | 工件读不出来 / 日志里有非 JSON 行 |
+| `log_missing` | 缺 `session-log.jsonl` |
+| `task_failed` / `task_skipped` / `stage_not_cleared` / `batch_failed` | 运行本身的失败项 |
+| `contract_violation` | 单关结果没过结果合同（从 `sortie-*.json` 里读出来） |
+| `state_incomplete` | `state.json` 记的已完成数超过队列里成功/跳过的任务数 |
+| `run_not_found` | 运行目录不存在（退出码非 0） |
+
+报告自身的退出码只反映"读得出来读不出来"：**一次失败的运行，报告照样是成功的**。
+它给 R4 前端提供的就是这份 `--json`。
+
+## 七、已知边界
 
 - 取消粒度是**关卡**，不是单次操作：正在跑的 `Campaign.run()` 不会被中途打断。
   真要中途打断，得在上游操作边界插检查点，那是 R3 的活（现在没有证据说明需要）。
@@ -60,10 +87,11 @@ CLI（`alashub campaign`）现在只做三件事：解析参数 → `AlasSession
 - 目前只有战役任务走运行时；`run`（观测循环）、`goto`（导航）仍在 `Alas.DataTool`，
   等 R2 做任务域切片时一并搬。
 
-## 六、复现
+## 八、复现
 
 ```powershell
 dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
-python tools\diagnostics\verify_runtime.py          # 6 例：只初始化一次 / 失败即停 / 取消 / 工件
+python tools\diagnostics\verify_runtime.py          # 11 例：只初始化一次 / 失败即停 / 取消 / 工件 / 队列
+python tools\diagnostics\verify_report.py           # 报告读得出事实；缺工件/缺日志/目录不存在都会被指出
 python tools\diagnostics\verify_architecture.py     # CLI 不复制业务状态机
 ```
