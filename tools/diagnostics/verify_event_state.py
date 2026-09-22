@@ -10,6 +10,10 @@
   * **"没有活动"是有效状态**：前缀匹配不到任何章节时记 `Succeeded` + `matched=0`，不是失败；
   * `only_complete=true` 时列出的条目必须真的都是计划完整的。
 
+以及 `plan-queue` 这一段数据面：生成的必须是**普通队列文件**（计数与独立数一致、
+任务项就是 campaign_batch、id 是可执行模块名），而且**拿它直接跑 dry-run 要能跑通** ——
+生成物"看起来对"不算数，能被执行才算。
+
 用法：
     python tools/diagnostics/verify_event_state.py
 契约文件不存在时显式跳过（不静默通过）。
@@ -132,6 +136,53 @@ def main() -> int:
              f"matched={none_events.get('matched')}"),
         ]
         for name, ok, detail in checks:
+            print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+            if not ok:
+                failures.append(f'{name}: {detail}')
+
+        # ---- plan-queue：清点 → 生成队列（生成物必须是**普通队列文件**，且能直接跑）
+        print()
+        print('=== 清点 → 生成队列 ===')
+        plan_out = tmpdir / 'planned.json'
+        planned = subprocess.run([str(EXE), 'plan-queue', '--out', str(plan_out),
+                                  '--only-complete', '--limit', '5'],
+                                 capture_output=True, text=True, encoding='utf-8',
+                                 errors='replace', timeout=120)
+        plan_checks: list[tuple[str, bool, str]] = []
+        if planned.returncode != 0 or not plan_out.is_file():
+            plan_checks.append(('生成队列文件', False,
+                                f'退出码={planned.returncode} {(planned.stdout or "")[-200:]}'))
+        else:
+            document = json.loads(plan_out.read_text(encoding='utf-8'))
+            tasks = document.get('tasks') or []
+            plan_checks += [
+                ('生成队列文件', True, ''),
+                ('任务数等于 limit', len(tasks) == 5, f'len={len(tasks)}'),
+                ('计数与独立数一致',
+                 document.get('matched') == len(expected_complete)
+                 and document.get('chapters_total') == len(chapters),
+                 f"matched={document.get('matched')} 独立={len(expected_complete)} "
+                 f"total={document.get('chapters_total')} 独立={len(chapters)}"),
+                ('任务是普通队列项',
+                 all(t.get('kind') == 'campaign_batch' and t.get('required') is False
+                     and t.get('input', {}).get('chapters') == [t.get('id')] for t in tasks),
+                 f'tasks={tasks[:1]}'),
+                ('任务 id 是可执行模块名',
+                 all(str(t.get('id', '')).startswith('campaign.') for t in tasks),
+                 f"ids={[t.get('id') for t in tasks]}"),
+            ]
+            # 生成物必须**真的能跑**：拿它跑一次 dry-run（无设备），证明章节是真实可加载的模块
+            artifacts2 = tmpdir / 'planned-artifacts'
+            executed = subprocess.run([str(EXE), 'queue', '--file', str(plan_out),
+                                       '--artifacts', str(artifacts2)],
+                                      capture_output=True, text=True, encoding='utf-8',
+                                      errors='replace', timeout=600)
+            out = executed.stdout or ''
+            plan_checks.append(('生成的队列可直接执行（dry-run）',
+                                executed.returncode == 0 and f'任务={len(tasks)}' in out
+                                and '失败=0' in out,
+                                f'退出码={executed.returncode} {out[-200:]}'))
+        for name, ok, detail in plan_checks:
             print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
             if not ok:
                 failures.append(f'{name}: {detail}')
