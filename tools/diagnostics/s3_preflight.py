@@ -40,6 +40,8 @@ import alas_vision as av                    # noqa: E402
 
 # 已验证可检出的图内帧（离线夹具）；新增请连同来源写清
 KNOWN_FIXTURES = {
+    # 每条记录都来自一次真实进图验证（见 docs/s3-entry-sequence.md 的批量验证一节）
+    '3-1': 'data/fixtures/inmap_3-1.png',        # 实测 detected=True / 28 格 / 2 船
     '2-1': 'data/fixtures/map_settled.png',
     '10-4': 'data/fixtures/map_shape_9x6.png',
     '困难1-4': 'data/fixtures/map_hard_1_4.png',
