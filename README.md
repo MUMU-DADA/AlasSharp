@@ -196,6 +196,7 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 |---|---|---|
 | 页面规则（53 个 Page） | 29 真机命中；5 受游戏状态阻塞；19 原因已定位（依赖阻塞页 / 活动类型不同 / 上游无入边） | `docs/page-verification.md` |
 | 页面识别全量回归 | **29/29 通过**（用产品导航器 `alashub goto` 重跑，平均 2.45 跳） | `docs/regression.md` |
+| 识别特异性 | 24 条精确命中 / 5 条共命中（主界面两皮肤、商店三连页）/ 0 条漏检 | `docs/specificity.md` |
 | 控件规则（20 模块级 Switch/Scroll + 6 cached_property） | 模块级 9 命中、cached 3 命中；其余逐条分类（需更深流程 / UI 版本差异 / 游戏状态阻塞 / 故意不验） | `docs/controls.md` |
 | 控制原语（返回键 / 长按 / 滑动） | 4/4 真机验证；长按用**上游自己的判据**（`EQUIPMENT_OPEN`）验收 | `docs/primitives.md` |
 | 页面导航（`alashub goto`） | 运行时向上游要图 + 变体择优 + 未建模画面按返回自救 | `docs/navigation.md` |
