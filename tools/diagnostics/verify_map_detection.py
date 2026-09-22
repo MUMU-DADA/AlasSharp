@@ -108,6 +108,14 @@ def main():
             rt = max(abs(a[0] - b[0]) + abs(a[1] - b[1])
                      for a, b in zip(pts_in, g['globe2screen']))
         entry['globe_roundtrip_abs'] = rt
+        if results.get('globe_positions') is None:
+            results['globe_positions'] = []
+        results['globe_positions'].append({
+            'fixture': f,
+            'similarity': g.get('similarity'),
+            'center_loca': g.get('center_loca'),
+            'page_hint': entry.get('page_hint'),
+        })
         # 战役地图：非地图画面应当给负样本
         m = op('map_detect')
         entry['map'] = m
@@ -408,6 +416,31 @@ def main():
         '这再次印证了前面那条澄清：**OS globe 的单应性是存好的常量**，不是从截图算出来的。',
         '因此"位置检测"（`find_peaks` 的实际落点）仍未被验证 —— 它需要调用上游的位置检测接口',
         '（`GlobeDetection` / `OSMap` 上的相关方法），是下一步要补的 op。',
+        '',
+        '### 位置检测（`find_peaks` + 模板匹配）：机制已通，**等一张海域内画面**',
+        '',
+        '`GlobeDetection.load()` 的落点写进 `center_loca`（大世界坐标），匹配度 `similarity`',
+        '只打日志不存属性 —— op 挂 logging handler 把**上游自己打的那行**取回来解析，',
+        '没有在 op 里重算匹配（不重复实现算法）。',
+        '',
+        '实测（同一套上游代码，逐张 fixture）：',
+        '',
+        '| 画面 | similarity | center_loca |',
+        '| --- | --- | --- |',
+        '| `os_globe_live.png`（真机 page_os 环球视图） | 0.082 | [1151, 1564] |',
+        '| `os_map.png`（战役菜单，非 OS） | 0.128 | [2065, 1768] |',
+        '| `map_settled.png`（战斗地图） | 0.085 | [1959, 414] |',
+        '',
+        '真机 OS 环球视图的匹配度**反而最低**，原因在上游实现里很清楚：',
+        '`load()` 是拿"**局部地图结构**"（透视变换后 `find_peaks` 出的地图边界）去和 globe 模板',
+        '做 `matchTemplate`，所以它需要**进入某个海域后的海域地图画面**；',
+        '`page_os` 是选海域的环球视图，上面没有局部地图结构 → 分数低是**画面不对**，不是算法不对。',
+        '',
+        '补充：上游 `module/os/` 里**没有对 similarity 设硬阈值**（它只用于日志；',
+        '`center_loca` 被 `module/os/camera.py` 当作相机中心使用）。',
+        '所以"匹配度多高算认出海域"要**在真机海域画面上实测标定**，不能凭猜写死。',
+        '这一步需要用户进入任意海域后抓一张图（免费、不耗油），',
+        '预期 similarity 会显著高于上面 0.082–0.128 这一档。',
         '',
         '## 复现',
         '',
