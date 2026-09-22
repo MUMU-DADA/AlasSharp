@@ -34,6 +34,10 @@ def rows(text):
     return [line.split() for line in (text or '').strip().split('\n') if line.strip()]
 
 
+# 兼容别名（上游指纹函数里用的名字）
+rows_of = rows
+
+
 def upstream_digest(module_path):
     """导入上游章节模块，读活着的 MAP，拼出与 C# DigestComparable 同序的摘要。"""
     import importlib
@@ -66,12 +70,52 @@ def upstream_digest(module_path):
     ])
 
 
+def upstream_grid_fingerprint(MAP):
+    """用**上游自己的 GridInfo.decode** 逐格解码，拼出与 C# 同格式的指纹。
+
+    注意两点（都在 C# 侧照抄了）：上游 `decode` 先 `text.upper()`（所以 `Me` 等同 `ME`）；
+    `--` 不在表里 → 所有标志为假 → 指纹是 `.`。
+    """
+    from module.map_detection.grid_info import GridInfo
+
+    def fp(info):
+        if info.is_land:
+            return 'L'
+        if info.is_spawn_point:
+            return 'S'
+        if info.is_submarine_spawn_point:
+            return 'U'
+        if info.may_enemy:
+            return 'E'
+        if info.may_boss:
+            return 'B'
+        if info.may_mystery:
+            return 'M'
+        if info.may_ammo:
+            return 'A'
+        if info.may_siren:
+            return 'R'
+        return '.'
+
+    rows = []
+    for row in rows_of(MAP.map_data):
+        line = []
+        for token in row:
+            g = GridInfo()
+            g.decode(token)
+            line.append(fp(g))
+        rows.append(''.join(line))
+    return '\n'.join(rows)
+
+
 def main():
     digests_path = os.path.join(DATA, 'map_ir_digests.json')
     if not os.path.exists(digests_path):
         print('缺 %s：先跑 `alashub map-ir`' % digests_path)
         return 2
     digests = json.load(open(digests_path, encoding='utf-8'))
+    grid_path = os.path.join(DATA, 'map_ir_grid_digests.json')
+    grid_digests = json.load(open(grid_path, encoding='utf-8')) if os.path.exists(grid_path) else {}
     sample_size = int(os.environ.get('SAMPLE', '12'))
     keys = sorted(digests)
     random.seed(20260922)               # 固定种子：结果可复现，便于回归对比
@@ -103,7 +147,25 @@ def main():
             continue
         entry['upstream'] = up
         entry['match'] = (up == digests[key])
-        print('%-42s %s' % (key, 'MATCH' if entry['match'] else 'DIFF'))
+        # 网格指纹对照：逐格语义（S2 数据半边的第二块）。
+        # 注意要自己拿一次模块对象 —— `mod` 是 upstream_digest() 的局部变量，main 里没有
+        # （第一版直接写 mod.MAP，NameError 被 except 吞掉，表现成"grid 没对照"）。
+        try:
+            import importlib
+            gmod = importlib.import_module(module_path)
+            grid_up = upstream_grid_fingerprint(gmod.MAP)
+        except Exception as e:
+            grid_up = None
+            entry['grid_error'] = '%s: %s' % (type(e).__name__, e)
+        grid_cs = grid_digests.get(key)
+        entry['grid_match'] = None if grid_up is None else (grid_up == grid_cs)
+        if entry['grid_match'] is False:
+            print('   GRID DIFF')
+            print('   C#      : %r' % (grid_cs or '')[:200])
+            print('   upstream: %r' % grid_up[:200])
+        print('%-42s %s%s' % (key, 'MATCH' if entry['match'] else 'DIFF',
+                              '' if entry['grid_match'] is None
+                              else (' GRID-MATCH' if entry['grid_match'] else ' GRID-DIFF')))
         if not entry['match']:
             print('   C#      : %s' % digests[key])
             print('   upstream: %s' % up)
@@ -111,8 +173,11 @@ def main():
 
     matched = sum(1 for r in results if r['match'])
     skipped = sum(1 for r in results if r['match'] is None)
+    grid_checked = [r for r in results if r.get('grid_match') is not None]
+    grid_matched = sum(1 for r in grid_checked if r['grid_match'])
     print()
-    print('对照结果: %d 匹配 / %d 跳过 / 共 %d' % (matched, skipped, len(results)))
+    print('对照结果: %d 匹配 / %d 跳过 / 共 %d；网格指纹 %d/%d 匹配'
+          % (matched, skipped, len(results), grid_matched, len(grid_checked)))
 
     base_total = sum(1 for k in digests if k.endswith('_base.json'))
     out = {
@@ -143,14 +208,22 @@ def main():
         '',
         '摘要格式：`%s`' % out['digest_spec'],
         '',
-        '## 结果：%d 匹配 / %d 跳过 / 共 %d' % (matched, skipped, len(results)),
+        '## 结果：字段摘要 %d 匹配 / %d 跳过；网格指纹 %d/%d 匹配'
+        % (matched, skipped, grid_matched, len(grid_checked)),
+        '',
+        '两类对照的含义不同：',
+        '',
+        '- **字段摘要**：shape/map_data/weight/camera/spawn 等字段的规范化值 —— 防"差一/漏推导"；',
+        '- **网格指纹**：用上游 `GridInfo.decode` 与 C# 的移植版**逐格**解码 map_data，'
+        '把整张地图的语义压成一行比 —— 防 token 语义抄错（例如上游 `decode` 会先 '
+        '`text.upper()`，所以 `Me` 等同 `ME`；而 `--` 不在表里、所有标志为假）。',
         '',
         'IR 文件 %d 个，其中 `*_base.json` **基类模块 %d 个（不是章节，没有 MAP）**，'
         '真实章节 **%d** 个 —— 导出层把基类也当章节了，见下面的"顺带发现"。'
         % (out['total_ir_files'], out['base_modules'], out['real_chapters']),
         '',
-        '| 章节 | 结果 | C# 摘要 |',
-        '| --- | --- | --- |',
+        '| 章节 | 结果 | 网格 | C# 摘要 |',
+        '| --- | --- | --- | --- |',
     ]
     for r in results:
         if r['match']:
@@ -159,7 +232,8 @@ def main():
             verdict = '⏭️ %s' % (r.get('error') or '')
         else:
             verdict = '❌ 不一致'
-        lines.append('| `%s` | %s | `%s` |' % (r['chapter'], verdict, r['csharp']))
+        grid = '—' if r.get('grid_match') is None else ('✅' if r['grid_match'] else '❌')
+        lines.append('| `%s` | %s | %s | `%s` |' % (r['chapter'], verdict, grid, r['csharp']))
     if skipped:
         lines += ['', '## 跳过原因', '']
         for r in results:
@@ -167,23 +241,60 @@ def main():
                 lines.append('- `%s`：%s' % (r['chapter'], r.get('error')))
     lines += [
         '',
-        '## 顺带发现：导出层把基类模块当成了章节',
+        '## 已知问题（全量跑出来的，逐条留证据）',
         '',
-        '`campaign/**/*.py` 里有 %d 个 `*_base.py`（`campaign_2_base`、`campaign_base` 之类），'
-        '它们是**基类模块，没有 `MAP` 对象**，但导出层把它们也导成了"章节"。'
-        % out['base_modules'],
+        '### 1. 有章节的地图是**从别的章节拷贝**的，导出成空地图',
         '',
-        '后果：凡是以 IR 文件数统计"章节数"的地方都会虚高 —— 实际是 **%d 个真实章节**。'
-        % out['real_chapters'],
-        '本脚本按设计跳过它们（`AttributeError: module ... has no attribute MAP` 就是这么来的）。',
-        '要不要在导出层过滤掉，等下一轮改导出器时一起处理（改动会牵动 IR 数量与既有校验口径，'
-        '不适合顺手改）。',
+        '`campaign_main/campaign_15_4_121.json`：IR 侧 `1x1 / rows=0 / tokens=0`，'
+        '上游活对象是 `11x9 / 99 格 / weight=4950`。源码写的是：',
         '',
+        '```python',
+        'from .campaign_15_4 import MAP as MAP_15_4, Campaign as Campaign_15_4',
+        'MAP = copy.copy(MAP_15_4)      # ← 地图来自另一个章节',
+        "MAP.name = '15-4-121'",
+        '```',
+        '',
+        '导出器（AST 抓字面量赋值）看不到这条链，于是导出了空地图。'
+        '**这正是跨语言对照存在的意义** —— 这种错不会表现成"识别不准"，'
+        '只会让引擎在一张空地图上做规划。',
+        '',
+        '修法（留待改导出器时一起做）：导出器解析 `copy.copy(MAP_X)` / '
+        '`from .X import MAP as MAP_X`，把被引用章节的地图复制过来；'
+        '或至少记一个 `map.derived_from = "campaign_15_4"` 指针让消费方跟进。',
+        '',
+        '### 2. 导出的"章节"里混着非章节、以及上游自己都导入不了的死模块',
+        '',
+        '全量 1437 个 IR 文件里：',
+        '',
+        '- **%d 个 `*_base.py` 基类模块**（没有 `MAP` 对象）—— 导出层把基类当章节了，'
+        '所以"章节数"应以 **%d** 为准；'
+        % (out['base_modules'], out['real_chapters']),
+        '- 另有若干章节**连上游自己都导入不了**'
+        '（`ImportError: cannot import name ... from module.campaign.assets`），'
+        '说明它们引用的素材名在当前上游已不存在（历史遗留的死章节）。',
+        '',
+        '两者都会被"按 IR 文件数统计章节数"的地方算进去。跳过原因直方图：',
+        '',
+    ]
+
+    import collections
+    reasons = collections.Counter()
+    for r in results:
+        if r['match'] is None:
+            reasons[(r.get('error') or '未知').split(':')[0][:70]] += 1
+    if reasons:
+        lines += ['| 跳过原因 | 数量 |', '| --- | --- |']
+        for k, v in reasons.most_common():
+            lines.append('| %s | %d |' % (k, v))
+        lines.append('')
+
+    lines += [
         '## 复现',
         '',
         '```powershell',
-        'alashub map-ir                              # C# 解析全部 IR 并导出摘要',
+        'alashub map-ir                              # C# 解析全部 IR，导出摘要与网格指纹',
         'python tools/diagnostics/verify_map_ir.py   # 与上游活对象对照（固定随机种子）',
+        '$env:SAMPLE = "2000"                        # 跑全量（实测 1437 个文件约 10 秒）',
         '```',
         '',
     ]

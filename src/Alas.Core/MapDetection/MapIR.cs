@@ -232,6 +232,19 @@ public sealed class MapIR
         return outp;
     }
 
+    /// <summary>
+    /// 全网格指纹：逐格按 token 解码成一个字符（见 <see cref="GridFlags.Fingerprint"/>），
+    /// 按行拼起来。跨语言对照用 —— 它把"整张地图的语义"压成一行，
+    /// 任何一格解码错了都会立刻不一致。
+    /// </summary>
+    public string GridFingerprint()
+        => string.Join("\n", MapData.Select(
+            row => new string(row.Select(t => GridFlags.Decode(t).Fingerprint).ToArray())));
+
+    /// <summary>解码后的网格（引擎做寻路时用）。</summary>
+    public GridFlags[][] DecodeGrid()
+        => MapData.Select(row => row.Select(GridFlags.Decode).ToArray()).ToArray();
+
     /// <summary>规范化摘要：跨语言对照用（C# 与上游 Python 必须给出同一串）。</summary>
     public string Digest()
     {

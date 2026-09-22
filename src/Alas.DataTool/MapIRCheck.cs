@@ -32,6 +32,7 @@ internal static class MapIRCheck
         var tokenHist = new Dictionary<string, int>();
         var errSamples = new List<string>();
         var digests = new SortedDictionary<string, string>();
+        var gridDigests = new SortedDictionary<string, string>();
 
         foreach (string path in files)
         {
@@ -61,6 +62,8 @@ internal static class MapIRCheck
             }
             digests[Path.GetRelativePath(dir ?? Path.GetDirectoryName(path)!, path)
                 .Replace('\\', '/')] = ir.DigestComparable();
+            gridDigests[Path.GetRelativePath(dir ?? Path.GetDirectoryName(path)!, path)
+                .Replace('\\', '/')] = ir.GridFingerprint();
         }
 
         Console.WriteLine($"[map-ir ] 解析 {parsed}/{files.Count}，shape 缺失 {shapeNull}，" +
@@ -74,6 +77,10 @@ internal static class MapIRCheck
         File.WriteAllText(outPath,
             JsonSerializer.Serialize(digests, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine($"[digest] {digests.Count} 条 → {outPath}");
+        string gridPath = Path.Combine(dataDir, "map_ir_grid_digests.json");
+        File.WriteAllText(gridPath,
+            JsonSerializer.Serialize(gridDigests, new JsonSerializerOptions { WriteIndented = true }));
+        Console.WriteLine($"[grid   ] 网格指纹 {gridDigests.Count} 条 → {gridPath}");
         return withErrors == 0 ? 0 : 1;
     }
 }
