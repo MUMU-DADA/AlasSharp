@@ -232,3 +232,18 @@ if not self.emotion.is_ignore:      # is_ignore = 'ignore' in config.Emotion_Mod
 （`module/map_detection/homography.py` 的 `load`/`find_lines` 一线），按铁律用垫片包，不改上游文件。
 判据要有下限：只有当 `inner_v` 极少（0–1 条）且 `edge_v ≥ 2` 时才回退，避免影响本来正常的图。
 
+
+### 补记（round 135）：线族装配不是瓶颈，**homography 的消失点计算才是**
+
+查上游源码定位"回退 edge_v"该改哪里，结果发现**不用改装配**：
+
+- `module/map_detection/perspective.py:106` 已经是 `vertical = inner_v.add(edge_v).group()`
+  —— **perspective 后端本来就把内线与边界线合并** ✓。这解释了之前的对照：
+  同一张 1-4 现场帧，`perspective` 能检出（但多判成 43 格 / [7,5]，不可用），
+  而 `homography` 直接报 `Vanish point and distant point too close`。
+- 所以 homography 的失败点在它**自己的消失点/远点计算**（`homography.py` 里用
+  `perspective.vertical` 的首尾两条推几何那一段），而不是"垂直族没拿到线"。
+
+⇒ 下轮的正确入口是**那段消失点计算**：要么放宽它的输入（用更多条线拟合消失点），
+要么在几何退化时换一条不依赖消失点的路径。两条都要先读那段代码再定，
+不能再靠"换个阈值/换个机位"这类猜测（本轮与上轮已各证伪一个猜测）。
