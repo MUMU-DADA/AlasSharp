@@ -144,6 +144,62 @@ Hough 是按"一条线上有多少共线像素"投票的 —— 784 个像素若
 要修得换思路（例如改用边界线推几何，或对单行图另做一条检测路径），
 而收益只有 1-1 这一张（1-2/1-3/1-4 都是多行图，不受影响），所以**先记为已知限制**。
 
+## 三行图 / 7-1：真正的判据是"视图检出多少格"，不是"行数"（2026-09-22 夜，真机）
+
+起因：跑 7-1 时 `map_init` **一次成功、一次失败**，失败信息是
+`MapDetectionError: Vanish point and distant point too close`（日志里
+`vanish_point == distant_point == (654, -1425)`）。
+
+机制：三行图的网格线在透视里近于平行，机位不巧时两个消失点算到同一处 → 几何退化。
+**这是机位相关的，不是"这张图不支持"** —— 所以 `map_init` 加了"失败就换个机位重试"
+（设备级滑动，见下），实测第 2 次即通过。
+
+但进图之后仍然跑不动，症状与机制都在日志里：
+
+| 观察 | 值 | 含义 |
+| --- | --- | --- |
+| 视图检出格数 | **12–15 格** | 该图应为 24 格（8x3）→ 目标格映射错位 |
+| 屏幕上的信息条 | 「已切换到第三舰队」 | 挡住地图区域，`handle_info_bar()` 只在 `map_init` 里调过 |
+| 循环日志 | 每 ~23s 一次 `Arrive B1 (is_fleet)` | 反复"到达"却**从未**出现 `Combat preparation` |
+| 时长 | 空转 6 分钟后手动收尾 | 用上游 `withdraw()` 干净退出 ✓ |
+
+对照：困难 1-4（3 行、21 格）用真图内帧**能**正常识别（`shape=[6,2]`=21 格）。
+所以**"≤3 行"不是干净的判据**，真正的差别是"视图能不能把该图的格数检全"。
+
+**关于"挪机位"的一个坑**（连踩两次，值得记）：
+`map_swipe()` 读 `view.center_offset`、`_map_swipe()` 读 `view.swipe_base`，而这两个属性
+都是 `View.load()` **成功之后**才设置的 —— 检测已经失败了，所以这两条路必然报
+`AttributeError`，相机一步都没动、三次重试失败得一模一样 ✗。
+最后用**设备级滑动**（`device_swipe`，不依赖任何识别结果）才真正挪动了机位 ✓。
+
+## 客户端弹窗：低心情"强制出击"确认框（会让整轮卡死 180s）
+
+症状（真机，连打多场后）：点完「战斗准备」，游戏弹出
+
+> 信息：第三舰队中「威廉·D·波特」「关岛」「苏维埃同盟」「莫斯科」处于低心情状态，
+> 强制出击将降低好感且获得经验减半　[取消] [确定]
+
+然后上游 `combat_preparation()` 一直等战斗 UI，180s 后 `GameStuckError: Wait too long`，
+出击被中断（日志：`Wait too long / Waiting for {GAME_TIPS4, PAUSE, ...}`）。
+
+**上游其实有这个弹窗的处理器**：`handle_combat_low_emotion()`（`handler/info_handler.py:187`），
+被 `combat_preparation()` 主循环调用。但它第一行就是
+
+```python
+if not self.emotion.is_ignore:      # is_ignore = 'ignore' in config.Emotion_Mode
+    return False                    # 默认 Emotion_Mode='calculate' → 永远 False
+```
+
+也就是说：**这是配置问题，不是缺处理器**。`Emotion.Mode` 的选项是
+`[calculate, ignore, calculate_ignore]`，把它设成含 `ignore` 的档位，上游就会点「确定」继续。
+
+本项目的做法：`op_s3_campaign_init` 默认设 `Emotion_Mode='calculate_ignore'`
+（照常计算心情 + 忽略弹窗），可用参数覆盖。**代价如实记**：强制出击确实会扣，
+实测战果页三艘船显示 `EXP -588`。
+
+验证状态要如实说：配置已生效（读回 `Emotion_Mode='calculate_ignore'`、`emotion.is_ignore=True` ✓），
+但**端到端还没触发过** —— 随后用 2-1 复跑时 ALAS 读到的心情是 115/119（不算低），弹窗没出现。
+
 ## 困难图 1-4 的那节标题已过时
 
 `docs/map-detection.md` 里"困难图（1-4）：未能检出"那节是**加 5 档降阈值重试之前**的结论；
