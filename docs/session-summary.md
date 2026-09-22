@@ -103,6 +103,22 @@
 > **为什么我不自己推**：项目铁律写明"推送前须本人同意"。不推的代价是零（工作都在本地），
 > 误推的代价是你失去审阅/改写的机会。
 
+## 六之二、测试覆盖（本夜新建/整合的环节都有自动化回归）
+
+这条线的四个环节**此前只靠人工验证**，现在全部纳入一键验收 `verify_all.py`（步骤 14 → 17）：
+
+| 回归 | 覆盖什么 | 命令 |
+| --- | --- | --- |
+| `verify_s3_plan.py` | IR → 协议 `plan_steps` 一致（4 章）+ 安全锁 + **3 个垫片真挂上了** + 弹窗判定不误报 | `python tools/diagnostics/verify_s3_plan.py` |
+| `verify_device_engine.py` | 后端可切换 / 能抓到合法帧 / 点击可用（需设备在线）| `python tools/diagnostics/verify_device_engine.py` |
+| `sync_all.py --verify` | 导出数据与 vendor 素材不漂移 | `python tools/sync_all.py --verify` |
+| `s3_plan_coverage.py` / `s3_preflight.py` | 全量计划可用性统计 / 开跑前 6 项预检 | 见 `docs/s3-entry-sequence.md` |
+
+一键全跑：`python tools/diagnostics/verify_all.py`（`--docs-only` 为快速版，不碰设备）。
+
+> **为什么专门补这些**：这几块失败时**表面上仍然"能跑"** ——
+> 例如垫片没挂上、后端没切过去、上游数据漂移，都要等到某次识别莫名失效才暴露。
+
 ## 七、关键文件索引
 
 | 文件 | 内容 |
