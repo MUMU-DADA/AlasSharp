@@ -142,7 +142,8 @@ internal static class Program
                  .Register(new Alas.Tasks.AccountStateTask())
                  .Register(new Alas.Tasks.OsStateTask())
                  .Register(new Alas.Tasks.EventStateTask())
-                 .Register(new Alas.Tasks.TaskCatalogTask());
+                 .Register(new Alas.Tasks.TaskCatalogTask())
+                 .Register(new Alas.Tasks.NavigateTask());
                 if (queueFlags.Resume)
                 {
                     // `--resume <state.json>` 显式给路径；只写 `--resume` 则取工件根目录下
