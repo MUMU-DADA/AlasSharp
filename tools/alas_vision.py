@@ -1560,6 +1560,45 @@ def op_device_back(args):
         return {'ok': False, 'error': f'{type(e).__name__}: {e}'}
 
 
+def op_device_capture_set(args):
+    """用引擎的设备层截图，**直接置入宿主的当前截图**（像素不跨语言边界）。
+
+    与 C# 自己 adb 截图的对比：那条路是 `adb → C# 持有 PNG → 交给宿主 → 解码`，
+    本 op 把它压成 `引擎后端 → 宿主`，省掉跨语言传输与一次落盘/读盘。
+    想换更快的后端（如 droidcast）只需 `device_configure`，C# 侧零改动。
+
+    `raw=True`（默认）直接调后端的原始实现，绕开 ALAS 的 0.3s 截图间隔节流。
+    """
+    import time as _time
+    dev = _device_engine()
+    raw = bool(args.get('raw', True))
+    method = str(getattr(dev.config, 'Emulator_ScreenshotMethod', 'adb'))
+    t0 = _time.time()
+    if raw:
+        fn = getattr(dev, f'screenshot_{method}', None)
+        img = fn() if fn is not None else dev.screenshot()
+    else:
+        img = dev.screenshot()
+    cap_ms = (_time.time() - t0) * 1000
+
+    # 存进宿主的方式与 `screenshot_load` 保持**逐字节一致**：先存临时 PNG 再用上游
+    # `load_image` 读回。设备层返回的是 BGR numpy，而夹具路径走的是 `load_image`，
+    # 直接塞进去可能踩通道顺序的坑；这里多花 ~10ms 换"与夹具路径完全同源"。
+    import tempfile
+    from module.base.utils import load_image
+    fd, tmp = tempfile.mkstemp(suffix='.png')
+    os.close(fd)
+    try:
+        import cv2 as _cv2
+        _cv2.imwrite(tmp, img)
+        _state['image'] = load_image(tmp)
+        _state['path'] = tmp
+    except Exception as e:
+        return {'error': f'{type(e).__name__}: {e}', 'capture_ms': round(cap_ms, 1)}
+    return {'capture_ms': round(cap_ms, 1), 'method': method, 'raw': raw,
+            'shape': list(getattr(_state['image'], 'shape', ()) or ())}
+
+
 def op_ui_rules_sweep(args):
     """
     界面与控件识别的**统一验收**：一次跑完三类实体并汇总。
@@ -1685,6 +1724,7 @@ OPS = {
     'page_positive_control': op_page_positive_control,
     'rule_positive_control': op_rule_positive_control,
     'map_detection_assets': op_map_detection_assets,
+    'device_capture_set': op_device_capture_set,
     'device_configure': op_device_configure,
     'device_info': op_device_info,
     'device_screencap': op_device_screencap,
