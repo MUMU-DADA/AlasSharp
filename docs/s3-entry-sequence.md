@@ -1307,3 +1307,8 @@ step=enter_map ms=60196.4 error=GameStuckError: Wait too long | step=enter_map_a
 
 （仍标注为**强相关**而非判据 —— 样本 9 个、且"行数"与"渲染缩放/相机位"可能共变；
 但它的解释力明显强于格数假说，足以指导批量选图：**优先选 ≥4 行的图**。）
+
+
+#### 10-1（(6,5) = 7×6 = 42 格，**6 行**，预测成功）
+
+实测：step=map_init ms=2082.9 error= | round=1 step=battle_0 ms=91754.2 error= completed= | round=1 step=battle_6 ms=81392.5 error= completed= | [结果    ] elapsed=247.3s stopped_early=False stop_reason= campaign_end=
