@@ -41,7 +41,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
     "globe_center: (np.float64(1423.0), np.float64(1690.0))",
-    "0.080s      similarity: 0.066",
+    "0.076s      similarity: 0.066",
     "Low similarity when matching OS globe"
   ],
   "similarity": 0.066,
@@ -428,8 +428,12 @@ homography 后端在两张真机图上都与关卡 IR 严格一致。
 做 `matchTemplate`，所以它需要**进入某个海域后的海域地图画面**；
 `page_os` 是选海域的环球视图，上面没有局部地图结构 → 分数低是**画面不对**，不是算法不对。
 
-补充：上游 `module/os/` 里**没有对 similarity 设硬阈值**（它只用于日志；
-`center_loca` 被 `module/os/camera.py` 当作相机中心使用）。
+补充（已更正）：上游**是有判据的** —— `globe_detection.py:133-134` 写了
+`if similarity < 0.1:` 则警告 `Low similarity when matching OS globe`
+（只警告、不拒绝，仍返回 `center_loca`）。我们测到的所有画面都在 0.066–0.128，
+恰好压在这条线上下 —— 与"glob 检测要的是环球视图那一屏"的结论一致。
+原先这里写的"上游没有对 similarity 设硬阈值"据此更正：没有硬拒绝，但有 0.1 的警告线。
+`center_loca` 被 `module/os/camera.py` 当作相机中心使用。
 所以"匹配度多高算认出海域"要**在真机海域画面上实测标定**，不能凭猜写死。
 这一步需要用户进入任意海域后抓一张图（免费、不耗油），
 预期 similarity 会显著高于上面 0.082–0.128 这一档。
