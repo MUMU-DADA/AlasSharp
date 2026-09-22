@@ -40,9 +40,24 @@ public sealed class AlasSession : IDisposable
         HostStartCount = 1;
         RunDirectory = options.ArtifactsDirectory is null
             ? null
-            : Path.Combine(options.ArtifactsDirectory,
-                           DateTime.Now.ToString("yyyyMMdd'T'HHmmss"));
+            : UniqueRunDirectory(options.ArtifactsDirectory);
         if (RunDirectory is not null) Directory.CreateDirectory(RunDirectory);
+    }
+
+    /// <summary>
+    /// 本次运行的工件目录：`<artifacts>/<时间戳>`，**同一秒内的第二次运行要能区分开**。
+    ///
+    /// 为什么必须唯一：时间戳只到秒，而自动化里连跑两次是常态（实测 `alashub runs` 只列出 1 条，
+    /// 因为第二次运行把第一次的工件目录覆盖了 —— 证据被悄悄替换掉，事后看不出来）。
+    /// 撞名时追加序号，保持"按目录名排序 = 按时间排序"这个性质不变。
+    /// </summary>
+    private static string UniqueRunDirectory(string artifactsRoot)
+    {
+        string stamp = DateTime.Now.ToString("yyyyMMdd'T'HHmmss");
+        string candidate = Path.Combine(artifactsRoot, stamp);
+        for (int suffix = 2; Directory.Exists(candidate); suffix++)
+            candidate = Path.Combine(artifactsRoot, $"{stamp}-{suffix}");
+        return candidate;
     }
 
     /// <summary>

@@ -270,4 +270,48 @@ public sealed class RunReport
             .OrderBy(d => Path.GetFileName(d), StringComparer.Ordinal)
             .LastOrDefault();
     }
+
+    /// <summary>
+    /// 列出工件根目录下最近几次运行（R4 数据面：前端要能"看见有哪些运行"，
+    /// 而不是靠人记住时间戳目录名）。每条只给**摘要字段**，详情用 `report --run`。
+    /// 读不出来的目录如实记 `error`，不跳过 —— 静默跳过等于前端看不到坏数据。
+    /// </summary>
+    public static JsonObject Summarize(string artifactsRoot, int limit)
+    {
+        var runs = new JsonArray();
+        var directories = Directory.Exists(artifactsRoot)
+            ? Directory.GetDirectories(artifactsRoot)
+                .OrderByDescending(d => Path.GetFileName(d), StringComparer.Ordinal)
+                .Take(Math.Max(1, limit))
+            : Enumerable.Empty<string>();
+        foreach (var directory in directories)
+        {
+            var report = Build(directory);
+            runs.Add(new JsonObject
+            {
+                ["stamp"] = report.Stamp,
+                ["directory"] = report.RunDirectory,
+                ["dry_run"] = report.DryRun,
+                ["queue_outcome"] = report.QueueOutcome,
+                ["batch_outcome"] = report.BatchOutcome,
+                ["tasks"] = report.Tasks,
+                ["tasks_failed"] = report.TasksFailed,
+                ["tasks_skipped"] = report.TasksSkipped,
+                ["stages"] = report.Stages,
+                ["stages_cleared"] = report.StagesCleared,
+                ["has_failures"] = report.HasFailures,
+                ["evidence_complete"] = report.EvidenceComplete,
+                ["findings"] = report.Findings.Count,
+                ["finding_codes"] = new JsonArray(report.Findings
+                    .Select(f => (JsonNode)JsonValue.Create(f.Code)!).Distinct().ToArray()),
+            });
+        }
+        return new JsonObject
+        {
+            ["artifacts_root"] = Path.GetFullPath(artifactsRoot),
+            ["exists"] = Directory.Exists(artifactsRoot),
+            ["returned"] = runs.Count,
+            ["runs"] = runs,
+        };
+    }
 }

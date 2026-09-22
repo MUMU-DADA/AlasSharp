@@ -197,6 +197,36 @@ internal static class Program
                                   + (dryRun ? "（默认 dry-run）" : "（--run --allow-actions）"));
                 return 0;
             }
+            if (command == "runs")
+            {
+                // R4 数据面：列出工件根目录下最近的运行（摘要），详情用 report --run。
+                string runsRoot = Path.Combine(dataDir, "runs"), runsJson = "";
+                int runsLimit = 10;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--artifacts") runsRoot = args[i + 1];
+                    if (args[i] == "--json") runsJson = args[i + 1];
+                    if (args[i] == "--limit" && int.TryParse(args[i + 1], out int n)) runsLimit = n;
+                }
+                var summary = Alas.Runtime.RunReport.Summarize(runsRoot, runsLimit);
+                Console.WriteLine($"[运行列表] {summary["artifacts_root"]}（存在={summary["exists"]}，"
+                                  + $"返回 {summary["returned"]} 条）");
+                foreach (var run in (summary["runs"] ?? new System.Text.Json.Nodes.JsonArray()).AsArray())
+                    Console.WriteLine($"[运行    ] {run!["stamp"]} dry_run={run["dry_run"]} "
+                                      + $"队列={run["queue_outcome"]} 任务={run["tasks"]} "
+                                      + $"失败={run["tasks_failed"]} 关卡={run["stages"]} "
+                                      + $"通关={run["stages_cleared"]} 证据完整={run["evidence_complete"]} "
+                                      + $"findings={run["findings"]}");
+                if (runsJson.Length > 0)
+                {
+                    string full = Path.GetFullPath(runsJson);
+                    Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                    File.WriteAllText(full, summary.ToJsonString(
+                        new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                    Console.WriteLine($"[列表工件] {full}");
+                }
+                return 0;
+            }
             if (command == "report")
             {
                 // R2：把一次运行的工件读回来 —— 只读汇总 + 证据完整性检查（不重判通关）。
