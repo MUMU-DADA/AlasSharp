@@ -15,6 +15,15 @@ internal static class Program
     private static int Main(string[] args)
     {
         Console.OutputEncoding = System.Text.Encoding.UTF8;
+        // `--adb` 传相对路径会在真机上失败：宿主把工作目录切到了 engine 目录（实测
+        // `Win32Exception: 找不到指定的文件`）。在**入口统一**解析成绝对路径 ——
+        // 一次覆盖所有子命令，而不是在每个参数解析循环里各修一遍（那样迟早漏一个）。
+        // 只在路径确实存在时改写：不存在就让原来的报错照旧出现，别把错误信息改成另一种。
+        for (int i = 1; i < args.Length - 1; i++)
+        {
+            if (args[i] == "--adb" && !Path.IsPathRooted(args[i + 1]) && File.Exists(args[i + 1]))
+                args[i + 1] = Path.GetFullPath(args[i + 1]);
+        }
         ProjectPaths paths = ProjectPaths.Resolve();
         string dataDir = paths.DataDirectory;
         string repoDir = paths.RepoDirectory;
