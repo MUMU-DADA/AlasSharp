@@ -18,7 +18,8 @@ namespace Alas.DataTool;
 internal static class MapCheck
 {
     public static int Run(string? fixture, string forkDir, string toolsDir,
-                          string? adbPath, string? serial)
+                          string? adbPath, string? serial, string? chapter = null,
+                          string? dataDir = null)
     {
         using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(forkDir, toolsDir);
         var client = new MapDetectionClient(vision);
@@ -96,6 +97,73 @@ internal static class MapCheck
                 ? $"S2 产品路径验收通过（素材链 + 单应性往返 + 真机地图正样本 grids={map.GridCount}）"
                 : "S2 产品路径验收通过（素材链 + 单应性往返 + 非地图负样本语义）")
             : $"S2 验收有 {problems} 处问题");
+        // 识别结果 vs 关卡 IR 的交叉校验（C# 侧独立完成）
+        if (!string.IsNullOrEmpty(chapter) && map.Detected && !string.IsNullOrEmpty(dataDir))
+            problems += CrossCheck(map, chapter, dataDir!);
+        return problems == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// 识别结果 vs 关卡 IR 的交叉校验（**C# 侧独立完成**，不依赖 Python 诊断脚本）：
+    /// 用移植过来的 <see cref="MapIR"/> / <see cref="GridFlags"/> 解 IR，再与识别结果比。
+    ///
+    /// 三条判据（由弱到强）：
+    ///   1. 检出的 shape 必须与 IR 声明**严格一致**（F4→(5,3)、I6→(8,5)）；
+    ///   2. 缺格允许存在，但要列出坐标（左侧舰队栏 / 顶部信息条遮住的格子本就检不到）；
+    ///   3. **船不可能落在陆地格上** —— 识别坐标差一格就会被违反，这条最强。
+    /// </summary>
+    public static int CrossCheck(MapDetectResult map, string chapterPath, string dataDir)
+    {
+        string full = Path.Combine(dataDir, "campaign", chapterPath);
+        if (!File.Exists(full))
+        {
+            Console.WriteLine($"[ir     ] 找不到关卡 IR：{full}");
+            return 1;
+        }
+        var ir = MapIR.Parse(System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(full))!,
+            Path.GetFileNameWithoutExtension(chapterPath));
+        var (sx, sy) = ir.EffectiveShape;
+        var detShape = map.Shape ?? new List<int>();
+        bool shapeOk = detShape.Count == 2 && detShape[0] == sx && detShape[1] == sy;
+
+        // 缺格
+        var keys = new HashSet<string>((map.GridKeys ?? new List<List<int>>())
+            .Where(k => k.Count == 2).Select(k => $"{k[0]},{k[1]}"));
+        var missing = new List<string>();
+        for (int y = 0; y <= sy; y++)
+            for (int x = 0; x <= sx; x++)
+                if (!keys.Contains($"{x},{y}")) missing.Add($"{x},{y}");
+
+        // 船 vs 陆地
+        var grid = ir.DecodeGrid();
+        var ships = new List<string>();
+        var onLand = new List<string>();
+        foreach (var kv in map.GridFlags ?? new Dictionary<string, List<string>>())
+        {
+            bool isShip = kv.Value.Any(n => n is "is_enemy" or "is_boss" or "is_siren"
+                or "is_fleet" or "is_current_fleet" or "is_submarine");
+            if (!isShip) continue;
+            ships.Add(kv.Key);
+            var parts = kv.Key.Split(',');
+            if (parts.Length == 2 && int.TryParse(parts[0], out int x)
+                && int.TryParse(parts[1], out int y)
+                && y >= 0 && y < grid.Length && x >= 0 && x < grid[y].Length
+                && grid[y][x].IsLand)
+                onLand.Add(kv.Key);
+        }
+
+        Console.WriteLine($"[ir     ] {Path.GetFileName(chapterPath)} shape={ir.ShapeRaw} " +
+                          $"→ 期望 {sx + 1}x{sy + 1}，网格 {ir.EffectiveWidth * ir.EffectiveHeight} 格");
+        Console.WriteLine($"[校验 1 ] shape 一致：{shapeOk}（检出 [{(detShape.Count == 2 ? $"{detShape[0]},{detShape[1]}" : "-")}]）");
+        Console.WriteLine($"[校验 2 ] 缺格 {missing.Count}：" +
+                          (missing.Count == 0 ? "无" : string.Join(" ", missing.Take(12))));
+        Console.WriteLine($"[校验 3 ] 船格 {ships.Count} 个（{string.Join(" ", ships.Take(8))}）" +
+                          $"落在陆地上 {onLand.Count}：" +
+                          (onLand.Count == 0 ? "无 ✅" : string.Join(" ", onLand)));
+        int problems = (shapeOk ? 0 : 1) + (onLand.Count == 0 ? 0 : 1);
+        Console.WriteLine(problems == 0
+            ? "S2 交叉校验通过（shape 严格一致 + 船未落陆地）"
+            : $"S2 交叉校验发现 {problems} 处不一致");
         return problems == 0 ? 0 : 1;
     }
 

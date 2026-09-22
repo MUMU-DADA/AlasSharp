@@ -38,6 +38,16 @@ public sealed class MapDetectResult
     [JsonPropertyName("detected")] public bool Detected { get; set; }
     [JsonPropertyName("reason")] public string? Reason { get; set; }
     [JsonPropertyName("grid_count")] public int? GridCount { get; set; }
+    /// <summary>检出网格的坐标（[x, y] 列表）：用来判断"格数为什么少于地图声明"。</summary>
+    [JsonPropertyName("grid_keys")] public List<List<int>>? GridKeys { get; set; }
+    /// <summary>[minX, minY, maxX, maxY]</summary>
+    [JsonPropertyName("grid_bounds")] public List<int>? GridBounds { get; set; }
+    /// <summary>
+    /// 逐格语义：`"x,y"` → 为 True 的标志名（is_enemy / is_fleet / is_submarine / …）。
+    /// 这是"网格判定"的实质内容，可与关卡 IR 的 map_data 对齐校验。
+    /// </summary>
+    [JsonPropertyName("grid_flags")]
+    public Dictionary<string, List<string>>? GridFlags { get; set; }
     [JsonPropertyName("shape")] public List<int>? Shape { get; set; }
     [JsonPropertyName("center_loca")] public List<int>? CenterLoca { get; set; }
     [JsonPropertyName("left_edge")] public bool? LeftEdge { get; set; }

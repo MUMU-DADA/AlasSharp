@@ -67,9 +67,13 @@ internal static class Program
                     if (args[i] == "--serial") mapSerial = args[i + 1];
                     if (args[i] == "--fixture") fixture = args[i + 1];
                 }
+                string? mapChapter = null;
+                for (int i = 1; i < args.Length - 1; i++)
+                    if (args[i] == "--chapter") mapChapter = args[i + 1];
                 fixture ??= (mapAdb is null
                     ? Path.Combine(dataDir, "fixtures", "os_map.png") : null);
-                return MapCheck.Run(fixture, repoDir, toolsDir4, mapAdb, mapSerial);
+                return MapCheck.Run(fixture, repoDir, toolsDir4, mapAdb, mapSerial,
+                    mapChapter, dataDir);
             }
             if (command == "device")
             {
