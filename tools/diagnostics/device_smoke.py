@@ -27,6 +27,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+import contextlib
+from datetime import datetime
 from tempfile import TemporaryDirectory
 
 HERE = Path(__file__).resolve().parent
@@ -72,6 +74,22 @@ CHECKLIST = [
 ]
 
 
+def artifacts_root() -> Path:
+    """真机运行的工件目录 —— **必须持久**。
+
+    本轮实测踩到的坑：这里原本用 `TemporaryDirectory`，脚本退出后整个工件目录被删掉，
+    而真机证据恰恰是最稀缺的（离线可以随时重跑，真机要等设备在线）。于是"跑了真机、
+    事后再想看那一帧/那一步的 traceback"变成不可能。改为落在 `data/device_runs/<时间戳>/`
+    （可用 `--artifacts <目录>` 覆盖）。
+    """
+    if '--artifacts' in sys.argv:
+        path = Path(sys.argv[sys.argv.index('--artifacts') + 1])
+    else:
+        path = DATA / 'device_runs' / datetime.now().strftime('%Y%m%dT%H%M%S')
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def adb(*args, timeout=20):
     binary = str(ADB) if ADB.is_file() else 'adb'
     try:
@@ -112,7 +130,8 @@ def main() -> int:
     print(f'=== 真机冒烟：{SERIAL} ===')
     results = {'serial': SERIAL, 'allow_actions': allow_actions, 'items': {}}
     failures: list[str] = []
-    with TemporaryDirectory(prefix='alas-device-smoke-') as tmp:
+    # 持久目录（真机证据不能随进程退出消失）；用 nullcontext 保持原有缩进结构。
+    with contextlib.nullcontext(artifacts_root()) as tmp:
         tmpdir = Path(tmp)
         tasks = [
             # 只读，但要**当场抓帧**：这是离线验收覆盖不到的那条路径。

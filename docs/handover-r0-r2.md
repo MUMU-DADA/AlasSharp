@@ -78,8 +78,28 @@ python tools\diagnostics\verify_all.py --docs-only     # 判据：总耗时行�
   跨过上游阈值 10）；一条"**本局撤退**被判 `withdrawn`"的真机记录
   （现有 2 起撤退都是上一局清理/导航期，不是本局结论）。
 
-## 五、几条别丢的经验（本轮踩过）
+## 五、设备窗口（2026-09-23 06:5x，模拟器上线期间）
 
+设备中途上线（上一轮检查时确实为空），本轮抓住窗口做了三件事：
+
+| 项 | 结果 |
+| --- | --- |
+| 导航任务真机验证 | `kind=navigate` 两跳真实点击到达 `page_campaign`：`page_main` -(0.946)-> `page_campaign_menu` -(0.997)-> `page_campaign`；不存在的目标页被前置条件拦下记 `skipped` |
+| `account_state capture=true` | **真机路径跑通**（此前只用存盘帧验过）：`source=device_capture`、帧 720x1280x3、`pages=[page_campaign]`、`in_map=false`（相似度 147.6） |
+| 有界真机冒烟（`device_smoke --allow-actions`） | **战役冒烟失败**：`GameStuckError: Wait too long`（64.8s），停在准备阶段（上游在等 `FLEET_PREPARATION` / `MAP_PREPARATION` 等一组画面）；同队列的只读状态任务成功 |
+
+**同时查出一个自己的缺陷**：`device_smoke.py` 的工件写在 `TemporaryDirectory` 里，脚本一退出
+**真机证据就被删掉了**（离线证据可随时重跑，真机要等设备）——发现时已经晚了，那份 `sortie-1-1.json`
+里的步骤与 traceback 已不可追。已改为持久目录 `data/device_runs/<时间戳>/`（可用 `--artifacts` 覆盖）。
+
+**设备窗口里接着要做的**（按价值）：
+
+1. 重跑 `device_smoke.py --allow-actions`（现在会留下证据），定位 `GameStuckError` 停在哪一步：
+   是客户端弹窗（项目已有「正在攻略中」垫片）、还是舰队/地图准备画面与上游预期不一致；
+2. 设备层与页面识别真机回归：`verify_device_engine.py`、`regress_pages.py`（约 5 分钟）；
+3. 清单第 6 项（本局撤退换 `withdrawn` 证据）仍需**明确授权**，脚本里已写死"不自动执行"。
+
+## 六、几条别丢的经验（本轮踩过）
 - **改动"已完善能力"要有证据**：`IN_MAP` 卡在阈值边上时，我没有直接调阈值 ——
   同一客户端上真实地图帧既出现过 3.33 也出现过 10.33，说明还有未知变量；
   先留证、等真机复核，比"看起来能修就修"安全。
