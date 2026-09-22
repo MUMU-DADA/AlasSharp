@@ -91,8 +91,8 @@
 | `SUBMARINE_VIEW` | Switch | ➡️ 需更深流程 | 同上（0.20/0.12） |
 | `SUBMARINE_VIEW` | Switch | ➡️ 需更深流程 | 同上（0.20/0.12） |
 | `SWITCH_LOCK` | Switch | ➡️ 需更深流程 | appear=False |
-| `equipping_filter` | Switch | ➡️ 需更深流程 | 装备选择浮层里的筛选开关。已试过 3 条入口：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、以及**上游自己的几何** EQUIPMENT_GRID（origin=(696,170)、delta=(86.25,0)、32x32 → 槽位中心 (712,186)）。三次点击都打开了某个浮层（画面变成未建模页），但筛选开关始终不出现 —— 该开关属于更深的更换流程（上游还有 EQUIP_INFO_BAR → 「更换」两步），未继续下钻 |
-| `equipping_filter` | Switch | ➡️ 需更深流程 | 装备选择浮层里的筛选开关。已试过 3 条入口：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、以及**上游自己的几何** EQUIPMENT_GRID（origin=(696,170)、delta=(86.25,0)、32x32 → 槽位中心 (712,186)）。三次点击都打开了某个浮层（画面变成未建模页），但筛选开关始终不出现 —— 该开关属于更深的更换流程（上游还有 EQUIP_INFO_BAR → 「更换」两步），未继续下钻 |
+| `equipping_filter` | Switch | ➡️ 需更深流程 | 装备筛选开关（`EQUIPPING_ON/OFF`）。已试过 4 条入口：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、上游自己的 EQUIPMENT_GRID 几何（槽位中心 (712,186)）、以及上游更准确的点击目标 EQUIP_INFO_BAR（73x73，origin=(695,127)）。点击都能打开某个浮层，但开关始终不出现。**最直接的证据**：`EQUIPPING_ON/OFF` 的标称区域在屏幕**左边缘** (24,510)-(61,589)，在船坞进的角色详情页上实测 offset=0 时 0.21/0.03、offset=40 时 0.28/0.19 —— 本客户端的装备界面布局与上游那套不同，素材根本不在屏上。另注：该 Switch 创建时**没设 offset**，`get()` 的匹配窗口只有 ±3 像素，布局一偏就必然判 unknown |
+| `equipping_filter` | Switch | ➡️ 需更深流程 | 装备筛选开关（`EQUIPPING_ON/OFF`）。已试过 4 条入口：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、上游自己的 EQUIPMENT_GRID 几何（槽位中心 (712,186)）、以及上游更准确的点击目标 EQUIP_INFO_BAR（73x73，origin=(695,127)）。点击都能打开某个浮层，但开关始终不出现。**最直接的证据**：`EQUIPPING_ON/OFF` 的标称区域在屏幕**左边缘** (24,510)-(61,589)，在船坞进的角色详情页上实测 offset=0 时 0.21/0.03、offset=40 时 0.28/0.19 —— 本客户端的装备界面布局与上游那套不同，素材根本不在屏上。另注：该 Switch 创建时**没设 offset**，`get()` 的匹配窗口只有 ±3 像素，布局一偏就必然判 unknown |
 | `ShopUI.shop_nav_250814` | Switch | 🕐 UI 版本差异 | 本客户端是 250814 之前的老版商店 UI：可选状态是 NAV_GENERAL/NAV_MONTHLY，实测 unknown（新版商店才有这两个导航项；老版走 _shop_bottom_navbar，已命中） |
 | `ShopUI.shop_tab_250814` | Switch | 🕐 UI 版本差异 | 同上（9 个新版页签 TAB_* 都不在屏上） |
 
