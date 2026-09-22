@@ -1080,6 +1080,38 @@ _DANGER_PREFIX = ('battle', 'clear', 'enter_map', 'run', 'mob_move', 'fleet',
 
 
 
+
+def apply_withdraw_trace_compat():
+    """把上游的 `withdraw()` 包一层：**打印调用栈**，用于查明"谁在主动撤退"。
+
+    背景：用户多次观察到"打一半自己点撤退了"。已知 `execute_a_battle` 在
+    "10 次都打不出战果"时会 `self.withdraw()`（campaign_base.py:113），
+    但可能还有别的路径（任务收尾 / 异常处理 / 我方流程结束时的清理）。
+    只有拿到**调用栈**才能确定，靠读代码推断已被证明不可靠 ✗。
+    """
+    try:
+        from module.map import map_operation as _mo
+    except Exception:
+        return
+    for _name, _cls in list(vars(_mo).items()):
+        if not isinstance(_cls, type) or getattr(_cls, '_alas_withdraw_trace', False):
+            continue
+        if 'withdraw' not in _cls.__dict__:
+            continue
+        _orig = _cls.__dict__['withdraw']
+
+        def _withdraw(self, *a, __orig=_orig, **kw):
+            import traceback as _tb
+            from module.logger import logger as _lg
+            _lg.warning('=== WITHDRAW CALLED ===')
+            for _ln in _tb.format_stack()[-6:-1]:
+                _lg.warning('  ' + _ln.strip().replace('\n', ' | ')[:160])
+            return __orig(self, *a, **kw)
+
+        setattr(_cls, 'withdraw', _withdraw)
+        _cls._alas_withdraw_trace = True
+
+
 def apply_auto_search_skip_compat():
     """客户端适配：`handle_auto_search()` 的**开关状态判定**在本客户端不可靠。
 
@@ -1163,6 +1195,7 @@ def op_s3_campaign_init(args):
     apply_points_empty_compat()
     apply_fleet_bar_compat()
     apply_auto_search_skip_compat()
+    apply_withdraw_trace_compat()
     for k in ('serial', 'screenshot', 'control'):
         if args.get(k):
             _DEVICE_ARGS[k] = args[k]
