@@ -1209,3 +1209,12 @@ goto page_campaign）；**dry-run 不做任何导航**（已实测：dry-run 输
 
 => 至此整条链是一条命令：lashub campaign "章A,章B" --run --allow-actions --adb .. --serial ..
 （自动导航 → 逐关执行 → 每关间自动复位 → 可配合 --repeat 循环清图）。
+
+
+### 循环清图实测（CLI 层 --repeat，最后一个未验证分支）
+
+命令：lashub campaign campaign_2_1 --run --allow-actions --repeat --max-rounds 6 --max-seconds 540
+
+结果：round=1 step=battle_0 ms=28319.5 error= completed= | round=1 step=battle_2 ms=9732.4 error= completed= | round=1 check=sortie_state value=still_in_map | round=2 step=battle_0 ms=41436.5 error= completed= | round=2 step=battle_2 ms=26830.6 error= completed= | round=2 check=sortie_state value=still_in_map | round=3 step=battle_0 ms=23421.2 error= completed= | round=3 step=battle_2 ms=56527.5 error= completed=True | [结果    ] elapsed=257.2s stopped_early=False stop_reason= campaign_end=True
+
+归位 page_main ✓
