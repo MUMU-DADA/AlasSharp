@@ -46,6 +46,7 @@ STEPS = [
     ('verify_map_alignment.py', 'S2 偏移对齐（窗口 vs 地图，含活动图 9x8）', False, 600),
     ('analyze_specificity.py', '识别特异性矩阵', False, 300),
     ('report_pages.py', '重建 page-verification.md', False, 300),
+    ('verify_s3_plan.py', 'S3 计划读取回归（协议 plan_steps == IR battle_* + 安全锁）', False, 300),
     ('s3_plan_inventory.py', 'S3 计划词表清点（重建 s3-plan-vocabulary.md）', False, 300),
     ('status.py', '重建 status.md', False, 300),
 ]
