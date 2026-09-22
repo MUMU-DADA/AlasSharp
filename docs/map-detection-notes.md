@@ -247,3 +247,27 @@ if not self.emotion.is_ignore:      # is_ignore = 'ignore' in config.Emotion_Mod
 ⇒ 下轮的正确入口是**那段消失点计算**：要么放宽它的输入（用更多条线拟合消失点），
 要么在几何退化时换一条不依赖消失点的路径。两条都要先读那段代码再定，
 不能再靠"换个阈值/换个机位"这类猜测（本轮与上轮已各证伪一个猜测）。
+
+### 补记（round 137）：搜索区间不是原因（4 组实测全失败），且现场配置与离线不一致
+
+把"放宽 `VANISH_POINT_RANGE` / `DISTANCE_POINT_X_RANGE` 能否救回来"按正确写法重做（纯离线、失败帧）：
+
+| 试验 | 结果 |
+| --- | --- |
+| 原样 | ✗ `Vanish point and distant point too close` |
+| vanish x 放宽到 `(0,1280,10)` | ✗ 同上 |
+| distant_x 挪到 `(0,500,10)`（远离 vanish 的 540–740） | ✗ 同上 |
+| distant_x 放宽到 `(0,1280,10)` | ✗ 同上 |
+
+⇒ **区间太窄不是原因**（干净的负结果）。退化来自 `_vanish_point_value` / `_distant_point_value`
+这两个代价函数在该帧的线几何下本身无解，不是搜索空间的问题。
+
+**同时发现一处矛盾（下轮第一个要查的点）**：现场日志打印的是
+`vanish_point: (654, -1425)` / `distant_point: (654, -1425)`，而**离线**读出的配置是
+`DISTANCE_POINT_X_RANGE = ((-3200, -1600),)` —— **654 根本不在这个区间里**。
+`optimize.brute` 不可能返回区间外的值，所以现场那一刻生效的配置与离线 `_map_config()`
+**不是同一份**（现场是 `bind('Campaign')` 之后的实例配置）。
+
+⇒ 下一轮先打印**现场实例**的 `VANISH_POINT_RANGE` / `DISTANCE_POINT_X_RANGE`（以及章节 `Config`
+是否改了它们），再决定修法。**这一步是只读的，不需要出击**（`s3_campaign_init` + 读属性即可）。
+
