@@ -40,6 +40,13 @@ def main() -> int:
         if not ok:
             problems.append(f"架构入口缺失: {label}")
 
+    roadmap = read("docs/architecture-roadmap.md")
+    for phase in ("R0：", "R1：", "R2：", "R3：", "R4：", "R5："):
+        if phase not in roadmap:
+            problems.append(f"迁移路线缺少阶段: {phase}")
+    if "长期不能变动的规则" not in roadmap:
+        problems.append("迁移路线缺少不可变边界")
+
     # 生产 C# 不得重新维护地图名/编号分支，也不得从离线素材 JSON 重建视觉规则。
     source_files = [
         path for path in (ROOT / "src").rglob("*.cs")
