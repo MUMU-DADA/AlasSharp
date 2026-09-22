@@ -20,6 +20,22 @@
 
 **范围约定**：只测账号已解锁的章节（旧号是 1–14 章；**15 章及以后不测**）。
 
+## 换号 / 新号后的操作顺序（runbook）
+
+1. **确认已登录**：游戏能停在战役页（`alashub goto page_campaign`）。
+   标题/登录页上**不要**让自动化乱点（会误触"更换服务器"）。
+2. **探可达范围**：
+   `python tools/diagnostics/account_probe.py --chapters 1-16`
+   → 逐章列出"入口表里认出来的关卡"，并落盘 `data/account_probe.json`。
+3. **找能验收的图**：对候选关读游戏自带进度
+   `python tools/diagnostics/stage_progress.py --chapter campaign.campaign_main.campaign_8_1 --no-goto`
+   → 优先挑**还没三星 / `威胁排除 < 100%`** 的图：只有这种图，"全清"才会在游戏界面上留下**可见变化**
+   （已三星的图跑完看不出差别，只能靠日志证明打过 BOSS）。
+4. **确认舰队槽位**：`--fleet1` / `--fleet2` / `--submarine` 都是配置项，不是从地图推出来的。
+   旧号是"高难图用 3 / 6"，新号要重新确认（`Fleet_Fleet2 = 0` 表示不用第二舰队）。
+5. **两套流程各跑一次**并逐行记录到上面的表：默认（BOSS 一刷出来就打）与 `--clear-all`
+   （先清光小怪再打 BOSS）。
+
 命令行（两套战斗流程的区别见 `docs/s3-entry-sequence.md` 末章）：
 
 ```powershell
