@@ -41,7 +41,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
     "globe_center: (np.float64(2075.0), np.float64(414.0))",
-    "0.079s      similarity: 0.093",
+    "0.080s      similarity: 0.093",
     "Low similarity when matching OS globe"
   ],
   "similarity": 0.093,
@@ -531,8 +531,28 @@ LOAD thr=50 → OK    grids=21 shape=[6,2]      ← 与 IR 的 G3（7x3=21 格�
 降阈值会让 2-1 **多检出一整圈**（39 格、shape 比真值大）—— 多出来的线把网格撑大了。
 所以正确做法是**失败后降阈值重试**的回退策略（与上游自己的 `search_tile_center → corner → rectangle` 多策略同思路），而不是改默认值。
 
-下一步：在宿主 op 里实现该回退（默认 75，失败则 50/40），用三张 fixture 验证互不干扰，
-再把困难图 fixture 登记进 map_fixtures.json 走严格校验。
+**已在宿主 op 里实现该回退，并加了防幻觉闸门**（默认 75 → 失败降到 50 → 40）。
+
+闸门是必需的：降阈值会把**非地图画面**也"检出"成一片网格 —— 实测战役菜单 os_map.png
+在 thr=50 下报 59 格 / shape [7,7]（幻觉）。两者在 thr=75 下报的是**同一句** reason
+（`Vanish point and distant point too close`），所以**不能靠 reason 区分**，
+只能靠**几何合理性**：真地图在回退阈值下是**干净矩形**（困难 1-4 → 21 格 = 7x3），
+幻觉则不是（59 ≠ 8x8=64）。判据：回退生效时格数必须等于 (sx+1)*(sy+1)，否则判为未检出。
+（闸门只卡回退路径 —— 默认阈值下的正常结果不适用：10-4 本来就缺 6 格，那是 UI 遮挡。）
+
+六用例实测：
+
+| fixture | mode | detected | grids | shape | 阈值 | 判定 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2-1 | main | True | 24 | [5,3] | 75 | ✅ 未受影响 |
+| 10-4 | main | True | 48 | [8,5] | 75 | ✅ 未受影响 |
+| **困难 1-4** | main | **True** | **21** | **[6,2]** | **50** | ✅ 回退生效 |
+| 海域 9x6 | os | True | 49 | [8,5] | 75 | ✅ |
+| 战役菜单（非地图） | main | False | — | — | 50 | ✅ 闸门拦住幻觉 |
+| 动画期脏样本 | main | False | — | — | — | ✅ 仍拒绝 |
+
+困难图 fixture 已登记进 `map_fixtures.json`（IR 用普通 `campaign_1_4`：G3 = 21 格），
+IR 交叉校验通过（shape 一致、缺格 0）。
 
 ## 复现
 
