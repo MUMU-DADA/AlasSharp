@@ -260,20 +260,37 @@ def _make_main_shim(image):
     import types
     from module.base.base import ModuleBase
 
+    class _Stuck:
+        def stuck_record_add(self, *a, **k):
+            return None
+
+        def stuck_record_clear(self, *a, **k):
+            return None
+
     class _Device:
         pass
 
+    class _Config:
+        BUTTON_OFFSET = 30
+        SERVER = server_module.server
+
     class _Main:
-        pass
+        interval_timer = {}
+        interval_timer_reached = {}
 
     main = _Main()
     dev = _Device()
     dev.image = image
+    dev.stuck_record_add = _Stuck().stuck_record_add
+    dev.stuck_record_clear = _Stuck().stuck_record_clear
     main.device = dev
-    for fn in ('image_color_count', 'image_color_count_appear'):
-        impl = ModuleBase.__dict__.get(fn)
-        if impl is not None:
-            setattr(_Main, fn, impl)
+    main.config = _Config()
+    # 把上游 ModuleBase 的**全部方法**绑到替身上，而不是逐个补需要的名字 ——
+    # 逐个补会不断漏（实测：先只绑 image_color_count，Switch 缺 appear、Scroll 缺 image_crop）。
+    # 绑全部才是"不自己实现"：行为完全来自上游，替身只是省掉了 __init__ 需要的 config。
+    for name, impl in ModuleBase.__dict__.items():
+        if isinstance(impl, types.FunctionType):
+            setattr(_Main, name, impl)
     return main
 
 
@@ -292,6 +309,90 @@ def op_navbar_info(args):
         'active_color': list(navbar.active_color),
         'inactive_color': list(navbar.inactive_color),
     }
+
+def op_ui_rule_list(args):
+    """
+    枚举**模块级**的 Switch/Scroll/Navbar/Setting 实例（可直接驱动的那些）。
+
+    做法：先 AST 扫出「模块级 `X = Switch(...)`」的位置，再只导入这些模块取对象。
+    自维护——上游新增实例会自动出现在清单里，不需要硬编码路径。
+    """
+    import ast
+    import importlib
+    import os as _os
+
+    found = {}
+    for dp, dirs, fs in _os.walk(_os.path.join(FORK, 'module')):
+        dirs[:] = [d for d in dirs if d != '__pycache__']
+        for fn in fs:
+            if not fn.endswith('.py'):
+                continue
+            p = _os.path.join(dp, fn)
+            try:
+                tree = ast.parse(open(p, encoding='utf-8').read())
+            except Exception:
+                continue
+            mod = _os.path.relpath(p, FORK)[:-3].replace(_os.sep, '.')
+            for node in tree.body:
+                if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+                    continue
+                cls = getattr(node.value.func, 'id', None)
+                if cls in ('Switch', 'Scroll', 'Navbar', 'Setting') \
+                        and isinstance(node.targets[0], ast.Name):
+                    found.setdefault(mod, []).append((node.targets[0].id, cls))
+
+    rules, errors = [], []
+    for mod, names in sorted(found.items()):
+        try:
+            m = importlib.import_module(mod)
+        except Exception as e:
+            errors.append(f'{mod}: {type(e).__name__}: {e}')
+            continue
+        for name, cls in names:
+            obj = getattr(m, name, None)
+            if obj is None:
+                continue
+            entry = {'module': mod, 'name': name, 'class': cls, 'attr': name}
+            if cls == 'Switch':
+                st = getattr(obj, 'states', None)
+                entry['states'] = sorted(st.keys()) if isinstance(st, dict) else None
+                entry['offset'] = list(obj.offset) if getattr(obj, 'offset', None) else None
+            elif cls == 'Scroll':
+                a = getattr(obj, 'area', None)
+                entry['area'] = [float(x) for x in a] if a else None
+            entry['file'] = getattr(getattr(obj, 'check_button', None), 'file', None) \
+                if cls == 'Switch' else None
+            rules.append(entry)
+    return {'rules': rules, 'count': len(rules), 'errors': errors[:5],
+            'by_class': {k: sum(1 for r in rules if r['class'] == k)
+                         for k in ('Switch', 'Scroll', 'Navbar', 'Setting')}}
+
+def op_ui_rule_check(args):
+    """
+    对单个 UI 规则实例**调用上游的识别方法**（appear / at_top / at_bottom / get）。
+
+    这是"跑通"的判定方式：不是看它返回 True/False（当前页面不匹配当然是 False），
+    而是看**上游代码能不能被正确驱动、不抛异常**，以及结果是否自洽。
+    """
+    import importlib
+    m = importlib.import_module(args['module'])
+    obj = getattr(m, args['name'])
+    shim = _make_main_shim(_require_image())
+    kind = type(obj).__name__
+    results = {}
+    for meth in ('appear', 'match_color', 'at_top', 'at_bottom', 'get', 'offset'):
+        fn = getattr(obj, meth, None)
+        if fn is None or not callable(fn):
+            continue
+        try:
+            v = fn(shim)
+            if isinstance(v, (bool, int, float, str)) or v is None:
+                results[meth] = v
+            else:
+                results[meth] = f'<{type(v).__name__}>'
+        except Exception as e:
+            results[meth] = f'{type(e).__name__}: {e}'
+    return {'module': args['module'], 'name': args['name'], 'class': kind, 'results': results}
 
 def op_page_list(args):
     """列出上游 module/ui/page.py 定义的页面及其 check_button（识图规则的入口）。"""
@@ -487,6 +588,8 @@ OPS = {
     'screenshot_set': op_screenshot_set,
     'asset_info': op_asset_info,
     'page_list': op_page_list,
+    'ui_rule_check': op_ui_rule_check,
+    'ui_rule_list': op_ui_rule_list,
     'navbar_info': op_navbar_info,
     'ui_rule_inventory': op_ui_rule_inventory,
     'asset_button_center': op_asset_button_center,
