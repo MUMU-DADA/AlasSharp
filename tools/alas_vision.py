@@ -1075,6 +1075,43 @@ _DANGER_PREFIX = ('battle', 'clear', 'enter_map', 'run', 'mob_move', 'fleet',
                   'combat', 'withdraw', 'retreat')
 
 
+
+def apply_fleet_bar_compat():
+    """客户端适配：`FleetOperator.bar_opened()` 的亮度阈值（垫片，不改上游文件）。
+
+    上游判据（module/map/map_fleet_preparation.py）：
+
+        luma = rgb2gray(main.image_crop(self._bar.button))[:, -1]
+        return np.sum(luma > 168) / luma.size > 0.5
+
+    本客户端实测（离线复算现场帧，用上游对象算的几何）：
+        下拉关闭 0.000 / 下拉展开 **0.285** —— 区域确实响应状态，但**永远跨不过 0.5**。
+    原因：本客户端下拉只有约 **84px 高**（上游参照 y 269..515 共 246px），亮边占不满整列。
+    后果：`open()` 里 `if bar_opened(): break` 永不成立 → 反复点『选择』→
+          `Timer(3, count=6)` 点满 → `GameTooManyClickError: FLEET_1_CHOOSE`（实测）。
+    垫片：阈值 0.5 → **0.10**（展开 0.15+ / 关闭 0.000，余量充足）。
+    """
+    try:
+        import numpy as _np
+        from module.base.utils import rgb2gray as _rgb2gray
+        from module.map.map_fleet_preparation import FleetOperator as _FO
+        if getattr(_FO, '_alas_bar_compat', False):
+            return
+        _orig = _FO.bar_opened
+
+        def _bar_opened(self):
+            try:
+                luma = _rgb2gray(self.main.image_crop(self._bar.button, copy=False))[:, -1]
+                return float(_np.sum(luma > 168)) / luma.size > 0.10
+            except Exception:
+                return _orig(self)
+
+        _FO.bar_opened = _bar_opened
+        _FO._alas_bar_compat = True
+    except Exception:
+        pass
+
+
 def op_s3_campaign_init(args):
     """实例化上游章节的 `Campaign`（**不执行任何游戏动作**）。
 
@@ -1085,6 +1122,7 @@ def op_s3_campaign_init(args):
     chapter = str(args.get('chapter') or 'campaign.campaign_main.campaign_2_1')
     apply_numpy2_compat()
     apply_points_empty_compat()
+    apply_fleet_bar_compat()
     for k in ('serial', 'screenshot', 'control'):
         if args.get(k):
             _DEVICE_ARGS[k] = args[k]

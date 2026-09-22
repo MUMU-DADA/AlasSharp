@@ -171,3 +171,35 @@ def open(self):                      # "Activate dropdown menu for fleet selecti
    需要调整 `_bar` 的 area（或改 `bar_opened()` 的判据），而不是换模板图。
 
 安全：全程未点「立刻前往」、未进入战斗、油量未变（24831）。
+
+## ✅ 打通：垫片修好 `bar_opened()` 的阈值后，`enter_map` 全程成功
+
+**根因量化**（离线复算现场帧，用上游对象算几何）：
+
+| 状态 | `_bar.button`(1012,269,1183,515) 最右列亮度>168 占比 | ALAS 判定（阈值 0.5） |
+| --- | --- | --- |
+| 下拉关闭 | 0.000 | 未展开 ✓ |
+| 下拉展开 | **0.285** | **未展开 ✗** |
+
+区域确实响应状态，但**永远跨不过 0.5** —— 因为本客户端下拉只有约 **84px 高**
+（上游参照 y 269..515 共 246px），亮边占不满整列。于是 `open()` 里
+`if bar_opened(): break` 永不成立 → 反复点『选择』→ `Timer(3, count=6)` 点满 → 报错。
+
+**垫片** `apply_fleet_bar_compat()`（不改上游文件，与 numpy2 / OS 遮罩 / Points 同一做法）：
+把阈值 0.5 → **0.10**（实测展开 0.15+ / 关闭 0.000，余量充足）。
+在 `s3_campaign_init` 里随其它垫片一起应用。
+
+**验证（就地观测重跑）**：
+
+```
+T02  FLEET_PREPARATION=0.99 FLEET_1_CHOOSE=0.99 FLEET_1_CLEAR=0.99   ← 浮层开着
+T03  全部掉到 0.1 以下                                              ← 浮层已关闭（点走了）
+驱动日志：Click (1035, 583) @ FLEET_PREPARATION
+          Enemy searching appeared.        ← 进入战斗地图
+          A_END None                       ← enter_map 成功返回，无错误
+```
+
+**这就是 S3 的第一个端到端里程碑**：宿主驱动上游 Campaign，从战役页一路走到
+`enter_map` 成功（进图、舰队准备、点「立刻前往」全部由上游代码完成，C# 只发指令）。
+
+下一步：进图之后的地图内操作（`map_init` / 战斗步骤），即 tier A 那 9 个调用真正上场。
