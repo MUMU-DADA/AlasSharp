@@ -18,6 +18,8 @@ alashub campaign <章模块> --run --allow-actions --clear-all --fleet1 3 --flee
 | 图 | 行数 | 场景 | 结果 | 用时 | BOSS 格 | 收尾 | 证据 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2-1 | 4 | A | ✅ 全清 | — | — | 回到章节页 | 章节页徽章 `Clear!` + ★★★（`data/_campaign125.png`） |
+| 2-1 | 4 | A（对照跑） | ✅ | **160.9s**（4 轮） | — | `In stage.`，`campaign_end=True` | `%TEMP%\batch_21a.log` |
+| 2-1 | 4 | B（`--clear-all`） | ✅ | **238.6s**（7 轮） | D4 | `Enemy remain: []` → `Brute clear BOSS` | `%TEMP%\batch_21b.log` |
 | 11-1 | 6 | A | ✅ | 360.6s | F3 | `In stage.`，`campaign_end=True`，无 `WITHDRAW` | `%TEMP%\hard11_full.log` |
 | 11-1 | 6 | A（复核：BOSS 颜色垫片已关） | ✅ | 340.8s | G6 | 同上 | `%TEMP%\hard11_noshim.log` |
 | 11-1 | 6 | A（半途续打：`battle_count=6`） | ✅ | 53.6s（单场） | F3 | 同上 | `tools/diagnostics/oneoff/resume_boss.py` |
@@ -42,6 +44,19 @@ alashub campaign <章模块> --run --allow-actions --clear-all --fleet1 3 --flee
 
 含义：场景 A 在"BOSS 回合"就打 BOSS（2-1 只要 2 场就刷 BOSS，11/12/14-1 要 6 场）；
 场景 B 不看回合数，一直清到 `Enemy remain: []` 才打 BOSS。
+
+## 两套流程的对照（同一张图 2-1，A/B 各跑一次）
+
+2-1 是最能说明差别的一张：**BOSS 第 2 回合就刷出来**。
+
+| 场景 | 日志关键行 | 轮次 | 用时 |
+| --- | --- | --- | --- |
+| A（默认） | `BATTLE_2 → Using function: battle_2`（该图自己的 BOSS 分支） | 4 | 160.9s |
+| B（`--clear-all`） | `BATTLE_2 → Using function: clear_all` → `Enemy remain: [E1, C3, E3, F3]` → `Clear enemy: C3` | 7 | 238.6s |
+
+**同一张图、同一个时刻**：第 2 回合 BOSS 已经刷出来（B 的日志里 `Boss found: [D4]` 就是证据），
+A 直接去打 BOSS，B 继续清小怪，直到 `Enemy remain: []` 才 `Brute clear BOSS`。
+这正是用户说的"两个不同的场景，都有用"。
 
 ## 已知不能跑的图
 
