@@ -27,7 +27,7 @@ print('SUMMARY', json.dumps(r['summary'], ensure_ascii=False))
 for key in ('pages', 'module_level', 'cached_property'):
     v = r[key]
     print('  %-16s total=%3d driven=%3d hit=%3d errors=%d'
-          % (key, v['total'], v['driven'], len(v['hit']), len(v['errors'])))
+          % (key, v['total'], v.get('driven', v.get('constructed', 0)), len(v['hit']), len(v['errors'])))
     for e in v['errors'][:2]:
         print('     ERR', str(e)[:160])
 print('页面命中:', r['pages']['hit'])

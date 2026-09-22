@@ -605,7 +605,7 @@ def op_ui_rules_sweep(args):
 
     report = {'pages': {'total': 0, 'driven': 0, 'hit': [], 'errors': []},
               'module_level': {'total': 0, 'driven': 0, 'hit': [], 'errors': []},
-              'cached_property': {'total': 0, 'driven': 0, 'hit': [], 'errors': []}}
+              'cached_property': {'total': 0, 'constructed': 0, 'hit': [], 'errors': []}}
 
     # ---- 1. 页面
     pl = op_page_list({})
@@ -654,15 +654,29 @@ def op_ui_rules_sweep(args):
             inst = cls(AzurLaneConfig('alas'), _make_main_shim(image).device)
             inst.device.image = image
             rule = getattr(inst, attr)
-            report['cached_property']['driven'] += 1
-            report['cached_property']['hit'].append({'rule': label, 'type': type(rule).__name__})
+            report['cached_property']['constructed'] += 1
+            # 口径修正：构造成功 ≠ 识别命中。这里**真正跑一次识别**，只有返回真才算命中。
+            # （原先把构造成功记进 hit，字段名与含义不符，会误导后续判断。）
+            for meth in ('appear', 'get_info', 'get'):
+                fn = getattr(rule, meth, None)
+                if not callable(fn):
+                    continue
+                try:
+                    v = fn(inst)
+                    if hasattr(v, 'item'):
+                        v = v.item()
+                    if v is True:
+                        report['cached_property']['hit'].append(label)
+                except Exception:
+                    pass
+                break
         except Exception as e:
             report['cached_property']['errors'].append(f'{label}: {type(e).__name__}: {e}')
 
     t = report
     report['summary'] = {
         'total': t['pages']['total'] + t['module_level']['total'] + t['cached_property']['total'],
-        'driven': t['pages']['driven'] + t['module_level']['driven'] + t['cached_property']['driven'],
+        'driven': t['pages']['driven'] + t['module_level']['driven'] + t['cached_property']['constructed'],
         'errors': len(t['pages']['errors']) + len(t['module_level']['errors'])
                   + len(t['cached_property']['errors']),
     }
