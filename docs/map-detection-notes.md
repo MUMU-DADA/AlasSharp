@@ -205,3 +205,30 @@ if not self.emotion.is_ignore:      # is_ignore = 'ignore' in config.Emotion_Mod
 `docs/map-detection.md` 里"困难图（1-4）：未能检出"那节是**加 5 档降阈值重试之前**的结论；
 现在用同一张 `data/fixtures/map_hard_1_4.png`（真图内帧）能识别出 `shape=[6,2]`＝21 格 ✓，
 详见上面的两后端对照表。这节标题由生成器输出，改不了，特此备注。
+## 小图卡点的机制：内线族为 0，而**边界线族在同一帧上能检出 5 条垂直线**
+
+承接上文（1-4 失败帧 vs 好帧）。进一步量了 Hough 的角度分布，先证伪了"角度过滤器把线滤掉"
+这个猜测，再拿到真正的机制：
+
+| 帧 | `inner_v`（内部垂直） | `edge_v`（边界垂直） | `inner_h` |
+| --- | --- | --- | --- |
+| **失败帧** | peaks=**1458** → hough_raw=**0**、lines=**0** | peaks=1321 → **hough_raw=5、lines=5**，theta=[0°,168°] | peaks=2218 → lines=3 |
+| 好帧 | peaks=1809 → lines=**1**，theta=178° | peaks=1406 → lines=5，theta=[0°,168°] | peaks=2288 → lines=4 |
+
+两条读数（`hough_threshold=75`、`theta_threshold=18°`、`pad=0`；edge 族 `pad=665`）：
+
+1. **`inner_v.hough_raw=0`** —— 是 `cv2.HoughLines` 自己一条都没投出来，**不是我先前猜的角度过滤** ✗。
+2. **同一帧的 `edge_v` 却有 5 条**（theta 0°/168°）—— 垂直方向的**真实格线存在且可检**，
+   只是它们落在**边界线族**里；`inner_v` 那 1458 个峰像素是**散乱的纹理噪声**（不共线 ⇒ 每条的票数都不够）。
+
+而上游单应后端的做法是：垂直族只取 `inner_v`，`inner_v` 为空就直接
+`Vanish point and distant point too close` → 整张图判定失败。
+
+**这就是 1-1 / 1-4 / 7-1 / 8-1 这些"小图不能跑"的共同机制**（1-1 更极端：
+垂直方向 784 个峰像素、Hough 拟合出 0 条线；7-1 现场是 `Vertical: 10 (2 inner, 0 edge)`）。
+
+**修的方向（下轮的入口）**：让垂直族在 `inner_v` 不足时**回退到 `edge_v`**
+（同一帧上它稳定给 5 条），而不是直接判失败。改动位置在单应后端的线族装配处
+（`module/map_detection/homography.py` 的 `load`/`find_lines` 一线），按铁律用垫片包，不改上游文件。
+判据要有下限：只有当 `inner_v` 极少（0–1 条）且 `edge_v ≥ 2` 时才回退，避免影响本来正常的图。
+
