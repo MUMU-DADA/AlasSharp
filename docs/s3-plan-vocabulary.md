@@ -96,7 +96,7 @@ tier A 有 **1000 章**（占 73%），而它只用到这 9 个调用 —— 先
 
 ## tier C 独有（22 个）——实施顺序上排最后
 
-`map.select` `clear_chosen_enemy` `check_accessibility` `goto` `mob_move` `fleet_at` `device.disable_stuck_detection` `__getattribute__` `fleet_2_rescue` `air_strike` `fleet_ensure` `fleet_2.clear_chosen_mystery` `bored_visit` `battle_boss` `fleet_boss.clear_chosen_enemy` `clear_potential_boss` `fleet_1.clear_chosen_enemy` `siren_list.pop` `execute_actions` `fleet_boss.battle_default` `device.sleep` `_goto`
+`map.select` `clear_chosen_enemy` `check_accessibility` `goto` `mob_move` `fleet_at` `device.disable_stuck_detection` `__getattribute__` `fleet_2_rescue` `air_strike` `fleet_boss.clear_chosen_enemy` `battle_boss` `fleet_ensure` `bored_visit` `fleet_2.clear_chosen_mystery` `device.sleep` `clear_potential_boss` `_goto` `siren_list.pop` `fleet_boss.battle_default` `fleet_1.clear_chosen_enemy` `execute_actions`
 
 ## 建议的实施顺序（数据驱动，不是拍脑袋）
 
