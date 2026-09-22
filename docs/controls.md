@@ -64,9 +64,9 @@
 
 | 规则 | 类型 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| `EventShopUI.event_shop_tab_count_and_navbar` | 运行时计算 | ⛔ 游戏状态阻塞 | 需进活动商店（本账号当前活动页可达，但商店入口需要活动开放对应玩法） |
+| `EventShopUI.event_shop_tab_count_and_navbar` |  | ⛔ 游戏状态阻塞 | 活动商店的页签计数（运行时按颜色算）。**规则本身是活的**：实测在商店页算出 count=5（就是老版商店底部那 5 个页签），切到别的商店页给 2 / 27 这类无意义值 —— 只有真正在活动商店屏上输出才有意义。入口断在客户端版本：上游从 `page_shop` 点 `shop/NAV_EVENT`（以 `NAV_GENERAL` 为出现判据）切进活动商店，而这几个是 250814 新版 UI 素材，本客户端实测 0.2653 / 0.3527 / 0.3126；老版商店的底部导航栏（`shop_bottom_navbar` origin=(399,619) delta=(182,0)，5 个）逐个点过也没有活动商店 |
 | `ISLAND_DOCK_SORTING` |  | ⛔ 游戏状态阻塞 | 同上 |
-| `ISLAND_SEASON_TASK_SCROLL` |  | ⛔ 游戏状态阻塞 | 岛屿计划未解锁（见 page-verification.md） |
+| `ISLAND_SEASON_TASK_SCROLL` |  | ⛔ 游戏状态阻塞 | 按用户要求跳过：岛屿相关不在本轮范围 |
 | `RETIRE_CONFIRM_SCROLL` |  | ⛔ 游戏状态阻塞 | 退役确认弹窗的滚动条。用户已授权"只开弹窗、不点确认"，但**安全入口找不到**：在船坞点舰船卡片打开的是角色详情（`retire/DOCK_CHECK` 从命中掉到 0.43，已离开船坞），三个入口变体 `RETIRE_APPEAR_1/2/3` 实测 0.07/0.08/0.19 都不在屏上；再往下只能盲点船坞底部按钮，而错误代价是不可逆的退役 —— 停手，不验 |
 | `COMMISSION_SCROLL` | Scroll | ✅ 已命中 | at_top=True at_bottom=False |
 | `COMMISSION_SWITCH` | Switch | ✅ 已命中 | appear=True |

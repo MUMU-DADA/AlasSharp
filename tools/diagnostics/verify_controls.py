@@ -435,11 +435,21 @@ UNPLANNED = {
         '再往下只能盲点船坞底部按钮，而错误代价是不可逆的退役 —— 停手，不验'),
     'VOUCHER_SHOP_SCROLL': ('deeper', '需切到商店的兑换页签（页签本身是 ShopUI 的 Switch 规则）'),
     'MINIGAME_SCROLL': ('pending', 'page_game_room 已验证可达，小游戏内滚动待验'),
-    'ISLAND_SEASON_TASK_SCROLL': ('blocked', '岛屿计划未解锁（见 page-verification.md）'),
+    'ISLAND_SEASON_TASK_SCROLL': ('blocked', '按用户要求跳过：岛屿相关不在本轮范围'),
     'ISLAND_DOCK_SORTING': ('blocked', '同上'),
-    'SWITCH_LOCK': ('blocked', '指挥喵未解锁'),
+    'SWITCH_LOCK': ('blocked',
+        '指挥喵的锁定开关（`MEOWFFICER_APPLY_LOCK/UNLOCK`，素材在屏幕左下角 (36,560)）。'
+        '按上游调用链 `collect.py:279/283 → _meow_apply_lock`，它出现在**获得/培养指挥喵**的流程里，'
+        '要买猫/养猫才会出现 —— 会改变账号资源，未做'),
     'SCROLL_STORAGE': ('blocked', '大型作战未解锁'),
     'STRATEGIC_SEARCH_SCROLL': ('blocked', '同上'),
+    'EventShopUI.event_shop_tab_count_and_navbar': ('blocked',
+        '活动商店的页签计数（运行时按颜色算）。**规则本身是活的**：实测在商店页算出 count=5'
+        '（就是老版商店底部那 5 个页签），切到别的商店页给 2 / 27 这类无意义值 —— 只有真正'
+        '在活动商店屏上输出才有意义。入口断在客户端版本：上游从 `page_shop` 点 `shop/NAV_EVENT`'
+        '（以 `NAV_GENERAL` 为出现判据）切进活动商店，而这几个是 250814 新版 UI 素材，'
+        '本客户端实测 0.2653 / 0.3527 / 0.3126；老版商店的底部导航栏'
+        '（`shop_bottom_navbar` origin=(399,619) delta=(182,0)，5 个）逐个点过也没有活动商店'),
 }
 DEEPER_NOTE = {
     'FLEET_LOCK': '舰队锁定开关。**本客户端不提供该面板**：换账号后在 page_fleet 上实测 '
@@ -498,9 +508,8 @@ def build_doc():
         if any(r[0] == rule or r[0] == rule + '#drive' for r in rows):
             continue
         rows.append((rule, '', LABEL[kind], note))
-    # 事件商店那条是运行时算出来的规则（(count, navbar)），没有统一判据，单列
-    rows.append(('EventShopUI.event_shop_tab_count_and_navbar', '运行时计算', LABEL['blocked'],
-                 '需进活动商店（本账号当前活动页可达，但商店入口需要活动开放对应玩法）'))
+    # 事件商店那条是运行时算出来的规则，已并入 UNPLANNED（含本轮实测的入口结论），
+    # 这里不再单独追加，避免总账里出现两行。
     rows.sort(key=lambda r: (r[2], r[0]))
     actions = [x for x in report if x['rule'].endswith(('#swipe', '#drive', '#probe'))
                or x['rule'].startswith('<')]
