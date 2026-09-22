@@ -1872,7 +1872,11 @@ def op_s3_run_plan(args):
             except Exception as _e:
                 _entry['save_frame_error'] = f'{type(_e).__name__}: {_e}'
             if r.get('error') and 'Vanish point' not in str(r.get('error')) \
-                    and 'No vertical line' not in str(r.get('error')):
+                    and 'No vertical line' not in str(r.get('error')) \
+                    and 'GameTooManyClickError' not in str(r.get('error')):
+                # `GameTooManyClickError` 也要继续试：它表示 `ensure_edge_insight` 在这个机位上
+                # 反复滑动找边界直到撞上点击上限（实测 1-4 第二次：内部水平线只有 2 条 ⇒ 建不出网格
+                # ⇒ 一直滑）。把它当"该机位不可用"，换机位再试，而不是让整轮就此失败。
                 break                      # 别的错误不靠挪机位解决
             if _att + 1 >= len(_recover):
                 break
