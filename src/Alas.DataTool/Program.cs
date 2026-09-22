@@ -125,6 +125,7 @@ internal static class Program
                 string? realAdb2 = null, realSerial2 = null, targetPage = null;
                 bool gotoEngineCapture = false;
                 string gotoScreen = "droidcast", gotoCtrl = "ADB";
+                int gotoRounds = 1;
                 for (int i = 1; i < args.Length - 1; i++)
                 {
                     if (args[i] == "--adb") realAdb2 = args[i + 1];
@@ -133,6 +134,7 @@ internal static class Program
                     if (args[i] == "--capture-engine") gotoEngineCapture = true;
                     if (args[i] == "--screenshot") gotoScreen = args[i + 1];
                     if (args[i] == "--control") gotoCtrl = args[i + 1];
+                    if (args[i] == "--rounds" && int.TryParse(args[i + 1], out int rd)) gotoRounds = rd;
                 }
                 targetPage ??= args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
                 if (realAdb2 is null || realSerial2 is null || targetPage is null)
@@ -141,7 +143,7 @@ internal static class Program
                 string toolsDir3 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
                     "..", "..", "..", "..", "..", "tools"));
                 return DeviceCheck.RunGoto(realAdb2, realSerial2, repoDir, toolsDir3, targetPage,
-                    gotoEngineCapture, gotoScreen, gotoCtrl);
+                    gotoEngineCapture, gotoScreen, gotoCtrl, gotoRounds);
             }
             if (command == "vision")
             {

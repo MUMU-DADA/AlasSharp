@@ -47,7 +47,8 @@ internal static class DeviceCheck
     /// </summary>
     public static int RunGoto(string adbPath, string serial, string forkDir, string toolsDir,
                               string targetPage, bool engineCapture = false,
-                              string screenshot = "adb", string control = "ADB")
+                              string screenshot = "adb", string control = "ADB",
+                              int rounds = 1)
     {
         using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(forkDir, toolsDir);
         var adb = new ProcessAdbTransport(adbPath);
@@ -96,6 +97,27 @@ internal static class DeviceCheck
             return 1;
         }
         Console.WriteLine($"已到达 {targetPage}（{result.Hops.Count} 跳）");
+
+        // 稳态测量：设备层此时已构造完毕，再跑若干回合（回 page_main → 再去目标）并逐回合计时。
+        // 目的：把"一次性的设备层初始化"从数字里剔除 —— CLI 单次调用会把初始化算进被测时间，
+        // 那样比出来的结论是错的（实测：引擎通道单次反而"更慢"，而抓图级稳态是快 46%）。
+        if (rounds > 1)
+        {
+            var times = new List<double>();
+            for (int round = 2; round <= rounds; round++)
+            {
+                navigator.Goto("page_main");
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var r2 = navigator.Goto(targetPage);
+                sw.Stop();
+                times.Add(sw.Elapsed.TotalMilliseconds);
+                Console.WriteLine($"[round {round}   ] {sw.Elapsed.TotalMilliseconds,7:F0} ms " +
+                                  $"success={r2.Success} hops={r2.Hops.Count}");
+            }
+            var sorted = times.OrderBy(x => x).ToList();
+            Console.WriteLine($"[稳态    ] {rounds - 1} 回合 中位 {sorted[sorted.Count / 2],7:F0} ms " +
+                              $"（{string.Join("/", sorted.Select(x => x.ToString("F0")))}）");
+        }
         return 0;
     }
 
