@@ -736,6 +736,14 @@ def main():
         'python tools/diagnostics/verify_map_detection.py',
         '```',
         '',
+        '## 手工分析与踩坑记录',
+        '',
+        '**本文件是生成物**（由上面这条命令整体重写）—— 所以人工写的分析不要放在这里：',
+        '实测踩过一次，跑一遍验收就把手工补的两节整段删掉了 ✗。',
+        '',
+        '人工内容一律写在 [`map-detection-notes.md`](./map-detection-notes.md)：'
+        '取证链路的通道顺序坑、BOSS 判据的复核、哪些图不支持的真假、两后端对照等。',
+        '',
     ]
     out = os.path.join(DOCS, 'map-detection.md')
     with open(out, 'w', encoding='utf-8', newline='\n') as f:
