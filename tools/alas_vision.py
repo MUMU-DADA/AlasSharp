@@ -1063,6 +1063,120 @@ def apply_points_empty_compat():
         pass
 
 
+# ---------------------------------------------------------------------------
+# S3：在宿主里驱动上游的章节 Campaign（战斗动作交给上游实现，C# 只管流程）
+# ---------------------------------------------------------------------------
+_CAMPAIGN = {'obj': None, 'chapter': None}
+
+# 会**驱动作战/改变游戏状态**的方法名前缀：默认一律拒调，必须显式 allow_actions=True。
+# 这条联锁是硬性的 —— 项目早期误开自律寻敌、把一场战斗打完的教训还记着。
+_DANGER_PREFIX = ('battle', 'clear', 'enter_map', 'run', 'mob_move', 'fleet',
+                  'goto', 'map_', 'ambush', 'siren', 'submarine', 'auto_search',
+                  'combat', 'withdraw', 'retreat')
+
+
+def op_s3_campaign_init(args):
+    """实例化上游章节的 `Campaign`（**不执行任何游戏动作**）。
+
+    S3 要执行的 tier A 调用（`battle_default` / `clear_siren` / …）是 ALAS 的 Campaign 方法，
+    按铁律不能重写成 C#。探针已验证它在宿主里可实例化
+    （`tools/diagnostics/s3_probe_campaign.py`）；本 op 把它接到协议上。
+    """
+    chapter = str(args.get('chapter') or 'campaign.campaign_main.campaign_2_1')
+    apply_numpy2_compat()
+    apply_points_empty_compat()
+    for k in ('serial', 'screenshot', 'control'):
+        if args.get(k):
+            _DEVICE_ARGS[k] = args[k]
+    dev = _device_engine()            # 复用设备引擎（含 adb PATH 垫片与 multi_set 配置）
+    cfg = _map_config()
+    try:
+        cfg.bind('Campaign')
+    except Exception as e:
+        return {'error': f'配置绑定 Campaign 失败: {type(e).__name__}: {e}'}
+    try:
+        import importlib
+        mod = importlib.import_module(chapter)
+        inst = mod.Campaign(cfg, dev)
+    except Exception as e:
+        return {'error': f'实例化失败: {type(e).__name__}: {e}', 'chapter': chapter}
+    _CAMPAIGN['obj'] = inst
+    _CAMPAIGN['chapter'] = chapter
+    return {'chapter': chapter, 'instantiated': True,
+            'mro': [c.__name__ for c in type(inst).__mro__[:8]]}
+
+
+def op_s3_campaign_info(args):
+    """报告当前 Campaign 实例的状态（只读，不碰游戏状态）。"""
+    inst = _CAMPAIGN.get('obj')
+    if inst is None:
+        return {'initialized': False}
+    out = {'initialized': True, 'chapter': _CAMPAIGN.get('chapter')}
+    try:
+        mp = getattr(inst, 'MAP', None)
+        if mp is not None:
+            shape = getattr(mp, 'shape', None)
+            out['map_shape'] = [int(v) for v in shape] if shape is not None else None
+            md = getattr(mp, 'map_data', None)
+            if isinstance(md, str):
+                out['map_rows'] = len([x for x in md.strip().split('\n') if x.strip()])
+        out['battle_methods'] = sorted(m for m in dir(inst)
+                                       if m.startswith('battle_') or m.startswith('clear_'))
+        cfg = getattr(inst, 'config', None)
+        if cfg is not None:
+            out['config_task'] = str(getattr(cfg, 'task', ''))
+            out['campaign_name'] = str(getattr(cfg, 'Campaign_Name', ''))
+            out['screenshot_method'] = str(getattr(cfg, 'Emulator_ScreenshotMethod', ''))
+        dev = getattr(inst, 'device', None)
+        if dev is not None:
+            out['device'] = str(getattr(dev, 'serial', ''))
+    except Exception as e:
+        out['info_error'] = f'{type(e).__name__}: {e}'
+    return out
+
+
+def op_s3_campaign_call(args):
+    """调用 Campaign 实例上的方法（支持点号路径，如 `device.screenshot`）。
+
+    **安全联锁**：方法名以 `_DANGER_PREFIX` 里任一前缀开头时，必须显式传
+    `allow_actions=true` 才会执行；否则返回拒绝理由。默认只允许只读/观察类调用。
+    """
+    inst = _CAMPAIGN.get('obj')
+    if inst is None:
+        return {'error': '尚未初始化，先调 s3_campaign_init'}
+    name = str(args.get('name') or '')
+    if not name:
+        return {'error': '缺少 name'}
+    leaf = name.split('.')[-1]
+    if leaf.startswith(_DANGER_PREFIX) and not args.get('allow_actions'):
+        return {'refused': True, 'name': name,
+                'reason': f'`{leaf}` 属于会驱动作战/改游戏状态的方法；'
+                          '确需执行请显式传 allow_actions=true'}
+    import time
+    target = inst
+    try:
+        parts = name.split('.')
+        for p in parts[:-1]:
+            target = getattr(target, p)
+        fn = getattr(target, parts[-1])
+    except Exception as e:
+        return {'error': f'取不到 {name}: {type(e).__name__}: {e}'}
+    if not callable(fn):
+        return {'name': name, 'callable': False, 'value': json_default(fn)}
+    t0 = time.time()
+    try:
+        value = fn(*(args.get('args') or []))
+    except Exception as e:
+        return {'name': name, 'ms': round((time.time() - t0) * 1000, 1),
+                'error': f'{type(e).__name__}: {e}'}
+    out = {'name': name, 'ms': round((time.time() - t0) * 1000, 1)}
+    try:
+        out['value'] = json_default(value)
+    except Exception:
+        out['value_repr'] = str(value)[:200]
+    return out
+
+
 def _map_config():
     """S2 需要上游配置（`DETECTION_BACKEND` 等决定用 Homography 还是 Perspective 后端）。
     做法与 cached_rule_check 一致：用上游自己的 AzurLaneConfig，不自己造配置层。"""
@@ -1787,6 +1901,9 @@ OPS = {
     'page_positive_control': op_page_positive_control,
     'rule_positive_control': op_rule_positive_control,
     'map_detection_assets': op_map_detection_assets,
+    's3_campaign_init': op_s3_campaign_init,
+    's3_campaign_info': op_s3_campaign_info,
+    's3_campaign_call': op_s3_campaign_call,
     'device_capture_set': op_device_capture_set,
     'device_configure': op_device_configure,
     'device_info': op_device_info,
