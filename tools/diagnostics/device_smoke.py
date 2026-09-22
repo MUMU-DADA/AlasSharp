@@ -65,8 +65,10 @@ CHECKLIST = [
      '**先回到主界面**（不在 page_main 它会明确跳过、不猜）；产出每个目标页第一跳的'
      '最佳变体、是否在屏、相似度 —— 真机踩过：同一份失败列表里混着"账号门禁"与"判据认不出"两类根因'),
     ('控件规则 + 控制原语 + 文本输入',
-     r'python tools\diagnostics\verify_controls.py / verify_primitives.py / verify_text_input.py',
-     '含"故意不验"的项（退役确认弹窗），别为了凑数去点'),
+     r'python tools\diagnostics\verify_primitives.py（原语，安全）',
+     '**控件规则那一条不要无人值守跑**：`verify_controls.py` 为了到「出击前阵型/潜艇面板」'
+     '可能进入出击流程（消耗石油、影响账号），项目既有记录里明确标着"需本人同意"；'
+     '`verify_text_input.py` 会往装备码输入框打字。原语（返回键/长按/滑动）安全，可随时跑'),
     ('用新运行时跑一次**真机通关**（R2 的真实路径证据）',
      r'alashub campaign campaign.campaign_main.campaign_1_1 --run --allow-actions --artifacts runs\  '
      r'（或 device_smoke 的第 3 项）',
