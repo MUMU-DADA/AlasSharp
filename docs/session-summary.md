@@ -95,7 +95,7 @@
 
 | 你说 | 我做 |
 | --- | --- |
-| **`推`** | 推送 85 个提交到 `origin`（<source-owner>/AlasSharp）|
+| **`推`** | 推送全部未推送提交到 `origin`（<source-owner>/AlasSharp）|
 | `换账号扩关卡` | 用 `s3_plan_coverage.py` + `s3_preflight.py` 重出清单，逐关验证 |
 | `做别的线` | S4 / 战斗循环 / 或其他 |
 | 其他 | 我听你的 |
