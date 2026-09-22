@@ -1368,15 +1368,57 @@ def op_s3_run_plan(args):
         r = op_s3_campaign_call({'name': 'map_init', 'args': ['@MAP'], 'allow_actions': True})
         steps.append({'step': 'map_init', 'ms': r.get('ms'), 'error': r.get('error')})
     # 执行**计划步骤本身**（battle_* 方法），而不是逐条重放语义轨迹 —— 见上面说明。
-    for _step_name in out['plan_steps']:
-        if _t.time() - t_start > max_s:
-            steps.append({'step': _step_name, 'skipped': '超过 max_seconds'})
-            break
-        if steps and steps[-1].get('error'):
-            steps.append({'step': _step_name, 'skipped': '前一步出错，停止'})
-            break
-        r = op_s3_campaign_call({'name': _step_name, 'allow_actions': True})
-        steps.append({'step': _step_name, 'ms': r.get('ms'), 'error': r.get('error')})
+    # `repeat_until_cleared`：对齐上游 `CampaignBase.run()` 的**循环**语义
+    # （一轮计划 ≠ 清图；上游是循环调用直到满足结束条件）。默认关闭，开启时按 max_rounds 上限。
+    repeat = bool(args.get('repeat_until_cleared'))
+    max_rounds = int(args.get('max_rounds') or 3)
+
+    def _enemies_left():
+        """图内还剩几个敌方/精英标志（用本地 S2 识别；失败则返回 None 表示未知）。"""
+        try:
+            q = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data',
+                             '_runc_%d.png' % int(_t.time()))
+            q = os.path.normpath(q)
+            inst.device.screenshot()
+            import cv2 as _cv2
+            _cv2.imwrite(q, inst.device.image)
+            prev = _state.get('image')
+            try:
+                from module.base.utils import load_image as _li
+                _state['image'] = _li(q)
+                d = op_map_detect({'mode': 'main'})
+            finally:
+                if prev is not None:
+                    _state['image'] = prev
+            fl = d.get('grid_flags') or {}
+            return sum(1 for v in fl.values()
+                       if any(n in v for n in ('is_enemy', 'is_boss', 'is_siren')))
+        except Exception:
+            return None
+
+    _round = 0
+    while True:
+        _round += 1
+        for _step_name in out['plan_steps']:
+            if _t.time() - t_start > max_s:
+                steps.append({'round': _round, 'step': _step_name, 'skipped': '超过 max_seconds'})
+                break
+            if steps and steps[-1].get('error'):
+                steps.append({'round': _round, 'step': _step_name, 'skipped': '前一步出错，停止'})
+                break
+            r = op_s3_campaign_call({'name': _step_name, 'allow_actions': True})
+            steps.append({'round': _round, 'step': _step_name, 'ms': r.get('ms'),
+                          'error': r.get('error')})
+        else:
+            # 本轮跑完：判断是否还需要再来一轮
+            if not repeat or _round >= max_rounds or _t.time() - t_start > max_s:
+                break
+            left = _enemies_left()
+            steps.append({'round': _round, 'check': 'enemies_left', 'value': left})
+            if left == 0:
+                break
+            continue
+        break
     out['steps'] = steps
     out['elapsed_s'] = round(_t.time() - t_start, 1)
     out['stopped_early'] = bool(steps and steps[-1].get('error'))

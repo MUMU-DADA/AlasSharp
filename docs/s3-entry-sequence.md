@@ -479,3 +479,34 @@ dry-run 现在给出真正的计划步骤：2-1 → `['battle_0','battle_2']`；
 **"计划的一轮迭代完整成功"**，而不是"关卡已清"。
 
 下一步（若要一次清图）：加 `repeat_until_cleared` + 最大轮数上限，语义对齐上游 `run()` 的循环。
+
+## ✅✅✅✅ 关卡被清掉：循环执行到上游给出完成信号
+
+加 `repeat_until_cleared`（对齐上游 `CampaignBase.run()` 的循环语义）后跑 2-1：
+
+```
+STAGE=2-1 elapsed=227.5s
+R1 battle_0 36030.7 ok | R1 battle_2  5017.3 ok | enemies_left=2
+R2 battle_0 40168.9 ok | R2 battle_2 35643.1 ok | enemies_left=2
+R3 battle_0 39394.5 ok | R3 battle_2 60575.4 err=**CampaignEnd: In stage.**
+```
+
+**`CampaignEnd: In stage.` 是上游的"关卡已完成"信号**（不是异常）——即循环跑到第三轮时
+上游宣布结束，关卡已清。
+
+### 两处如实说明
+
+1. **我的 `enemies_left` 计数器不可靠**：它一直报 2，而关卡实际已清 —— 说明本地
+   `map_detect` 的敌方标志判定在这张图上**不可信**（可能把己方/BOSS 标记算进去了）。
+   => 权威的"是否完成"信号应当用**上游自己的**（`CampaignEnd` / `map_clear_percentage`），
+   而不是我的本地标志计数。这条要写进后续设计。
+2. 收尾时我的撤退点击落在了战役页，跑到了 `page_daily`；随后用我们自己的导航器
+   （`alashub goto page_main`，引擎通道）**归位成功** → `page_main,page_main_white` ✓。
+
+### 整夜最终状态
+
+- 游戏：`page_main`（干净），**不在任何地图/出击中**；
+- 账号：进图 3 次（2-1 两次 + 计划循环一次），每次约 10 油，无战斗内额外消耗；
+  周回/自律全程关闭；无失控循环（每轮/每步均有上限，出错即停）；
+- 代码：本夜新增 `s3_preflight.py`、`s3_run_plan`（含 dry-run / 安全锁 / max_seconds /
+  repeat_until_cleared），并修正了 `calls` 的语义（语义轨迹 ≠ 可重放清单）。
