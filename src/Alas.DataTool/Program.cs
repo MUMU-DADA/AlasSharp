@@ -141,10 +141,19 @@ internal static class Program
                  .Register(new Alas.Tasks.OsStateTask());
                 if (queueFlags.Resume)
                 {
-                    var done = Alas.Tasks.TaskQueueFile.ReadCompletedState(queueSession.RunDirectory);
+                    // `--resume <state.json>` 显式给路径；只写 `--resume` 则取工件根目录下
+                    // **上一次**运行的断点（本次运行目录里永远没有 state.json，直接读它等于没续跑）。
+                    string? statePath = queueFlags.ResumeState
+                        ?? Alas.Tasks.TaskQueueFile.LatestState(queueOptions.ArtifactsDirectory,
+                                                                queueSession.RunDirectory);
+                    var done = Alas.Tasks.TaskQueueFile.ReadCompletedState(
+                        statePath is null ? null : Path.GetDirectoryName(statePath));
                     foreach (var id in done) queue.ResumeCompleted.Add(id);
-                    if (done.Count > 0)
-                        Console.WriteLine($"[断点    ] 跳过 {done.Count} 个已完成任务: {string.Join(", ", done)}");
+                    if (statePath is null)
+                        Console.WriteLine("[断点    ] 没找到可续跑的 state.json（本次仍从头跑）");
+                    else
+                        Console.WriteLine($"[断点    ] 依据 {statePath} 跳过 {done.Count} 个已完成任务"
+                                          + (done.Count == 0 ? "" : $": {string.Join(", ", done)}"));
                 }
                 var queueResult = queue.Run(requests);
                 PrintQueueReport(queueResult, requests);
@@ -612,6 +621,8 @@ internal static class Program
         /// <summary>位置参数或 `--chapter`/`--file` 给的值。</summary>
         public string? Positional { get; set; }
         public string? File { get; set; }
+        /// <summary>`--resume <state.json>` 显式指定的断点文件（可为空 = 自动找上一次）。</summary>
+        public string? ResumeState { get; set; }
     }
 
     private static CliRunFlags ParseRunFlags(string[] args, string positionalFlag)
@@ -635,6 +646,7 @@ internal static class Program
                 throw new ArgumentException($"{a} 缺少参数值");
             string v = i + 1 < args.Length ? args[i + 1] : "";
             if (a == "--chapter" || a == positionalFlag) flags.Positional = v;
+            else if (a == "--resume-state") flags.ResumeState = v;
             else if (a == "--file") flags.File = v;
             else if (a == "--adb") flags.Options.AdbPath = v;
             else if (a == "--serial") flags.Options.Serial = v;

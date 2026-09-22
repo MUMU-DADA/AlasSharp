@@ -72,4 +72,29 @@ public static class TaskQueueFile
         }
         return completed;
     }
+
+    /// <summary>
+    /// 找**上一次**运行的断点文件。
+    ///
+    /// 为什么需要它：每次运行的工件落在 `<artifacts>/<时间戳>/` 下，所以"本次运行目录"里
+    /// 永远不会有上一轮的 `state.json` —— 直接读本次目录等于 `--resume` 从来没生效过。
+    /// 这里按目录名（时间戳）取最新的一份，并排除本次运行目录。
+    /// </summary>
+    public static string? LatestState(string? artifactsRoot, string? excludeDirectory)
+    {
+        if (artifactsRoot is null || !Directory.Exists(artifactsRoot)) return null;
+        string exclude = excludeDirectory is null
+            ? "" : Path.GetFullPath(excludeDirectory).TrimEnd(Path.DirectorySeparatorChar);
+        foreach (var directory in Directory.GetDirectories(artifactsRoot)
+                     .OrderByDescending(d => Path.GetFileName(d), StringComparer.Ordinal))
+        {
+            if (exclude.Length > 0 &&
+                string.Equals(Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar),
+                              exclude, StringComparison.OrdinalIgnoreCase))
+                continue;
+            string path = Path.Combine(directory, "state.json");
+            if (File.Exists(path)) return path;
+        }
+        return null;
+    }
 }
