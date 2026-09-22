@@ -14,7 +14,21 @@ import os
 import subprocess
 import time
 
-ADB = os.environ.get('STUB_ADB')
+def _default_adb():
+    """默认 adb = **项目内固定运行时**里的那份（`csharp/.runtime/venv314`）。
+
+    以前这里依赖 `my fork project` 那个测试目录里的 adbutils，该目录已删除；
+    现在运行时固定在项目内，所以默认路径也指过去。要换用别的 adb（如模拟器自带的）
+    仍然可以用环境变量 `STUB_ADB` 覆盖。
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    cand = os.path.normpath(os.path.join(
+        here, '..', '..', '.runtime', 'venv314', 'Lib', 'site-packages',
+        'adbutils', 'binaries', 'adb.exe'))
+    return cand if os.path.exists(cand) else None
+
+
+ADB = os.environ.get('STUB_ADB') or _default_adb()
 SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
 
 
