@@ -62,6 +62,23 @@ internal static class Program
                         server ?? "cn", assetCsv)
                     : DeviceCheck.Run(fixture, repoDir, toolsDir2, dataDir);
             }
+            if (command == "goto")
+            {
+                // 沿上游页面图真机导航：goto <page_target> [--adb .. --serial .. --server cn]
+                string? realAdb2 = null, realSerial2 = null, targetPage = null;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--adb") realAdb2 = args[i + 1];
+                    if (args[i] == "--serial") realSerial2 = args[i + 1];
+                    if (args[i] == "--to") targetPage = args[i + 1];
+                }
+                targetPage ??= args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
+                if (realAdb2 is null || realSerial2 is null || targetPage is null)
+                    return Fail("用法: goto <page_目标> --adb <adb.exe> --serial <serial>");
+                string toolsDir3 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                    "..", "..", "..", "..", "..", "tools"));
+                return DeviceCheck.RunGoto(realAdb2, realSerial2, repoDir, toolsDir3, targetPage);
+            }
             if (command == "vision")
             {
                 fixture ??= Path.Combine(dataDir, "fixtures", "imaging.json");

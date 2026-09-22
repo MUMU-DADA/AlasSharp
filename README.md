@@ -185,7 +185,15 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 .\src\Alas.DataTool\bin\Release\net8.0\alashub.exe show campaign_main/campaign_1_1.py
 ```
 
-`alashub` 子命令：`verify` / `list` / `show` / `imaging` / `matching` / `vision`。
+`alashub` 子命令：`verify` / `list` / `show` / `imaging` / `matching` / `vision` /
+`device` / `goto`（真机导航，见 `docs/navigation.md`）。
+
+## 验收记录
+
+| 文档 | 内容 |
+|---|---|
+| `docs/page-verification.md` | 53 个页面规则的真机导航验证：29 个已在该页命中，5 个受游戏状态阻塞，19 个原因已定位 |
+| `docs/navigation.md` | 页面导航图（控制能力）：图从上游运行时获取、变体择优、真机多跳运行记录 |
 
 ## 路线图
 
@@ -193,7 +201,8 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 |---|---|---|
 | S0 数据契约 | 素材 + 关卡 IR → JSON，双向校验 | ✅ |
 | S1 识图桥接 | 识图不重写：进程内 CPython / 进程外 worker 直调上游模块 | ✅ 两种宿主双双验收 |
-| S-设备层 | ADB 截图/点击/滑动；桩 adb 已验通，**待真机冒烟** | 🔵 无硬件可验部分完成 |
+| S-设备层 | ADB 截图/点击/滑动；真机与桩 adb 都已验通 | ✅ |
+| S-页面导航 | 运行时向上游要页面图 + 变体择优导航（`alashub goto`） | ✅ 真机 3 跳验收 |
 | S2 地图识别 | 单应性变换 + 网格判定 | 待开始 |
 | S3 关卡引擎 | 规则解释器已完成；引擎实现（120 方法 + 17 钩子）待开始 | 🔵 地基完成 |
 | S4 任务域 | 大世界 / 岛屿 / 科研 / 活动… | 待开始 |

@@ -41,6 +41,46 @@ internal static class DeviceCheck
         "ui/BACK_ARROW", "ui/GOTO_MAIN",
     };
 
+    /// <summary>
+    /// 沿上游页面图真机导航到目标页。**这是产品路径**：识图走进程内 CPython 调上游
+    /// 规则，点击走真实 adb，图的边由上游 `Page.links` 在运行时给出。
+    /// </summary>
+    public static int RunGoto(string adbPath, string serial, string forkDir, string toolsDir,
+                              string targetPage)
+    {
+        using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(forkDir, toolsDir);
+        var adb = new ProcessAdbTransport(adbPath);
+        var device = new DeviceController(adb, vision, serial);
+        var graph = Alas.Navigation.PageGraph.Load(vision);
+        Console.WriteLine($"[graph   ] nodes={graph.NodeCount} edges={graph.EdgeCount} " +
+                          $"unmapped={graph.Unmapped.Count} roundtrip_bad={graph.RoundtripBad.Count}");
+        var path = graph.Path("page_main", targetPage);
+        Console.WriteLine($"[path    ] {targetPage}: " +
+                          (path is null ? "不可达" : string.Join(" -> ", path)));
+        if (path is null)
+        {
+            Console.WriteLine($"[错误    ] 页面图里 {targetPage} 从 page_main 不可达");
+            return 1;
+        }
+
+        var navigator = new Alas.Navigation.PageNavigator(
+            vision, new Alas.Navigation.DeviceNavigationAdapter(device), graph);
+        var result = navigator.Goto(targetPage);
+        foreach (var hop in result.Hops)
+            Console.WriteLine($"[hop {hop.Hop}   ] on={string.Join(",", hop.OnPages)} " +
+                              $"click {hop.Button} score={hop.Score:F4}" +
+                              (hop.LowConfidence ? "(低置信)" : "") +
+                              $" at ({hop.ClickX},{hop.ClickY}) -> {string.Join(",", hop.ArrivedPages)}");
+        Console.WriteLine($"[result  ] success={result.Success} final={string.Join(",", result.FinalPages)}");
+        if (!result.Success)
+        {
+            Console.WriteLine($"[failure ] {result.Failure}");
+            return 1;
+        }
+        Console.WriteLine($"已到达 {targetPage}（{result.Hops.Count} 跳）");
+        return 0;
+    }
+
     public static int RunReal(string adbPath, string serial, string forkDir, string toolsDir,
                               string server = "cn", string[]? assetsCsv = null)
     {

@@ -618,6 +618,107 @@ def op_ocr(args):
     return {'text': ocr.ocr(image)}
 
 
+def op_page_current(args):
+    """当前画面命中的页面集合（只跑页面判定，不带 Switch/Scroll/cached_property）。
+
+    产品路径用这个而不是 ui_rules_sweep：导航只需要"我在哪一页"。
+    """
+    hits = []
+    errors = []
+    for pg in op_page_list({})['pages']:
+        try:
+            if op_page_appear({'page': pg['page']})['appear']:
+                hits.append(pg['page'])
+        except Exception as e:
+            errors.append(f"{pg['page']}: {type(e).__name__}: {e}")
+    return {'hit': hits, 'errors': errors}
+
+
+def _asset_id_map():
+    """id(Button 对象) -> '子模块/资产名'，实时扫描已导入的 module.*.assets。
+
+    上游 Button 不自带来源路径，页面图要用资产 id 表达边（C# 侧靠 id 反查对象），
+    所以只能反查。只扫 `module.*.assets`：page.py 的按钮全部来自这些模块。
+    """
+    mapping = {}
+    for modname, mod in list(sys.modules.items()):
+        if not modname.startswith('module.') or not modname.endswith('.assets'):
+            continue
+        if mod is None:
+            continue
+        sub = modname[len('module.'):-len('.assets')]
+        for attr in dir(mod):
+            if attr.startswith('__'):
+                continue
+            try:
+                obj = getattr(mod, attr)
+            except Exception:
+                continue
+            if type(obj).__name__ in ('Button', 'ButtonGrid', 'Template'):
+                mapping.setdefault(id(obj), '%s/%s' % (sub, attr))
+    return mapping
+
+
+def _variants(asset_id):
+    """同一按钮在不同主界面版本下的候选资产，**只保留真的声明过的**。
+
+    上游把新版主界面的按钮定义成独立资产（`module/ui_white/assets.py` 里的
+    `X_WHITE`），旧版 `ui/X` 在新版界面上实测只有 ≤0.25 分——模板早已不在屏上，
+    点它的坐标只会点到空气。命名是上游的既有约定，这里只是按约定去**探测**
+    （解析不到就丢弃），不猜、不硬编码映射表。
+    """
+    out = [asset_id]
+    name = asset_id.split('/', 1)[1] if '/' in asset_id else asset_id
+    white = 'ui_white/%s_WHITE' % name
+    if white != asset_id:
+        try:
+            _resolve(white)
+            out.append(white)
+        except Exception:
+            pass
+    return out
+
+
+def op_ui_page_graph(args):
+    """上游页面导航图：节点（页面 + check 资产）+ 边（按钮资产 → 目标页）。
+
+    在**运行时**向上游要图，不导出、不重写：这样上游改了 page.py 的连线，
+    C# 侧立刻跟着变，不存在产物漂移。返回前做 id 往返自检
+    （用资产 id 反查必须拿回同一个对象），否则 C# 会点到错的按钮。
+    """
+    import module.ui.page as page_mod
+    ids = _asset_id_map()
+
+    def id_of(obj):
+        return ids.get(id(obj)) if obj is not None else None
+
+    nodes, edges, unmapped = [], 0, []
+    pairs = []  # (资产 id, 原对象)，用于往返自检
+    for name, page in sorted(page_mod.Page.all_pages.items()):
+        check = id_of(page.check_button)
+        if page.check_button is not None and check is None:
+            unmapped.append('%s.check' % name)
+        elif check:
+            pairs.append((check, page.check_button))
+        node = {'name': name, 'check': check, 'links': []}
+        for dest, button in page.links.items():
+            bid = id_of(button)
+            if bid is None:
+                unmapped.append('%s -> %s' % (name, dest.name))
+                continue
+            pairs.append((bid, button))
+            variants = _variants(bid)
+            node['links'].append({'to': dest.name, 'button': bid, 'variants': variants})
+            edges += 1
+        nodes.append(node)
+
+    # 往返自检：资产 id 反查必须拿回**同一个对象**，否则 C# 会点到别的按钮
+    bad = [aid for aid, obj in pairs if _resolve(aid) is not obj]
+    return {'nodes': nodes, 'node_count': len(nodes), 'edge_count': edges,
+            'unmapped': unmapped, 'roundtrip_bad': bad,
+            'roundtrip_checked': len(pairs)}
+
+
 def op_ui_rules_sweep(args):
     """
     界面与控件识别的**统一验收**：一次跑完三类实体并汇总。
@@ -737,6 +838,8 @@ OPS = {
     'button_match': op_button_match,
     'template_match': op_template_match,
     'ocr': op_ocr,
+    'page_current': op_page_current,
+    'ui_page_graph': op_ui_page_graph,
 }
 
 

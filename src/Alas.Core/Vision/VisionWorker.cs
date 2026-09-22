@@ -55,8 +55,53 @@ public sealed class ButtonMatchResult
 {
     [JsonPropertyName("match")] public bool Match { get; set; }
     [JsonPropertyName("offset")] public int Offset { get; set; }
+    /// <summary>**阈值**，不是分数（上游 Button.match 的 similarity 参数，默认 0.85）。</summary>
     [JsonPropertyName("similarity")] public double Similarity { get; set; }
+    /// <summary>实测相似度（仅 probeScore=true 时返回）。</summary>
+    [JsonPropertyName("score")] public double? Score { get; set; }
+    [JsonPropertyName("score_error")] public string? ScoreError { get; set; }
+    /// <summary>匹配到的按钮区域。上游 <c>Button.button</c> 在 match 之后返回它，
+    /// ALAS 的 appear+click 点的就是这个区域，不是资产里的标称坐标。</summary>
     [JsonPropertyName("button_offset")] public List<double>? ButtonOffset { get; set; }
+
+    /// <summary>该按钮的实际点击点（匹配区域中心）；没有匹配结果时返回 null。</summary>
+    public (int X, int Y)? ClickPoint()
+    {
+        if (ButtonOffset is not { Count: 4 }) return null;
+        return ((int)Math.Round((ButtonOffset[0] + ButtonOffset[2]) / 2),
+                (int)Math.Round((ButtonOffset[1] + ButtonOffset[3]) / 2));
+    }
+}
+
+public sealed class PageCurrentResult
+{
+    [JsonPropertyName("hit")] public List<string> Hit { get; set; } = new();
+    [JsonPropertyName("errors")] public List<string> Errors { get; set; } = new();
+}
+
+public sealed class PageLinkInfo
+{
+    [JsonPropertyName("to")] public string To { get; set; } = "";
+    [JsonPropertyName("button")] public string Button { get; set; } = "";
+    /// <summary>同一按钮在不同主界面版本下的候选资产（上游声明的，已按可解析性过滤）。</summary>
+    [JsonPropertyName("variants")] public List<string> Variants { get; set; } = new();
+}
+
+public sealed class PageNodeInfo
+{
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("check")] public string? Check { get; set; }
+    [JsonPropertyName("links")] public List<PageLinkInfo> Links { get; set; } = new();
+}
+
+public sealed class PageGraphResult
+{
+    [JsonPropertyName("nodes")] public List<PageNodeInfo> Nodes { get; set; } = new();
+    [JsonPropertyName("node_count")] public int NodeCount { get; set; }
+    [JsonPropertyName("edge_count")] public int EdgeCount { get; set; }
+    [JsonPropertyName("unmapped")] public List<string> Unmapped { get; set; } = new();
+    [JsonPropertyName("roundtrip_bad")] public List<string> RoundtripBad { get; set; } = new();
+    [JsonPropertyName("roundtrip_checked")] public int RoundtripChecked { get; set; }
 }
 
 public sealed class TemplateMatchResult

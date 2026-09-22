@@ -25,13 +25,19 @@ public interface IVisionEngine : IDisposable
     ScaleResult ScaleScreenshot(double factor);
     /// <summary>列出上游 module/ui/page.py 的页面规则。</summary>
     PageListResult PageList();
+    /// <summary>当前画面命中的页面集合（只跑页面判定，供导航使用）。</summary>
+    PageCurrentResult PageCurrent();
+    /// <summary>上游页面导航图（节点 + 出边），**运行时向上游要**，不导出、不重写。</summary>
+    PageGraphResult PageGraph();
     /// <summary>取上游素材的点击坐标（button 区域中心）—— 坐标由上游规则给出。</summary>
     ButtonCenter AssetButtonCenter(string asset);
     /// <summary>**按上游 UI.ui_page_appear 的原规则**判定当前页面（模板匹配，非颜色检查）。</summary>
     PageAppearResult PageAppear(string page);
     AppearResult AppearOn(string asset, int threshold = 10, bool detail = false);
     AppearBatchResult AppearOnBatch(IEnumerable<string> assets, int threshold = 10);
-    ButtonMatchResult ButtonMatch(string asset, int offset = 30, double similarity = 0.85);
+    /// <summary><paramref name="probeScore"/> 为真时额外二分反解实测相似度（慢 20 倍，诊断用）。</summary>
+    ButtonMatchResult ButtonMatch(string asset, int offset = 30, double similarity = 0.85,
+                                  bool probeScore = false);
     TemplateMatchResult TemplateMatch(string asset, string? name = null);
     string Ocr(double[] area, string lang = "azur_lane", string? letter = null);
 }
@@ -97,6 +103,8 @@ public abstract class VisionEngineBase : IVisionEngine
     public string SetServer(string server) => Call("set_server", new { server })["server"]!.GetValue<string>();
     public ScreenshotInfo LoadScreenshot(string path) => Call<ScreenshotInfo>("screenshot_load", new { path });
     public PageListResult PageList() => Call<PageListResult>("page_list");
+    public PageCurrentResult PageCurrent() => Call<PageCurrentResult>("page_current");
+    public PageGraphResult PageGraph() => Call<PageGraphResult>("ui_page_graph");
     public ButtonCenter AssetButtonCenter(string asset)
         => Call<ButtonCenter>("asset_button_center", new { asset });
     public PageAppearResult PageAppear(string page) => Call<PageAppearResult>("page_appear", new { page });
@@ -109,8 +117,9 @@ public abstract class VisionEngineBase : IVisionEngine
     public AppearResult AppearOn(string asset, int threshold = 10, bool detail = false) => Call<AppearResult>("appear_on", new { asset, threshold, detail });
     public AppearBatchResult AppearOnBatch(IEnumerable<string> assets, int threshold = 10)
         => Call<AppearBatchResult>("appear_on_batch", new { assets = assets.ToArray(), threshold });
-    public ButtonMatchResult ButtonMatch(string asset, int offset = 30, double similarity = 0.85)
-        => Call<ButtonMatchResult>("button_match", new { asset, offset, similarity });
+    public ButtonMatchResult ButtonMatch(string asset, int offset = 30, double similarity = 0.85,
+                                         bool probeScore = false)
+        => Call<ButtonMatchResult>("button_match", new { asset, offset, similarity, probe_score = probeScore });
     public TemplateMatchResult TemplateMatch(string asset, string? name = null)
         => Call<TemplateMatchResult>("template_match", new { asset, name });
     public string Ocr(double[] area, string lang = "azur_lane", string? letter = null)
