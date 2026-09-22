@@ -12,8 +12,8 @@
 
 | 类别 | 数量 | 含义 |
 | --- | --- | --- |
-| 已验证命中 | 33 | 在该页上规则返回真，且离开该页后不再命中 |
-| 受游戏状态阻塞 | 8 | 页面可达性被账号/活动状态挡住，非识别缺陷 |
+| 已验证命中 | 34 | 在该页上规则返回真，且离开该页后不再命中 |
+| 受游戏状态阻塞 | 7 | 页面可达性被账号/活动状态挡住，非识别缺陷 |
 | 未验证（原因已定位） | 12 | 依赖阻塞页或上游没有入边 |
 | 未分类 | 0 | 需要继续排查 |
 | 合计 | 53 | 上游 `page.py` 的全部 Page |
@@ -34,6 +34,7 @@
 | `page_dorm` | `page_dorm` |
 | `page_dormmenu` | `page_dormmenu` |
 | `page_event` | `page_event` |
+| `page_event_list` | `page_event_list` |
 | `page_exercise` | `page_exercise` |
 | `page_fleet` | `page_fleet` |
 | `page_game_room` | `page_game_room` |
@@ -61,7 +62,6 @@
 | 页面 | 原因与证据 |
 | --- | --- |
 | `page_coalition` | 定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed） |
-| `page_event_list` | NG-nochange（按钮不在屏上：无活动时活动一览入口不出现） |
 | `page_hospital` | 定向重试仍未到达：落在 ['page_event']（goto-failed） |
 | `page_island` | 游戏状态阻塞（点击岛屿计划入口 0.9999 分，菜单关闭退回主界面＝功能未解锁） |
 | `page_raid` | 定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed） |
@@ -85,6 +85,16 @@
 | `page_island_transport` | **按用户要求跳过**：岛屿计划相关不在本轮验证范围内 |
 | `page_rpg_city` | RPG 活动的城内界面，**上游页面图里没有入边**（只有回主界面/回剧情页的出边），既不可能是导航目标；且需要 RPG 类活动在跑才可能出现 |
 | `page_unknown` | `Page(None)` —— 合成实体，没有 check 按钮，不是真实画面 |
+
+## ⚠️ 手工入口验证（页面规则命中，但产品导航器到不了）
+
+这类页面必须单独看：规则在真机上确实命中了，但**导航边上的按钮素材在本客户端不匹配**，
+所以 `alashub goto` 到不了它。跑全量回归时它们会报 `goto-failed`，那是导航边的问题、
+不是识别问题。
+
+| 页面 | 入口与实测 |
+| --- | --- |
+| `page_event_list` | 点主界面右上角「活动汇总」卡片 (1235,125) 进入，`EVENT_LIST_CHECK` 实测 0.9958 命中。但上游的白版素材 `MAIN_GOTO_EVENT_LIST_WHITE` 在本客户端只有 0.088（新版 UI 的卡片样式变了），导航器点不中它 —— 即"页面规则已验证、导航边还缺客户端素材" |
 
 ## 复现方式
 

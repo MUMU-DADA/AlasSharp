@@ -25,9 +25,16 @@ REASONS = {
                     '结果是「屏蔽聊天」的确认弹窗（fail-safe 的返回键已取消，未确认、无副作用）；'
                     '上游与新 UI 都没有世界频道的入口素材，故此项无法在真实画面上验证',
     'page_unknown': '`Page(None)` —— 合成实体，没有 check 按钮，不是真实画面',
-    'page_event_list': '活动一览入口按钮不在屏上（无活动时不出现）；换账号后定向重试仍是'
-                       '`NG-nochange`（点击后仍停在主界面）',
     'page_private_quarters': '换账号后**已命中**（原记录：宿舍菜单里没有该入口）',
+}
+
+# 手工入口验证的页面：页面规则本身在真机上命中了，但**产品导航器到不了**
+# （边上的按钮素材在本客户端不匹配）。这类必须单独标注，否则会被误读成"导航也能到"。
+MANUAL_ENTRY = {
+    'page_event_list': '点主界面右上角「活动汇总」卡片 (1235,125) 进入，'
+                       '`EVENT_LIST_CHECK` 实测 0.9958 命中。但上游的白版素材 '
+                       '`MAIN_GOTO_EVENT_LIST_WHITE` 在本客户端只有 0.088（新版 UI 的卡片样式变了），'
+                       '导航器点不中它 —— 即"页面规则已验证、导航边还缺客户端素材"',
 }
 ISLAND_SUB = [
     'page_island_manage', 'page_island_map', 'page_island_order', 'page_island_phone',
@@ -100,6 +107,15 @@ def main():
     if unknown:
         lines += ['', '## 未分类', '']
         lines += ['- `%s`' % n for n in unknown]
+
+    manual = [n for n in sorted(ver) if n in MANUAL_ENTRY]
+    if manual:
+        lines += ['', '## ⚠️ 手工入口验证（页面规则命中，但产品导航器到不了）', '',
+                  '这类页面必须单独看：规则在真机上确实命中了，但**导航边上的按钮素材在本客户端不匹配**，',
+                  '所以 `alashub goto` 到不了它。跑全量回归时它们会报 `goto-failed`，那是导航边的问题、',
+                  '不是识别问题。', '', '| 页面 | 入口与实测 |', '| --- | --- |']
+        for n in manual:
+            lines.append('| `%s` | %s |' % (n, MANUAL_ENTRY[n]))
 
     lines += [
         '',
