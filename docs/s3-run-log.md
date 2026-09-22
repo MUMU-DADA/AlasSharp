@@ -212,3 +212,20 @@ A 直接去打 BOSS，B 继续清小怪，直到 `Enemy remain: []` 才 `Brute c
 
 > 注：困难 1-4（3 行、21 格）用真图内帧**能**正常识别，`8-1` 实际是 **4 行**（`shape=(9,3)`）——
 > 所以"≤3 行 = 不支持"这条旧概括不成立，别再拿行数当判据。
+
+### ✅ round 140：垫片真机验证通过 —— 1-4 打通（新号可继续推进）
+
+修 `scipy brute` 的 `finish=fmin` 越界之后，同一张 1-4 从"立刻 `No battle executed` → 撤退"
+变成正常打完：
+
+```
+BATTLE_0..BATTLE_2  清小怪（Clear enemy: D3）
+Boss found: [G3] → BATTLE_3 → Using function: battle_3 → Is boss: [G3] → <<< CLEAR BOSS >>>
+In stage.    elapsed=234.3s  stopped_early=False  campaign_end=True   exit 0
+```
+
+打完读游戏自带面板：**威胁排除 99.7%（≈100%）、`star_1` ✓、`star_3` ✓**，`star_2` 待第二次
+（与 1-3 同一规律：`击破护卫舰队` 计数跨出击累加）。**修改前 1-4 是 0% 且完全打不动。**
+
+⇒ 这条修复同时是 1-1 / 7-1 / 8-1 这一整类的期望解（它们的失败签名相同），
+下轮用同一批存盘帧回归 1-1 的单行图极端情形，并真机把 1-4 打到三星、确认第 2 章解锁。
