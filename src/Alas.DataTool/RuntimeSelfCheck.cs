@@ -393,6 +393,8 @@ internal static class RuntimeSelfCheck
             ["problems"] = new JsonArray(problems.Select(p => (JsonNode)JsonValue.Create(p)!).ToArray()),
             ["outcome"] = queue?.Outcome ?? "failed",
             ["cleared"] = queue?.Succeeded ?? false,
+            // 运行目录给出来，Python 侧才能直接读工件做断言（例如边界快照）。
+            ["run_directory"] = queue?.IndexPath is null ? null : Path.GetDirectoryName(queue.IndexPath),
             ["stopped_early"] = queue?.StoppedEarly ?? false,
             ["stop_reason"] = queue?.StopReason,
             ["host_start_count"] = engineCreations,

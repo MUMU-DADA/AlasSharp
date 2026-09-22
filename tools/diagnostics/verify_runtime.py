@@ -281,7 +281,7 @@ def build_queue_cases() -> list[dict]:
                 'outcome': 'succeeded',
                 'host_start_count': 1,
                 'device_configure_count': 1,
-                'backend_calls': 3,          # 1 次设备配置 + 2 个任务各 1 次
+                'backend_calls': 5,          # 设备配置 1 + 每任务 2 次（边界快照 + s3_run_plan）
                 'stopped_early': False,
                 'tasks': [
                     {'id': 'clear-1-1', 'outcome': 'succeeded', 'error_kind': 'none'},
@@ -308,7 +308,7 @@ def build_queue_cases() -> list[dict]:
                 'outcome': 'partial',
                 'host_start_count': 1,
                 'device_configure_count': 1,
-                'backend_calls': 2,          # 设备配置 1 次 + 只有真正跑的任务调了后端
+                'backend_calls': 3,          # 设备配置 1 + 真正跑的那个任务 2 次（没跑的不产生边界快照）
                 'stopped_early': False,
                 'tasks': [
                     {'id': 'bad-input', 'outcome': 'skipped', 'error_kind': 'none'},
@@ -359,7 +359,7 @@ def build_queue_cases() -> list[dict]:
                 'outcome': 'failed',
                 'host_start_count': 1,
                 'device_configure_count': 1,
-                'backend_calls': 2,
+                'backend_calls': 3,
                 'stopped_early': True,
                 'tasks': [
                     {'id': 'boom', 'outcome': 'failed', 'error_kind': 'upstream_error'},
@@ -386,7 +386,7 @@ def build_queue_cases() -> list[dict]:
                 'outcome': 'partial',
                 'host_start_count': 1,
                 'device_configure_count': 1,
-                'backend_calls': 2,          # 已完成的任务不该再调后端
+                'backend_calls': 3,          # 已完成的任务不再调后端；真正跑的任务产生 2 次
                 'stopped_early': False,
                 'tasks': [
                     {'id': 'clear-1-1', 'outcome': 'skipped', 'error_kind': 'none'},
@@ -467,6 +467,27 @@ def main() -> int:
                 if key in want_task and want_task[key] != have_task[key]:
                     problems.append(f'第{index + 1}个任务 {key} 期望 {want_task[key]} '
                                     f'实为 {have_task[key]}')
+
+        # 边界快照（R2 跨任务复位）：真正跑过的任务必须有 boundary_state，
+        # 跳过（含断点续跑）的任务不该有 —— 它压根没开始，"边界"无从谈起。
+        if got.get('run_directory'):
+            import glob as _glob
+            for have_task in got['tasks']:
+                pattern = f"{got['run_directory']}/task-{have_task['id']}.json"
+                files = _glob.glob(pattern)
+                if not files:
+                    problems.append(f"缺少任务工件: {have_task['id']}")
+                    continue
+                artifact = json.loads(Path(files[0]).read_text(encoding='utf-8'))
+                boundary = artifact.get('boundary_state')
+                # "跑过"不能只看结论：`failed` 也可能是"前置条件不满足、根本没开始"
+                # （required 的前置失败记 failed 但不会执行任务）。用 unmet_preconditions 区分。
+                ran = (have_task['outcome'] != 'skipped'
+                       and not (artifact.get('unmet_preconditions') or []))
+                if ran and not (isinstance(boundary, dict) and 'available' in boundary):
+                    problems.append(f"跑过的任务 {have_task['id']} 缺 boundary_state：{boundary}")
+                if not ran and boundary is not None:
+                    problems.append(f"没跑的任务 {have_task['id']} 不该有 boundary_state：{boundary}")
         for want_file in expect.get('artifacts', []):
             if want_file not in got['artifact_names']:
                 problems.append(f'缺少工件 {want_file}（实际 {got["artifact_names"]}）')
