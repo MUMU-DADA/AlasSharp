@@ -9,7 +9,7 @@ C# 的 `MapIR` 解析 vs **上游活对象**（导入章节模块读 `MAP`）。
 
 摘要格式：`shapeX,shapeY | WxH | rows | tokens | weight | camera | spawnpts | spawn | battles`
 
-## 结果：字段摘要 1315 匹配 / 70 跳过；网格指纹 1366/1367 匹配
+## 结果：字段摘要 1363 匹配 / 70 跳过；网格指纹 1367/1367 匹配
 
 两类对照的含义不同：
 
@@ -90,11 +90,11 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20220818_cn/sp4.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D6,F6,E3|spawnpts=E7|spawn=6|battles=6` |
 | `event_20200917_cn/ht3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D3,D5,D7,F3,F5,F7|spawnpts=D5|spawn=6|battles=6` |
 | `war_archives_20200917_cn/t2.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D3,D5,E3,E5|spawnpts=E5|spawn=5|battles=5` |
-| `war_archives_20180607_cn/c1.json` | ❌ 不一致 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=D2,D4,F2,F4|spawnpts=|spawn=5|battles=5` |
+| `war_archives_20180607_cn/c1.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=E3,E4|spawnpts=|spawn=5|battles=5` |
 | `event_20240521_cn/d2.json` | ✅ 匹配 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=3500|camera=E2,E5|spawnpts=F5|spawn=7|battles=7` |
 | `event_20240521_cn/d1.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D3,F3,F7|spawnpts=D7|spawn=6|battles=6` |
 | `event_20200806_cn/sp1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=480|camera=D3,D4|spawnpts=D3,D4|spawn=5|battles=5` |
-| `event_20200423_cn/d2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=70|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200423_cn/d2.json` | ✅ 匹配 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=0|camera=D2,D5,G2,G5|spawnpts=|spawn=0|battles=0` |
 | `event_20240229_cn/b1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D3,D5,F3,F5|spawnpts=D2|spawn=6|battles=6` |
 | `war_archives_20220324_cn/sp1.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=D2|spawn=5|battles=5` |
 | `war_archives_20191031_en/d1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2400|camera=D2,D4,E2,E4|spawnpts=D4|spawn=6|battles=6` |
@@ -123,7 +123,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20200917_cn/ts2.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,D6,E2,E6|spawnpts=D6|spawn=1|battles=1` |
 | `campaign_sos/campaign_10_5.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=D2,D4,F2,F4|spawnpts=D4,F4|spawn=7|battles=7` |
 | `war_archives_20211229_cn/c1.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=D2,D4,F2,F4|spawnpts=F2|spawn=5|battles=5` |
-| `war_archives_20180607_cn/a4.json` | ❌ 不一致 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=|spawn=6|battles=6` |
+| `war_archives_20180607_cn/a4.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=E3,E5|spawnpts=|spawn=6|battles=6` |
 | `war_archives_20210527_cn/d1.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D2,D6,G2,G6|spawnpts=D2,D6|spawn=6|battles=6` |
 | `war_archives_20190911_cn/as1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2400|camera=D2,D4,E2,E4|spawnpts=D2,E2|spawn=6|battles=6` |
 | `event_20200521_en/b3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=0|camera=D2,D6,D7,F2,F6,F7|spawnpts=|spawn=6|battles=6` |
@@ -144,7 +144,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `campaign_main/campaign_9_1.json` | ✅ 匹配 | ✅ | `7,4|8x5|rows=5|tokens=40|weight=2820|camera=E3|spawnpts=C1,C3|spawn=6|battles=6` |
 | `war_archives_20240725_cn/ht3.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D6|spawn=7|battles=7` |
 | `event_20210225_cn/a3.json` | ✅ 匹配 | ✅ | `8,9|9x10|rows=10|tokens=90|weight=4500|camera=E3,E6|spawnpts=E6|spawn=5|battles=5` |
-| `event_20200521_cn/b2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=77|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200521_cn/b2.json` | ✅ 匹配 | ✅ | `10,6|11x7|rows=7|tokens=77|weight=0|camera=D2,D5,H2,H5|spawnpts=|spawn=0|battles=0` |
 | `event_20220915_cn/a2.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D4,D6,E3|spawnpts=D2|spawn=5|battles=5` |
 | `event_20210325_cn/d1.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=E5,D5|spawn=6|battles=6` |
 | `event_20260417_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
@@ -177,9 +177,9 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20240521_cn/b1.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D3,F3,F7|spawnpts=D7|spawn=6|battles=6` |
 | `event_20260520_cn/b1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=D5|spawn=6|battles=6` |
 | `campaign_main/campaign_9_2.json` | ✅ 匹配 | ✅ | `8,4|9x5|rows=5|tokens=45|weight=570|camera=D3,E3|spawnpts=D3|spawn=6|battles=6` |
-| `event_20200507_cn/sp1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=56|weight=0|camera=D3,D5|spawnpts=|spawn=5|battles=5` |
+| `event_20200507_cn/sp1.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=0|camera=D3,D5|spawnpts=|spawn=5|battles=5` |
 | `event_20220324_cn/sp2.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,D5,E2,E5|spawnpts=D2|spawn=5|battles=5` |
-| `event_20200507_cn/sp3.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=8|tokens=64|weight=0|camera=D3,D6|spawnpts=|spawn=6|battles=6` |
+| `event_20200507_cn/sp3.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=0|camera=D3,D6|spawnpts=|spawn=6|battles=6` |
 | `event_20210624_tw/b3.json` | ✅ 匹配 | ✅ | `13,9|14x10|rows=10|tokens=140|weight=7000|camera=F2,F6,F8,I2,I6,I8|spawnpts=F8,I8|spawn=6|battles=6` |
 | `war_archives_20220428_cn/b3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D4,D7,F4,F7|spawnpts=F7,D7|spawn=6|battles=6` |
 | `war_archives_20200820_cn/d3.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=619|camera=D2,D5,F2,F5|spawnpts=D2,D5|spawn=7|battles=7` |
@@ -274,7 +274,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20220526_cn/a2.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D3,D6|spawnpts=D3,D6|spawn=5|battles=5` |
 | `campaign_main/campaign_5_3.json` | ✅ 匹配 | ✅ | `6,4|7x5|rows=5|tokens=35|weight=1160|camera=D2,D3|spawnpts=D2,D3|spawn=5|battles=5` |
 | `event_20201229_cn/b1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D6|spawn=6|battles=6` |
-| `war_archives_20180607_cn/d1.json` | ❌ 不一致 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=3500|camera=D2,D5,G2,G5|spawnpts=|spawn=7|battles=7` |
+| `war_archives_20180607_cn/d1.json` | ❌ 不一致 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=3500|camera=E3,E5,F3,F5|spawnpts=|spawn=7|battles=7` |
 | `event_20240912_cn/a2.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D3,D6,F2,F6|spawnpts=F6|spawn=5|battles=5` |
 | `war_archives_20210624_cn/b2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=F2,D2|spawn=6|battles=6` |
 | `event_20210624_tw/a3.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=D5|spawn=5|battles=5` |
@@ -364,7 +364,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20200917_cn/hts2.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,D6,E2,E6|spawnpts=D6|spawn=1|battles=1` |
 | `event_20210819_cn/c2.json` | ✅ 匹配 | ✅ | `5,7|6x8|rows=8|tokens=48|weight=2400|camera=C2,C6|spawnpts=C2|spawn=5|battles=5` |
 | `event_20240815_cn/c2.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D2,D6|spawn=5|battles=5` |
-| `event_20200423_cn/d3.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=63|weight=670|camera=D3,D5,F3,F5|spawnpts=|spawn=7|battles=7` |
+| `event_20200423_cn/d3.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=670|camera=D3,D5,F3,F5|spawnpts=|spawn=7|battles=7` |
 | `war_archives_20201029_cn/sp1.json` | ✅ 匹配 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=2450|camera=C2,C5|spawnpts=C5|spawn=5|battles=5` |
 | `event_20221124_cn/th2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=D2,D5|spawn=7|battles=7` |
 | `event_20240725_cn/ht2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=F2|spawn=7|battles=7` |
@@ -383,10 +383,10 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20221124_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
 | `event_20220414_cn/b2.json` | ✅ 匹配 | ✅ | `10,6|11x7|rows=7|tokens=77|weight=3850|camera=D2,D5,H2,H5|spawnpts=H5,H2|spawn=6|battles=6` |
 | `event_20210429_tw/c1.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=D2,D4,F2,F4|spawnpts=D4|spawn=5|battles=5` |
-| `war_archives_20180607_cn/d2.json` | ❌ 不一致 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D2,D6,G2,G6|spawnpts=|spawn=7|battles=7` |
+| `war_archives_20180607_cn/d2.json` | ❌ 不一致 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=E3,E6,F3,F6|spawnpts=|spawn=7|battles=7` |
 | `event_20250814_cn/ht6.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=E5,D6,F6|spawnpts=E5|spawn=7|battles=7` |
 | `war_archives_20210225_cn/a3.json` | ✅ 匹配 | ✅ | `8,9|9x10|rows=10|tokens=90|weight=4500|camera=E3,E6|spawnpts=E6|spawn=5|battles=5` |
-| `event_20200611_en/a1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=6|tokens=48|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200611_en/a1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=0|camera=D2,D4,E2,E4|spawnpts=|spawn=0|battles=0` |
 | `war_archives_20211028_cn/a2.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=D2,D4,F2,F4|spawnpts=D2|spawn=5|battles=5` |
 | `war_archives_20190221_en/d3.json` | ✅ 匹配 | ✅ | `10,7|11x8|rows=8|tokens=88|weight=4400|camera=D2,D6,H2,H6|spawnpts=D6|spawn=7|battles=7` |
 | `event_20240829_cn/t3.json` | ✅ 匹配 | ✅ | `8,9|9x10|rows=10|tokens=90|weight=4500|camera=D5,D8,F5|spawnpts=D8|spawn=6|battles=6` |
@@ -436,7 +436,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20220818_cn/sp4.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D6,F6,E3|spawnpts=E7|spawn=6|battles=6` |
 | `event_20220210_cn/d2.json` | ✅ 匹配 | ✅ | `5,7|6x8|rows=8|tokens=48|weight=2400|camera=C2,C6|spawnpts=C6|spawn=7|battles=7` |
 | `campaign_main/campaign_16_2.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=C2,C6,G2,G6|spawnpts=C6|spawn=6|battles=6` |
-| `event_20200423_cn/d1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=63|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200423_cn/d1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=0|camera=D2,D5,F2,F5|spawnpts=|spawn=0|battles=0` |
 | `war_archives_20211229_cn/c2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=D5|spawn=5|battles=5` |
 | `campaign_main/campaign_16_base_submarine.json` | ⏭️ AttributeError: module 'campaign.campaign_main.campaign_16_base_submarine' has no attribute 'MAP' | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
 | `war_archives_20230223_cn/a2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=F2,F5|spawnpts=D5|spawn=5|battles=5` |
@@ -517,7 +517,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20251023_cn/t2.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D2|spawn=5|battles=5` |
 | `event_20250912_cn/d3.json` | ✅ 匹配 | ✅ | `10,8|11x9|rows=9|tokens=99|weight=3750|camera=F2,F5,F7,D5|spawnpts=I5|spawn=7|battles=7` |
 | `war_archives_20210916_cn/b3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D2,D5,F3,F5,F7|spawnpts=D7|spawn=6|battles=6` |
-| `event_20200611_en/d3.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=10|tokens=140|weight=1560|camera=G8,G6,F3,H4|spawnpts=|spawn=7|battles=7` |
+| `event_20200611_en/d3.json` | ✅ 匹配 | ✅ | `13,9|14x10|rows=10|tokens=140|weight=1560|camera=G8,G6,F3,H4|spawnpts=|spawn=7|battles=7` |
 | `event_20231221_cn/c2.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5|spawnpts=D5|spawn=5|battles=5` |
 | `war_archives_20230223_cn/c1.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,D5,E2,E5|spawnpts=D6|spawn=5|battles=5` |
 | `event_20200723_cn/sp.json` | ✅ 匹配 | ✅ | `12,9|13x10|rows=10|tokens=130|weight=1300|camera=D5,E8,J6,I8,G8|spawnpts=G8|spawn=8|battles=8` |
@@ -565,7 +565,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20211125_cn/tss5.json` | ✅ 匹配 | ✅ | `4,6|5x7|rows=7|tokens=35|weight=1750|camera=C3|spawnpts=C3|spawn=1|battles=1` |
 | `event_20241219_cn/c1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D6|spawn=5|battles=5` |
 | `war_archives_20190911_cn/cs1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2440|camera=D2,D4,E2,E4|spawnpts=D2,E2|spawn=6|battles=6` |
-| `event_20200521_cn/d3.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=10|tokens=140|weight=1560|camera=G8,G6,F3,H4|spawnpts=|spawn=7|battles=7` |
+| `event_20200521_cn/d3.json` | ✅ 匹配 | ✅ | `13,9|14x10|rows=10|tokens=140|weight=1560|camera=G8,G6,F3,H4|spawnpts=|spawn=7|battles=7` |
 | `war_archives_20181026_en/d2.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D2,D6,G2,G6|spawnpts=D6|spawn=7|battles=7` |
 | `war_archives_20220210_cn/d3.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=D2,E2|spawn=7|battles=7` |
 | `event_20220428_cn/d1.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,D6,E2,E6|spawnpts=E6|spawn=6|battles=6` |
@@ -652,7 +652,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20210527_cn/a2.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,D6,E2,E6|spawnpts=E6,D6|spawn=5|battles=5` |
 | `war_archives_20221222_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
 | `war_archives_20220414_cn/b2.json` | ✅ 匹配 | ✅ | `10,6|11x7|rows=7|tokens=77|weight=3850|camera=D2,D5,H2,H5|spawnpts=H5,H2|spawn=6|battles=6` |
-| `event_20200521_cn/b1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=9|tokens=54|weight=0|camera=C3,C5,C7|spawnpts=|spawn=0|battles=0` |
+| `event_20200521_cn/b1.json` | ✅ 匹配 | ✅ | `5,8|6x9|rows=9|tokens=54|weight=0|camera=C3,C5,C7|spawnpts=|spawn=0|battles=0` |
 | `event_20231123_cn/sp.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D4,D6,F4,F6|spawnpts=F6,D6|spawn=8|battles=8` |
 | `event_20210722_cn/sp4.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3410|camera=D2,D4,D6,F2,F4,F6|spawnpts=F6,D6|spawn=6|battles=6` |
 | `war_archives_20211229_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
@@ -682,7 +682,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `campaign_main/campaign_2_1.json` | ✅ 匹配 | ✅ | `5,3|6x4|rows=4|tokens=24|weight=610|camera=C2|spawnpts=C1|spawn=3|battles=3` |
 | `event_20230803_cn/sp2.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=E5,D5|spawn=5|battles=5` |
 | `event_20250912_cn/d1.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=E3,E6,G3,G6|spawnpts=E6|spawn=6|battles=6` |
-| `event_20200716_en/c2.json` | ❌ 不一致 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=490|camera=D2,D5|spawnpts=|spawn=5|battles=5` |
+| `event_20200716_en/c2.json` | ✅ 匹配 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=490|camera=C3,C5|spawnpts=|spawn=5|battles=5` |
 | `war_archives_20231026_cn/t5.json` | ✅ 匹配 | ✅ | `8,9|9x10|rows=10|tokens=90|weight=4500|camera=D3,D5,D7,F3,F5,F7|spawnpts=E8|spawn=7|battles=7` |
 | `event_20260520_cn/c3.json` | ✅ 匹配 | ✅ | `7,8|8x9|rows=9|tokens=72|weight=3600|camera=E3,E5,E7|spawnpts=D6|spawn=6|battles=6` |
 | `war_archives_20200917_cn/t6.json` | ✅ 匹配 | ✅ | `10,9|11x10|rows=10|tokens=110|weight=5500|camera=D2,D6,G2,G6|spawnpts=D6,G6|spawn=6|battles=6` |
@@ -700,7 +700,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20190321_en/c3.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2330|camera=D2,D5,E2,E5|spawnpts=C1|spawn=7|battles=7` |
 | `war_archives_20220526_cn/c1.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=E5,D5|spawn=5|battles=5` |
 | `war_archives_20231026_cn/t4.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D3,G3,G6|spawnpts=G3|spawn=6|battles=6` |
-| `event_20200716_en/d1.json` | ❌ 不一致 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=700|camera=D2,D5,G2,G5|spawnpts=|spawn=7|battles=7` |
+| `event_20200716_en/d1.json` | ❌ 不一致 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=700|camera=E3,E5,F3,F5|spawnpts=|spawn=7|battles=7` |
 | `campaign_main/campaign_16_4.json` | ✅ 匹配 | ✅ | `10,7|11x8|rows=8|tokens=88|weight=4400|camera=C2,F5,F2,H2,H5|spawnpts=C6|spawn=9|battles=9` |
 | `war_archives_20210325_cn/d3.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=E2,E5|spawnpts=E5,E2|spawn=7|battles=7` |
 | `event_20260326_cn/t3.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=E3,E6|spawnpts=E6|spawn=6|battles=6` |
@@ -718,7 +718,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20260908_cn/c2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=D5|spawn=5|battles=5` |
 | `event_20240815_cn/b2.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D3,D6,G3,G6|spawnpts=D3|spawn=6|battles=6` |
 | `event_20220224_cn/c2.json` | ✅ 匹配 | ✅ | `7,9|8x10|rows=10|tokens=80|weight=4000|camera=D2,E5,E7|spawnpts=D2|spawn=5|battles=5` |
-| `event_20200521_cn/c1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=6|tokens=48|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200521_cn/c1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=0|camera=D2,D4,E2,E4|spawnpts=|spawn=0|battles=0` |
 | `event_20230914_cn/b1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=F5,D5|spawn=6|battles=6` |
 | `event_20231026_cn/t2.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D5,F2,F5|spawnpts=F2|spawn=5|battles=5` |
 | `war_archives_20181026_en/a3.json` | ✅ 匹配 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=3500|camera=D2,D5,G2,G5|spawnpts=D5|spawn=5|battles=5` |
@@ -738,9 +738,9 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20240912_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
 | `war_archives_20220728_cn/d1.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=E2,E6,G4|spawnpts=D2|spawn=6|battles=6` |
 | `war_archives_20220915_cn/d2.json` | ✅ 匹配 | ✅ | `12,5|13x6|rows=6|tokens=78|weight=3900|camera=D4,E3,G3,G4|spawnpts=H3|spawn=7|battles=7` |
-| `event_20200423_cn/a3.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=63|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200423_cn/a3.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=0|camera=D2,D5,F2,F5|spawnpts=|spawn=0|battles=0` |
 | `event_20210325_cn/a1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2400|camera=D2,D4,E2,E4|spawnpts=D2,E2|spawn=6|battles=6` |
-| `event_20200716_en/c3.json` | ❌ 不一致 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=640|camera=D2,D6,E2,E6|spawnpts=|spawn=6|battles=6` |
+| `event_20200716_en/c3.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=640|camera=D3,D6|spawnpts=|spawn=6|battles=6` |
 | `event_20220915_cn/d1.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D3,D5|spawnpts=E6|spawn=6|battles=6` |
 | `campaign_sos/campaign_4_5.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2260|camera=D2,D3,E5|spawnpts=E5|spawn=5|battles=5` |
 | `event_20241219_cn/a3.json` | ✅ 匹配 | ✅ | `10,8|11x9|rows=9|tokens=99|weight=4950|camera=D2,D5,D7,H2,H5,H7|spawnpts=D6|spawn=5|battles=5` |
@@ -761,10 +761,10 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20250227_cn/a3.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D3,D6,G3,G6|spawnpts=D2|spawn=5|battles=5` |
 | `event_20260417_cn/sp1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=F2|spawn=5|battles=5` |
 | `event_20220428_cn/a1.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=D5|spawn=5|battles=5` |
-| `event_20200521_cn/b3.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=10|tokens=140|weight=0|camera=G8,G6,F3,H4|spawnpts=|spawn=0|battles=0` |
-| `event_20200716_en/c4.json` | ❌ 不一致 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=630|camera=D2,D5,F2,F5|spawnpts=|spawn=6|battles=6` |
+| `event_20200521_cn/b3.json` | ✅ 匹配 | ✅ | `13,9|14x10|rows=10|tokens=140|weight=0|camera=G8,G6,F3,H4|spawnpts=|spawn=0|battles=0` |
+| `event_20200716_en/c4.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=630|camera=E3,E5|spawnpts=|spawn=6|battles=6` |
 | `event_20210429_tw/d1.json` | ✅ 匹配 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=3500|camera=E2,E5,G2,G5|spawnpts=G5|spawn=7|battles=7` |
-| `event_20200521_cn/c2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=6|tokens=54|weight=0|camera=D1,D4,F2,F4|spawnpts=|spawn=0|battles=0` |
+| `event_20200521_cn/c2.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=0|camera=D1,D4,F2,F4|spawnpts=|spawn=0|battles=0` |
 | `event_20250520_cn/d1.json` | ✅ 匹配 | ✅ | `10,7|11x8|rows=8|tokens=88|weight=3730|camera=E3,E6,H3,H6|spawnpts=H6|spawn=6|battles=6` |
 | `event_20240425_cn/isp3.json` | ✅ 匹配 | ✅ | `4,4|5x5|rows=5|tokens=25|weight=1250|camera=C2|spawnpts=C2|spawn=1|battles=1` |
 | `campaign_main/campaign_5_4.json` | ✅ 匹配 | ✅ | `7,4|8x5|rows=5|tokens=40|weight=1085|camera=D3,E3|spawnpts=D2,E3|spawn=5|battles=5` |
@@ -782,7 +782,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20210819_cn/a2.json` | ✅ 匹配 | ✅ | `5,7|6x8|rows=8|tokens=48|weight=2400|camera=C2,C6|spawnpts=C2|spawn=5|battles=5` |
 | `campaign_main/campaign_11_4.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=800|camera=D2,D6,G2,G6|spawnpts=D2,G2|spawn=7|battles=7` |
 | `war_archives_20221222_cn/d2.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D2,D5,D7,F2,F5,F7|spawnpts=F2|spawn=7|battles=7` |
-| `event_20200423_cn/a1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=6|tokens=54|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200423_cn/a1.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=0|camera=D2,D4,F2,F4|spawnpts=|spawn=0|battles=0` |
 | `event_20240229_cn/d1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D3,D5,F3,F5|spawnpts=D2|spawn=6|battles=6` |
 | `event_20210624_cn/a1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2400|camera=D2,D4,E2,E4|spawnpts=D4|spawn=6|battles=6` |
 | `event_20250724_cn/t5.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D2,D5,D7,F2,F5,F7|spawnpts=D5|spawn=7|battles=7` |
@@ -801,7 +801,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20200820_cn/c1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2400|camera=D2,D4,E2,E4|spawnpts=D4|spawn=5|battles=5` |
 | `event_20220407_tw/c2.json` | ✅ 匹配 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=2450|camera=D2,D5|spawnpts=D5|spawn=5|battles=5` |
 | `war_archives_20210819_cn/b3.json` | ✅ 匹配 | ✅ | `6,8|7x9|rows=9|tokens=63|weight=3150|camera=D2,D6,D7|spawnpts=D6|spawn=6|battles=6` |
-| `event_20200521_cn/a3.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=56|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200521_cn/a3.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=0|camera=D2,D5,E2,E5|spawnpts=|spawn=0|battles=0` |
 | `event_20220407_tw/d1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=D5|spawn=6|battles=6` |
 | `event_20220428_cn/a3.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D2,D6,G2,G6|spawnpts=D6|spawn=5|battles=5` |
 | `event_20210819_cn/b2.json` | ✅ 匹配 | ✅ | `5,8|6x9|rows=9|tokens=54|weight=2700|camera=C2,C6,C7|spawnpts=C2|spawn=6|battles=6` |
@@ -811,7 +811,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20220414_cn/d1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D2|spawn=6|battles=6` |
 | `event_20250520_cn/c1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3265|camera=D3,D6,E3,E6|spawnpts=D3|spawn=5|battles=5` |
 | `war_archives_20220428_cn/d2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=F2|spawn=7|battles=7` |
-| `event_20200521_cn/a1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=6|tokens=48|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200521_cn/a1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=0|camera=D2,D4,E2,E4|spawnpts=|spawn=0|battles=0` |
 | `event_20240425_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
 | `event_20240229_cn/a3.json` | ✅ 匹配 | ✅ | `6,9|7x10|rows=10|tokens=70|weight=3500|camera=D5,D8|spawnpts=D2|spawn=5|battles=5` |
 | `event_20241024_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
@@ -823,11 +823,11 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20220324_cn/sp3.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,D6,E2,E6|spawnpts=D6|spawn=6|battles=6` |
 | `war_archives_20200917_cn/ts2.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,D6,E2,E6|spawnpts=D6|spawn=1|battles=1` |
 | `event_20210429_tw/a2.json` | ✅ 匹配 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=2450|camera=D2,D5|spawnpts=D5|spawn=5|battles=5` |
-| `event_20200423_cn/b2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=70|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200423_cn/b2.json` | ✅ 匹配 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=0|camera=D2,D5,G2,G5|spawnpts=|spawn=0|battles=0` |
 | `war_archives_20220210_cn/b2.json` | ✅ 匹配 | ✅ | `5,7|6x8|rows=8|tokens=48|weight=2400|camera=C2,C6|spawnpts=C6|spawn=6|battles=6` |
 | `war_archives_20220210_cn/a3.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=D2,D4,F2,F4|spawnpts=D2|spawn=5|battles=5` |
 | `event_20260417_cn/sp2.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,E2,E6|spawnpts=D2,E2|spawn=5|battles=5` |
-| `event_20200611_en/c2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=6|tokens=54|weight=0|camera=D1,D4,F2,F4|spawnpts=|spawn=0|battles=0` |
+| `event_20200611_en/c2.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=0|camera=D1,D4,F2,F4|spawnpts=|spawn=0|battles=0` |
 | `event_20210121_cn/a2.json` | ✅ 匹配 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=2410|camera=D2,D5|spawnpts=D2,D5|spawn=6|battles=6` |
 | `war_archives_20210225_cn/b1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D5,E2,E5|spawnpts=D2,E2|spawn=6|battles=6` |
 | `war_archives_20220324_cn/sp4.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D3,D6,E3,E6|spawnpts=D6|spawn=6|battles=6` |
@@ -877,7 +877,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20210422_cn/b3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=3250|camera=D2,D5,D7,F2,F5,F7|spawnpts=F7,D7|spawn=6|battles=6` |
 | `event_20260908_cn/b3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D2,D6,F2,F6|spawnpts=D6|spawn=6|battles=6` |
 | `event_20220728_cn/d3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D3,D5,F3,F5|spawnpts=E7|spawn=7|battles=7` |
-| `event_20200716_en/c1.json` | ❌ 不一致 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=540|camera=D2,D4,F2,F4|spawnpts=|spawn=5|battles=5` |
+| `event_20200716_en/c1.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=540|camera=E3,E4|spawnpts=|spawn=5|battles=5` |
 | `event_20200716_en/b1.json` | ✅ 匹配 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=700|camera=D2,D5,G2,G5|spawnpts=|spawn=6|battles=6` |
 | `war_archives_20220728_cn/a1.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D3,D6|spawnpts=D6|spawn=5|battles=5` |
 | `war_archives_20181227_cn/c1.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=D2,D4,F2,F4|spawnpts=D4|spawn=5|battles=5` |
@@ -894,8 +894,8 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20200903_en/sp1.json` | ✅ 匹配 | ✅ | `10,6|11x7|rows=7|tokens=77|weight=3825|camera=D3,D5,H3,H5|spawnpts=D2|spawn=5|battles=5` |
 | `event_20200326_cn/a1.json` | ✅ 匹配 | ✅ | `5,6|6x7|rows=7|tokens=42|weight=0|camera=C2,C5|spawnpts=|spawn=4|battles=4` |
 | `event_20200521_en/c2.json` | ✅ 匹配 | ✅ | `9,5|10x6|rows=6|tokens=60|weight=0|camera=F2,F4|spawnpts=|spawn=0|battles=0` |
-| `event_20200716_en/d2.json` | ❌ 不一致 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=800|camera=D2,D6,G2,G6|spawnpts=|spawn=7|battles=7` |
-| `event_20200423_cn/a2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=49|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200716_en/d2.json` | ❌ 不一致 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=800|camera=E3,E6,F3,F6|spawnpts=|spawn=7|battles=7` |
+| `event_20200423_cn/a2.json` | ✅ 匹配 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=0|camera=D2,D5|spawnpts=|spawn=0|battles=0` |
 | `event_20210624_cn/d2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=F2,D2|spawn=7|battles=7` |
 | `campaign_main/campaign_7_2.json` | ✅ 匹配 | ✅ | `7,4|8x5|rows=5|tokens=40|weight=870|camera=D2,D3|spawnpts=D2,D3|spawn=6|battles=6` |
 | `event_20200820_cn/a1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2400|camera=D2,D4,E2,E4|spawnpts=D4|spawn=5|battles=5` |
@@ -919,14 +919,14 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20240229_cn/sp.json` | ✅ 匹配 | ✅ | `19,9|20x10|rows=10|tokens=200|weight=10000|camera=B3,B6|spawnpts=B6|spawn=8|battles=8` |
 | `war_archives_20201012_cn/sp2.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=D2,E2|spawn=5|battles=5` |
 | `event_20240425_cn/isp5.json` | ✅ 匹配 | ✅ | `4,4|5x5|rows=5|tokens=25|weight=1250|camera=C2|spawnpts=C2|spawn=1|battles=1` |
-| `event_20200521_cn/c3.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=56|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200521_cn/c3.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=0|camera=D2,D5,E2,E5|spawnpts=|spawn=0|battles=0` |
 | `event_20250912_cn/b2.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=E2,E6,G4|spawnpts=G6|spawn=6|battles=6` |
 | `event_20250724_cn/ts1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D6|spawn=7|battles=7` |
 | `event_20200723_cn/a3.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=640|camera=D2,D6,E2,E6|spawnpts=D6|spawn=5|battles=5` |
 | `war_archives_20230525_cn/t2.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D3,D6,G3,G6|spawnpts=D6|spawn=5|battles=5` |
 | `war_archives_20210624_cn/c3.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=D2,D4,F2,F4|spawnpts=D4,F4|spawn=6|battles=6` |
 | `war_archives_20210422_cn/b1.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D2,D6,G2,G6|spawnpts=G2,D2|spawn=6|battles=6` |
-| `war_archives_20180607_cn/c2.json` | ❌ 不一致 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=2450|camera=D2,D5|spawnpts=|spawn=5|battles=5` |
+| `war_archives_20180607_cn/c2.json` | ✅ 匹配 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=2450|camera=C3,C5|spawnpts=|spawn=5|battles=5` |
 | `event_20240912_cn/c1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D5,F2,F5|spawnpts=D1|spawn=5|battles=5` |
 | `event_20250814_cn/ht5.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D4,F4,E2,E6|spawnpts=E2|spawn=7|battles=7` |
 | `event_20201229_cn/c1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3110|camera=D2,D4,F2,F4|spawnpts=D2,D5|spawn=5|battles=5` |
@@ -939,7 +939,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20260813_cn/b1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=F2,D2|spawn=6|battles=6` |
 | `event_20221222_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
 | `war_archives_20181026_en/d3.json` | ✅ 匹配 | ✅ | `11,8|12x9|rows=9|tokens=108|weight=5400|camera=D2,D6,D7,I2,I6,I7|spawnpts=D7|spawn=7|battles=7` |
-| `war_archives_20180607_cn/c4.json` | ❌ 不一致 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=|spawn=6|battles=6` |
+| `war_archives_20180607_cn/c4.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=E3,E5|spawnpts=|spawn=6|battles=6` |
 | `event_20240815_cn/c3.json` | ✅ 匹配 | ✅ | `14,4|15x5|rows=5|tokens=75|weight=3750|camera=F2,F3,J2,J3|spawnpts=J2|spawn=6|battles=6` |
 | `event_20221222_cn/d3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D3,F3,F5,F7|spawnpts=D7|spawn=7|battles=7` |
 | `war_archives_20210527_cn/a1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=F2|spawn=5|battles=5` |
@@ -990,7 +990,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20221222_cn/c1.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,E3,E6|spawnpts=D6|spawn=5|battles=5` |
 | `event_20210225_tw/a3.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=D2,D4,F2,F4|spawnpts=D2|spawn=5|battles=5` |
 | `event_20210624_cn/a3.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2780|camera=D2,D4,F2,F4|spawnpts=D4,F4|spawn=6|battles=6` |
-| `campaign_main/campaign_15_4_121.json` | ❌ 不一致 | ❌ | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `campaign_main/campaign_15_4_121.json` | ✅ 匹配 | ✅ | `10,8|11x9|rows=9|tokens=99|weight=4950|camera=C2,C5,C7,F2,F5,F7,H2,H5,H7|spawnpts=H2|spawn=9|battles=9` |
 | `war_archives_20211028_cn/b1.json` | ✅ 匹配 | ✅ | `5,8|6x9|rows=9|tokens=54|weight=2700|camera=C2,C5,C7|spawnpts=C7|spawn=6|battles=6` |
 | `event_20200917_cn/hts1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2400|camera=D2,D4,E2,E4|spawnpts=E4|spawn=4|battles=4` |
 | `event_20260908_cn/b2.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=E2,E6,G2,G6|spawnpts=G6|spawn=6|battles=6` |
@@ -1025,7 +1025,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20210527_cn/c3.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D2,D6,G2,G6|spawnpts=G6,D6|spawn=6|battles=6` |
 | `event_20220728_cn/b3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D3,D5,F3,F5|spawnpts=E7|spawn=6|battles=6` |
 | `war_archives_20181227_cn/c3.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=D2|spawn=6|battles=6` |
-| `event_20200423_cn/c2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=49|weight=0|camera=D3,D5|spawnpts=|spawn=5|battles=5` |
+| `event_20200423_cn/c2.json` | ✅ 匹配 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=0|camera=D3,D5|spawnpts=|spawn=5|battles=5` |
 | `event_20210121_cn/d2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=F2,D2|spawn=7|battles=7` |
 | `war_archives_20220428_cn/c1.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=D5|spawn=5|battles=5` |
 | `event_20260908_cn/a1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D2|spawn=5|battles=5` |
@@ -1047,9 +1047,9 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20210429_tw/d2.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D3,D6,G3,G6|spawnpts=G6|spawn=7|battles=7` |
 | `war_archives_20190321_en/a2.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2285|camera=D2,D4,E2,E4|spawnpts=D4|spawn=6|battles=6` |
 | `event_20210325_cn/c1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2400|camera=D2,D4,E2,E4|spawnpts=D2,E2|spawn=6|battles=6` |
-| `event_20200423_cn/c3.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=63|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200423_cn/c3.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=0|camera=D2,D5,F2,F5|spawnpts=|spawn=0|battles=0` |
 | `event_20240815_cn/a3.json` | ✅ 匹配 | ✅ | `14,4|15x5|rows=5|tokens=75|weight=3750|camera=F2,F3,J2,J3|spawnpts=J2|spawn=5|battles=5` |
-| `event_20200521_cn/d2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=77|weight=0|camera=D3,D5,F3,F5,H3,H5|spawnpts=|spawn=0|battles=0` |
+| `event_20200521_cn/d2.json` | ✅ 匹配 | ✅ | `10,6|11x7|rows=7|tokens=77|weight=0|camera=D3,D5,F3,F5,H3,H5|spawnpts=|spawn=0|battles=0` |
 | `event_20230223_cn/d1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D3,D6,F3,F6|spawnpts=D2|spawn=6|battles=6` |
 | `event_20200723_cn/b1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=720|camera=D2,D6,F2,F6|spawnpts=D2|spawn=6|battles=6` |
 | `war_archives_20230223_cn/b3.json` | ✅ 匹配 | ✅ | `9,8|10x9|rows=9|tokens=90|weight=4500|camera=E3,E7,F3,F7|spawnpts=E7|spawn=6|battles=6` |
@@ -1076,7 +1076,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20231026_cn/sp.json` | ✅ 匹配 | ✅ | `6,7|7x8|rows=8|tokens=56|weight=2800|camera=D2,D6|spawnpts=D6|spawn=8|battles=8` |
 | `event_20201029_cn/sp4.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=C2,C5,F2,F5|spawnpts=D2|spawn=6|battles=6` |
 | `war_archives_20210325_cn/bs2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=E2,E5,F2,F5|spawnpts=E5|spawn=6|battles=6` |
-| `event_20200611_en/a2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=6|tokens=54|weight=0|camera=D1,D4,F2,F4|spawnpts=|spawn=0|battles=0` |
+| `event_20200611_en/a2.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=0|camera=D1,D4,F2,F4|spawnpts=|spawn=0|battles=0` |
 | `event_20210415_tw/sp2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=D5|spawn=5|battles=5` |
 | `event_20230914_cn/d1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=F5,D5|spawn=6|battles=6` |
 | `war_archives_20181020_en/sp1.json` | ✅ 匹配 | ✅ | `6,2|7x3|rows=3|tokens=21|weight=1050|camera=D1|spawnpts=D1|spawn=3|battles=3` |
@@ -1107,7 +1107,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `campaign_main/campaign_2_2.json` | ✅ 匹配 | ✅ | `6,4|7x5|rows=5|tokens=35|weight=910|camera=D3|spawnpts=D3|spawn=4|battles=4` |
 | `war_archives_20210624_cn/c1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2400|camera=D2,D4,E2,E4|spawnpts=D4|spawn=6|battles=6` |
 | `event_20220818_cn/sp2.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D3,D6|spawnpts=D3|spawn=5|battles=5` |
-| `event_20200521_cn/d1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=9|tokens=54|weight=1780|camera=C3,C5,C7|spawnpts=|spawn=6|battles=6` |
+| `event_20200521_cn/d1.json` | ✅ 匹配 | ✅ | `5,8|6x9|rows=9|tokens=54|weight=1780|camera=C3,C5,C7|spawnpts=|spawn=6|battles=6` |
 | `event_20220526_cn/sp.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=E3,D6,F6|spawnpts=F6,D6|spawn=8|battles=8` |
 | `war_archives_20181227_cn/d1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=D5|spawn=6|battles=6` |
 | `event_20220915_cn/b2.json` | ✅ 匹配 | ✅ | `12,5|13x6|rows=6|tokens=78|weight=3900|camera=D4,E3,G3,G4|spawnpts=H3|spawn=6|battles=6` |
@@ -1132,7 +1132,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20220728_cn/a2.json` | ✅ 匹配 | ✅ | `11,6|12x7|rows=7|tokens=84|weight=4200|camera=D3,F5,H5|spawnpts=D2|spawn=5|battles=5` |
 | `event_20231123_cn/tsk3.json` | ✅ 匹配 | ✅ | `4,4|5x5|rows=5|tokens=25|weight=1250|camera=D3|spawnpts=D3|spawn=1|battles=1` |
 | `event_20200603_en/sp1.json` | ✅ 匹配 | ✅ | `7,4|8x5|rows=5|tokens=40|weight=0|camera=D3,D5|spawnpts=|spawn=5|battles=5` |
-| `event_20200611_en/b1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=9|tokens=54|weight=0|camera=C3,C5,C7|spawnpts=|spawn=0|battles=0` |
+| `event_20200611_en/b1.json` | ✅ 匹配 | ✅ | `5,8|6x9|rows=9|tokens=54|weight=0|camera=C3,C5,C7|spawnpts=|spawn=0|battles=0` |
 | `war_archives_20220224_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
 | `event_20220428_cn/a2.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=C2,C6,E2,E6|spawnpts=C2|spawn=5|battles=5` |
 | `war_archives_20201029_cn/sp4.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=C2,C5,F2,F5|spawnpts=D2|spawn=6|battles=6` |
@@ -1157,7 +1157,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20210225_cn/c1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=D5|spawn=5|battles=5` |
 | `event_20220915_cn/sp.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D3,E4,F3|spawnpts=E7|spawn=8|battles=8` |
 | `campaign_sos/campaign_3_5.json` | ✅ 匹配 | ✅ | `7,4|8x5|rows=5|tokens=40|weight=1680|camera=D3,E3|spawnpts=D3|spawn=4|battles=4` |
-| `event_20200521_cn/a2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=6|tokens=54|weight=0|camera=D1,D4,F2,F4|spawnpts=|spawn=0|battles=0` |
+| `event_20200521_cn/a2.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=0|camera=D1,D4,F2,F4|spawnpts=|spawn=0|battles=0` |
 | `war_archives_20221222_cn/d3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D3,F3,F5,F7|spawnpts=D7|spawn=7|battles=7` |
 | `event_20230914_cn/c2.json` | ✅ 匹配 | ✅ | `10,4|11x5|rows=5|tokens=55|weight=2750|camera=D3,F3,H3|spawnpts=D2|spawn=5|battles=5` |
 | `campaign_main/campaign_14_2.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3770|camera=D2,D6,F2,F6|spawnpts=F2|spawn=7|battles=7` |
@@ -1175,7 +1175,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20240229_cn/a1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=E3,D6,E6|spawnpts=D2|spawn=5|battles=5` |
 | `event_20251023_cn/t6.json` | ✅ 匹配 | ✅ | `10,6|11x7|rows=7|tokens=77|weight=3850|camera=E4,H4|spawnpts=D4|spawn=7|battles=7` |
 | `war_archives_20200312_cn/sp1.json` | ✅ 匹配 | ✅ | `7,4|8x5|rows=5|tokens=40|weight=2000|camera=D2,D3,E2,E3|spawnpts=D3,D2|spawn=5|battles=5` |
-| `event_20200423_cn/b1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=63|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200423_cn/b1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=0|camera=D2,D5,F2,F5|spawnpts=|spawn=0|battles=0` |
 | `event_20220224_cn/c3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=E3,E5,E7|spawnpts=E7|spawn=6|battles=6` |
 | `campaign_main/campaign_4_3.json` | ✅ 匹配 | ✅ | `6,3|7x4|rows=4|tokens=28|weight=980|camera=D2|spawnpts=D1|spawn=4|battles=4` |
 | `event_20220210_cn/a2.json` | ✅ 匹配 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=2450|camera=D2,D5|spawnpts=D2,D5|spawn=5|battles=5` |
@@ -1229,7 +1229,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20211028_cn/d3.json` | ✅ 匹配 | ✅ | `13,9|14x10|rows=10|tokens=140|weight=7000|camera=G8,G6,F3,H4|spawnpts=G8|spawn=7|battles=7` |
 | `war_archives_20211229_cn/b1.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D2,D6,G2,G6|spawnpts=D6|spawn=6|battles=6` |
 | `event_20200521_en/a1.json` | ✅ 匹配 | ✅ | `8,4|9x5|rows=5|tokens=45|weight=0|camera=D1,D3,F1,F3|spawnpts=|spawn=0|battles=0` |
-| `event_20200507_cn/sp2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=6|tokens=66|weight=0|camera=|spawnpts=|spawn=5|battles=5` |
+| `event_20200507_cn/sp2.json` | ✅ 匹配 | ✅ | `10,5|11x6|rows=6|tokens=66|weight=0|camera=D2,D4,H2,H4|spawnpts=|spawn=5|battles=5` |
 | `war_archives_20230803_cn/sp1.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=F2,F4|spawnpts=D2,D4|spawn=5|battles=5` |
 | `war_archives_20211229_cn/b3.json` | ✅ 匹配 | ✅ | `11,5|12x6|rows=6|tokens=72|weight=3600|camera=E3,G4,I3|spawnpts=D4|spawn=6|battles=6` |
 | `event_20200312_cn/sp3.json` | ⏭️ ImportError: cannot import name 'EVENT_20200312CN_SP3' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\my fork project\AzurLaneAutoScript\module\campaign\assets.py) | — | `8,5|9x6|rows=6|tokens=54|weight=540|camera=D2,D4,F2,F4|spawnpts=|spawn=6|battles=6` |
@@ -1243,7 +1243,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20191010_en/sp1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=2400|camera=D2,D4,E2,E4|spawnpts=D4|spawn=5|battles=5` |
 | `event_20200820_cn/b2.json` | ✅ 匹配 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=3500|camera=D2,D5,G2,G5|spawnpts=E2|spawn=6|battles=6` |
 | `event_20240912_cn/b1.json` | ✅ 匹配 | ✅ | `10,7|11x8|rows=8|tokens=88|weight=4400|camera=D3,D6,G2,G6|spawnpts=E2|spawn=6|battles=6` |
-| `event_20200611_en/c1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=6|tokens=48|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200611_en/c1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=0|camera=D2,D4,E2,E4|spawnpts=|spawn=0|battles=0` |
 | `event_20231026_cn/t6.json` | ✅ 匹配 | ✅ | `8,9|9x10|rows=10|tokens=90|weight=4500|camera=E5,E8|spawnpts=E8|spawn=7|battles=7` |
 | `war_archives_20200806_cn/sp1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=480|camera=D3,D4|spawnpts=D3,D4|spawn=5|battles=5` |
 | `war_archives_20180726_cn/b3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D2,D6,D7,E2,E6,E7|spawnpts=D2,D7|spawn=6|battles=6` |
@@ -1266,7 +1266,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20200903_cn/sp0.json` | ✅ 匹配 | ✅ | `9,5|10x6|rows=6|tokens=60|weight=3000|camera=D2,D4,G2,G4|spawnpts=D2,D4|spawn=1|battles=1` |
 | `war_archives_20190911_cn/as2.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=D2,E2|spawn=6|battles=6` |
 | `event_20250912_cn/a1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D2|spawn=5|battles=5` |
-| `war_archives_20180607_cn/a1.json` | ❌ 不一致 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=D2,D4,F2,F4|spawnpts=|spawn=5|battles=5` |
+| `war_archives_20180607_cn/a1.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=E3,E4|spawnpts=|spawn=5|battles=5` |
 | `event_20220818_cn/sp3.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D5,E3,E5|spawnpts=D5|spawn=6|battles=6` |
 | `war_archives_20190221_en/b3.json` | ✅ 匹配 | ✅ | `10,7|11x8|rows=8|tokens=88|weight=4400|camera=D2,D6,H2,H6|spawnpts=D6|spawn=6|battles=6` |
 | `war_archives_20221222_cn/d1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D6|spawn=6|battles=6` |
@@ -1291,7 +1291,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20231221_cn/b1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D4,D5,F4,F5|spawnpts=D3|spawn=6|battles=6` |
 | `event_20241121_cn/t3.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,E2,E6|spawnpts=D2|spawn=6|battles=6` |
 | `event_20230914_cn/d2.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=F2,D2|spawn=7|battles=7` |
-| `event_20200716_en/a1.json` | ❌ 不一致 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=540|camera=D2,D4,F2,F4|spawnpts=|spawn=5|battles=5` |
+| `event_20200716_en/a1.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=540|camera=E3,E4|spawnpts=|spawn=5|battles=5` |
 | `event_20231123_cn/tsk2.json` | ✅ 匹配 | ✅ | `4,4|5x5|rows=5|tokens=25|weight=1250|camera=D3|spawnpts=D3|spawn=1|battles=1` |
 | `war_archives_20220428_cn/d1.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,D6,E2,E6|spawnpts=E6|spawn=6|battles=6` |
 | `war_archives_20210325_cn/c3.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D2,F6|spawn=6|battles=6` |
@@ -1309,7 +1309,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20230914_cn/a3.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D3,D6|spawnpts=D6|spawn=5|battles=5` |
 | `event_20230817_cn/d1.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,D6,E2,E6|spawnpts=D6|spawn=6|battles=6` |
 | `event_20231221_cn/d3.json` | ✅ 匹配 | ✅ | `10,8|11x9|rows=9|tokens=99|weight=4950|camera=D3,D6,H3,H6|spawnpts=H6,D6|spawn=7|battles=7` |
-| `event_20200611_en/d1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=9|tokens=54|weight=1780|camera=C3,C5,C7|spawnpts=|spawn=6|battles=6` |
+| `event_20200611_en/d1.json` | ✅ 匹配 | ✅ | `5,8|6x9|rows=9|tokens=54|weight=1780|camera=C3,C5,C7|spawnpts=|spawn=6|battles=6` |
 | `war_archives_20200903_cn/sp2.json` | ✅ 匹配 | ✅ | `10,6|11x7|rows=7|tokens=77|weight=3820|camera=D3,D5,H3,H5|spawnpts=D2,D5|spawn=6|battles=6` |
 | `event_20240815_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
 | `event_20210819_cn/b1.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=E2|spawn=6|battles=6` |
@@ -1327,7 +1327,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20200820_cn/c1.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=480|camera=D2,D4,E2,E4|spawnpts=D4|spawn=5|battles=5` |
 | `event_20220224_cn/a2.json` | ✅ 匹配 | ✅ | `7,9|8x10|rows=10|tokens=80|weight=4000|camera=D2,E5,E7|spawnpts=D2|spawn=5|battles=5` |
 | `event_20210325_cn/cs2.json` | ✅ 匹配 | ✅ | `7,6|8x7|rows=7|tokens=56|weight=2800|camera=D2,D5,E2,E5|spawnpts=D2,E2|spawn=6|battles=6` |
-| `event_20200423_cn/b3.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=63|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200423_cn/b3.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=0|camera=D2,D5,F2,F5|spawnpts=|spawn=0|battles=0` |
 | `event_20211125_cn/tss4.json` | ✅ 匹配 | ✅ | `4,6|5x7|rows=7|tokens=35|weight=1750|camera=C3|spawnpts=C3|spawn=1|battles=1` |
 | `war_archives_20181227_cn/a3.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F2,F5|spawnpts=D2|spawn=5|battles=5` |
 | `event_20250227_cn/c1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=F2|spawn=5|battles=5` |
@@ -1380,7 +1380,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20220728_cn/c3.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D3,E6|spawnpts=E2|spawn=6|battles=6` |
 | `event_20200917_cn/ht4.json` | ✅ 匹配 | ✅ | `10,8|11x9|rows=9|tokens=99|weight=4910|camera=D2,D5,D7,H2,H5,H7|spawnpts=D2,D7|spawn=6|battles=6` |
 | `event_20230817_cn/c1.json` | ✅ 匹配 | ✅ | `10,6|11x7|rows=7|tokens=77|weight=3850|camera=D2,G3,E5|spawnpts=E5|spawn=5|battles=5` |
-| `event_20200611_en/d2.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=7|tokens=77|weight=0|camera=D3,D5,F3,F5,H3,H5|spawnpts=|spawn=0|battles=0` |
+| `event_20200611_en/d2.json` | ✅ 匹配 | ✅ | `10,6|11x7|rows=7|tokens=77|weight=0|camera=D3,D5,F3,F5,H3,H5|spawnpts=|spawn=0|battles=0` |
 | `event_20251218_cn/c1.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D3,D6,G3,G6|spawnpts=G2|spawn=5|battles=5` |
 | `war_archives_20191031_en/d3.json` | ✅ 匹配 | ✅ | `6,7|7x8|rows=8|tokens=56|weight=2800|camera=D2,D6|spawnpts=D6|spawn=6|battles=6` |
 | `war_archives_20190321_en/a1.json` | ✅ 匹配 | ✅ | `7,4|8x5|rows=5|tokens=40|weight=1600|camera=D2,D3,E2,E3|spawnpts=D3,C1|spawn=6|battles=6` |
@@ -1411,7 +1411,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20221222_cn/b2.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D2,D5,D7,F2,F5,F7|spawnpts=F2|spawn=6|battles=6` |
 | `event_20241121_cn/sp.json` | ✅ 匹配 | ✅ | `10,5|11x6|rows=6|tokens=66|weight=3300|camera=E2,E4,G2,G4|spawnpts=E4|spawn=8|battles=8` |
 | `war_archives_20180607_cn/b2.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D2,D6,G2,G6|spawnpts=|spawn=6|battles=6` |
-| `war_archives_20180607_cn/c3.json` | ❌ 不一致 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D2,D6,E2,E6|spawnpts=|spawn=6|battles=6` |
+| `war_archives_20180607_cn/c3.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D3,D6|spawnpts=|spawn=6|battles=6` |
 | `event_20260625_cn/ht2.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D2,D5,F5|spawnpts=F2|spawn=7|battles=7` |
 | `event_20220915_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
 | `event_20241121_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
@@ -1446,10 +1446,10 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20250227_cn/a1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=F2|spawn=5|battles=5` |
 | `event_20241219_cn/sp.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=2530|camera=D2,D5,D7,F2,F5,F7|spawnpts=F6|spawn=8|battles=8` |
 | `campaign_main/campaign_9_4.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=590|camera=D3,F3,F4|spawnpts=D4|spawn=6|battles=6` |
-| `event_20200716_en/a4.json` | ❌ 不一致 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=630|camera=D2,D5,F2,F5|spawnpts=|spawn=5|battles=5` |
+| `event_20200716_en/a4.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=630|camera=E3,E5|spawnpts=|spawn=5|battles=5` |
 | `war_archives_20240725_cn/campaign_base.json` | ⏭️ 基类模块（无 MAP 对象），按设计跳过 | — | `0,0|1x1|rows=0|tokens=0|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
 | `event_20250227_cn/c2.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=F2,D2|spawn=5|battles=5` |
-| `event_20200423_cn/c1.json` | ❌ 不一致 | ✅ | `0,0|1x1|rows=6|tokens=54|weight=0|camera=|spawnpts=|spawn=0|battles=0` |
+| `event_20200423_cn/c1.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=0|camera=D2,D4,F2,F4|spawnpts=|spawn=0|battles=0` |
 | `event_20260908_cn/c3.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=3200|camera=D3,D6|spawnpts=D2|spawn=6|battles=6` |
 | `event_20260813_cn/d3.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D4,D6,F4,F6|spawnpts=D4|spawn=7|battles=7` |
 | `campaign_main/campaign_2_4.json` | ✅ 匹配 | ✅ | `6,3|7x4|rows=4|tokens=28|weight=513|camera=D2|spawnpts=D2|spawn=4|battles=4` |

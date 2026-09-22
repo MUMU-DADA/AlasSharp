@@ -36,6 +36,31 @@ public sealed class MapIR
     public int Width => ShapeX + 1;
     public int Height => ShapeY + 1;
 
+    /// <summary>
+    /// **有效** shape。上游 `_load_map_data()` 里：
+    /// <code>
+    /// if not len(self.grids.keys()):
+    ///     grids = np.array([loca for loca, _ in self._parse_text(text)])
+    ///     self.shape = location2node(tuple(np.max(grids, axis=0)))
+    /// </code>
+    /// 也就是说：如果设 `map_data` 时还没有网格，上游就用 map_data 的**最大坐标反推 shape**
+    /// （等价于 shape = (列数-1, 行数-1)），随后 shape 的 setter 才建网格。
+    /// 所以**章节不写 `MAP.shape` 也照样有 shape** —— 全量跨语言对照里 36 个章节正是这种
+    /// 情况（IR 里只有 map_data），第一版没移植这条推导，导致 shape/网格尺寸/相机点一起错。
+    /// </summary>
+    public (int X, int Y) EffectiveShape
+    {
+        get
+        {
+            if (HasShape) return (ShapeX, ShapeY);       // 显式 shape 优先（上游同序）
+            if (MapData.Count == 0) return (0, 0);
+            return (MapData.Max(r => r.Count) - 1, MapData.Count - 1);
+        }
+    }
+
+    public int EffectiveWidth => EffectiveShape.X + 1;
+    public int EffectiveHeight => EffectiveShape.Y + 1;
+
     public List<string> CameraData { get; init; } = new();
     public List<string> CameraDataSpawnPoint { get; init; } = new();
     public List<List<string>> MapData { get; init; } = new();
@@ -162,6 +187,9 @@ public sealed class MapIR
             ShapeX = sx,
             ShapeY = sy,
             CameraData = camera,
+            CameraSight = map["camera_sight"] is JsonArray sightArr
+                ? sightArr.Select(v => v?.GetValue<int>() ?? 0).ToList()
+                : null,
             CameraDataSpawnPoint = cameraSpawn,
             MapData = mapData,
             WeightData = weights,
@@ -173,6 +201,17 @@ public sealed class MapIR
 
     /// <summary>上游 `CampaignMap.camera_sight` 的默认值（map_base.py:36）。</summary>
     public static readonly int[] DefaultCameraSight = { -3, -1, 3, 2 };
+
+    /// <summary>
+    /// 章节自定义的 `camera_sight`（IR 里有的章节会覆盖，例如
+    /// `war_archives_20180607_cn/c1.py` 写的是 `(-4,-2,4,2)`）。
+    /// **必须用它做自动生成**：这类章节通常紧接着把 `camera_data` 注释掉，
+    /// 也就是"用自定义 sight 自动生成" —— 拿默认 sight 会算出一整组错坐标。
+    /// </summary>
+    public List<int>? CameraSight { get; init; }
+
+    private int[] Sight => CameraSight is { Count: 4 }
+        ? CameraSight.ToArray() : DefaultCameraSight;
 
     /// <summary>
     /// 有效相机点列表。
@@ -187,10 +226,16 @@ public sealed class MapIR
     /// 都会缺相机点（跨语言对照实测抓到过：`event_20200521_en/d3` IR 是空、上游是 6 个）。
     /// </summary>
     public List<string> EffectiveCameraData
-        => CameraData.Count > 0 || !HasShape
-            ? CameraData
-            : Camera2D(0, 0, ShapeX, ShapeY, DefaultCameraSight)
+    {
+        get
+        {
+            if (CameraData.Count > 0) return CameraData;
+            var (sx, sy) = EffectiveShape;               // 注意用**有效** shape（可由 map_data 推导）
+            if (sx == 0 && sy == 0 && MapData.Count == 0) return CameraData;
+            return Camera2D(0, 0, sx, sy, Sight)
                 .Select(p => LocationToNode(p.X, p.Y)).ToList();
+        }
+    }
 
     /// <summary>上游 `location2node`：0 基坐标 → Excel 风格节点名（(0,0)→A1、(3,1)→D2）。</summary>
     public static string LocationToNode(int x, int y)
@@ -268,8 +313,9 @@ public sealed class MapIR
         int tokens = MapData.Sum(r => r.Count);
         int weightSum = WeightData.Sum(r => r.Sum());
         var camera = EffectiveCameraData;
+        var (sx, sy) = EffectiveShape;
         return string.Join("|",
-            $"{ShapeX},{ShapeY}", $"{Width}x{Height}",
+            $"{sx},{sy}", $"{EffectiveWidth}x{EffectiveHeight}",
             $"rows={MapData.Count}", $"tokens={tokens}", $"weight={weightSum}",
             $"camera={string.Join(",", camera)}",
             $"spawnpts={string.Join(",", CameraDataSpawnPoint)}",
