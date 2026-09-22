@@ -41,7 +41,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
     "globe_center: (np.float64(1423.0), np.float64(1690.0))",
-    "0.079s      similarity: 0.066",
+    "0.081s      similarity: 0.066",
     "Low similarity when matching OS globe"
   ],
   "similarity": 0.066,
@@ -453,6 +453,25 @@ globe similarity=0.508   center_loca=[463.0, 904.0]
 
 也就是说：判定用的是**上游自己的判据**，不是我们拍的门槛。
 配套 fixture：`data/fixtures/os_globe_view.png`（不入库，可随时重抓）。
+
+## 海域图逐格语义（grid_flags=0）查到的原因
+
+海域图检出 49 格，但**所有格只有 `is_os=True`**，`predict()` 前后都一样 —— 即逐格语义为空。
+
+机制（先更正我自己一个错判）：预测不是挂在 `view.predictor` 上（实测该属性是 None，
+但那不是问题所在），而是**网格类自己的 mixin**：
+
+```
+grid.py:  class Grid(GridInfo, GridPredictor)      # 网格对象自己会 predict
+view.py:  def predict(self): for grid in self: grid.predict()
+```
+
+`OSGridPredictor` 靠**模板匹配**识别目标（`_os_template_enemy = {'Akashi': TEMPLATE_SIREN_Akashi, ...}`），
+所以海域图标志为空最可能仍是"**本客户端图标与上游模板不匹配**"这一类原因 ——
+与本项目一路遇到的其它界面问题同源。
+
+结论：海域图的**网格检出**已验证（49 格 / 9x6），**逐格语义**留待 S3 真需要时再对齐
+（那时可以拿具体格子的截图与上游模板逐一对照，和战役图当年查网格线是同一个套路）。
 
 ## 复现
 
