@@ -64,8 +64,10 @@ def upstream_digest(module_path):
     return '|'.join([
         '%d,%d' % (sx, sy), '%dx%d' % (sx + 1, sy + 1),
         'rows=%d' % len(map_rows), 'tokens=%d' % tokens, 'weight=%d' % weight_sum,
-        'camera=%s' % ','.join(str(c) for c in camera),
-        'spawnpts=%s' % ','.join(str(c) for c in spawnpts),
+        # 相机点与出生点都按**集合**比（排序后拼）：上游是 SelectedGrids，顺序无用途，
+        # 其顺序来自 CPython set() 迭代顺序 —— 复刻它是复刻实现细节。成员仍逐项校验。
+        'camera=%s' % ','.join(sorted(str(c) for c in camera)),
+        'spawnpts=%s' % ','.join(sorted(str(c) for c in spawnpts)),
         'spawn=%d' % len(spawn), 'battles=%d' % battles,
     ])
 
@@ -207,6 +209,11 @@ def main():
         '脚本：`tools/diagnostics/verify_map_ir.py`；数据：`data/map_ir_crosscheck.json`。',
         '',
         '摘要格式：`%s`' % out['digest_spec'],
+        '',
+        '口径说明：`camera` 与 `spawnpts` 按**集合**比（排序后拼）。上游 `camera_data` 是',
+        '`SelectedGrids`，顺序不影响用途；它那串顺序来自 CPython `set()` 的迭代顺序',
+        '（`camera_1d` 里 `[x for x in set(out) if ...]`），属于实现细节 —— 复刻它既脆弱又无意义。',
+        '排序只丢掉顺序，**成员仍必须逐项一致**，真错了照样查得出来。',
         '',
         '## 结果：字段摘要 %d 匹配 / %d 跳过；网格指纹 %d/%d 匹配'
         % (matched, skipped, grid_matched, len(grid_checked)),

@@ -312,13 +312,17 @@ public sealed class MapIR
     {
         int tokens = MapData.Sum(r => r.Count);
         int weightSum = WeightData.Sum(r => r.Sum());
-        var camera = EffectiveCameraData;
+        // 相机点按**集合**比（排序后拼）：上游 camera_data 是 SelectedGrids，顺序无用途，
+        // 而它那串顺序来自 CPython `set()` 的迭代顺序 —— 那是实现细节，复刻它既脆弱又没意义。
+        // 排序只丢掉"顺序"，成员仍必须逐项一致，所以真错了照样能查出来。
+        var camera = EffectiveCameraData.OrderBy(x => x, StringComparer.Ordinal).ToList();
+        var spawnPts = CameraDataSpawnPoint.OrderBy(x => x, StringComparer.Ordinal).ToList();
         var (sx, sy) = EffectiveShape;
         return string.Join("|",
             $"{sx},{sy}", $"{EffectiveWidth}x{EffectiveHeight}",
             $"rows={MapData.Count}", $"tokens={tokens}", $"weight={weightSum}",
             $"camera={string.Join(",", camera)}",
-            $"spawnpts={string.Join(",", CameraDataSpawnPoint)}",
+            $"spawnpts={string.Join(",", spawnPts)}",
             $"spawn={SpawnData.Count}", $"battles={BattleCount}");
     }
 }
