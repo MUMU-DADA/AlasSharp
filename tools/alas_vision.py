@@ -145,24 +145,42 @@ def op_asset_info(args):
 
 
 def op_appear_on(args):
-    """直接调用上游 Button.appear_on（= color_similar(get_color(...), color)）。"""
-    image = _require_image()
-    button = _resolve(args['asset'])
-    threshold = args.get('threshold', 10)
+    """直接调用上游 Button.appear_on（= color_similar(get_color(...), color)）。
+
+    detail=True 时返回分段耗时，用于把「上游真正在算的时间」与「封装/协议开销」切开。
+    """
+    detail = bool(args.get('detail'))
+    marks = {}
     t0 = time.perf_counter()
+
+    image = _require_image()
+    marks['require_image'] = time.perf_counter()
+
+    button = _resolve(args['asset'])
+    marks['resolve'] = time.perf_counter()
+
+    threshold = args.get('threshold', 10)
     appear = bool(button.appear_on(image, threshold=threshold))
-    ms = (time.perf_counter() - t0) * 1000
+    marks['appear_on'] = time.perf_counter()
+
     from module.base.utils import color_similarity, get_color
     got = [float(v) for v in get_color(image, button.area)]
+    marks['get_color'] = time.perf_counter()
+
     expected = _color_of(button)
-    return {
+    marks['color_of'] = time.perf_counter()
+
+    result = {
         'appear': appear,
         'threshold': threshold,
         'color': got,
         'expected': expected,
         'tolerance': float(color_similarity(got, expected)) if expected else None,
-        'elapsed_ms': round(ms, 4),
+        'elapsed_ms': round((marks['appear_on'] - marks['resolve']) * 1000, 4),
     }
+    if detail:
+        result['detail'] = {k: round((v - t0) * 1000, 4) for k, v in marks.items()}
+    return result
 
 
 def op_appear_on_batch(args):

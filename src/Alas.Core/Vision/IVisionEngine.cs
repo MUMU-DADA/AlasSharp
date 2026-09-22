@@ -18,7 +18,7 @@ public interface IVisionEngine : IDisposable
     WorkerInfo Ping();
     string SetServer(string server);
     ScreenshotInfo LoadScreenshot(string path);
-    AppearResult AppearOn(string asset, int threshold = 10);
+    AppearResult AppearOn(string asset, int threshold = 10, bool detail = false);
     AppearBatchResult AppearOnBatch(IEnumerable<string> assets, int threshold = 10);
     ButtonMatchResult ButtonMatch(string asset, int offset = 30, double similarity = 0.85);
     TemplateMatchResult TemplateMatch(string asset, string? name = null);
@@ -85,7 +85,7 @@ public abstract class VisionEngineBase : IVisionEngine
     public WorkerInfo Ping() => Call<WorkerInfo>("ping");
     public string SetServer(string server) => Call("set_server", new { server })["server"]!.GetValue<string>();
     public ScreenshotInfo LoadScreenshot(string path) => Call<ScreenshotInfo>("screenshot_load", new { path });
-    public AppearResult AppearOn(string asset, int threshold = 10) => Call<AppearResult>("appear_on", new { asset, threshold });
+    public AppearResult AppearOn(string asset, int threshold = 10, bool detail = false) => Call<AppearResult>("appear_on", new { asset, threshold, detail });
     public AppearBatchResult AppearOnBatch(IEnumerable<string> assets, int threshold = 10)
         => Call<AppearBatchResult>("appear_on_batch", new { assets = assets.ToArray(), threshold });
     public ButtonMatchResult ButtonMatch(string asset, int offset = 30, double similarity = 0.85)

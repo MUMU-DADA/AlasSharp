@@ -41,6 +41,7 @@ public sealed class AppearResult
     [JsonPropertyName("expected")] public List<double>? Expected { get; set; }
     [JsonPropertyName("elapsed_ms")] public double? ElapsedMs { get; set; }
     [JsonPropertyName("error")] public string? Error { get; set; }
+    [JsonPropertyName("detail")] public Dictionary<string, double>? Detail { get; set; }
 }
 
 public sealed class AppearBatchResult

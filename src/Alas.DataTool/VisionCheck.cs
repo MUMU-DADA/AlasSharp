@@ -67,6 +67,8 @@ internal static class VisionCheck
         int verdictMismatch = 0, colorMismatch = 0, errors = 0;
         string currentServer = "";
         double loadMs = 0, queryMs = 0, innerMs = 0;
+        var detailSums = new Dictionary<string, double>();
+        Dictionary<string, double>? firstDetail = null;
         var samples = new List<string>();
 
         foreach (var c in cases)
@@ -84,10 +86,16 @@ internal static class VisionCheck
                 loadMs += t0.Elapsed.TotalMilliseconds;
 
                 t0.Restart();
-                var r = engine.AppearOn(c.Id);
+                var r = engine.AppearOn(c.Id, detail: true);
                 queryMs += t0.Elapsed.TotalMilliseconds;
                 // Python 侧自报的耗时：用它把「宿主里真正算的时间」与「传输/编解码」切开
                 if (r.ElapsedMs is not null) innerMs += r.ElapsedMs.Value;
+                if (r.Detail is not null)
+                {
+                    firstDetail ??= r.Detail;
+                    foreach (var kv in r.Detail)
+                        detailSums[kv.Key] = detailSums.GetValueOrDefault(kv.Key) + kv.Value;
+                }
 
                 if (r.Appear != c.AppearDefault!.Value)
                 {
@@ -138,6 +146,29 @@ internal static class VisionCheck
         double pingMs = tp.Elapsed.TotalMilliseconds / pingCount;
         Console.WriteLine($"[ping ] {pingCount} 次平均 {pingMs:F3} ms/次"
                           + "（Python 侧几乎零计算 → 这就是协议栈固有开销）");
+
+        // 变量隔离：同一张（已热的）截图上重复单次调用。
+        // 主循环每次 appear_on 之前都重新 LoadScreenshot，若这里显著更快，
+        // 说明主循环那个 7~14ms 是「冷图首次访问」而不是每次调用的固有成本。
+        var warmSet = cases.Take(Math.Min(100, cases.Count)).ToList();
+        engine.LoadScreenshot(warmSet[0].File.Replace("./", "")
+            .Replace('/', Path.DirectorySeparatorChar));
+        var tw = System.Diagnostics.Stopwatch.StartNew();
+        foreach (var c in warmSet) engine.AppearOn(c.Id);
+        double warmMs = tw.Elapsed.TotalMilliseconds / warmSet.Count;
+        Console.WriteLine($"[热图 ] 同图重复单次调用 {warmSet.Count} 次平均 {warmMs:F3} ms/次");
+
+        if (detailSums.Count > 0)
+        {
+            // 首调包含了 ALAS 模块的一次性导入（实测 ~0.5s），不能摊进平均值误导结论，
+            // 因此这里只报「首调」与「其余调用的均值」，并单独列出总导入代价。
+            double first = firstDetail!.GetValueOrDefault("color_of");
+            double restAvg = (detailSums.GetValueOrDefault("color_of") - first)
+                             / Math.Max(1, cases.Count - 1);
+            Console.WriteLine($"[首调] {first:F1} ms（一次性：导入上游模块链）");
+            Console.WriteLine($"[稳态] 其余 {cases.Count - 1} 次平均 {restAvg:F3} ms/次"
+                              + "（这才是每帧真正的成本）");
+        }
 
         int total = verdictMismatch + colorMismatch + errors;
         Console.WriteLine();
