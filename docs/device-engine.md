@@ -196,3 +196,55 @@ CLI 单次调用会把初始化算进结果。
 `diag_*` / `probe_*` / `drive_*` / `sweep_*` 共 17 个脚本移入 `oneoff/`（归档前已核查：
 无其它脚本 import、`verify_all.py` 不引用），主目录从 34 个降到 17 个。
 归档后 `verify_all.py --docs-only` 仍 **0 步异常**。理由与索引见 `oneoff/README.md`。
+
+## 结论修正与重大发现：nemu_ipc 用不了（设计如此），但 **scrcpy 通了且最快**
+
+### nemu_ipc：上游**硬拒绝** MuMu 国际版（更正我此前的建议）
+
+引擎 `nemu_ipc.py` 里有明确分支：
+
+```python
+if 'MuMuPlayerGlobal' in self.emulator_instance.path:
+    logger.info(f'nemu_ipc is not available on MuMuPlayerGlobal, {self.emulator_instance.path}')
+    raise RequestHumanTakeover
+```
+
+而本机的模拟器正是 **`MuMuPlayerGlobal-12.0`**（进程路径
+`C:\Program Files\Netease\MuMuPlayerGlobal-12.0\shell\MuMuPlayer.exe`），
+引擎的机型表（`emulator_base.py`）里也列了 `MuMuPlayerGlobal-12.0-0`。
+
+=> **nemu_ipc 在本机不可能可用**，与 MuMu 设置/权限无关。
+**更正**：我此前建议"去 MuMu 侧开 IPC 或用管理员运行"是错的，那改了也没用。
+
+### scrcpy：**可用，且是目前最快的截图后端**
+
+它第一轮会 `ScrcpyError: Aborted`，随后自动推 `scrcpy-server-v1.20.jar` 起服务
+（日志：`[Scrcpy Device] SM-G9500`、`[Scrcpy Resolution] (1280, 720)`、`Scrcpy server is up`），
+**第二次起就正常了** —— 上一轮"scrcpy retry failed"是因为当时还没推过 jar，属首次启动开销。
+
+实测（`screenshot=scrcpy` / `control=scrcpy`）：
+
+| 指标 | 数值 |
+| --- | --- |
+| 首次抓图（含启动 server） | 394.3 ms |
+| 稳态抓图 | **158.3 / 163.6 / 167.4 ms** |
+| 端到端（抓图+置入宿主 → 页面判定） | **中位 155 ms** + 判定 21 ms = **176 ms** |
+| 抓图样本 | 95.0 / 108.4 / 155.1 / 364.3（偶尔有流抖动） |
+
+页面判定结果 `['page_campaign']` ✓ —— 帧可用。
+
+**对比基线**：adb 393–402 ms、droidcast 337–345 ms、**scrcpy 155–167 ms**。
+scrcpy 走 H.264 视频流本地解码，抓一帧＝取最新解码帧，所以快得多（约 adb 的 2.5 倍）。
+
+### 本机后端全表（MuMu 国际版 / Android 12 / x86_64）
+
+| 后端 | 截图 | 输入 | 状态 |
+| --- | --- | --- | --- |
+| **scrcpy** | **155–167 ms** ✅ 最快 | scrcpy | ✅ 可用（首次需推 jar） |
+| droidcast | 337–345 ms ✅ | — | ✅ 可用 |
+| adb | 393–402 ms（基线） | 64.5 ms | ✅ |
+| MaaTouch | — | **53 ms** ✅ 最快 | ✅ |
+| minitouch | — | 68.3 ms | ✅ |
+| ascreencap | — | — | ❌ 上游无 Android 10+ 二进制 |
+| nemu_ipc | — | — | ❌ 上游硬拒绝 MuMu 国际版 |
+| hermit / ldopengl / wsa | — | — | 仅对应平台（VMOS / LDPlayer / WSA） |
