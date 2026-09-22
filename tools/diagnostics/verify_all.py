@@ -63,6 +63,7 @@ STEPS = [
     ('verify_stop.py', 'R4 停止任务（--stop-file 在任务边界生效 + 对照）', False, 300),
     ('verify_report.py', 'R2 运行报告（工件→结构化事实 + 证据完整性反例）', False, 600),
     ('verify_os_state.py', 'R2 大世界/海域只读探针（存盘帧；capture 前置条件口径）', False, 600),
+    ('button_threshold_sweep.py', '判据临界扫描（重建 button-threshold-sweep.md）', False, 900),
     ('r3_hook_shapes.py', 'R3 钩子形态分类（重建 r3-hook-shapes.md）', False, 300),
     ('r3_map_data_init.py', 'R3 第一项上游轨迹（map_data_init 逐章形态）', False, 300),
     ('r3_candidates.py', 'R3 候选排序（原生钩子覆盖，重建 r3-candidates.md）', False, 300),
