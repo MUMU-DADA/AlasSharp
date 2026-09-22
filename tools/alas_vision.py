@@ -1326,29 +1326,38 @@ def op_s3_campaign_call(args):
 # 客户端专属弹窗：「关卡 xxx 正在攻略中，请选择前往继续攻略或撤退 [撤退][立即前往]」
 # 上游没有它的素材/处理器，导致 enter_map 干等 60s 后 GameStuckError（实测，见
 # docs/s3-entry-sequence.md）。这里用 **OCR 识别文字** + 固定坐标点击来适配。
-_UNFINISHED_OCR_AREA = [330, 230, 960, 370]      # 弹窗正文区域（1280x720）
-_UNFINISHED_ABORT_XY = (479, 510)                # 「撤退」按钮（实测有效）
-_UNFINISHED_KEYWORDS = ('正在攻略中', '继续攻略', '请选择前往')
+# 「关卡 xxx 正在攻略中…[撤退][立即前往]」是**客户端专属弹窗**，上游没有它的素材/处理器，
+# 导致 enter_map 干等 60s 后 GameStuckError（实测 3-2，见 docs/s3-entry-sequence.md）。
+#
+# 判定方式：**像素特征**而不是 OCR —— 弹窗底部那枚红色「撤退」按钮是最稳的特征。
+# 实测（1280x720）：弹窗帧红占比 **0.3271**，普通帧 **0.0000**（两帧），阈值取 0.15 余量充足。
+# （OCR 路线走不通：该后端对每个识别字符解包 3 个值，空结果/字符集不匹配都报
+#   `too many/not enough values to unpack`。）
+_UNFINISHED_RED_BOX = (420, 470, 560, 550)     # 「撤退」按钮区域（留余量）
+_UNFINISHED_RED_THRESHOLD = 0.15
+_UNFINISHED_ABORT_XY = (479, 510)              # 实测有效
 
 
 def op_s3_abort_unfinished(args):
-    """检测并关闭"关卡正在攻略中"弹窗（客户端专属，上游不认识）。
+    """检测并关闭"关卡正在攻略中"弹窗（客户端专属；上游不认识它）。
 
     为什么需要：游戏里点「撤退」只是**离开地图**、保留可续战状态；此后进任何**别的**关卡
-    都会弹这个对话框，而上游不识别它 → 干等 60s → `GameStuckError`（实测 3-2）。
-    做法：OCR 弹窗正文，命中关键词就点「撤退」。`dry` 只检测不点击。
+    都会弹这个对话框，上游不识别 → 干等 60s → `GameStuckError`（实测 3-2）。
+    做法：量「撤退」按钮区域的红像素占比，超阈值就点它。`dry=true` 只检测不点击。
     """
     image = _require_image()
-    hit, text = False, ''
+    x1, y1, x2, y2 = _UNFINISHED_RED_BOX
+    patch = image[y1:y2, x1:x2]
     try:
-        # `letter` 必须是**字符集合**（空元组 = 不限字符）；
-        # 传字符串的 list(...) 会报 `too many values to unpack (expected 3, got 5)`（实测踩过）
-        o = op_ocr({'area': _UNFINISHED_OCR_AREA, 'letter': ()})
-        text = str(o.get('text') or '')
-        hit = any(k in text for k in _UNFINISHED_KEYWORDS)
+        r = patch[:, :, 0].astype(int)
+        g = patch[:, :, 1].astype(int)
+        b = patch[:, :, 2].astype(int)
+        frac = float((((r > 140) & (g < 100) & (b < 100))).mean())
     except Exception as e:
-        return {'error': f'OCR 失败: {type(e).__name__}: {e}'}
-    out = {'unfinished_dialog': hit, 'ocr_text': text[:80]}
+        return {'error': f'{type(e).__name__}: {e}'}
+    hit = frac > _UNFINISHED_RED_THRESHOLD
+    out = {'unfinished_dialog': hit, 'red_frac': round(frac, 4),
+           'threshold': _UNFINISHED_RED_THRESHOLD}
     if hit and not args.get('dry'):
         try:
             dev = _device_engine()
