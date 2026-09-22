@@ -67,9 +67,9 @@
 
 ## 与真机结果的关系
 
-正对照通过但真机没验过的页面共 19 个 —— 它们都是受外部条件阻塞的：
+正对照通过但真机没验过的页面共 18 个 —— 它们都是受外部条件阻塞的：
 
-`page_channel`、`page_coalition`、`page_event_list`、`page_hospital`、`page_island`、`page_island_manage`、`page_island_map`、`page_island_order`、`page_island_phone`、`page_island_season`、`page_island_shop`、`page_island_storage`、`page_island_technology`、`page_island_transport`、`page_raid`、`page_rpg_city`、`page_rpg_stage`、`page_rpg_story`、`page_sp`
+`page_channel`、`page_coalition`、`page_hospital`、`page_island`、`page_island_manage`、`page_island_map`、`page_island_order`、`page_island_phone`、`page_island_season`、`page_island_shop`、`page_island_storage`、`page_island_technology`、`page_island_transport`、`page_raid`、`page_rpg_city`、`page_rpg_stage`、`page_rpg_story`、`page_sp`
 
 也就是说：**这些页面的规则本身是好的，缺的只是"让游戏走到那一屏"的条件**
 （账号解锁岛屿/大舰队/指挥喵/大型作战、或对应类型的活动在跑、或客户端版本支持）。

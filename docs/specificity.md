@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | 精确命中 | 28 | 只在自己的页面上命中（最理想） |
 | 共命中 | 5 | 同一屏多条规则同时命中（见下） |
-| 从未命中 | 0 | 29 个可达页面上一次都没命中 |
+| 从未命中 | 1 | 29 个可达页面上一次都没命中 |
 
 ## 共命中（要确知是上游设计，不是误判）
 
@@ -47,6 +47,6 @@
 
 未在回归里命中、且属于"已验证页面"的规则（即漏检嫌疑）：
 
-- 无
+- `page_event_list`
 
-其余未命中的规则（本就不可达，属正常）：`page_channel`, `page_coalition`, `page_event_list`, `page_hospital`, `page_island`, `page_raid`, `page_rpg_stage`, `page_rpg_story`, `page_sp`, `page_unknown`
+其余未命中的规则（本就不可达，属正常）：`page_channel`, `page_coalition`, `page_hospital`, `page_island`, `page_raid`, `page_rpg_stage`, `page_rpg_story`, `page_sp`, `page_unknown`
