@@ -57,6 +57,25 @@
 > 注：新号当前**只解锁到 1-4**，而 1-1（单行图，检测器明确失效）已三星不挡路；
 > 所以卡住进度的就是这张 1-4。定位手段已具备（`s3_probe_view` 能同时给视图与地图两侧的标志）。
 
+**1-4 的两种失败模式（都已实测，2026-09-23 01:00 复测）**：
+
+| 模式 | 现象 | 证据 |
+| --- | --- | --- |
+| (a) 检测抛错 | 三次 `map_init` 全报 `Vanish point and distant point too close`；`ensure_edge_insight` 恢复也无效（它内部同样依赖能加载的视图） | `%TEMP%\run_14_v2.log` 的 `attempts` |
+| (b) 无异常但结果不可用 | `map_init` 返回成功，可视图格距判错（9 行 vs 3 行）→ 敌人被 `grid_info.update()` 丢掉 → `battle_0` 报 `No battle executed` → 撤退 | `%TEMP%\run_14_new.log` + 探针 `view_shape=[7,9]` |
+
+**关键对照（说明"好机位是存在的"）**：拿 `data/_14_inmap.png`（同一张图的现场帧）**离线**检测是**对的**：
+
+```
+{"backend":"homography","load":"ok","threshold_used":75,"predict":"ok",
+ "shape":[5,2],"grid_count":18,"center_loca":[1,0],
+ "grid_flags":{"0,0":["is_fleet","is_current_fleet"],"2,0":["is_enemy"],"3,2":["is_enemy"]}}
+```
+
+即 6 列 × 3 行 = 18 格（少的那一列是被左侧舰队栏挡住），敌人在 (2,0)/(3,2) ——
+与截图里的 **C1 / D3** 完全一致 ✓。
+⇒ 结论：卡点**不在入口流程，而在"入口机位下的检测"**，属检测器层面的问题。
+
 ### 1-3 的"可见变化"（这是最容易核对的验收证据）
 
 | 时刻 | 威胁排除 | 击破护卫舰队 | 三星 |

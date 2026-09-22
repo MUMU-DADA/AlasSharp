@@ -1763,31 +1763,76 @@ def op_s3_run_plan(args):
         # `MapDetectionError: Vanish point and distant point too close`
         # （日志里 `vanish_point == distant_point == (654, -1425)`）——
         # 三行图的网格线在透视里近乎平行，机位不巧时消失点算到无穷远，几何退化。
-        # 这不是"图不支持"，所以**换个机位重试**：小幅度平移相机（上游自己的 `map_swipe`），
-        # 再跑一次 map_init。上限 3 次，失败就如实报错，不硬撑。
+        # 这不是"图不支持"，所以**换个机位重试**。
+        #
+        # **但"没抛异常"不等于"结果可用"**（实测 1-4 踩到）：1-4 的 `map_init` 全程无异常，
+        # 可视图的**格距被判错**（检出 9 行 / 该图只有 3 行，同帧 `tile_center: 0.636 bad match`）
+        # → 敌人落到 `map_data` 里不是 `ME` 的格子上 → `grid_info.update()` 把 `is_enemy` 丢掉
+        # → 上游地图里一个敌人都没有 → `battle_0` 报 `No battle executed` → 十次无战果 → 撤退。
+        # 所以这里加一道**只读一致性校验**：视图认出了敌人/BOSS，而地图侧一个都没有 ⇒ 判为失败重试。
+        def _map_init_health():
+            h = {}
+            try:
+                v = inst.view
+                h['view_cells'] = len(getattr(v, 'grids', {}) or {})
+                h['view_enemies'] = len(v.select(is_enemy=True))
+                h['view_boss'] = len(v.select(is_boss=True))
+            except Exception as e:
+                h['view_error'] = f'{type(e).__name__}: {e}'
+            try:
+                h['map_enemies'] = len(inst.map.select(is_enemy=True))
+                h['map_boss'] = len(inst.map.select(is_boss=True))
+                h['camera'] = [int(x) for x in inst.camera]
+                h['camera_in_bounds'] = bool(
+                    0 <= h['camera'][0] <= int(inst.map.shape[0])
+                    and 0 <= h['camera'][1] <= int(inst.map.shape[1]))
+            except Exception as e:
+                h['map_error'] = f'{type(e).__name__}: {e}'
+            view_ships = (h.get('view_enemies') or 0) + (h.get('view_boss') or 0)
+            map_ships = (h.get('map_enemies') or 0) + (h.get('map_boss') or 0)
+            h['consistent'] = not (view_ships > 0 and map_ships == 0)
+            return h
+
+        # 三种纠正手段，逐个试：
+        #   ① 先直接重试一次（有时只是抓帧时机问题）；
+        #   ② 上游自己的 `ensure_edge_insight()` —— 它靠边界线把相机重新锚到角上，
+        #      是上游 `full_scan` 在 `map.update` 判失败时用的**原生恢复手段**；
+        #   ③ 设备级滑动换机位（不依赖任何识别结果，前面已证明 `map_swipe`/`_map_swipe` 用不了）。
+        _recover = [
+            ('retry', None),
+            ('ensure_edge_insight', {'name': 'ensure_edge_insight', 'args': [False],
+                                     'allow_actions': True}),
+            ('device_swipe', None),
+        ]
         _init_attempts = []
-        for _att in range(3):
+        for _att, (_label, _call) in enumerate(_recover):
             r = op_s3_campaign_call({'name': 'map_init', 'args': ['@MAP'],
                                      'allow_actions': True})
-            _init_attempts.append({'attempt': _att + 1, 'ms': r.get('ms'),
-                                   'error': r.get('error')})
+            _entry = {'attempt': _att + 1, 'recover': _label, 'ms': r.get('ms'),
+                      'error': r.get('error')}
             if not r.get('error'):
+                _entry['health'] = _map_init_health()
+            _init_attempts.append(_entry)
+            if not r.get('error') and (_entry.get('health') or {}).get('consistent'):
                 break
-            if 'Vanish point' not in str(r.get('error')) and \
-                    'No vertical line' not in str(r.get('error')):
+            if r.get('error') and 'Vanish point' not in str(r.get('error')) \
+                    and 'No vertical line' not in str(r.get('error')):
                 break                      # 别的错误不靠挪机位解决
-            # 挪机位只能用**设备级滑动**：`map_swipe` / `_map_swipe` 都读视图对象的属性
-            # （`view.center_offset` / `view.swipe_base`），而 `View.load()` 失败时这两个属性
-            # 根本不存在 —— 实测两次都栽在这里（`AttributeError`，相机一步没动，三次重试一模一样 ✗）。
-            # 直接对地图区域下发一次横向滑动：不依赖任何识别结果，只为换个机位。
-            # 用 try 包住：挪机位失败不应该把整轮 s3_run_plan 带崩（实测踩过一次 ✗）。
+            if _att + 1 >= len(_recover):
+                break
+            _next = _recover[_att + 1][0]
             try:
-                _mv = op_device_swipe({'x1': 760, 'y1': 394,
-                                       'x2': 960 if _att % 2 == 0 else 560,
-                                       'y2': 394, 'duration': 0.4})
-                _init_attempts[-1]['swipe_error'] = _mv.get('error')
+                if _next == 'ensure_edge_insight':
+                    _rc = op_s3_campaign_call({'name': 'ensure_edge_insight',
+                                               'args': [False], 'allow_actions': True})
+                    _entry['recover_error'] = _rc.get('error')
+                elif _next == 'device_swipe':
+                    _mv = op_device_swipe({'x1': 760, 'y1': 394,
+                                           'x2': 960 if _att % 2 == 0 else 560,
+                                           'y2': 394, 'duration': 0.4})
+                    _entry['recover_error'] = _mv.get('error')
             except Exception as _e:
-                _init_attempts[-1]['swipe_error'] = f'{type(_e).__name__}: {_e}'
+                _entry['recover_error'] = f'{type(_e).__name__}: {_e}'
         steps.append({'step': 'map_init', 'ms': _init_attempts[-1].get('ms'),
                       'error': _init_attempts[-1].get('error'),
                       'attempts': _init_attempts})
