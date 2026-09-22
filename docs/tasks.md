@@ -182,24 +182,23 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 
 ## 验收矩阵（每个域的入口）
 
-`python tools/diagnostics/verify_runtime.py` 共 11 例（6 例单批 + 5 例队列），全部走替身宿主：
+每个域都有自己的验收脚本。**本表只给"入口 + 断言什么"，不复制逐例清单** ——
+逐例细节以脚本自己的输出为准（此前这里抄了一份 `verify_runtime` 的 5 个用例，
+很快就不对了：现在是 13 例）。凡是在这里写死数字的地方，都会在最需要它的那天过期。
 
-| 用例 | 断言 |
-| --- | --- |
-| `queue_two_campaign_tasks_succeeded` | 两个任务都成功；宿主只起一次；后端调用 = 1 次设备配置 + 2 个任务 |
-| `queue_precondition_is_skipped_not_failed` | 空章节 → `skipped`（不是 failed），**没有调后端**，后续任务照跑 → 队列 `partial` |
-| `queue_required_precondition_stops_queue` | `required` 的前置条件不满足 → `failed` + 队列停下，后面的任务记 `skipped` |
-| `queue_upstream_failure_stops_and_skips_rest` | 上游报错 → 该任务 `failed`（`upstream_error`），后续 `skipped` 且**带上同一个错误分类** |
-| `queue_resume_skips_completed_task` | 已完成任务被跳过且不再调后端 |
-
-`python tools/diagnostics/verify_account_state.py`：用 `data/*.png` 里的**真机帧**跑
-`account_state` 任务（无设备），断言服务器/页面/在图内/配置要点均报出、逐任务工件落盘，
-并把 `IN_MAP` 相似度写入 `data/account_state_probe.json`。本地没有归档帧时显式跳过。
-
-另有 `verify_architecture.py` 静态保证：任务模型是接口、CLI 只解析队列文件、
-`campaign` 与 `queue` 共用同一份参数解析（不复制两套），
-并且**每个 `ITaskRunner` 实现都必须在 `Program.cs` 里注册**
-（漏挂的话队列只会报"没有注册运行器"然后失败 —— 这种漏挂在静态上就该被查出来）。
+| 范围 | 入口 | 断言什么 |
+| --- | --- | --- |
+| 运行时 / 队列 | `verify_runtime.py` | 宿主只起一次、失败即停、取消在边界生效、断点续跑、任务边界快照、撤退与上游报错可区分 |
+| 账号状态（只读） | `verify_account_state.py` | 真机帧上跑只读任务；逐帧相似度留证（含 `IN_MAP` 临界） |
+| 大世界/海域探针 | `verify_os_state.py` | 只读探针；`capture` 在 dry-run 记 skipped 而非失败；断点续跑接线 |
+| 活动清点 + 生成队列 | `verify_event_state.py` | 与独立数对拍；`plan-queue` 生成物**可直接执行** |
+| 周期任务清点 | `verify_task_catalog.py` | 两个来源（`task.yaml` 分组 / `args.json` 任务）可读且**不是同一集合** |
+| 周期任务调度状态 | `verify_task_schedule.py` | 与独立读数对拍 + 四种边界（全禁用/全启用/缺段/配置不存在）+ **只读**（配置字节不变） |
+| 运行报告 / 运行列表 | `verify_report.py` | 报告事实 + 3 个反例 + `runs` 同秒不覆盖 + 单批形态 |
+| 停止任务 | `verify_stop.py` | `--stop-file` 在任务边界生效；剩余任务记 skipped；无停止文件时照常跑完 |
+| 结果合同 | `verify_result_contract.py` | 四类结果 + 20 条反例 + 两侧裁决逐例一致 |
+| 实机证据 | `audit_real_records.py` | 归档日志重核：通关/撤退可解释、无自相矛盾 |
+| 静态守卫 | `verify_architecture.py` | 生产路径、素材边界、词表一致、**每个域名必须注册**、真机清单的两处授权标注 |
 
 ## 大世界/海域（第三个域，只读探针）
 
