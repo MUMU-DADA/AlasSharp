@@ -1317,3 +1317,32 @@ step=enter_map ms=60196.4 error=GameStuckError: Wait too long | step=enter_map_a
 #### 11-1（(7,5) = 8×6 = 48 格，**6 行**，预测成功）
 
 实测：step=map_init ms=564.8 error= | round=1 step=battle_0 ms=93158.0 error= completed= | round=1 step=battle_6 ms=105721.0 error= completed= | [结果    ] elapsed=271.8s stopped_early=False stop_reason= campaign_end=
+
+
+### ⚠️ 长任务的两个硬约束（本轮踩到并记录）
+
+**1. 前台命令有 10 分钟上限** —— 我试图在前台跑"11-1 循环清图（最多 15 分钟）"，
+被工具层在 **600 s** 掐断 ✗，而 `alashub` 随之被杀、**游戏被留在出击途中**。
+=> 长任务必须用**后台作业**（`run_in_background`），前台只跑短命令。
+
+**2. 高章节可能打不过** —— 清理现场时看画面（`data/_cl92_f.png`）发现是
+**「全军覆没 D」**（战败结算，点「确定」关闭）。也就是说：
+
+- ✅ **11-1 的图可识别**（`map_init` 成功，验证目标达成）；
+- ❌ **本账号舰队打不过 11-1** —— 所以"清图"类验证要选舰队打得过的关卡，
+  不能只看"图能否识别"。
+
+**已清理**：确定 → 返回 → `page_campaign` → 归位 **`page_main`** ✓（无未完出击）
+
+### 澄清：`stopped_early` 与 `campaign_end` 是两件事（我此前报告里没说清）
+
+| 字段 | 含义 |
+| --- | --- |
+| `stopped_early=True` | **出错了**（某步失败即停）|
+| `stopped_early=False` | **没出错**（不代表打完）|
+| `campaign_end=True` | **上游宣布关卡已清** ✓ |
+| `campaign_end=`（空） | 没到完成信号（例如**被我传的 `--max-rounds 1` 上限停住**）|
+
+**这就是"为什么每次都没清完"的答案**：我的批量验证都用 `--max-rounds 1`（为控制单次耗时），
+只跑计划的一轮就停 ✗。清图要用 `--repeat --max-rounds N`（N 足够大），
+循环会在收到 `CampaignEnd` 时提前停 —— 第 85 轮 2-1 实测：3 轮后 `campaign_end=True` ✓
