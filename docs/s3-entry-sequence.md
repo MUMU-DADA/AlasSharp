@@ -59,3 +59,41 @@ WARNING Waiting for {'FLEET_2_CLEAR', 'FLEET_PREPARATION', 'FLEET_2_ADVICE', 'DA
 - `s3_campaign_call` 有**硬性安全联锁**：`battle*/clear*/enter_map/run/fleet*/goto/map_*/...`
   必须显式 `allow_actions=true` 才执行。
 - 两次实测都**没有真正进入战斗、油量未变**（24831），卡住后均以点 X 关闭浮层收尾。
+
+## 入口序列的调用顺序要求（实测新增）
+
+`campaign_ensure_chapter(chapter)` **必须在 `campaign_get_entrance(name)` 之前**调用：
+入口节点坐标依赖当前选中的章节，顺序反了会拿到**空 Button**：
+
+```
+漏掉 ensure_chapter 时：ENTRANCE.button = "()"            → enter_map 报 not enough values to unpack
+先 ensure_chapter(1)：  ENTRANCE.button = (120,475,159,514) → 正常
+```
+
+（这也解释了此前一次"ENTRANCE 是空 Button"的困惑：不是返回值/赋值的问题，是**前一步没做**。）
+
+## 客户端素材状态（活画面实测）
+
+| 素材 | 分数 | 含义 |
+| --- | --- | --- |
+| `map/MAP_PREPARATION` | **1.0000** | 关卡进场面板正常 |
+| `map/FLEET_1_CHOOSE` | 0.9923 | 「选择」正常 |
+| `map/FLEET_1_CLEAR` | 0.9952 | 「清空」正常 |
+| `map/FLEET_PREPARATION` | 0.9928 | 「立刻前往」正常 |
+
+## 尚未验证的假设：点「选择」不展开下拉
+
+`FleetOperator` 的文档说明 `choose` 是"打开/关闭下拉菜单"的按钮：ALAS 点它 → 展开舰队下拉（`FLEET_1_BAR`）
+→ `parse_fleet_bar()` 读下拉找序号 → 点对应项。若点了不展开，就会反复点 → `GameTooManyClickError`。
+
+**本轮没能验证**：实验开始时画面状态已经漂移（当时并不在 `page_campaign`），序列没走完，
+`FLEET_1_BAR` 的分数是在浮层未打开时量的（0.07，无意义）。
+下次要做这个实验，必须先确认状态、再量「点选择前 / 点选择后」的 `FLEET_1_BAR`。
+
+## 协议侧待改：Button 坐标过不了 JSON
+
+`json_default` 会把 numpy 整数元组序列化成**字符串**：`"(np.int64(120), np.int64(475), ...)"`，
+C# 拿不到可用坐标。两个方向：
+1. 让 `json_default` 把数值元组/ndarray 转成数组（协议层修）；
+2. **点击一律让 ALAS 自己执行**（`device.click(@ENTRANCE)` 已验证可用，62.5 ms）——
+   这条更符合"动作交给上游"的架构，也绕开了序列化问题。
