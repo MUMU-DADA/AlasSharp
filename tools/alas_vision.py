@@ -794,6 +794,75 @@ def op_task_catalog(args):
     }
 
 
+def op_task_schedule(args):
+    """周期任务的**调度状态**（只读）：哪些任务开着、下次什么时候跑。
+
+    为什么要有它（`docs/tasks.md` 第九节）：周期任务的动作要真机，但"哪些任务开着、下次什么时候跑"
+    完全在配置里 —— R4 前端与"跑之前先知道会跑什么"都需要它，且零账号消耗。
+
+    数据来源是两个**别混为一谈**的东西（第七节已查实）：
+      * `module/config/argument/args.json` —— 任务表（扁平清单，以它为准）；
+      * 账号配置 `config/alas.json` 每个任务下的 `Scheduler` 段（`Enable` / `NextRun` …）。
+
+    **只读纪律**：不写配置、不触发任务、**不重算 NextRun**（那是上游调度器的逻辑，
+    含 `ServerUpdate` 语义；自己实现一版等于养第二份真相）。
+    """
+    only_enabled = bool(args.get('only_enabled', True))
+    limit = int(args.get('limit', 30))
+
+    out = {'only_enabled': only_enabled}
+    args_json = os.path.join(FORK, 'module', 'config', 'argument', 'args.json')
+    try:
+        with open(args_json, encoding='utf-8') as stream:
+            task_names = sorted(json.load(stream).keys())
+        out['task_source'] = args_json
+        out['task_count'] = len(task_names)
+    except Exception as e:
+        out['error'] = f'读不到任务表: {type(e).__name__}: {e}'
+        return out
+
+    config_path = None
+    for candidate in (os.path.join(FORK, 'config', 'alas.json'), './config/alas.json'):
+        if os.path.exists(candidate):
+            config_path = candidate
+            break
+    if config_path is None:
+        out['error'] = ('读不到账号配置 config/alas.json —— 前置条件不满足；'
+                        '这属于环境问题（Failed），不是"没跑"（skipped）')
+        return out
+    try:
+        with open(config_path, encoding='utf-8') as stream:
+            config = json.load(stream)
+        out['config_source'] = config_path
+    except Exception as e:
+        out['error'] = f'账号配置读不出来: {type(e).__name__}: {e}'
+        return out
+
+    entries, missing_scheduler = [], []
+    for name in task_names:
+        section = config.get(name)
+        scheduler = section.get('Scheduler') if isinstance(section, dict) else None
+        if not isinstance(scheduler, dict):
+            missing_scheduler.append(name)
+            entries.append({'task': name, 'enable': None, 'next_run': None,
+                            'scheduler_present': False})
+            continue
+        entries.append({
+            'task': name,
+            'enable': bool(scheduler.get('Enable')),
+            'next_run': scheduler.get('NextRun'),
+            'scheduler_present': True,
+        })
+    enabled = [e for e in entries if e['enable']]
+    out['enabled_count'] = len(enabled)
+    out['no_scheduler_count'] = len(missing_scheduler)
+    listed = enabled if only_enabled else entries
+    out['listed_count'] = len(listed)
+    out['tasks'] = listed[:max(1, limit)]
+    out['no_scheduler_sample'] = missing_scheduler[:5]
+    return out
+
+
 def _asset_id_map():
     """id(Button 对象) -> '子模块/资产名'，实时扫描已导入的 module.*.assets。
 
@@ -2856,6 +2925,7 @@ OPS = {
     'page_current': op_page_current,
     'account_state': op_account_state,
     'task_catalog': op_task_catalog,
+    'task_schedule': op_task_schedule,
     'ui_page_graph': op_ui_page_graph,
     'cached_rule_check': op_cached_rule_check,
     'page_positive_control': op_page_positive_control,
