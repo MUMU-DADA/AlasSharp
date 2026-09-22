@@ -25,16 +25,9 @@ REASONS = {
                     '结果是「屏蔽聊天」的确认弹窗（fail-safe 的返回键已取消，未确认、无副作用）；'
                     '上游与新 UI 都没有世界频道的入口素材，故此项无法在真实画面上验证',
     'page_unknown': '`Page(None)` —— 合成实体，没有 check 按钮，不是真实画面',
-    'page_coalition': '活动类型决定：`CAMPAIGN_MENU_GOTO_EVENT` 按当前活动指向 event/sp/raid/'
-                      'coalition/rpg/hospital 之一；本机当前活动是普通活动，只命中 page_event',
-    'page_raid': '同上（需 raid_20260827 类活动在跑）',
-    'page_sp': '同上（需活动带 SP 关卡）',
-    'page_hospital': '同上（需 20250327 医院活动在跑）',
-    'page_rpg_stage': '同上（需 raid_20240328 类 RPG 活动在跑）',
-    'page_rpg_story': '同上',
-    'page_rpg_city': '同上',
-    'page_private_quarters': '宿舍菜单里没有该入口：实测 `DORMMENU_GOTO_PRIVATE_QUARTERS` 资产分 0.0627 '
-                             '（菜单只显示学院/后宅/指挥喵/岛屿计划四张卡）',
+    'page_event_list': '活动一览入口按钮不在屏上（无活动时不出现）；换账号后定向重试仍是'
+                       '`NG-nochange`（点击后仍停在主界面）',
+    'page_private_quarters': '换账号后**已命中**（原记录：宿舍菜单里没有该入口）',
 }
 ISLAND_SUB = [
     'page_island_manage', 'page_island_map', 'page_island_order', 'page_island_phone',
@@ -42,7 +35,17 @@ ISLAND_SUB = [
     'page_island_technology', 'page_island_transport',
 ]
 for _p in ISLAND_SUB:
-    REASONS[_p] = '依赖 page_island（本机岛屿计划未解锁，见 blocked）'
+    REASONS[_p] = '**按用户要求跳过**：岛屿计划相关不在本轮验证范围内'
+REASONS['page_island'] = '**按用户要求跳过**：岛屿计划相关不在本轮验证范围内（换账号前实测入口点得通但会退回主界面＝当时未解锁）'
+REASONS['page_main_white'] = ''   # 已命中，占位避免误列
+# 活动类型页：同一按钮 CAMPAIGN_MENU_GOTO_EVENT 按当前活动指向不同页面
+for _p in ('page_raid', 'page_sp', 'page_coalition', 'page_hospital',
+           'page_rpg_stage', 'page_rpg_story'):
+    REASONS[_p] = ('活动类型未开跑：`CAMPAIGN_MENU_GOTO_EVENT` 按当前活动指向 event/sp/raid/'
+                   'coalition/rpg/hospital 之一，本机当前活动是普通活动，只命中 `page_event` '
+                   '（定向重试确认：导航到了 campaign_menu / page_campaign / page_event，但目标页不出现）')
+REASONS['page_rpg_city'] = ('RPG 活动的城内界面，**上游页面图里没有入边**（只有回主界面/回剧情页的出边），'
+                            '既不可能是导航目标；且需要 RPG 类活动在跑才可能出现')
 
 
 def main():

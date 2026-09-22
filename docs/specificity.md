@@ -11,7 +11,7 @@
 
 | 类别 | 数量 | 含义 |
 | --- | --- | --- |
-| 精确命中 | 24 | 只在自己的页面上命中（最理想） |
+| 精确命中 | 28 | 只在自己的页面上命中（最理想） |
 | 共命中 | 5 | 同一屏多条规则同时命中（见下） |
 | 从未命中 | 0 | 29 个可达页面上一次都没命中 |
 
@@ -49,4 +49,4 @@
 
 - 无
 
-其余未命中的规则（本就不可达，属正常）：`page_channel`, `page_event_list`, `page_guild`, `page_island`, `page_meowfficer`, `page_os`, `page_unknown`
+其余未命中的规则（本就不可达，属正常）：`page_channel`, `page_coalition`, `page_event_list`, `page_hospital`, `page_island`, `page_raid`, `page_rpg_stage`, `page_rpg_story`, `page_sp`, `page_unknown`

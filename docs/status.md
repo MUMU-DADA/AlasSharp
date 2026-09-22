@@ -9,13 +9,13 @@
 
 | 范围 | 总数 | 已通过 | 未通过/阻塞 | 明细 |
 | --- | --- | --- | --- | --- |
-| 页面规则（Page） | 53 | **29** | 5 受游戏状态阻塞 + 19 原因已定位 | `page-verification.md` |
-| 控件规则（模块级 Switch/Scroll） | 20 | 9 | 11 | `controls.md` |
+| 页面规则（Page） | 53 | **33** | 8 受游戏状态阻塞 + 12 原因已定位 | `page-verification.md` |
+| 控件规则（模块级 Switch/Scroll） | 20 | 11 | 9 | `controls.md` |
 | cached_property 规则 | 6 | 3 | 3 | `controls.md` |
 | 控制动作（滑动/开关驱动/探测） | 3 | 3 | 0 | `controls.md` |
 | 控制原语（返回键/长按/滑动） | 4 | **4** | 0 | `primitives.md` |
 | 文本输入（装备码流程） | 3 | **3** | 0 | `text-input.md` |
-| 全量回归（产品路径导航） | 29 | **29** | 0 | `regression.md` |
+| 全量回归（产品路径导航） | 33 | **33** | 0 | `regression.md` |
 | 页面规则合成正对照 | 53 | 52 | 1 跳过（`page_unknown` 无素材） | `positive-control.md` |
 | 控件 Switch 合成正对照 | 20 | 10 | 10 跳过（Scroll 判定依赖颜色掩码） | `positive-control.md` |
 
@@ -23,21 +23,24 @@
 页面规则里 `page_main_white` / `page_channel` / `page_unknown` 是上游图里**无入边**的
 状态节点，只能验"同屏被检测到"，见 `regression.md`。）
 
-## 已通过：页面 29 个
+## 已通过：页面 33 个
 
-`page_academy`、`page_archives`、`page_battle_pass`、`page_build`、`page_campaign`、`page_campaign_menu`、`page_commission`、`page_daily`、`page_dock`、`page_dorm`、`page_dormmenu`、`page_event`、`page_exercise`、`page_fleet`、`page_game_room`、`page_mail`、`page_main`、`page_main_white`、`page_meta`、`page_mission`、`page_munitions`、`page_research`、`page_reshmenu`、`page_reward`、`page_shipyard`、`page_shop`、`page_storage`、`page_supply_pack`、`page_tactical`
+`page_academy`、`page_archives`、`page_battle_pass`、`page_build`、`page_campaign`、`page_campaign_menu`、`page_commission`、`page_daily`、`page_dock`、`page_dorm`、`page_dormmenu`、`page_event`、`page_exercise`、`page_fleet`、`page_game_room`、`page_guild`、`page_mail`、`page_main`、`page_main_white`、`page_meowfficer`、`page_meta`、`page_mission`、`page_munitions`、`page_os`、`page_private_quarters`、`page_research`、`page_reshmenu`、`page_reward`、`page_shipyard`、`page_shop`、`page_storage`、`page_supply_pack`、`page_tactical`
 
 ## 受游戏状态阻塞（页面不可达，非识别缺陷）
 
 | 页面 | 原因与证据 |
 | --- | --- |
+| `page_coalition` | 定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed） |
 | `page_event_list` | NG-nochange（按钮不在屏上：无活动时活动一览入口不出现） |
-| `page_guild` | 游戏状态阻塞（账号未加入大舰队，MAIN_GOTO_GUILD 落到舰队选择页，上游未建模该页） |
+| `page_hospital` | 定向重试仍未到达：落在 ['page_event']（goto-failed） |
 | `page_island` | 游戏状态阻塞（点击岛屿计划入口 0.9999 分，菜单关闭退回主界面＝功能未解锁） |
-| `page_meowfficer` | 游戏状态阻塞（点击指挥喵入口 0.9894 分确认按钮在屏，但菜单关闭退回主界面＝功能未解锁） |
-| `page_os` | NG-nochange（大型作战入口在屏 0.9990，点击无反应，等 6 秒仍无变化＝未解锁） |
+| `page_raid` | 定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed） |
+| `page_rpg_stage` | 定向重试仍未到达：落在 ['page_campaign']（goto-failed） |
+| `page_rpg_story` | 定向重试仍未到达：落在 ['page_event']（goto-failed） |
+| `page_sp` | 定向重试仍未到达：落在 ['page_campaign']（goto-failed） |
 
-## 原因已定位但未验证的 19 个页面
+## 原因已定位但未验证的 12 个页面
 
 分三类（逐条原因见 `page-verification.md`）：
 

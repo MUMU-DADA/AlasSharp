@@ -87,9 +87,16 @@ PLAN = [
                ('module.handler.strategy', 'SUBMARINE_HUNT'),
                ('module.handler.strategy', 'SUBMARINE_VIEW')],
      'leave': 'back'},
-    # 装备选择浮层：角色详情页的装备面板里点一个槽位（只打开选择器，不改动装备）
-    {'page': 'equip_select',
-     'enter': {'goto': 'page_dock', 'long_press': (640, 300), 'click_xy': (792, 156)},
+    # 新账号解锁后才可达的控件：指挥喵的锁定开关、大世界的两个滚动区
+    {'page': 'page_meowfficer',
+     'rules': [('module.meowfficer.collect', 'SWITCH_LOCK')]},
+    {'page': 'page_os',
+     'rules': [('module.os_handler.storage', 'SCROLL_STORAGE'),
+               ('module.os_handler.strategic', 'STRATEGIC_SEARCH_SCROLL')]},
+    # 装备选择浮层重试：新账号槽位里有装备，点**已装备**的槽位才会开更换浮层
+    # （旧账号槽位是空的，"点击添加装备"占位点不出筛选开关）
+    {'page': 'equip_select2',
+     'enter': {'goto': 'page_dock', 'long_press': (640, 300), 'click_xy': (995, 375)},
      'rules': [('module.equipment.equipment_change', 'equipping_filter')],
      'leave': 'back'},
     {'page': 'retire_dialog',

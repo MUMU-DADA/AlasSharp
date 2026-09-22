@@ -12,9 +12,9 @@
 
 | 类别 | 数量 | 含义 |
 | --- | --- | --- |
-| 已验证命中 | 29 | 在该页上规则返回真，且离开该页后不再命中 |
-| 受游戏状态阻塞 | 5 | 页面可达性被账号/活动状态挡住，非识别缺陷 |
-| 未验证（原因已定位） | 19 | 依赖阻塞页或上游没有入边 |
+| 已验证命中 | 33 | 在该页上规则返回真，且离开该页后不再命中 |
+| 受游戏状态阻塞 | 8 | 页面可达性被账号/活动状态挡住，非识别缺陷 |
+| 未验证（原因已定位） | 12 | 依赖阻塞页或上游没有入边 |
 | 未分类 | 0 | 需要继续排查 |
 | 合计 | 53 | 上游 `page.py` 的全部 Page |
 
@@ -37,12 +37,16 @@
 | `page_exercise` | `page_exercise` |
 | `page_fleet` | `page_fleet` |
 | `page_game_room` | `page_game_room` |
+| `page_guild` | `page_guild` |
 | `page_mail` | `page_mail` |
 | `page_main` | `page_main`, `page_main_white` |
 | `page_main_white` | `page_main`, `page_main_white` |
+| `page_meowfficer` | `page_meowfficer` |
 | `page_meta` | `page_meta` |
 | `page_mission` | `page_mission` |
 | `page_munitions` | `page_munitions`, `page_shop`, `page_supply_pack` |
+| `page_os` | `page_os` |
+| `page_private_quarters` | `page_private_quarters` |
 | `page_research` | `page_research` |
 | `page_reshmenu` | `page_reshmenu` |
 | `page_reward` | `page_reward` |
@@ -56,34 +60,30 @@
 
 | 页面 | 原因与证据 |
 | --- | --- |
+| `page_coalition` | 定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed） |
 | `page_event_list` | NG-nochange（按钮不在屏上：无活动时活动一览入口不出现） |
-| `page_guild` | 游戏状态阻塞（账号未加入大舰队，MAIN_GOTO_GUILD 落到舰队选择页，上游未建模该页） |
+| `page_hospital` | 定向重试仍未到达：落在 ['page_event']（goto-failed） |
 | `page_island` | 游戏状态阻塞（点击岛屿计划入口 0.9999 分，菜单关闭退回主界面＝功能未解锁） |
-| `page_meowfficer` | 游戏状态阻塞（点击指挥喵入口 0.9894 分确认按钮在屏，但菜单关闭退回主界面＝功能未解锁） |
-| `page_os` | NG-nochange（大型作战入口在屏 0.9990，点击无反应，等 6 秒仍无变化＝未解锁） |
+| `page_raid` | 定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed） |
+| `page_rpg_stage` | 定向重试仍未到达：落在 ['page_campaign']（goto-failed） |
+| `page_rpg_story` | 定向重试仍未到达：落在 ['page_event']（goto-failed） |
+| `page_sp` | 定向重试仍未到达：落在 ['page_campaign']（goto-failed） |
 
 ## 未验证但原因已定位
 
 | 页面 | 原因 |
 | --- | --- |
 | `page_channel` | 上游页面图里**没有入边**，只有出边（`page_channel.link(GOTO_MAIN...)`）；世界频道是临时浮层。而且 `CHANNEL_CHECK` 在本客户端实测只有 0.11~0.13（旧版 UI 素材：主界面同位置现在是「任务」按钮）—— 即使打开了频道，这条规则也不会命中。找入口时我在主界面聊天条右侧误点了一次，结果是「屏蔽聊天」的确认弹窗（fail-safe 的返回键已取消，未确认、无副作用）；上游与新 UI 都没有世界频道的入口素材，故此项无法在真实画面上验证 |
-| `page_coalition` | 活动类型决定：`CAMPAIGN_MENU_GOTO_EVENT` 按当前活动指向 event/sp/raid/coalition/rpg/hospital 之一；本机当前活动是普通活动，只命中 page_event |
-| `page_hospital` | 同上（需 20250327 医院活动在跑） |
-| `page_island_manage` | 依赖 page_island（本机岛屿计划未解锁，见 blocked） |
-| `page_island_map` | 依赖 page_island（本机岛屿计划未解锁，见 blocked） |
-| `page_island_order` | 依赖 page_island（本机岛屿计划未解锁，见 blocked） |
-| `page_island_phone` | 依赖 page_island（本机岛屿计划未解锁，见 blocked） |
-| `page_island_season` | 依赖 page_island（本机岛屿计划未解锁，见 blocked） |
-| `page_island_shop` | 依赖 page_island（本机岛屿计划未解锁，见 blocked） |
-| `page_island_storage` | 依赖 page_island（本机岛屿计划未解锁，见 blocked） |
-| `page_island_technology` | 依赖 page_island（本机岛屿计划未解锁，见 blocked） |
-| `page_island_transport` | 依赖 page_island（本机岛屿计划未解锁，见 blocked） |
-| `page_private_quarters` | 宿舍菜单里没有该入口：实测 `DORMMENU_GOTO_PRIVATE_QUARTERS` 资产分 0.0627 （菜单只显示学院/后宅/指挥喵/岛屿计划四张卡） |
-| `page_raid` | 同上（需 raid_20260827 类活动在跑） |
-| `page_rpg_city` | 同上 |
-| `page_rpg_stage` | 同上（需 raid_20240328 类 RPG 活动在跑） |
-| `page_rpg_story` | 同上 |
-| `page_sp` | 同上（需活动带 SP 关卡） |
+| `page_island_manage` | **按用户要求跳过**：岛屿计划相关不在本轮验证范围内 |
+| `page_island_map` | **按用户要求跳过**：岛屿计划相关不在本轮验证范围内 |
+| `page_island_order` | **按用户要求跳过**：岛屿计划相关不在本轮验证范围内 |
+| `page_island_phone` | **按用户要求跳过**：岛屿计划相关不在本轮验证范围内 |
+| `page_island_season` | **按用户要求跳过**：岛屿计划相关不在本轮验证范围内 |
+| `page_island_shop` | **按用户要求跳过**：岛屿计划相关不在本轮验证范围内 |
+| `page_island_storage` | **按用户要求跳过**：岛屿计划相关不在本轮验证范围内 |
+| `page_island_technology` | **按用户要求跳过**：岛屿计划相关不在本轮验证范围内 |
+| `page_island_transport` | **按用户要求跳过**：岛屿计划相关不在本轮验证范围内 |
+| `page_rpg_city` | RPG 活动的城内界面，**上游页面图里没有入边**（只有回主界面/回剧情页的出边），既不可能是导航目标；且需要 RPG 类活动在跑才可能出现 |
 | `page_unknown` | `Page(None)` —— 合成实体，没有 check 按钮，不是真实画面 |
 
 ## 复现方式

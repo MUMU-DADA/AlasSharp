@@ -1,10 +1,13 @@
 {
   "blocked": {
+    "page_coalition": "定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed）",
     "page_event_list": "NG-nochange（按钮不在屏上：无活动时活动一览入口不出现）",
-    "page_guild": "游戏状态阻塞（账号未加入大舰队，MAIN_GOTO_GUILD 落到舰队选择页，上游未建模该页）",
+    "page_hospital": "定向重试仍未到达：落在 ['page_event']（goto-failed）",
     "page_island": "游戏状态阻塞（点击岛屿计划入口 0.9999 分，菜单关闭退回主界面＝功能未解锁）",
-    "page_meowfficer": "游戏状态阻塞（点击指挥喵入口 0.9894 分确认按钮在屏，但菜单关闭退回主界面＝功能未解锁）",
-    "page_os": "NG-nochange（大型作战入口在屏 0.9990，点击无反应，等 6 秒仍无变化＝未解锁）"
+    "page_raid": "定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed）",
+    "page_rpg_stage": "定向重试仍未到达：落在 ['page_campaign']（goto-failed）",
+    "page_rpg_story": "定向重试仍未到达：落在 ['page_event']（goto-failed）",
+    "page_sp": "定向重试仍未到达：落在 ['page_campaign']（goto-failed）"
   },
   "verified": {
     "page_academy": [
@@ -52,6 +55,9 @@
     "page_game_room": [
       "page_game_room"
     ],
+    "page_guild": [
+      "page_guild"
+    ],
     "page_mail": [
       "page_mail"
     ],
@@ -63,6 +69,9 @@
       "page_main",
       "page_main_white"
     ],
+    "page_meowfficer": [
+      "page_meowfficer"
+    ],
     "page_meta": [
       "page_meta"
     ],
@@ -73,6 +82,12 @@
       "page_munitions",
       "page_shop",
       "page_supply_pack"
+    ],
+    "page_os": [
+      "page_os"
+    ],
+    "page_private_quarters": [
+      "page_private_quarters"
     ],
     "page_research": [
       "page_research"
