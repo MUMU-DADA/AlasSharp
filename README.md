@@ -205,7 +205,12 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 ```
 
 `alashub` 子命令：`verify` / `list` / `show` / `imaging` / `matching` / `vision` /
-`device` / `goto`（真机导航，见 `docs/navigation.md`）/ `map`（S2 地图识别，见 `docs/map-detection.md`）。
+`device` / `goto`（真机导航，见 `docs/navigation.md`）/ `map`（S2 地图识别，见 `docs/map-detection.md`）/
+`map-ir`（关卡 IR 校验）/ `capture`（设备通道对比，见 `docs/device-engine.md`）。
+
+**设备引擎（多后端可切换，见 `docs/device-engine.md`）**：设备 I/O 走宿主，换后端不改 C# 代码。
+本机实测最优（已设为默认）：**`--screenshot scrcpy`（抓图 128 ms，比 adb 快 2.5 倍）
++ `--control MaaTouch`（点击稳态 53 ms）**；导航流程因此快约 14.5%。
 
 ## 验收记录
 
