@@ -35,16 +35,16 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 {
   "load": "ok",
   "center_loca": [
-    1423.0,
-    1690.0
+    2075.0,
+    414.0
   ],
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
-    "globe_center: (np.float64(1423.0), np.float64(1690.0))",
-    "0.081s      similarity: 0.066",
+    "globe_center: (np.float64(2075.0), np.float64(414.0))",
+    "0.079s      similarity: 0.093",
     "Low similarity when matching OS globe"
   ],
-  "similarity": 0.066,
+  "similarity": 0.093,
   "homo_size": [
     1032,
     1008
@@ -86,7 +86,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
       199.99999999999991
     ]
   ],
-  "fixture": "map_2_1.png"
+  "fixture": "_probe_now.png"
 }
 ```
 
@@ -94,7 +94,9 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 
 | fixture | globe | 往返误差 | map detected | 原因 |
 | --- | --- | --- | --- | --- |
+| `_probe_now.png` | — | — | False | Vanish point and distant point too close |
 | `map_2_1.png` | — | — | False | No vertical line detected |
+| `map_hard_1_4.png` | — | — | False | Vanish point and distant point too close |
 | `map_settled.png` | — | — | True |  |
 | `map_shape_9x6.png` | — | — | True |  |
 | `os_globe_live.png` | — | — | False | Failed to find a free tile |
@@ -472,6 +474,33 @@ view.py:  def predict(self): for grid in self: grid.predict()
 
 结论：海域图的**网格检出**已验证（49 格 / 9x6），**逐格语义**留待 S3 真需要时再对齐
 （那时可以拿具体格子的截图与上游模板逐一对照，和战役图当年查网格线是同一个套路）。
+
+## 困难图（1-4）：未能检出 —— 内部竖线拟合不出，消失点几何退化
+
+用户切到困难图 1-4 后抓到 `data/fixtures/map_hard_1_4.png`。画面特征：可见网格 **B-G × 1-3**、
+两艘 Lv.28 敌舰、底部困难图特有的 迎击/撤退/切换 按钮；**最左列 A 被左侧舰队栏挡住**
+（属"相机窗口"情形：地图比可见区宽）。
+
+检出：mode=main 与 mode=os **都失败**，reason=`Vanish point and distant point too close`（Perspective.load 的退化几何判断）。
+
+`map_detect_trace` 数字：
+
+| 阶段 | peaks | 遮罩后 | HoughLines 原始 | lines |
+| --- | --- | --- | --- | --- |
+| inner_h | 2198 | 2198 | 5 | **3** ✅ |
+| inner_v | 1461 | 1456 | **0** | **0** ✗ |
+| edge_h | 2759 | 1743 | 5 | 5 |
+| edge_v | 1241 | 1023 | 5 | 5 |
+
+即困难图上**内部竖线一条都拟合不出**（1461 个峰值 → Hough 0），只剩横线与边缘线，
+消失点几何因此退化。
+
+关卡 IR：困难图复用同章节地图数据（`data/campaign/campaign_hard` 下只有 campaign_12_4 / 14_4 / campaign_hard 三个文件），故取普通 `campaign_1_4`：
+`shape='G3'` → 7 列 × 3 行 = **21 格**，与画面可见的 B-G × 1-3 吻合（A 列在舰队栏之后）。
+
+与"动画期脏样本"那次表象同类（都是竖线弱到拟合不出），但这次样本是停稳的、numpy 垫片
+也已生效 —— 所以更可能是**本客户端困难图竖线的渲染/对比度**问题。
+下一步：与战役 2-1（能检出）并排量竖线峰值强度与角度分布，判断是阈值还是渲染差异。
 
 ## 复现
 
