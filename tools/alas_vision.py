@@ -981,6 +981,11 @@ def op_map_detect(args):
     import module.map_detection.view as view_mod
     image = _require_image()
     cfg = _map_config()
+    # 上游有两个检测后端（Homography / Perspective），由 config.DETECTION_BACKEND 选。
+    # 允许显式指定：真机上出现过 homography 后端"找不到水平线/垂直线"而画面明明有网格，
+    # 这时要能立刻对比另一个后端，而不是猜。
+    if args.get('backend'):
+        cfg.DETECTION_BACKEND = args['backend']
     out = {'backend': str(getattr(cfg, 'DETECTION_BACKEND', ''))}
     try:
         v = view_mod.View(cfg)

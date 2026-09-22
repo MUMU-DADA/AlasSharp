@@ -74,7 +74,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
       199.99999999999991
     ]
   ],
-  "fixture": "os_map.png"
+  "fixture": "map_2_1.png"
 }
 ```
 
@@ -82,6 +82,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 
 | fixture | globe | 往返误差 | map detected | 原因 |
 | --- | --- | --- | --- | --- |
+| `map_2_1.png` | — | — | False | No vertical line detected |
 | `os_map.png` | — | — | False | TypeError: arrays to stack must be passed as a "sequence" type such as list or t |
 
 ## 正样本从哪来（这是完成 S2 验收的唯一缺口）
