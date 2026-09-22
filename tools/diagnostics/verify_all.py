@@ -62,6 +62,7 @@ STEPS = [
     ('verify_account_state.py', 'R2 账号状态域（只读状态任务 + 真机帧 + 临界判据留证）', False, 600),
     ('verify_report.py', 'R2 运行报告（工件→结构化事实 + 证据完整性反例）', False, 600),
     ('verify_os_state.py', 'R2 大世界/海域只读探针（存盘帧；capture 前置条件口径）', False, 600),
+    ('r3_map_data_init.py', 'R3 第一项上游轨迹（map_data_init 逐章形态）', False, 300),
     ('r3_candidates.py', 'R3 候选排序（原生钩子覆盖，重建 r3-candidates.md）', False, 300),
     ('verify_task_catalog.py', '周期任务域数据源（上游任务目录两个来源可读/差异如实标注）', False, 300),
     ('verify_event_state.py', 'R2 活动域清点（与独立数对拍 / only_complete / 空集口径）', False, 300),
