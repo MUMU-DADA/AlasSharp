@@ -197,14 +197,28 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 
 上游 UI 层的识别规则是**可枚举的有限集合**，共 89 个规则实体，跨 14 个业务模块：
 
-| 类别 | 数量 | 定义位置 | 状态 |
+| 类别 | 数量 | 结构 | 可否当数据迁移 |
 |---|---|---|---|
-| `Page`（页面） | **53** | `module/ui/page.py` | ✅ 已迁移并真机验证 |
-| `Switch`（开关） | 22 | 分散在 11 个业务模块 | 待迁移 |
-| `Scroll`（滚动区） | 11 | 分散在 11 个业务模块 | 待迁移 |
-| `Setting`（设置项） | 2 | 分散在 2 个业务模块 | 待迁移 |
-| `Navbar`（底部导航栏） | 1 | `module/ui/navbar.py` | 待迁移 |
+| `Page`（页面） | **53** | `module/ui/page.py` 模块级 | ✅ 已迁移并真机验证 |
+| `Switch`（开关） | **22** | 10 个模块级 + 12 个类内 | 部分 |
+| `Scroll`（滚动区） | **11** | 10 个模块级 + 1 个类内 | 部分 |
+| `Setting`（设置项） | **2** | 2 个类内（`Setting(..., main=self)`） | ❌ 需实例 |
+| `Navbar`（底部导航栏） | **1** | 1 个 `cached_property` 内 | ❌ 需实例 |
 | **合计** | **89** | | |
+
+**按结构分类（决定迁移方式）**：
+
+| 结构 | 数量 | 迁移方式 |
+|---|---|---|
+| 模块级常量（`X = Scroll(...)`） | **20** | 可直接枚举并驱动 |
+| 类内成员 / `cached_property` | **15** | 需 UI 类实例上下文 |
+| 页面（模块级 `Page(...)`） | **53** | 已迁移 |
+
+**`cached_property` 那一类要注意**：它们不是静态规则，而是**运行时从画面算出来的**。
+例如 `EventShopUI.event_shop_tab_count_and_navbar` 先从截图里数出 tab 数量
+（`np.where(...)`），再据此构造 `ButtonGrid` 与 `Navbar`。
+这类**不可能"迁移成数据"**，只能在运行时调用上游代码 ——
+而本项目的架构（宿主直调上游）恰好天然支持，这是"识图不重写"决策的又一收益。
 
 **关键结构事实**：`Navbar`/`Switch`/`Scroll`/`Setting` 的**类**定义在 `module/ui/`，
 但**实例分散在各业务模块**（`retire` 5、`webui` 5、`coalition` 4、`handler` 4、`shop` 3 …）。

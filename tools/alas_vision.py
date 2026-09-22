@@ -249,6 +249,50 @@ def op_ui_rule_inventory(args):
     out['summary'] = {k: len(v) for k, v in out['modules'].items()}
     return out
 
+def _make_main_shim(image):
+    """
+    造一个最小 `main` 替身，把**上游 ModuleBase 的方法**挂上去。
+
+    Navbar/Switch/Scroll 的识别方法签名都是 `(self, ..., main)`，
+    main 只需提供 `device.image` 与 `image_color_count` 等少数成员。
+    这里刻意不做"等价重写"，而是把上游的实现原样绑上去 —— 识图逻辑只有一个真值来源。
+    """
+    import types
+    from module.base.base import ModuleBase
+
+    class _Device:
+        pass
+
+    class _Main:
+        pass
+
+    main = _Main()
+    dev = _Device()
+    dev.image = image
+    main.device = dev
+    for fn in ('image_color_count', 'image_color_count_appear'):
+        impl = ModuleBase.__dict__.get(fn)
+        if impl is not None:
+            setattr(_Main, fn, impl)
+    return main
+
+
+def op_navbar_info(args):
+    """按上游 Navbar.get_info 判定底部/页面导航栏的选中项（实例在 module/shop_event/ui.py）。"""
+    import module.shop_event.ui as se_ui
+    image = _require_image()
+    navbar = getattr(se_ui, args.get('attr') or 'navbar')
+    shim = _make_main_shim(image)
+    active, left, right = navbar.get_info(shim)
+    return {
+        'name': getattr(navbar, 'name', None),
+        'active': active, 'left': left, 'right': right,
+        'total_buttons': len(navbar.grids.buttons),
+        'buttons': [getattr(b, 'name', str(b)) for b in navbar.grids.buttons],
+        'active_color': list(navbar.active_color),
+        'inactive_color': list(navbar.inactive_color),
+    }
+
 def op_page_list(args):
     """列出上游 module/ui/page.py 定义的页面及其 check_button（识图规则的入口）。"""
     import module.ui.page as page_mod
@@ -443,6 +487,7 @@ OPS = {
     'screenshot_set': op_screenshot_set,
     'asset_info': op_asset_info,
     'page_list': op_page_list,
+    'navbar_info': op_navbar_info,
     'ui_rule_inventory': op_ui_rule_inventory,
     'asset_button_center': op_asset_button_center,
     'page_appear': op_page_appear,
