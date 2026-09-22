@@ -84,6 +84,10 @@ internal static class Program
                 bool campRun = false, campAllow = false, campRepeat = false;
                 double campMax = 300; int campRounds = 1;
                 int campFleet1 = 1, campFleet2 = 0, campSub = 0;
+                // 两套战斗流程二选一（上游 `MAP_CLEAR_ALL_THIS_TIME`）：
+                //   不加 --clear-all：BOSS 一刷出来就打 BOSS（battle_{battle_count}）
+                //   加 --clear-all  ：先清光小怪，清完才打 BOSS
+                bool campClearAll = false;
                 for (int i = 1; i < args.Length - 1; i++)
                 {
                     if (args[i] == "--chapter") campChapter = args[i + 1];
@@ -92,6 +96,7 @@ internal static class Program
                     if (args[i] == "--run") campRun = true;
                     if (args[i] == "--allow-actions") campAllow = true;
                     if (args[i] == "--repeat") campRepeat = true;
+                    if (args[i] == "--clear-all") campClearAll = true;
                     if (args[i] == "--max-seconds" && double.TryParse(args[i + 1], out double ms2)) campMax = ms2;
                     if (args[i] == "--max-rounds" && int.TryParse(args[i + 1], out int mr)) campRounds = mr;
                     if (args[i] == "--fleet1" && int.TryParse(args[i + 1], out int f1)) campFleet1 = f1;
@@ -101,7 +106,7 @@ internal static class Program
                 if (campChapter is null)
                 {
                     Console.WriteLine("用法: campaign <章模块[,章模块...]> [--run --allow-actions] " +
-                                      "[--repeat] [--max-seconds 300] [--max-rounds 1]");
+                                      "[--repeat] [--clear-all] [--max-seconds 300] [--max-rounds 1]");
                     return 2;
                 }
                 // `--stages a,b,c`：**在同一个进程内**连续驱动多关（"常驻"的实质 —— 状态不跨进程丢）
@@ -152,7 +157,7 @@ internal static class Program
                                                    maxSeconds: campMax, maxRounds: campRounds,
                                                    repeatUntilCleared: campRepeat,
                                                    fleet1: campFleet1, fleet2: campFleet2,
-                                                   submarineFleet: campSub);
+                                                   submarineFleet: campSub, clearAll: campClearAll);
                     Console.WriteLine($"[plan    ] {r.Chapter} stage={r.Stage} tier={r.Tier} dry_run={r.DryRun}");
                     Console.WriteLine($"[steps   ] {string.Join(" → ", r.PlanSteps ?? new())}");
                     Console.WriteLine($"[语义轨迹] {string.Join(", ", r.SemanticTrace ?? new())}");

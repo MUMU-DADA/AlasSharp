@@ -61,11 +61,15 @@ public interface IVisionEngine : IDisposable
     /// **战斗逻辑不重写** —— C# 只做编排，动作用上游实现。
     /// `dryRun` 默认 true：只回计划内容，不碰游戏；真跑必须 `allowActions = true`
     /// （宿主侧还有一道硬性安全联锁）。详见 docs/s3-entry-sequence.md。
+    /// `clearAll` 选的是上游两套战斗流程里的哪一套：
+    ///   false（默认）= `battle_{battle_count}`：BOSS 一刷出来就打 BOSS；
+    ///   true         = `MAP_CLEAR_ALL_THIS_TIME` 分支：先清光小怪，清完才打 BOSS。
     /// </summary>
     CampaignPlanResult RunCampaignPlan(string chapter, bool dryRun = true,
                                        bool allowActions = false, double maxSeconds = 300,
                                        int maxRounds = 1, bool repeatUntilCleared = false,
-                                       int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0);
+                                       int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0,
+                                       bool clearAll = false);
 }
 
 /// <summary>`s3_run_plan` 的返回：计划步骤与逐步结果。</summary>
@@ -175,7 +179,8 @@ public abstract class VisionEngineBase : IVisionEngine
     public CampaignPlanResult RunCampaignPlan(string chapter, bool dryRun = true,
                                               bool allowActions = false, double maxSeconds = 300,
                                               int maxRounds = 1, bool repeatUntilCleared = false,
-                                              int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0)
+                                              int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0,
+                                              bool clearAll = false)
         => CallTyped<CampaignPlanResult>("s3_run_plan", new
         {
             chapter,
@@ -187,6 +192,7 @@ public abstract class VisionEngineBase : IVisionEngine
             fleet1,
             fleet2,
             submarine_fleet = submarineFleet,
+            clear_all = clearAll,
         });
 
     protected int NextId() => Interlocked.Increment(ref _nextId);

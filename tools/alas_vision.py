@@ -1236,6 +1236,76 @@ def apply_boss_icon_color_compat():
         pass
 
 
+_CLEAR_ALL_OVERRIDE = {'enabled': False}
+
+
+def apply_clear_all_override(enabled=True):
+    """显式选择"**先清光小怪、再打 BOSS**"这条上游分支（`MAP_CLEAR_ALL_THIS_TIME=True`）。
+
+    上游其实有**两套完全不同的战斗流程**（`module/campaign/campaign_base.py`）：
+
+    | 分支 | 选择条件 | 行为 |
+    | --- | --- | --- |
+    | `MAP_CLEAR_ALL_THIS_TIME=False`（默认） | — | `battle_{battle_count}`：BOSS 一刷出来（`spawn_data` 里那个回合）就打 BOSS，小怪可能还剩 |
+    | `MAP_CLEAR_ALL_THIS_TIME=True` | 见下 | 每轮先清 `enemy+siren+fortress`（`.delete(is_boss)`），**清光才** `battle_boss()` |
+
+    而 True 这个开关是上游自己算的（`fast_forward.py:199-201`）：
+
+        MAP_CLEAR_ALL_THIS_TIME = STAR_REQUIRE_3
+            and not 已拿到第 STAR_REQUIRE_3 颗星
+            and StopCondition_MapAchievement in ['map_3_stars', 'threat_safe']
+
+    也就是说：**只有"还缺星"的图才会自动全清**；已经 3 星的图（本账号大部分图）
+    永远走 `battle_{battle_count}`，"全清"这条永远进不去 —— 用户实测反馈的
+    "全清小怪后再打 BOSS 的场景依旧没有跑通"，根因就是这个开关恒为 False
+    （启动日志里能直接看到 `[MAP_CLEAR_ALL_THIS_TIME] False` /
+    `[StopCondition_MapAchievement] non_stop`）。
+
+    这里给一个**显式开关**（不改上游文件）：在 `handle_fast_forward()` 前后各强制一次配置值。
+    之所以前后都设：原方法内部会按上面的公式把它重算成 False，后面那次是兜底。
+
+    两个场景都要能用，所以这个是**按次开关**：调用方显式传 `clear_all=true` 才生效。
+    """
+    _CLEAR_ALL_OVERRIDE['enabled'] = bool(enabled)
+    try:
+        from module.handler import fast_forward as _ff
+    except Exception:
+        return
+    for name, cls in list(vars(_ff).items()):
+        if not isinstance(cls, type) or getattr(cls, '_alas_clear_all_compat', False):
+            continue
+        if 'handle_fast_forward' not in cls.__dict__:
+            continue
+        orig = cls.__dict__['handle_fast_forward']
+
+        def _handle_fast_forward(self, *a, __orig=orig, **kw):
+            from module.logger import logger as _lg
+            forced = False
+            if _CLEAR_ALL_OVERRIDE['enabled']:
+                try:
+                    if not getattr(self.config, 'MAP_CLEAR_ALL_THIS_TIME', False):
+                        forced = True
+                    self.config.MAP_CLEAR_ALL_THIS_TIME = True
+                except Exception:
+                    pass
+            result = __orig(self, *a, **kw)
+            if _CLEAR_ALL_OVERRIDE['enabled']:
+                try:
+                    if not getattr(self.config, 'MAP_CLEAR_ALL_THIS_TIME', False):
+                        self.config.MAP_CLEAR_ALL_THIS_TIME = True
+                        forced = True
+                except Exception:
+                    pass
+                if forced:
+                    _lg.attr('MAP_CLEAR_ALL_THIS_TIME', True)
+                    _lg.info('全清分支（上游 MAP_CLEAR_ALL_THIS_TIME=True）：'
+                             '先清光小怪与塞壬，清完才打 BOSS')
+            return result
+
+        setattr(cls, 'handle_fast_forward', _handle_fast_forward)
+        cls._alas_clear_all_compat = True
+
+
 def op_s3_campaign_init(args):
     """实例化上游章节的 `Campaign`（**不执行任何游戏动作**）。
 
@@ -1249,6 +1319,9 @@ def op_s3_campaign_init(args):
     apply_fleet_bar_compat()
     apply_auto_search_skip_compat()
     apply_boss_icon_color_compat()
+    # 两个战斗场景的选择：默认（False）= BOSS 一刷出来就打 BOSS；
+    # clear_all=True = 先清光小怪再打 BOSS。按次开关，每次 init 都要显式设回来。
+    apply_clear_all_override(bool(args.get('clear_all', False)))
     apply_withdraw_trace_compat()
     for k in ('serial', 'screenshot', 'control'):
         if args.get(k):
@@ -1336,6 +1409,34 @@ def op_s3_campaign_info(args):
         dev = getattr(inst, 'device', None)
         if dev is not None:
             out['device'] = str(getattr(dev, 'serial', ''))
+        # **关卡进度**：这是"这张图到底清了没有"的**唯一可信判据** —— 它来自游戏自己在
+        # 关卡信息面板上写的字（威胁排除 % + 三个星级条件），由上游 `map_get_info()` 读入。
+        # 相对地：`campaign_end` / 我自己数过的 `enemies_left` 都被实测证伪过（前者连
+        # withdraw 路径也返回 True ✗）。字段只有在上游读过面板之后才有意义。
+        prog = {}
+        for k in ('map_clear_percentage', 'map_achieved_star_1', 'map_achieved_star_2',
+                  'map_achieved_star_3', 'map_is_100_percent_clear', 'map_is_3_stars',
+                  'map_is_threat_safe', 'map_has_clear_mode', 'map_clear_percentage_prev'):
+            try:
+                v = getattr(inst, k, None)
+                if isinstance(v, float):
+                    v = round(v, 4)
+                prog[k] = v
+            except Exception:
+                pass
+        try:
+            prog['map_clear_pct'] = round(float(inst.map_clear_percentage) * 100, 1)
+        except Exception:
+            pass
+        cfg = getattr(inst, 'config', None)
+        if cfg is not None:
+            for k in ('MAP_CLEAR_ALL_THIS_TIME', 'POOR_MAP_DATA',
+                      'StopCondition_MapAchievement', 'STAR_REQUIRE_3'):
+                try:
+                    prog[k] = getattr(cfg, k, None)
+                except Exception:
+                    pass
+        out['map_progress'] = prog
     except Exception as e:
         out['info_error'] = f'{type(e).__name__}: {e}'
     return out
@@ -1542,7 +1643,10 @@ def op_s3_run_plan(args):
                                 'control': args.get('control'),
                                 'fleet1': args.get('fleet1', 1),
                                 'fleet2': args.get('fleet2', 0),
-                                'submarine_fleet': args.get('submarine_fleet', 0)})
+                                'submarine_fleet': args.get('submarine_fleet', 0),
+                                # 战斗流程二选一：False=BOSS 一刷出来就打（默认）；
+                                # True=先清光小怪再打 BOSS（上游 MAP_CLEAR_ALL_THIS_TIME 分支）
+                                'clear_all': args.get('clear_all', False)})
     if init.get('error'):
         return {'error': init['error'], 'stage': 'init'}
     inst = _CAMPAIGN.get('obj')

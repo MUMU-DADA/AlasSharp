@@ -1577,3 +1577,95 @@ def execute_a_battle(self):
 或区分 `CampaignEnd` 的具体来源（`In stage.` / withdraw / 真正的清图路径）✗
 
 **待办**：实现"清图 vs 撤退"的判别，并在结果里返回 `map_clear_percentage` 与结束原因 ✓
+
+---
+
+# 两套战斗流程：**BOSS 一刷出来就打** vs **先清光小怪再打 BOSS**（2026-09-22 夜）
+
+用户明确区分这两个场景，**两个都要能用**。上游本来就有这两套流程，
+区别只在一个配置开关 `MAP_CLEAR_ALL_THIS_TIME`（`module/campaign/campaign_base.py`）：
+
+| 场景 | 分支 | 每轮做什么 |
+| --- | --- | --- |
+| **A：刷出 BOSS 就打** | `MAP_CLEAR_ALL_THIS_TIME=False` | `battle_{battle_count}`：打到 `spawn_data` 里 BOSS 出现的那个回合，就走关卡自己的 `battle_N`（例如 11-1 的 `battle_6`）打 BOSS，**小怪可能还剩** |
+| **B：先清光小怪** | `MAP_CLEAR_ALL_THIS_TIME=True` | 每轮先算 `remain = enemies + sirens + fortresses - bosses`，**只要还剩就不打 BOSS**；`remain` 空了才 `battle_boss()` → `brute_clear_boss()` |
+
+## 规则表确实记录了刷新节奏（用户指出，已核对）
+
+每个关卡的 `MAP.spawn_data`（`campaign/campaign_main/campaign_<章>_<关>.py`，
+以及我们导出的 IR JSON）就是**累计小怪数 + BOSS 出现回合**：
+
+| 关卡 | 每战累计（回合, 累计小怪, 累计 BOSS） | 含义 |
+| --- | --- | --- |
+| 2-1 | (0,2,0) (1,4,0) **(2,6,1)** | 打 2 场就刷 BOSS —— 场景 A 的典型 |
+| 11-1 | (0,2,0) (1,4,0) (2,5,0) (3,6,0) (4,7,0) (5,7,0) **(6,7,1)** | 7 只小怪，第 6 回合刷 BOSS |
+| 10-1 | (0,4,0) (1,5,0) (2,6,0) (3,7,0) (4,8,0) (5,8,0) **(6,8,1)** | 8 只小怪 |
+| 12-1 | 同 11-1 | 7 只小怪，第 6 回合刷 BOSS |
+
+`spawn_data_stack`（`map_base.py:443-451`）把它累加成"到第 N 回合为止应该有多少敌人"，
+`missing_is_none()` / `missing_predict()` 就用它判断"还有没有刷完/还剩几个"。
+
+## 为什么场景 B 此前**永远进不去**（根因）
+
+开关是上游自己算的（`module/handler/fast_forward.py:199-201`）：
+
+```python
+self.config.MAP_CLEAR_ALL_THIS_TIME = self.config.STAR_REQUIRE_3 \
+    and not self.__getattribute__(f'map_achieved_star_{self.config.STAR_REQUIRE_3}') \
+    and (self.config.StopCondition_MapAchievement in ['map_3_stars', 'threat_safe'])
+```
+
+即 **"还缺星" + 停止条件是"三星/威胁排除"** 才全清。本机实际配置是
+`StopCondition_MapAchievement = non_stop`（启动日志里可见），
+而且本账号这些图**已经是三星**，两个条件都不满足 → 恒为 False。
+
+实测日志（场景 B 修复前，进入 11-1 时）：
+
+```
+[MAP_CLEAR_ALL_THIS_TIME] False
+[Map_info] 99%, star_1, star_2, star_3, 100_percent_clear, 3_stars, clear_mode
+[StopCondition_MapAchievement] non_stop
+```
+
+## 怎么选（按次开关，不改上游文件）
+
+```powershell
+# 场景 A：刷出 BOSS 就打（默认）
+alashub campaign campaign.campaign_main.campaign_11_1 --run --allow-actions `
+    --fleet1 3 --fleet2 6 --repeat --max-rounds 20 --max-seconds 1500
+
+# 场景 B：先清光小怪再打 BOSS
+alashub campaign campaign.campaign_main.campaign_11_1 --run --allow-actions --clear-all `
+    --fleet1 3 --fleet2 6 --repeat --max-rounds 20 --max-seconds 1500
+```
+
+实现：垫片 `apply_clear_all_override()` 包住 `handle_fast_forward()`，
+在**它前后各强制一次** `MAP_CLEAR_ALL_THIS_TIME=True`（原方法内部会按上面的公式把它算回
+False，所以后面那次是兜底），并在日志里打一行说明，避免"以为走了全清其实没走"。
+
+## 实测证据
+
+**场景 A（已跑通，2026-09-22 21:48-21:55，11-1，360.6s，exit 0）**：
+
+```
+BATTLE_0..BATTLE_5   Clear enemy: B3 / B2 / G4 / E5 / E3 / E1   （6 只小怪）
+                     Boss found: [F3]                            ← 此前这里是 No boss found.
+BATTLE_6             Using function: battle_6
+                     Is boss: [F3] → <<< CLEAR BOSS >>> → Clear enemy: F3
+                     In stage.（回到章节页，正常收尾；无 WITHDRAW）
+[结果] elapsed=360.6s stopped_early=False campaign_end=True
+```
+
+事后关卡面板：**威胁排除 100%**、三个条件全亮、章节页徽章 `Clear!` + `COMPLETELY ELIMINATED` + ★★★。
+
+**场景 B（命令与分支确认，长跑见运行日志）**：
+
+```
+[MAP_CLEAR_ALL_THIS_TIME] False     ← 上游自己算的
+[MAP_CLEAR_ALL_THIS_TIME] True      ← --clear-all 强制
+全清分支（上游 MAP_CLEAR_ALL_THIS_TIME=True）：先清光小怪与塞壬，清完才打 BOSS
+BATTLE_0  Using function: clear_all          ← 不是 battle_0，分支确实换了
+          Enemy remain: [E5, B3]
+          <<< CLEAR ENEMY >>>  Clear enemy: B3
+```
+
