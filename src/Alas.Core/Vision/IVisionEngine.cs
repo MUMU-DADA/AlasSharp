@@ -50,6 +50,13 @@ public interface IVisionEngine : IDisposable
     AccountStateResult AccountState(bool capture = false, string? screenshotPath = null);
 
     /// <summary>
+    /// 上游任务目录（只读）。`SourceGroups` 是 `task.yaml` 的顶层键（**分组**），
+    /// `GeneratedTasks` 是生成产物里的**扁平任务清单** —— 实测本机 9 个分组 / 68 个任务，
+    /// 交集只有 3 个，所以两个字段各自标明是什么，不合并成一个含混的"任务列表"。
+    /// </summary>
+    TaskCatalogResult TaskCatalog();
+
+    /// <summary>
     /// 选择**引擎的设备后端**（截图后端 / 输入后端）。引擎自带多后端
     /// （adb、droidcast、maatouch、minitouch、scrcpy、hermit、nemu_ipc…），
     /// 换后端只改这里，产品代码零改动 —— 这是"设备 I/O 走宿主"的入口。
@@ -127,6 +134,22 @@ public sealed class AccountFrameInfo
     [JsonPropertyName("available")] public bool Available { get; set; }
     [JsonPropertyName("path")] public string? Path { get; set; }
     [JsonPropertyName("shape")] public List<int>? Shape { get; set; }
+}
+
+/// <summary>`task_catalog` 的返回：上游任务目录的两个来源。</summary>
+public sealed class TaskCatalogResult
+{
+    [JsonPropertyName("source")] public string? Source { get; set; }
+    [JsonPropertyName("loader")] public string? Loader { get; set; }
+    /// <summary>`task.yaml` 的顶层键 —— 是**分组**，不是任务。</summary>
+    [JsonPropertyName("source_groups")] public List<string>? SourceGroups { get; set; }
+    [JsonPropertyName("source_group_count")] public int? SourceGroupCount { get; set; }
+    /// <summary>生成产物里的**扁平任务清单** —— "有哪些任务"看这个。</summary>
+    [JsonPropertyName("generated_tasks")] public List<string>? GeneratedTasks { get; set; }
+    [JsonPropertyName("generated_task_count")] public int? GeneratedTaskCount { get; set; }
+    [JsonPropertyName("generated_source")] public string? GeneratedSource { get; set; }
+    [JsonPropertyName("generated_error")] public string? GeneratedError { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
 }
 
 /// <summary>`device_configure` 的返回：当前选择的设备后端。</summary>
@@ -215,6 +238,8 @@ public abstract class VisionEngineBase : IVisionEngine
     public AccountStateResult AccountState(bool capture = false, string? screenshotPath = null)
         => CallTyped<AccountStateResult>("account_state",
             new { capture, screenshot = screenshotPath });
+
+    public TaskCatalogResult TaskCatalog() => CallTyped<TaskCatalogResult>("task_catalog");
 
     public DeviceCaptureResult CaptureViaEngine(bool raw = true)
         => CallTyped<DeviceCaptureResult>("device_capture_set", new { raw });
