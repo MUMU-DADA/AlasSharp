@@ -149,7 +149,29 @@ alashub queue --file queue.json [--run --allow-actions] [--serial <设备>] `
 并且**每个 `ITaskRunner` 实现都必须在 `Program.cs` 里注册**
 （漏挂的话队列只会报"没有注册运行器"然后失败 —— 这种漏挂在静态上就该被查出来）。
 
-## 七、下一步（本域的缺口，不阻塞下一个域）
+## 七、第三域设计（大世界/海域）—— 实现前先照这份做
+
+大世界（OS）与战役的差别：它的"地图"是**海域 + 球面导航**，识别入口是宿主已有的
+`map_detect`（`mode="os"`）与 `globe_detect`，不是 `s3_run_plan`。所以第三域同样**不需要**
+在 C# 里写地图逻辑，只需要按下面的形状接通用任务模型。
+
+**第一刀只做只读探针**（设备不在线时可完整验收），动作流程等设备上线再加：
+
+| 项 | 设计 |
+| --- | --- |
+| 域标识 | `kind = "os_state"`，类 `OsStateTask : ITaskRunner`（放 `Alas.Core/Tasks/`） |
+| 输入模型 | `{"screenshot": "<帧路径>", "detect": "map"｜"globe", "capture": false}`；`screenshot` 与 `capture` 二选一 |
+| 前置条件 | `screenshot` 必须存在；`capture=true` 需要真跑会话与 serial（与 `AccountStateTask` 同规则） |
+| 调用 | `LoadScreenshot(path)`（或宿主当前帧）→ `CallTyped<MapDetectResult>("map_detect", new { mode = "os" })`；`globe` 走 `globe_detect` |
+| 结论 | **探针跑通即 `Succeeded`**（"没检测到"是有效状态，不是失败）；宿主/设备异常才 `Failed` |
+| 证据 | `detected`、`grid_count`、`center_loca`、`globe_center`、`log_lines`（已归一计时）、来源（帧路径 / 设备抓帧） |
+| 离线验收 | `tools/diagnostics/verify_os_state.py`：用 `data/fixtures/os_map.png`（宿主 `alashub map` 的默认夹具）跑队列任务，断言证据字段齐全、工件落盘；没有夹具时显式跳过 |
+| 守卫 | 新增域名后 `verify_architecture.py` 会自动要求它在 `Program.cs` 注册（已有检查） |
+
+**动作流程（导航、海域选择、出击）暂不做**：它们必须真机验收，而现在
+`adb devices` 为空 —— 先做能验收的部分，避免造出无法验收的域（这是 R2 一贯的口径）。
+
+## 八、下一步（本域的缺口，不阻塞下一个域）
 
 - 账号状态域的**真机验收待补**：目前只用了存盘真机帧（帧是现场的，但"当场抓帧"路径未跑）。
   设备在线时补一条 `capture=true` 的真机记录。
