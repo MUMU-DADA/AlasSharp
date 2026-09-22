@@ -50,6 +50,7 @@ STEPS = [
     ('report_pages.py', '重建 page-verification.md', False, 300),
     ('../sync_all.py', '上游同步一致性（--verify：导出数据/素材与上游对齐）', False, 600),
     ('verify_device_engine.py', '设备引擎回归（后端可切换/抓图/点击，需设备在线）', True, 600),
+    ('device_smoke.py', '真机冒烟收口（当场抓帧 / IN_MAP 现场取值 / 有界战役冒烟）', True, 1800),
     ('verify_dryrun_purity.py', 'dry-run 纯度（不带 --run 绝不碰游戏）', False, 600),
     ('verify_s3_plan.py', 'S3 计划读取回归（协议 plan_steps == IR battle_* + 安全锁）', False, 300),
     ('verify_s3_upstream_loading.py', 'S3 上游加载链/继承配置/地图帧回归（离线）', False, 300),
