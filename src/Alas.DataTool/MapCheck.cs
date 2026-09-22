@@ -92,7 +92,9 @@ internal static class MapCheck
         }
 
         Console.WriteLine(problems == 0
-            ? "S2 产品路径验收通过（素材链 + 单应性往返 + 负样本语义）"
+            ? (map.Detected
+                ? $"S2 产品路径验收通过（素材链 + 单应性往返 + 真机地图正样本 grids={map.GridCount}）"
+                : "S2 产品路径验收通过（素材链 + 单应性往返 + 非地图负样本语义）")
             : $"S2 验收有 {problems} 处问题");
         return problems == 0 ? 0 : 1;
     }
