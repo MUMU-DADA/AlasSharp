@@ -1113,6 +1113,15 @@ def op_s3_campaign_init(args):
             # 比点 UI 可靠得多（本项目曾因误开自律把一场战斗打完）。要开就显式传 True。
             cfg.Campaign_UseClearMode = bool(args.get('clear_mode', False))
             cfg.Campaign_UseAutoSearch = bool(args.get('auto_search', False))
+            # **舰队选择也是配置项**（不是从地图推出来的）：
+            #   map_fleet_preparation.fleet_preparation() 读
+            #   [Fleet_Fleet1, Fleet_Fleet2, Submarine_Fleet]，0 表示"不用"。
+            # 实测踩过：默认 [1,2,0] 会去"清空第二舰队"，而本账号第二舰队是空的
+            # （清空按钮不存在）→ 等一组永不出现的按钮 → GameStuckError。
+            # 默认只用第一舰队、不带潜艇；要改就显式传 fleet1/fleet2/submarine。
+            cfg.Fleet_Fleet1 = int(args.get('fleet1', 1))
+            cfg.Fleet_Fleet2 = int(args.get('fleet2', 0))
+            cfg.Submarine_Fleet = int(args.get('submarine_fleet', 0))
     except Exception as e:
         return {'error': f'配置章节绑定失败: {type(e).__name__}: {e}', 'stage': stage}
     try:
