@@ -55,9 +55,11 @@ KNOWN_FIXTURES = {
 KNOWN_UNSUPPORTED = {
     '1-1': '单行 7 格小图：上游 map_init 与本地盲检均报 No vertical line detected',
 }
-KNOWN_UNSUPPORTED_CHAPTERS = {
-    '1': '整章为 7 格单行图（MAP.shape=(6,0)），与 1-1 同形；上游检测器对该几何失效',
-}
+# **修正（过度概括）**：此前把"第 1 章整章"标为不支持 —— 实测该章只有 1-1 是 7 格单行图，
+# 1-2/1-3/1-4 分别是 (4,2)/(5,2)/(6,2) 的多行图（15/18/21 格），与 1-1 **不同族**，
+# 且计划完整（tier B/B/A）—— 它们其实是比第 2/3 章（全 tier C）更好的批量目标。
+# 教训：只查了每章第一关就下"整章"结论 ✗ 应当逐关查形状。
+KNOWN_UNSUPPORTED_CHAPTERS = {}
 
 
 def op(_op, **args):
