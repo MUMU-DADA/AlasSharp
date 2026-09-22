@@ -41,7 +41,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
     "globe_center: (np.float64(2075.0), np.float64(414.0))",
-    "0.082s      similarity: 0.093",
+    "0.086s      similarity: 0.093",
     "Low similarity when matching OS globe"
   ],
   "similarity": 0.093,
