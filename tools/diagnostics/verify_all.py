@@ -60,6 +60,7 @@ STEPS = [
     ('verify_runtime.py', 'R1 常驻运行时（会话只初始化一次 / 失败即停 / 取消 / 证据）', False, 300),
     ('verify_account_state.py', 'R2 账号状态域（只读状态任务 + 真机帧 + 临界判据留证）', False, 600),
     ('verify_report.py', 'R2 运行报告（工件→结构化事实 + 证据完整性反例）', False, 600),
+    ('verify_os_state.py', 'R2 大世界/海域只读探针（存盘帧；capture 前置条件口径）', False, 600),
     ('s3_plan_inventory.py', 'S3 计划词表清点（重建 s3-plan-vocabulary.md）', False, 300),
     ('status.py', '重建 status.md', False, 300),
 ]

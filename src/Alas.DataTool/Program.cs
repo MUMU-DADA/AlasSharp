@@ -675,6 +675,10 @@ internal static class Program
                                       $"pages=[{string.Join(",", (task.Evidence["pages"]?.AsArray() ?? new())!)}] " +
                                       $"in_map={inMap} 相似度={task.Evidence["in_map_tolerance"]} " +
                                       $"来源={task.Evidence["source"]}");
+                if (task.Evidence["detected"] is System.Text.Json.Nodes.JsonNode detected)
+                    Console.WriteLine($"[任务证据] mode={task.Evidence["mode"]} detected={detected} " +
+                                      $"grid_count={task.Evidence["grid_count"]} " +
+                                      $"来源={task.Evidence["source"]}");
             }
             if (task.ArtifactPath is not null) Console.WriteLine($"[任务工件] {task.ArtifactPath}");
         }
