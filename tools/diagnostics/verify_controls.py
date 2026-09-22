@@ -99,6 +99,14 @@ PLAN = [
      'enter': {'goto': 'page_dock', 'long_press': (640, 300), 'click_xy': (995, 375)},
      'rules': [('module.equipment.equipment_change', 'equipping_filter')],
      'leave': 'back'},
+    # 装备选择浮层重试（第 3 次，这次用**上游自己的几何**）：
+    # module/equipment/equipment_change.py 的 EQUIPMENT_GRID = ButtonGrid(origin=(696,170),
+    # delta=(86.25,0), button_shape=(32,32)) → 槽位中心 y≈186、x≈712/798/884/971/1057。
+    # 前两次用的 (792,156)/(995,375) 是我从截图目测的，偏了约 30px。
+    {'page': 'equip_select3',
+     'enter': {'goto': 'page_dock', 'long_press': (640, 300), 'click_xy': (712, 186)},
+     'rules': [('module.equipment.equipment_change', 'equipping_filter')],
+     'leave': 'back'},
     {'page': 'retire_dialog',
      # 退役确认弹窗（用户明确授权"只开弹窗、不点确认"）：
      # 1) 点一艘舰船卡片＝选中（无害）；2) 点退役入口 RETIRE_APPEAR_* 开弹窗（只点一次）；
@@ -442,9 +450,12 @@ DEEPER_NOTE = {
                  '`STRATEGY_OPENED` 0.16 都不在屏上，上游那套「策略面板」入口在本客户端里不存在',
     'SUBMARINE_HUNT': '潜艇面板。同上（还需先有潜艇）',
     'SUBMARINE_VIEW': '同上',
-    'equipping_filter': '装备选择浮层里的筛选开关。已按上游入口试过两条路：'
-                        '角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99，'
-                        '但点开后筛选开关仍不出现）、点装备槽位 (792,156) 也未打开选择器',
+    'equipping_filter': '装备选择浮层里的筛选开关。已试过 3 条入口：角色详情页点 '
+                        'EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、'
+                        '以及**上游自己的几何** EQUIPMENT_GRID（origin=(696,170)、delta=(86.25,0)、'
+                        '32x32 → 槽位中心 (712,186)）。三次点击都打开了某个浮层（画面变成未建模页），'
+                        '但筛选开关始终不出现 —— 该开关属于更深的更换流程'
+                        '（上游还有 EQUIP_INFO_BAR → 「更换」两步），未继续下钻',
 }
 # 未命中里有一类不是"到不了"，而是**客户端 UI 版本不同**：规则本身跑通了、
 # 正确返回 unknown，因为屏幕上根本没有它要找的新版控件。

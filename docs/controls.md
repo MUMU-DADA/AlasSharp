@@ -91,8 +91,8 @@
 | `SUBMARINE_VIEW` | Switch | ➡️ 需更深流程 | 同上 |
 | `SUBMARINE_VIEW` | Switch | ➡️ 需更深流程 | 同上 |
 | `SWITCH_LOCK` | Switch | ➡️ 需更深流程 | appear=False |
-| `equipping_filter` | Switch | ➡️ 需更深流程 | 装备选择浮层里的筛选开关。已按上游入口试过两条路：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99，但点开后筛选开关仍不出现）、点装备槽位 (792,156) 也未打开选择器 |
-| `equipping_filter` | Switch | ➡️ 需更深流程 | 装备选择浮层里的筛选开关。已按上游入口试过两条路：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99，但点开后筛选开关仍不出现）、点装备槽位 (792,156) 也未打开选择器 |
+| `equipping_filter` | Switch | ➡️ 需更深流程 | 装备选择浮层里的筛选开关。已试过 3 条入口：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、以及**上游自己的几何** EQUIPMENT_GRID（origin=(696,170)、delta=(86.25,0)、32x32 → 槽位中心 (712,186)）。三次点击都打开了某个浮层（画面变成未建模页），但筛选开关始终不出现 —— 该开关属于更深的更换流程（上游还有 EQUIP_INFO_BAR → 「更换」两步），未继续下钻 |
+| `equipping_filter` | Switch | ➡️ 需更深流程 | 装备选择浮层里的筛选开关。已试过 3 条入口：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、以及**上游自己的几何** EQUIPMENT_GRID（origin=(696,170)、delta=(86.25,0)、32x32 → 槽位中心 (712,186)）。三次点击都打开了某个浮层（画面变成未建模页），但筛选开关始终不出现 —— 该开关属于更深的更换流程（上游还有 EQUIP_INFO_BAR → 「更换」两步），未继续下钻 |
 | `ShopUI.shop_nav_250814` | Switch | 🕐 UI 版本差异 | 本客户端是 250814 之前的老版商店 UI：可选状态是 NAV_GENERAL/NAV_MONTHLY，实测 unknown（新版商店才有这两个导航项；老版走 _shop_bottom_navbar，已命中） |
 | `ShopUI.shop_tab_250814` | Switch | 🕐 UI 版本差异 | 同上（9 个新版页签 TAB_* 都不在屏上） |
 
