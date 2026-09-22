@@ -386,6 +386,14 @@ def op_ui_rule_check(args):
             continue
         try:
             v = fn(shim)
+            # numpy 标量（np.bool_/np.float64…）不是 Python 内建类型，若不先 .item()
+            # 会被下面的分支转成字符串 "<bool>"，在调用方 `if res.get('appear')` 里**恒为真值**，
+            # 导致命中统计虚高（实测：module_level 20 个报了 10 个"命中"）。
+            if hasattr(v, 'item') and callable(getattr(v, 'item')):
+                try:
+                    v = v.item()
+                except Exception:
+                    pass
             if isinstance(v, (bool, int, float, str)) or v is None:
                 results[meth] = v
             else:
