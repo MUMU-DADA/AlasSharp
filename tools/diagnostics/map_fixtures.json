@@ -1,0 +1,8 @@
+{
+  "_comment": "真机地图 fixture → 关卡 IR 的对照表，供 verify_map_detection.py 做『检测结果 vs 声明式地图数据』交叉校验。fixture 图片本身在 data/fixtures/（不入库，可随时重抓），这张表入库。",
+  "map_settled.png": {
+    "chapter": "campaign_main/campaign_2_1.json",
+    "name": "2-1",
+    "note": "真机战斗地图，用户手动进入并停稳后抓图；检测 grids=24 / shape=[5,3]，与 IR 的 F4（6x4=24 格）一致"
+  }
+}

@@ -52,6 +52,27 @@ def capture(name):
     return path
 
 
+def ir_expectation(chapter_rel):
+    """从关卡 IR（`data/campaign/<...>.json`）算出"检测本该给出什么"。
+
+    上游地图数据里 `shape='F4'` 的含义是 `node2location('F4') = (5, 3)`，
+    而网格数是 **shape+1**（6x4=24）；这条"差一"规则在 MapIR 里已经和上游活对象
+    穷尽对照过（见 docs/map-ir.md），所以这里可以直接拿它当期望值。
+    """
+    path = os.path.join(DATA, 'campaign', chapter_rel)
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding='utf-8') as f:
+        ir = json.load(f)
+    rows = [r.split() for r in (ir.get('map', {}).get('map_data') or '').strip().split('\n')
+            if r.strip()]
+    if not rows:
+        return None
+    cols = max(len(r) for r in rows)
+    return {'name': ir.get('name'), 'rows': len(rows), 'cols': cols,
+            'grids': len(rows) * cols, 'shape': [cols - 1, len(rows) - 1]}
+
+
 def main():
     if '--capture' in sys.argv:
         i = sys.argv.index('--capture')
@@ -90,7 +111,23 @@ def main():
         # 战役地图：非地图画面应当给负样本
         m = op('map_detect')
         entry['map'] = m
-        results['map'].append(dict(m, fixture=f))
+        # 检测结果 vs 关卡 IR（"网格判定"这半边的交叉校验）
+        manifest = {}
+        mf = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'map_fixtures.json')
+        if os.path.exists(mf):
+            with open(mf, encoding='utf-8') as fh:
+                manifest = {k: v for k, v in json.load(fh).items() if not k.startswith('_')}
+        info = manifest.get(f)
+        if info:
+            exp = ir_expectation(info['chapter'])
+            entry['ir'] = exp
+            if exp and m.get('detected'):
+                entry['ir_match'] = (m.get('grid_count') == exp['grids']
+                                     and m.get('shape') == exp['shape'])
+            else:
+                entry['ir_match'] = None
+        results['map'].append(dict(m, fixture=f, ir=entry.get('ir'),
+                                   ir_match=entry.get('ir_match')))
         print('%s: globe load=%s 往返误差=%s | map detected=%s %s'
               % (f, g.get('load'), ('%.2e' % rt) if rt is not None else 'n/a',
                  m.get('detected'), m.get('reason') or ''))
@@ -136,6 +173,10 @@ def main():
         % ('✅' if negative_ok else ('—' if negative_ok is None else '❌')),
         '| 地图正样本 | %s | 需要真机地图画面（见下） |'
         % ('✅ %d 张检测到网格' % len(positive) if positive else '⏳ 缺正样本'),
+        '| 检测 vs 关卡 IR | %s | 检出的格数/形状必须与该关卡声明的 map_data 一致 |'
+        % (('✅ %d 张一致' % sum(1 for m in results['map'] if m.get('ir_match')))
+           if any(m.get('ir_match') is not None for m in results['map'])
+           else '—（该 fixture 未登记对照表）'),
         '',
         '## 素材链明细',
         '',
