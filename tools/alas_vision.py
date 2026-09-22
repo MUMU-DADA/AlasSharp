@@ -1072,7 +1072,10 @@ _CAMPAIGN = {'obj': None, 'chapter': None}
 # 这条联锁是硬性的 —— 项目早期误开自律寻敌、把一场战斗打完的教训还记着。
 _DANGER_PREFIX = ('battle', 'clear', 'enter_map', 'run', 'mob_move', 'fleet',
                   'goto', 'map_', 'ambush', 'siren', 'submarine', 'auto_search',
-                  'combat', 'withdraw', 'retreat')
+                  'combat', 'withdraw', 'retreat',
+                  # **补漏**：`execute_a_battle` 是上游真正的"打一步"入口（campaign_base.run()
+                  # 的循环体），但它不以 'battle' 开头，此前**绕过了 allow_actions 安全锁** ✗
+                  'execute')
 
 
 
