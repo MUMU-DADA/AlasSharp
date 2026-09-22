@@ -1545,6 +1545,12 @@ def op_s3_run_plan(args):
             steps.append({'step': 'enter_map_retry', 'ms': r2.get('ms'),
                           'error': r2.get('error')})
     if not steps[-1].get('error'):
+        # **上游 run() 的顺序是 handle_map_fleet_lock() 再 map_init()** ——
+        # 之前只调 map_init，导致 execute_a_battle() 抛 KeyError: ()（实测：20 轮里只有 1 轮真打了）✗
+        if not steps or not steps[-1].get('error'):
+            _fl = op_s3_campaign_call({'name': 'handle_map_fleet_lock', 'allow_actions': True})
+            steps.append({'step': 'handle_map_fleet_lock', 'ms': _fl.get('ms'),
+                          'error': _fl.get('error')})
         r = op_s3_campaign_call({'name': 'map_init', 'args': ['@MAP'], 'allow_actions': True})
         steps.append({'step': 'map_init', 'ms': r.get('ms'), 'error': r.get('error')})
     # 执行**计划步骤本身**（battle_* 方法），而不是逐条重放语义轨迹 —— 见上面说明。
