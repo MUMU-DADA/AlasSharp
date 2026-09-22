@@ -1377,8 +1377,14 @@ def op_map_detect(args):
     import module.map_detection.utils as md_utils
     from module.map_detection.view import MapDetectionError
 
-    def _rebuild_view(threshold):
-        """按给定 Hough 阈值重建 cfg + View（阈值改了必须重建，配置是构造期读入的）。"""
+    def _rebuild_view(threshold, peaks=None):
+        """按给定 Hough 阈值重建 cfg + View（阈值改了必须重建，配置是构造期读入的）。
+
+        `peaks` 可覆盖 `INTERNAL_LINES_FIND_PEAKS_PARAMETERS`（scipy.find_peaks 参数）。
+        为什么需要它：现场帧（进图后的 1-1，7 格单行）报 `No vertical line detected`，
+        而 trace 显示 `inner_v.peaks_raw=784 / lines=0` —— **峰找得到，卡在"峰→线"**；
+        降 Hough 阈值（50/40）与放大都无效（已证），所以这一档要动**峰参数本身**。
+        """
         nonlocal cfg, v
         cfg = _map_config()
         if args.get('backend'):
@@ -1387,6 +1393,19 @@ def op_map_detect(args):
             cfg.INTERNAL_LINES_HOUGHLINES_THRESHOLD = threshold
         except Exception:
             pass
+        if peaks:
+            try:
+                merged = dict(getattr(cfg, 'INTERNAL_LINES_FIND_PEAKS_PARAMETERS', {}) or {})
+                merged.update(peaks)
+                cfg.INTERNAL_LINES_FIND_PEAKS_PARAMETERS = merged
+                # 边线只跟着降 prominence；不动它的 height（那是"亮线"区间，
+                # 改了会把边线与内部线混为一谈）。
+                if 'prominence' in peaks:
+                    em = dict(getattr(cfg, 'EDGE_LINES_FIND_PEAKS_PARAMETERS', {}) or {})
+                    em['prominence'] = peaks['prominence']
+                    cfg.EDGE_LINES_FIND_PEAKS_PARAMETERS = em
+            except Exception:
+                pass
         if mode == 'os':
             cfg.Scheduler_Command = 'OpsiDaily'
             v = view_mod.View(cfg, mode='os', grid_class=grid_class) if grid_class \
@@ -1401,10 +1420,25 @@ def op_map_detect(args):
     # 所以按"默认优先、失败才降"的顺序试，与上游自己的
     # search_tile_center → corner → rectangle 多策略同思路。
     _last_reason = None
-    for _thr in (None, 50, 40):
-        if _thr is not None:
+    # 档位 = (Hough 阈值, 峰参数覆盖)。
+    #   前 3 档：**峰参数**（现场 1-1 报 No vertical line detected 而 peaks_raw=784，
+    #           说明卡在"峰→线"，所以先降 find_peaks 的门槛：height 下限 150→130→110、
+    #           prominence 10→7）。注意 height 上界 (255-33=222) 不动：那是"内部线/边线"的
+    #           分界，动了会把两者混起来。
+    #   后 2 档：原有的**降 Hough 阈值**（困难图需要 50；40 是兜底）。
+    # 顺序仍是"默认优先、失败才降"，与上游多策略同思路；且实测 2-1 用默认即可，
+    # 所以正常画面不会走到后面这些档（也就不会引入额外的假阳性或耗时）。
+    _TIERS = (
+        (None, None),
+        (None, {'height': (130, 222), 'prominence': 7}),
+        (None, {'height': (110, 222), 'prominence': 5}),
+        (50, None),
+        (40, None),
+    )
+    for _thr, _peaks in _TIERS:
+        if _thr is not None or _peaks is not None:
             try:
-                _rebuild_view(_thr)
+                _rebuild_view(_thr if _thr is not None else 75, _peaks)
             except Exception as e:
                 _last_reason = f'{type(e).__name__}: {e}'
                 break
@@ -1412,10 +1446,14 @@ def op_map_detect(args):
             v.load(image)
             out['load'] = 'ok'
             out['threshold_used'] = int(getattr(cfg, 'INTERNAL_LINES_HOUGHLINES_THRESHOLD', 0))
+            if _peaks:
+                out['peaks_used'] = {k: (list(v) if isinstance(v, tuple) else v)
+                                     for k, v in _peaks.items()}
+            out['tier'] = f'thr={_thr} peaks={_peaks}'
             _last_reason = None
             break
         except MapDetectionError as e:
-            # 上游自己的负样本信号；先记住，换更低的阈值再试
+            # 上游自己的负样本信号；先记住，换下一档再试
             _last_reason = str(e)
             continue
         except Exception as e:
