@@ -59,7 +59,11 @@ CHECKLIST = [
      'R1 起设备 I/O 走宿主，后端换了要重跑'),
     ('页面识别全量回归（产品导航器）',
      r'python tools\diagnostics\regress_pages.py',
-     '约 5 分钟；33/34 是当前基线'),
+     '约 5 分钟；通过数**必须连着账号前提一起看**（生成的文档头部会自动写本次解锁进度）'),
+    ('页面入口分诊（哪个入口不存在 / 哪个判据认不出）',
+     r'python tools\diagnostics\page_entry_probe.py',
+     '**先回到主界面**（不在 page_main 它会明确跳过、不猜）；产出每个目标页第一跳的'
+     '最佳变体、是否在屏、相似度 —— 真机踩过：同一份失败列表里混着"账号门禁"与"判据认不出"两类根因'),
     ('控件规则 + 控制原语 + 文本输入',
      r'python tools\diagnostics\verify_controls.py / verify_primitives.py / verify_text_input.py',
      '含"故意不验"的项（退役确认弹窗），别为了凑数去点'),
