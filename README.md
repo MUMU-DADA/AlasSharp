@@ -208,11 +208,31 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 
 **按结构分类（决定迁移方式）**：
 
-| 结构 | 数量 | 迁移方式 |
-|---|---|---|
-| 模块级常量（`X = Scroll(...)`） | **20** | 可直接枚举并驱动 |
-| 类内成员 / `cached_property` | **15** | 需 UI 类实例上下文 |
-| 页面（模块级 `Page(...)`） | **53** | 已迁移 |
+| 结构 | 数量 | 迁移方式 | 状态 |
+|---|---|---|---|
+| 页面（模块级 `Page(...)`） | **53** | 已迁移 | ✅ 真机验证 |
+| 模块级常量（`X = Scroll(...)`） | **20** | 可直接枚举并驱动 | ✅ 真机 20/20 |
+| `cached_property` 内的实例 | **5** | 需 UI 类实例上下文 | 待攻 |
+| 方法内**临时局部对象** | **5** | 非独立规则，随动作流程存在 | 见下 |
+| ~~`webui/app.py` 的 Switch~~ | ~~5~~ | **误报**：那是 Web 界面控件 | 不适用 |
+
+**两条范围修正**（都是这轮查实的）：
+
+1. **`webui/app.py` 里的 5 个 `Switch` 不是游戏识图规则** —— 是
+   `updater_switch` / `remote_switch` / `state_switch` 这类 **Web 界面控件**。
+   我上一轮按类名匹配把它们算进了 89，属于误报。
+2. **方法内的 `Switch`/`Scroll` 是临时局部对象，不是可独立驱动的规则实体**。
+   例如 `coalition/ui.py` 的 `coalition_ensure_mode`：
+   ```python
+   mode_switch = Switch('CoalitionMode', offset=(20, 20))   # 每次调用新建
+   mode_switch.add_state('story', FROSTFALL_MODE_STORY)     # 立刻装配
+   # 而且按钮顺序随服务器变化：tw 服是反的
+   ```
+   它随动作流程存在、装配内容还依赖 `self.config.SERVER`，**没有静态形态可迁移**，
+   只能在实际执行该流程时被覆盖。
+
+→ **真正剩下待攻的识别实体是 5 个 `cached_property`**：
+`retire/dock` Setting、`shop/ui` Switch ×2、`shop_event/ui` Navbar、`storage/ui` Setting。
 
 **`cached_property` 那一类要注意**：它们不是静态规则，而是**运行时从画面算出来的**。
 例如 `EventShopUI.event_shop_tab_count_and_navbar` 先从截图里数出 tab 数量
