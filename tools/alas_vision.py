@@ -1255,6 +1255,16 @@ def op_s3_campaign_call(args):
     try:
         value = fn(*call_args)
     except Exception as e:
+        # **`CampaignEnd` 是上游的"关卡已完成"信号，不是错误**（实测：_plan 跑到第三轮时抛出，
+        # 而当时关卡确实已清）。此前把它当 error 报出来是语义错误 —— 这里改判为 completed。
+        try:
+            from module.exception import CampaignEnd as _CE
+            _is_end = isinstance(e, _CE)
+        except Exception:
+            _is_end = type(e).__name__ == 'CampaignEnd'
+        if _is_end:
+            return {'name': name, 'ms': round((time.time() - t0) * 1000, 1),
+                    'completed': True, 'reason': str(e) or 'CampaignEnd'}
         return {'name': name, 'ms': round((time.time() - t0) * 1000, 1),
                 'error': f'{type(e).__name__}: {e}'}
     out = {'name': name, 'ms': round((time.time() - t0) * 1000, 1)}
@@ -1408,7 +1418,12 @@ def op_s3_run_plan(args):
                 break
             r = op_s3_campaign_call({'name': _step_name, 'allow_actions': True})
             steps.append({'round': _round, 'step': _step_name, 'ms': r.get('ms'),
-                          'error': r.get('error')})
+                          'error': r.get('error'), 'completed': r.get('completed')})
+            if r.get('completed'):
+                # 上游宣布关卡完成 —— 这是**正常收尾**，不需要再跑下一轮
+                out['campaign_end'] = True
+                out['campaign_end_step'] = _step_name
+                break
         else:
             # 本轮跑完：判断是否还需要再来一轮
             if not repeat or _round >= max_rounds or _t.time() - t_start > max_s:
