@@ -135,22 +135,27 @@ internal static class MapCheck
             for (int x = 0; x <= sx; x++)
                 if (!keys.Contains($"{x},{y}")) missing.Add($"{x},{y}");
 
-        // 船 vs 陆地
+        // 船 vs 陆地。**判据分两档**（实测校准）：
+        //   敌人 / BOSS / 塞壬 —— 硬判据：它们与地形强相关，落陆地即说明识别坐标有问题；
+        //   己方舰队（is_fleet / is_current_fleet / is_submarine）—— 只警告：
+        //     这些是**派生指派**（预测器判定哪支检出的舰队是当前舰队），实测困难 1-4 上
+        //     is_current_fleet 指到了陆地格，把唯一候选偏移也否掉了；拿它当硬判据会误报。
         var grid = ir.DecodeGrid();
         var ships = new List<string>();
-        var onLand = new List<string>();
+        var enemyOnLand = new List<string>();
+        var friendlyOnLand = new List<string>();
         foreach (var kv in map.GridFlags ?? new Dictionary<string, List<string>>())
         {
-            bool isShip = kv.Value.Any(n => n is "is_enemy" or "is_boss" or "is_siren"
-                or "is_fleet" or "is_current_fleet" or "is_submarine");
-            if (!isShip) continue;
+            bool isEnemy = kv.Value.Any(n => n is "is_enemy" or "is_boss" or "is_siren");
+            bool isFriendly = kv.Value.Any(n => n is "is_fleet" or "is_current_fleet" or "is_submarine");
+            if (!isEnemy && !isFriendly) continue;
             ships.Add(kv.Key);
             var parts = kv.Key.Split(',');
             if (parts.Length == 2 && int.TryParse(parts[0], out int x)
                 && int.TryParse(parts[1], out int y)
                 && y >= 0 && y < grid.Length && x >= 0 && x < grid[y].Length
                 && grid[y][x].IsLand)
-                onLand.Add(kv.Key);
+                (isEnemy ? enemyOnLand : friendlyOnLand).Add(kv.Key);
         }
 
         Console.WriteLine($"[ir     ] {Path.GetFileName(chapterPath)} shape={ir.ShapeRaw} " +
@@ -158,12 +163,15 @@ internal static class MapCheck
         Console.WriteLine($"[校验 1 ] shape 一致：{shapeOk}（检出 [{(detShape.Count == 2 ? $"{detShape[0]},{detShape[1]}" : "-")}]）");
         Console.WriteLine($"[校验 2 ] 缺格 {missing.Count}：" +
                           (missing.Count == 0 ? "无" : string.Join(" ", missing.Take(12))));
-        Console.WriteLine($"[校验 3 ] 船格 {ships.Count} 个（{string.Join(" ", ships.Take(8))}）" +
-                          $"落在陆地上 {onLand.Count}：" +
-                          (onLand.Count == 0 ? "无 ✅" : string.Join(" ", onLand)));
-        int problems = (shapeOk ? 0 : 1) + (onLand.Count == 0 ? 0 : 1);
+        Console.WriteLine($"[校验 3 ] 船格 {ships.Count} 个（{string.Join(" ", ships.Take(8))}）");
+        Console.WriteLine($"[校验 3a] 敌人/BOSS/塞壬落在陆地上 {enemyOnLand.Count}：" +
+                          (enemyOnLand.Count == 0 ? "无 ✅" : string.Join(" ", enemyOnLand)) + "（硬判据）");
+        Console.WriteLine($"[校验 3b] 己方舰队落在陆地上 {friendlyOnLand.Count}：" +
+                          (friendlyOnLand.Count == 0 ? "无" : string.Join(" ", friendlyOnLand)) +
+                          "（仅警告：is_current_fleet 是派生指派，可能指错格）");
+        int problems = (shapeOk ? 0 : 1) + (enemyOnLand.Count == 0 ? 0 : 1);
         Console.WriteLine(problems == 0
-            ? "S2 交叉校验通过（shape 严格一致 + 船未落陆地）"
+            ? "S2 交叉校验通过（shape 严格一致 + 敌人未落陆地）"
             : $"S2 交叉校验发现 {problems} 处不一致");
         return problems == 0 ? 0 : 1;
     }

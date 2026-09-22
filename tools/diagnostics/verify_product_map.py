@@ -26,6 +26,8 @@ CASES = [
     ('map_settled.png', 'main', 'campaign_main/campaign_2_1.json', 24),
     ('map_shape_9x6.png', 'main', 'campaign_main/campaign_10_4.json', 48),
     ('map_hard_1_4.png', 'main', 'campaign_main/campaign_1_4.json', 21),
+    # 活动图（幽影迷城 A1，IR 是 9x8）的可见窗口是 8x4；窗口情形不做 IR 交叉校验，只验检出
+    ('map_event.png', 'main', None, 30),
     ('os_live_2.png', 'os', None, 49),
 ]
 
