@@ -1322,6 +1322,46 @@ def op_s3_campaign_call(args):
 
 
 
+
+# 客户端专属弹窗：「关卡 xxx 正在攻略中，请选择前往继续攻略或撤退 [撤退][立即前往]」
+# 上游没有它的素材/处理器，导致 enter_map 干等 60s 后 GameStuckError（实测，见
+# docs/s3-entry-sequence.md）。这里用 **OCR 识别文字** + 固定坐标点击来适配。
+_UNFINISHED_OCR_AREA = [330, 230, 960, 370]      # 弹窗正文区域（1280x720）
+_UNFINISHED_ABORT_XY = (479, 510)                # 「撤退」按钮（实测有效）
+_UNFINISHED_KEYWORDS = ('正在攻略中', '继续攻略', '请选择前往')
+
+
+def op_s3_abort_unfinished(args):
+    """检测并关闭"关卡正在攻略中"弹窗（客户端专属，上游不认识）。
+
+    为什么需要：游戏里点「撤退」只是**离开地图**、保留可续战状态；此后进任何**别的**关卡
+    都会弹这个对话框，而上游不识别它 → 干等 60s → `GameStuckError`（实测 3-2）。
+    做法：OCR 弹窗正文，命中关键词就点「撤退」。`dry` 只检测不点击。
+    """
+    image = _require_image()
+    hit, text = False, ''
+    try:
+        # `letter` 必须是**字符集合**（空元组 = 不限字符）；
+        # 传字符串的 list(...) 会报 `too many values to unpack (expected 3, got 5)`（实测踩过）
+        o = op_ocr({'area': _UNFINISHED_OCR_AREA, 'letter': ()})
+        text = str(o.get('text') or '')
+        hit = any(k in text for k in _UNFINISHED_KEYWORDS)
+    except Exception as e:
+        return {'error': f'OCR 失败: {type(e).__name__}: {e}'}
+    out = {'unfinished_dialog': hit, 'ocr_text': text[:80]}
+    if hit and not args.get('dry'):
+        try:
+            dev = _device_engine()
+            from module.base.button import Button as _B
+            x, y = _UNFINISHED_ABORT_XY
+            area = (x - 1, y - 1, x + 1, y + 1)
+            dev.click(_B(area=area, color=(), button=area, name='abort_unfinished'))
+            out['clicked'] = list(_UNFINISHED_ABORT_XY)
+        except Exception as e:
+            out['click_error'] = f'{type(e).__name__}: {e}'
+    return out
+
+
 def op_s3_run_plan(args):
     """按关卡 IR 的**计划顺序**执行多个上游调用（S3 的实质机制）。
 
@@ -1403,6 +1443,12 @@ def op_s3_run_plan(args):
         r = op_s3_campaign_call({'name': 'campaign_ensure_chapter',
                                  'args': [int(stage.split('-')[0])], 'allow_actions': True})
         steps.append({'step': 'ensure_chapter', 'ms': r.get('ms'), 'error': r.get('error')})
+    # 进图前先清掉"未完成出击"（客户端弹窗，上游不识别；否则本关必卡 60s）
+    try:
+        _ab = op_s3_abort_unfinished({'dry': False})
+        steps.append({'step': 'abort_unfinished', 'dialog': _ab.get('unfinished_dialog')})
+    except Exception:
+        pass
     r = (op_s3_campaign_call({'name': 'campaign_get_entrance', 'args': [stage],
                               'store': 'ENTRANCE', 'allow_actions': True})
          if not (steps and steps[-1].get('error')) else {'error': 'skipped'})
@@ -2265,6 +2311,7 @@ OPS = {
     'page_positive_control': op_page_positive_control,
     'rule_positive_control': op_rule_positive_control,
     'map_detection_assets': op_map_detection_assets,
+    's3_abort_unfinished': op_s3_abort_unfinished,
     's3_run_plan': op_s3_run_plan,
     's3_campaign_init': op_s3_campaign_init,
     's3_campaign_info': op_s3_campaign_info,
