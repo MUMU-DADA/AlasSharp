@@ -2114,9 +2114,14 @@ def op_globe_detect(args):
             except Exception:
                 out['center_loca'] = str(loca)
         if cap is not None:
+            import re as _re
+            # 上游日志行开头的耗时（`0.080s`）每次运行都不同，而它不是证据：
+            # 不归一掉的话，生成的 `docs/map-detection.md` 每跑一次都会多出一个纯计时 diff，
+            # 既污染工作区，也会把真正的改动淹掉。相似度等实质内容一律保留。
+            timing = _re.compile(r'^\d+(?:\.\d+)?s\s+')
             lines = [m for m in cap.messages
                      if 'similarity' in m or 'globe_center' in m or 'homo_storage' in m]
-            out['log_lines'] = [str(m).strip() for m in lines][-6:]
+            out['log_lines'] = [timing.sub('', str(m).strip()) for m in lines][-6:]
             for m in lines:
                 if 'similarity' in m:
                     import re as _re
