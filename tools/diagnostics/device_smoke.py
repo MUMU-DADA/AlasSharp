@@ -46,6 +46,31 @@ CHAPTER = 'campaign.campaign_main.campaign_1_1'
 IN_MAP_THRESHOLD = 10.0
 BORDERLINE = (8.0, 14.0)
 
+#: 设备在线后要收口的**全部**未完成项。前 3 项由本脚本执行，其余是既有脚本
+#: （放在这里是为了让"还欠什么"一眼可见，而不是散在几份文档里）。
+CHECKLIST = [
+    ('本脚本：当场抓帧 + IN_MAP 现场取值 + 一次有界战役冒烟',
+     r'python tools\diagnostics\device_smoke.py --allow-actions',
+     '真跑会消耗石油；冒烟上限 max_rounds=2 / max_seconds=600'),
+    ('设备引擎回归（后端可切换 / 抓图 / 点击）',
+     r'python tools\diagnostics\verify_device_engine.py',
+     'R1 起设备 I/O 走宿主，后端换了要重跑'),
+    ('页面识别全量回归（产品导航器）',
+     r'python tools\diagnostics\regress_pages.py',
+     '约 5 分钟；33/34 是当前基线'),
+    ('控件规则 + 控制原语 + 文本输入',
+     r'python tools\diagnostics\verify_controls.py / verify_primitives.py / verify_text_input.py',
+     '含"故意不验"的项（退役确认弹窗），别为了凑数去点'),
+    ('用新运行时跑一次**真机通关**（R2 的真实路径证据）',
+     r'alashub campaign campaign.campaign_main.campaign_1_1 --run --allow-actions --artifacts runs\  '
+     r'（或 device_smoke 的第 3 项）',
+     '现有 4 条通关证据出自运行时之前的 CLI 路径，需要一条走新运行时的'),
+    ('【需本人授权】本局撤退判 withdrawn 的真机记录',
+     '进入一张图后主动撤退（消耗石油、改变账号状态）',
+     'R0 遗留缺口：现有 2 起撤退都是上一局清理/导航期，不是本局结论。'
+     '这条**不自动执行**，等明确授权'),
+]
+
 
 def adb(*args, timeout=20):
     binary = str(ADB) if ADB.is_file() else 'adb'
@@ -71,10 +96,17 @@ def main() -> int:
     state, detail = device_state()
     if state is None:
         print(f'[跳过] 设备 {SERIAL} 不在线（adb get-state: {detail}）。')
-        print('       真机冒烟未跑；模拟器起来后重跑本命令即可收口以下三项：')
-        print('         1) account_state capture=true 当场抓帧；')
-        print('         2) IN_MAP 判据现场取值并记录；')
-        print('         3) 一次有界战役冒烟（默认 dry-run，--allow-actions 才真跑）。')
+        print()
+        print('模拟器起来后，**未完成的真机项**按这个顺序收口（本脚本跑前三项，其余是既有脚本）：')
+        print()
+        for index, (name, command, note) in enumerate(CHECKLIST, 1):
+            print(f'  {index}. {name}')
+            print(f'     {command}')
+            if note:
+                print(f'     ↳ {note}')
+        print()
+        print('  * 一揽子跑：python tools\\diagnostics\\verify_all.py --device-only'
+              '（依次跑上面的设备类步骤 1~4；第 5 项要真跑、第 6 项要授权，都不在里面）')
         return 0
 
     print(f'=== 真机冒烟：{SERIAL} ===')
