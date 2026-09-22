@@ -143,7 +143,8 @@ public sealed class DeviceController
     public DeviceCaptureResult CaptureViaEngine(bool raw = true) => _vision.CaptureViaEngine(raw);
 
     /// <summary>把设备后端选择交给引擎（截图/输入）。换后端＝改这里。</summary>
-    public DeviceConfigResult ConfigureEngineDevice(string screenshot = "adb", string control = "ADB")
+    public DeviceConfigResult ConfigureEngineDevice(string screenshot = "scrcpy",
+                                                    string control = "MaaTouch")
         => _vision.ConfigureDevice(Serial ?? "127.0.0.1:16384", screenshot, control);
 
     public void Click(int x, int y)

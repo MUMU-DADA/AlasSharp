@@ -49,7 +49,7 @@ internal static class Program
                 // 设备通道对比：C# 自截 vs 引擎截图（后端可切），见 CaptureCheck
                 string toolsDir5 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
                     "..", "..", "..", "..", "..", "tools"));
-                string? capAdb = null, capSerial = null, capShot = "adb", capCtrl = "ADB";
+                string? capAdb = null, capSerial = null, capShot = "scrcpy", capCtrl = "MaaTouch";
                 int capRepeat = 3;
                 for (int i = 1; i < args.Length - 1; i++)
                 {
@@ -124,7 +124,8 @@ internal static class Program
                 // 沿上游页面图真机导航：goto <page_target> [--adb .. --serial .. --server cn]
                 string? realAdb2 = null, realSerial2 = null, targetPage = null;
                 bool gotoEngineCapture = false;
-                string gotoScreen = "droidcast", gotoCtrl = "ADB";
+                // 默认取实测最优：scrcpy 抓图 e2e 128ms（比 adb 快 2.5 倍）、MaaTouch 点击稳态 53ms
+                string gotoScreen = "scrcpy", gotoCtrl = "MaaTouch";
                 int gotoRounds = 1;
                 for (int i = 1; i < args.Length - 1; i++)
                 {

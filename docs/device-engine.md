@@ -287,3 +287,25 @@ alashub goto page_main --adb <adb> --serial 127.0.0.1:16384     --capture-engine
 
 > 另注（来自上游应用说明，本机适用性已验证）：`nemu_ipc` 需与截图配套、且触控走模拟器内部 RPC，
 > 低性能机器上滑动易丢步——但本机是 MuMu **国际版**，上游**硬拒绝** nemu_ipc，用不了。
+
+## 默认配置已切换为实测最优：`scrcpy` + `MaaTouch`
+
+- `goto` / `capture` / `DeviceController.ConfigureEngineDevice()` 的默认值：
+  **screenshot=`scrcpy`、control=`MaaTouch`**（仍可用 `--screenshot` / `--control` 覆盖）。
+
+实测（同一路径 page_main→page_campaign、每变体 3 回合、同一测量口径）：
+
+| 配置 | 稳态导航中位 | 相对传统路径 |
+| --- | --- | --- |
+| A 传统 C# adb 路径 | 6421 ms | 基线 |
+| B 引擎通道（droidcast） | 6312 ms | −1.7% |
+| **B 引擎通道（scrcpy + MaaTouch，新默认）** | **5493 ms** | **−14.5%**（省约 930 ms） |
+
+即：换掉截图后端（droidcast→scrcpy）后，**导航流程本身也快了约 13 个百分点**
+（原先把"抓图快"等同于"流程快"是不成立的，现在有了同口径的对照数据）。
+
+命令示例（不写 `--screenshot/--control` 即用默认）：
+
+```powershell
+alashub goto page_campaign --adb <adb> --serial 127.0.0.1:16384 --capture-engine --rounds 3
+```
