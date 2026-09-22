@@ -33,6 +33,7 @@ def main():
     pages = load(os.path.join(DOCS, 'page-verification.json'), {})
     ctrl = load(os.path.join(DATA, 'controls_verify.json'), [])
     prim = load(os.path.join(DATA, 'primitives_verify.json'), [])
+    text = load(os.path.join(DATA, 'text_input_verify.json'), {}) or {}
     regress = load(os.path.join(DATA, 'regress_pages.json'), [])
 
     verified = sorted(pages.get('verified', {}))
@@ -75,6 +76,10 @@ def main():
         % (len(acts), len(act_hit), len(acts) - len(act_hit)),
         '| 控制原语（返回键/长按/滑动） | %d | **%d** | %d | `primitives.md` |'
         % (len(prim), len(prim_hit), len(prim) - len(prim_hit)),
+        '| 文本输入（装备码流程） | %d | **%d** | %d | `text-input.md` |'
+        % (len(text.get('results', [])),
+           sum(1 for x in text.get('results', []) if x['verdict'] == 'hit'),
+           sum(1 for x in text.get('results', []) if x['verdict'] != 'hit')),
         '| 全量回归（产品路径导航） | %d | **%d** | %d | `regression.md` |'
         % (len(regress), len(reg_ok), len(regress) - len(reg_ok)),
         '',
