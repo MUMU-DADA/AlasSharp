@@ -44,3 +44,44 @@
 - **速度红利尚未拿到**：ascreencap / droidcast / scrcpy 在**本机 MuMu 上**都需要各自的
   落地配置（二进制版本 / 服务端 / 端口），这不是"接线"问题而是"每个后端的现场调试"问题。
   做完之前，"打掉 400 ms 截图瓶颈"这个目标**还不能宣称达成**。
+
+## 逐后端现场排查（本机 MuMu：Android 12 / SDK 32 / x86_64）
+
+设备实测：`ro.product.cpu.abi=x86_64`、`ro.build.version.release=12`、`sdk=32`。
+
+### ascreencap —— **上游不支持，不是配置问题**
+
+引擎的变体选择（`module/device/method/ascreencap.py:87-100`）：
+
+```python
+if   sdk in range(21, 26): ver = "Android_5.x-7.x"
+elif sdk in range(26, 28): ver = "Android_8.x"
+elif sdk == 28:            ver = "Android_9.x"
+else:                      ver = "0"          # ← SDK 32 落到这里
+filepath = os.path.join(..., ver, arc, 'ascreencap')
+if not os.path.exists(filepath): ...          # 目录 "0" 不存在 → 判定不可用
+```
+
+而上游 `bin/ascreencap/` 只有 `Android_5.x-7.x / Android_8.x / Android_9.x` 三档。
+**结论：Android 12 上 ascreencap 无二进制可用（上游设计如此）**，不必再试；
+报错形态是 `corrupted aScreenCap data received` / retry failed，容易被误当成"数据损坏"。
+
+### nemu_ipc（MuMu 原生快速通道）—— 需模拟器侧配置
+
+```
+INFO     NemuIpcImpl init, nemu_folder=C:\Program ...     ← 找到 MuMu 安装目录
+WARNING  Failed to call nemu_connect, result=0            ← IPC 连接失败
+```
+即引擎找到了 MuMu，但 `nemu_connect` 返回 0。这是**模拟器侧**的事（MuMu 的 IPC/权限/实例状态），
+不是代码问题；需要时再逐项试（管理员权限、MuMu 的 ADB/IPC 开关、实例号）。
+
+### droidcast / scrcpy —— 未通，需服务端
+
+`droidcast`：`Retry screenshot_droidcast() failed`（它走 Java 服务端，需先起服务）；
+`scrcpy`：`Retry screenshot_scrcpy() failed`（需推 scrcpy server 并处理端口）。
+两者都是"要额外起一个服务端"的形态，适合作为下一步的候选。
+
+### 基线
+
+`adb` 原始截图 **396–402 ms**（多次测量稳定），与 C# 侧自测的 433 ms 同档 —— 这就是当前基线。
+
