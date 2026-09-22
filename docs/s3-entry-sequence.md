@@ -865,3 +865,26 @@ op 如实报告 `unfinished_dialog=false, red_frac=0.0` ✓（**没有误报**�
 
 **流程教训（已固化为批量规则）**：每次出击结束必须**真正结束**（清图 / 走弹窗撤退），
 否则**下一次进任何别的关卡都会卡 60s**，且极易被误判成"那一关有问题"——我这轮就差点误判。
+
+### ✅ 2-2 通过（35 格）——批量流程验证为"可重复"
+
+```
+ENTRANCE=ENTRANCE | ENTER 7657.0 ms err=None（标准速度 7.7s）
+IS_IN_MAP True | INMAP_2-2 **detected=True grids=35 ships=3**
+ABORT_NET unfinished_dialog=false / red_frac=0.0   ← 收尾安全网未误报
+撤退 → page_campaign → 归位 page_main ✓
+```
+
+**意义**：这是第 4 个验证通过的关卡，且流程（进图 → 识别 → 真正结束 → 归位）
+**连续两次一次通过**（上一轮 3-2、这一轮 2-2）—— 说明批量方法已经稳定可重复。
+
+**已登记的图内夹具（`s3_preflight.py` → `KNOWN_FIXTURES`）**：
+
+| 关卡 | 实测格数 | 夹具文件 |
+| --- | --- | --- |
+| 2-1 | 24 | `data/fixtures/map_settled.png` |
+| **2-2** | **35** | `data/fixtures/inmap_2-2.png` |
+| 3-1 | 28 | `data/fixtures/inmap_3-1.png` |
+| 3-2 | 32 | `data/fixtures/inmap_3-2.png` |
+
+**剩余待验（本账号可达范围）**：2-3、2-4、3-3、3-4（每关约 1 分钟、10 油，流程已固化）。
