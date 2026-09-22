@@ -144,8 +144,12 @@ internal static class VisionCheck
         // 这样在拿到模拟器之前就能把设备路径的解码环节验掉。
         int byteMismatch = 0, byteSkipped = 0;
         var byteSamples = new List<string>();
+        string byteServer = "";
         foreach (var c in cases)
         {
+            // ⚠️ 必须切服务器！漏了这一步会让所有用例都用上一个服务器判定，
+            //    与按各服算出的真值对不上（实测：40 例中 11 例失败，查了半天发现是测试代码的锅）。
+            if (c.Server != byteServer) { engine.SetServer(c.Server); byteServer = c.Server; }
             // 灰度素材（PIL mode L）两条解码路径本就不同，不是 bug：
             //   文件路径走上游 load_image（PIL）→ 二维数组，get_color 返回 (mean,0,0)
             //   字节路径走 cv2.imdecode(IMREAD_COLOR) → 强制三通道 → (mean,mean,mean)
@@ -211,7 +215,7 @@ internal static class VisionCheck
 
         // ⚠️ byteMismatch 暂**不计入**验收判据：字节路径与文件路径的判定差异尚未查清，
         //    在查清之前不能让它污染"验收通过"的结论，也不能假装它通过了。
-        int total = verdictMismatch + colorMismatch + errors;
+        int total = verdictMismatch + colorMismatch + errors + byteMismatch;
         Console.WriteLine();
         Console.WriteLine(total == 0 ? "结果: OK" : $"结果: FAIL（{total} 处）");
         return total == 0 ? 0 : 1;
