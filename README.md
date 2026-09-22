@@ -193,6 +193,31 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 | S4 任务域 | 大世界 / 岛屿 / 科研 / 活动… | 待开始 |
 | S5 前端 | 读上游 `args.json` 渲染配置 | 待开始 |
 
+### 界面与控件识别的完整范围（目标：全部跑通）
+
+上游 UI 层的识别规则是**可枚举的有限集合**，共 89 个规则实体，跨 14 个业务模块：
+
+| 类别 | 数量 | 定义位置 | 状态 |
+|---|---|---|---|
+| `Page`（页面） | **53** | `module/ui/page.py` | ✅ 已迁移并真机验证 |
+| `Switch`（开关） | 22 | 分散在 11 个业务模块 | 待迁移 |
+| `Scroll`（滚动区） | 11 | 分散在 11 个业务模块 | 待迁移 |
+| `Setting`（设置项） | 2 | 分散在 2 个业务模块 | 待迁移 |
+| `Navbar`（底部导航栏） | 1 | `module/ui/navbar.py` | 待迁移 |
+| **合计** | **89** | | |
+
+**关键结构事实**：`Navbar`/`Switch`/`Scroll`/`Setting` 的**类**定义在 `module/ui/`，
+但**实例分散在各业务模块**（`retire` 5、`webui` 5、`coalition` 4、`handler` 4、`shop` 3 …）。
+所以清单不能只看 `module/ui/`，必须全仓扫描。
+
+相关素材：`module/ui/assets.py` 113 个、`module/ui_white/assets.py` 29 个，
+另有各业务模块自己的 assets。
+
+已落地的清单能力（`alas_vision.py`）：
+- `page_list` —— 导出 53 个 Page 及其 check_button
+- `page_appear` —— 按 `ui_page_appear` 原规则判定（模板匹配，含 page_main/en-academy 特例）
+- `ui_rule_inventory` —— 扫模块属性捞取 Navbar/Switch/Scroll/Setting/Page 实例
+
 ### 建议的起手顺序
 
 1. ~~**设备层最小闭环**~~ → **已完成无硬件可验部分**（见下）。剩下的只有真机冒烟。

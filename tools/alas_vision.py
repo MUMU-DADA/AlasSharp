@@ -178,6 +178,77 @@ def op_asset_button_center(args):
         'name': getattr(btn, 'name', None),
     }
 
+def op_ui_rule_inventory(args):
+    """
+    枚举上游 UI 层的**全部识别规则实体**（页面 + 导航栏 + 开关 + 滚动区 + 设置项 + ui_white）。
+
+    这些都是模块级实例（Navbar/Switch/Scroll/Setting），不是常量按钮，
+    因此要按类型扫模块属性把它们捞出来。这是"全部识别跑通"的前提清单。
+    """
+    import importlib
+    out = {'modules': {}, 'errors': []}
+
+    def scan(modname):
+        try:
+            mod = importlib.import_module(modname)
+        except Exception as e:
+            out['errors'].append(f'{modname}: {type(e).__name__}: {e}')
+            return {}
+        found = {}
+        for name in dir(mod):
+            if name.startswith('_'):
+                continue
+            obj = getattr(mod, name)
+            cls = type(obj).__name__
+            if cls not in ('Navbar', 'Switch', 'Scroll', 'Setting', 'Page'):
+                continue
+            entry = {'name': name, 'class': cls}
+            # 尽量抽出内部引用的按钮名
+            btns = []
+            for attr in ('check_button', 'click_button', 'button', 'grids', 'buttons',
+                         'states', 'options', 'area'):
+                try:
+                    v = getattr(obj, attr)
+                except Exception:
+                    continue
+                if v is None:
+                    continue
+                if hasattr(v, 'name'):
+                    btns.append(getattr(v, 'name'))
+                elif isinstance(v, (list, tuple, set)):
+                    for it in v:
+                        if hasattr(it, 'name'):
+                            btns.append(getattr(it, 'name'))
+                elif isinstance(v, dict):
+                    for k, it in v.items():
+                        if hasattr(it, 'name'):
+                            btns.append(getattr(it, 'name'))
+                        elif hasattr(k, 'name'):
+                            btns.append(getattr(k, 'name'))
+                elif attr == 'area':
+                    entry['area'] = [float(x) for x in v] if not isinstance(v, (int, float)) else v
+            entry['buttons'] = sorted({b for b in btns if b})
+            found[name] = entry
+        return found
+
+    for modname in ('module.ui.navbar', 'module.ui.switch', 'module.ui.scroll',
+                    'module.ui.setting', 'module.ui.page'):
+        out['modules'][modname] = scan(modname)
+
+    # 各模块assets.py 里的按钮/模板总数（界面识别的素材面）
+    asset_counts = {}
+    for modname in ('module.ui.assets', 'module.ui_white.assets'):
+        try:
+            mod = importlib.import_module(modname)
+            n = sum(1 for k in dir(mod)
+                    if type(getattr(mod, k)).__name__ in ('Button', 'Template', 'Mask'))
+            asset_counts[modname] = n
+        except Exception as e:
+            out['errors'].append(f'{modname}: {type(e).__name__}: {e}')
+    out['asset_counts'] = asset_counts
+    out['summary'] = {k: len(v) for k, v in out['modules'].items()}
+    return out
+
 def op_page_list(args):
     """列出上游 module/ui/page.py 定义的页面及其 check_button（识图规则的入口）。"""
     import module.ui.page as page_mod
@@ -372,6 +443,7 @@ OPS = {
     'screenshot_set': op_screenshot_set,
     'asset_info': op_asset_info,
     'page_list': op_page_list,
+    'ui_rule_inventory': op_ui_rule_inventory,
     'asset_button_center': op_asset_button_center,
     'page_appear': op_page_appear,
     'screenshot_scale': op_screenshot_scale,
