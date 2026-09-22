@@ -335,3 +335,63 @@ MAP_INIT  ms=5249.3  error=MapDetectionError: No vertical line detected
 
 **教训**：这几轮我在"责任归属"上反复摇摆，根因是**没有先看一眼证据**（打开那张对照帧只需一步）。
 以后涉及"是不是范畴问题"的判断，先看画面/先跑对照，再下结论。
+
+# ✅ S3 里程碑：真实战斗经上游代码跑通（自主执行记录，2026-09-22 夜）
+
+用户授权"自行择优推进"后按最优路径执行了三件事：**收尾不可用的一局 → 预检 → 在可用的图上真打**。
+
+## 1. 收尾：撤出 1-1
+
+上游检测器对单行 7 格小图失效（见上文"已知不支持项"），留着没有价值且挡住后续测试。
+点「撤退」→ 确认「确定」→ 回到 `page_campaign`，`is_in_map=False` ✓。
+
+## 2. 新增预检工具 `tools/diagnostics/s3_preflight.py`
+
+把"跑进图才知道不行"的代价前置。检查 6 项：IR 存在 / 章节模块与形状 / 关卡名推导 /
+配置绑定（关卡名+后端+周回+自律+舰队）/ 计划调用词表 / **图内帧可识别性**（有夹具就离线判定）。
+
+实测：`2-1` 各项 PASS（图内帧 24 格可识别）；`1-1` 在"图内帧可识别"一项 **FAIL**
+并直接引用已知失效原因 —— 这个工具在真跑之前就拦住了 1-1。
+
+## 3. 在 2-1 上跑通"进图 → 图内初始化 → 真实战斗"
+
+单进程全序列（**关键：状态必须留在同一个进程里**，见下）：
+
+```
+INIT         ok（种帧 340.9 ms）
+ENSURE       campaign_ensure_chapter(2)           1614.3 ms
+ENTER_MAP    enter_map(@ENTRANCE,'normal')        7219.4 ms   err=None
+IS_IN_MAP    True
+INMAP_DETECT detected=True grids=24 ships=3       ← 本地 S2 图内识别成功（与夹具一致）
+MAP_INIT     map_init(@MAP)                        535.1 ms   err=None
+HAS_MAP      (5, 3)                               ← 地图状态建立
+BATTLE       battle_default                      43827.2 ms   err=None
+```
+
+随后**有界循环**再打 4 步（每步 29–40 s，**全部 `err=None`**）：
+
+| 步骤 | 耗时 | 结束后敌数 |
+| --- | --- | --- |
+| 1 | 32607 ms | 4 |
+| 2 | 37576 ms | 1 |
+| 3 | 39778 ms | 1 |
+| 4 | 29049 ms | 1 |
+
+**结论**：宿主驱动上游完成 **5 次真实战斗**，这是 S3 的第一个实战里程碑。
+
+## 4. 两条新认识
+
+1. **状态必须留在一个进程里**：`s3_campaign_call` 每次新进程都会重建 `Campaign`，
+   于是 `map_init` 建的 `self.map` 丢失 → `battle_default` 报
+   `'Campaign' object has no attribute 'map'`。
+   => 这独立印证了设备侧那条结论：**S3 必须是常驻进程**（与 `alashub run` 的形态一致）。
+2. **只调 `battle_default` 清不掉图**：4 步之后仍剩 1 个 `is_enemy`（格 2,2）不再下降。
+   上游 2-1 的计划本身是 `['battle_default','check_accessibility','clear_all_mystery',
+   'fleet_boss.clear_boss']`（tier C，含 `check_accessibility`）—— 说明**多调用组合**才是完整流程，
+   下一步应做"按计划串多个调用"，而不是重复单调用。
+
+## 5. 收尾
+
+点「撤退」→ 确认 → `page_campaign`，`is_in_map=False` ✓。
+整夜执行**全程在真实账号上**：耗油仅"进入 2-1 一次"（约 10 点，油量 24831 → 无战斗内额外消耗），
+周回/自律全程关闭（上游配置键设定并读回确认），无失控循环。
