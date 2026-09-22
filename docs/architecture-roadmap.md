@@ -83,12 +83,16 @@
 | 队列调度 | `Alas.Core/Tasks/TaskQueue.cs`：前置条件、跨任务复位边界、失败即停、取消、证据、断点 | `verify_runtime.py` 5 例队列用例 |
 | 输入模型 | `TaskQueueFile.cs`（队列/断点文件）+ 战役域自己的 `input` JSON | 同上 |
 | 第一个域：战役批量 | `Alas.Core/Tasks/CampaignBatchTask.cs`：接合同裁决与批次工件 | 5 例队列用例 + 已有 4 条真机通关证据 |
+| 第二个域：账号状态（只读） | `AccountStateTask.cs` + 宿主 `account_state` op：当前页面/在图内/服务器/配置要点 | `verify_account_state.py`（真机存盘帧，无设备） |
 | 可恢复状态 | 逐任务 `state.json` + `--resume` 跳过已完成任务 | `queue_resume_skips_completed_task` |
 | CLI 入口 | `alashub queue --file`；与 `campaign` 共用 `ParseRunFlags` | `verify_architecture.py`（参数解析共享） |
 
-**R2 未完成**：账号状态域（`AccountStateTask`）尚未实现 —— 它需要一个**只读**的账号状态 op
-（当前只有诊断脚本 `tools/diagnostics/account_probe.py`），且必须有一条真机证据才算完成；
-设备不在线时先不做，避免造出无法验收的域。大世界/活动/周期任务同理排在它之后。
+**R2 未完成**：
+
+1. 账号状态域的**真机当场抓帧**路径待补（当前用现场存盘帧验收）；大世界/活动/周期任务三域未开始。
+2. `IN_MAP` 临界判据已留证：真机地图帧的相似度跨过上游阈值 10（3.33 / 10.06 / 10.33），
+   处置是**先不改判据**、等真机复核，详见 `docs/tasks.md` 第五节。
+3. `docs/tasks.md` 记录了每域必须带的四件套；未满足门槛时不进入下一个域。
 
 ### R3：原生钩子与高频能力迁移
 

@@ -44,6 +44,12 @@ public interface IVisionEngine : IDisposable
     T CallTyped<T>(string op, object? args = null);
 
     /// <summary>
+    /// 账号/环境状态的**只读**快照（R2 账号状态域）：当前页面、是否在图内、服务器、章节与关键配置。
+    /// 不点击、不导航；`capture=true` 才让设备抓一帧，`screenshotPath` 则用存盘帧（离线验收）。
+    /// </summary>
+    AccountStateResult AccountState(bool capture = false, string? screenshotPath = null);
+
+    /// <summary>
     /// 选择**引擎的设备后端**（截图后端 / 输入后端）。引擎自带多后端
     /// （adb、droidcast、maatouch、minitouch、scrcpy、hermit、nemu_ipc…），
     /// 换后端只改这里，产品代码零改动 —— 这是"设备 I/O 走宿主"的入口。
@@ -93,6 +99,34 @@ public sealed class CampaignPlanResult : Alas.Campaign.SortieResult
     [JsonPropertyName("runtime_config_source")] public string? RuntimeConfigSource { get; set; }
     [JsonPropertyName("execution")] public string? Execution { get; set; }
     [JsonPropertyName("upstream_returned")] public bool? UpstreamReturned { get; set; }
+}
+
+/// <summary>`account_state` 的返回：账号/环境状态的只读快照。</summary>
+public sealed class AccountStateResult
+{
+    [JsonPropertyName("server")] public string? Server { get; set; }
+    /// <summary>当前画面命中的页面集合（上游 `Page.check_button` 判定）。</summary>
+    [JsonPropertyName("pages")] public List<string>? Pages { get; set; }
+    [JsonPropertyName("page_errors")] public List<string>? PageErrors { get; set; }
+    /// <summary>是否在关卡地图里（上游 `is_in_map` 用同一个 `IN_MAP` 判定）。</summary>
+    [JsonPropertyName("in_map")] public bool? InMap { get; set; }
+    /// <summary>`IN_MAP` 的实测颜色与相似度 —— 判据是颜色比对，把数值留下来才能复核临界情况。</summary>
+    [JsonPropertyName("in_map_evidence")] public Dictionary<string, JsonElement>? InMapEvidence { get; set; }
+    [JsonPropertyName("in_map_error")] public string? InMapError { get; set; }
+    [JsonPropertyName("frame")] public AccountFrameInfo? Frame { get; set; }
+    /// <summary>已初始化的章节实例（没有则为 null）。</summary>
+    [JsonPropertyName("campaign")] public Dictionary<string, JsonElement>? Campaign { get; set; }
+    /// <summary>账号配置要点（只读快照，字段随上游配置项）。</summary>
+    [JsonPropertyName("config")] public Dictionary<string, JsonElement>? Config { get; set; }
+    [JsonPropertyName("config_name")] public string? ConfigName { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class AccountFrameInfo
+{
+    [JsonPropertyName("available")] public bool Available { get; set; }
+    [JsonPropertyName("path")] public string? Path { get; set; }
+    [JsonPropertyName("shape")] public List<int>? Shape { get; set; }
 }
 
 /// <summary>`device_configure` 的返回：当前选择的设备后端。</summary>
@@ -177,6 +211,10 @@ public abstract class VisionEngineBase : IVisionEngine
                                               string control = "ADB")
         => CallTyped<DeviceConfigResult>("device_configure",
             new { serial, screenshot, control });
+
+    public AccountStateResult AccountState(bool capture = false, string? screenshotPath = null)
+        => CallTyped<AccountStateResult>("account_state",
+            new { capture, screenshot = screenshotPath });
 
     public DeviceCaptureResult CaptureViaEngine(bool raw = true)
         => CallTyped<DeviceCaptureResult>("device_capture_set", new { raw });

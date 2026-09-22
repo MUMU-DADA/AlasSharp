@@ -136,7 +136,8 @@ internal static class Program
                 var queue = new Alas.Tasks.TaskQueue(queueSession)
                 {
                     StopOnFailure = !queueFlags.ContinueOnError,
-                }.Register(new Alas.Tasks.CampaignBatchTask());
+                }.Register(new Alas.Tasks.CampaignBatchTask())
+                 .Register(new Alas.Tasks.AccountStateTask());
                 if (queueFlags.Resume)
                 {
                     var done = Alas.Tasks.TaskQueueFile.ReadCompletedState(queueSession.RunDirectory);
@@ -613,6 +614,11 @@ internal static class Program
                 if (task.Evidence["batch_outcome"] is System.Text.Json.Nodes.JsonNode batch)
                     Console.WriteLine($"[任务证据] batch_outcome={batch} cleared={task.Evidence["cleared"]} " +
                                       $"stages={task.Evidence["stages"]?.AsArray().Count ?? 0}");
+                if (task.Evidence["in_map"] is System.Text.Json.Nodes.JsonNode inMap)
+                    Console.WriteLine($"[任务证据] server={task.Evidence["server"]} " +
+                                      $"pages=[{string.Join(",", (task.Evidence["pages"]?.AsArray() ?? new())!)}] " +
+                                      $"in_map={inMap} 相似度={task.Evidence["in_map_tolerance"]} " +
+                                      $"来源={task.Evidence["source"]}");
             }
             if (task.ArtifactPath is not null) Console.WriteLine($"[任务工件] {task.ArtifactPath}");
         }

@@ -87,7 +87,9 @@ def main() -> int:
         "任务模型": ROOT / "src/Alas.Core/Tasks/TaskModel.cs",
         "任务队列": ROOT / "src/Alas.Core/Tasks/TaskQueue.cs",
         "战役任务域": ROOT / "src/Alas.Core/Tasks/CampaignBatchTask.cs",
+        "账号状态任务域": ROOT / "src/Alas.Core/Tasks/AccountStateTask.cs",
         "任务域说明": ROOT / "docs/tasks.md",
+        "账号状态验收": ROOT / "tools/diagnostics/verify_account_state.py",
     }
     for label, path in required.items():
         if not path.is_file():

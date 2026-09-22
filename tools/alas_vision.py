@@ -653,6 +653,85 @@ def op_page_current(args):
     return {'hit': hits, 'errors': errors}
 
 
+def op_account_state(args):
+    """账号/环境状态的**只读**快照：当前页面、是否在图内、服务器、章节与关键配置。
+
+    为什么需要它（R2 第二个任务域）：批量任务开跑前必须能回答"现在是什么状态" ——
+    在不在图里（上一局有没有残留）、停在哪一页、跑的是哪个服务器与哪份配置。
+    这些判断**不需要点任何东西**，所以它能在 dry-run 里安全地跑，
+    也能在没有设备时用存盘帧验收（`screenshot` 参数直接给帧路径）。
+
+    只读纪律：不点击、不导航；只有显式 `capture=true` 才让设备抓一帧。
+    判据全部交给上游：页面用 `Page.check_button`，在图内用 `handler/IN_MAP` 的
+    **同一个 `appear` 判定**（`ModuleBase.appear` → `Button.appear_on`，颜色比对），
+    不在 C# 侧另写一套。
+    """
+    out = {'server': getattr(server_module, 'server', None),
+           'capture': bool(args.get('capture'))}
+    try:
+        if args.get('screenshot'):
+            out['loaded'] = op_screenshot_load({'path': args['screenshot']})
+        elif args.get('capture'):
+            dev = _device_engine()
+            dev.screenshot()
+            image = getattr(dev, 'image', None)
+            if image is None:
+                out['error'] = '设备抓帧失败：device.image 为空'
+                return out
+            _state['image'] = image
+            _state['image_path'] = None
+    except Exception as e:
+        out['error'] = f'取当前画面失败: {type(e).__name__}: {e}'
+        return out
+
+    image = _state.get('image')
+    out['frame'] = {
+        'available': image is not None,
+        'path': _state.get('image_path'),
+        'shape': list(image.shape) if image is not None else None,
+    }
+    if image is None:
+        out['error'] = ('宿主还没有当前画面：先 screenshot_load / screenshot_set / '
+                        'device_capture_set，或传 capture=true 从设备抓一帧')
+        return out
+
+    current = op_page_current({})
+    out['pages'] = current['hit']
+    out['page_errors'] = current['errors']
+    try:
+        appear = op_appear_on({'asset': 'handler/IN_MAP'})
+        out['in_map'] = bool(appear['appear'])
+        out['in_map_evidence'] = {'color': appear['color'], 'expected': appear['expected'],
+                                  'tolerance': appear['tolerance']}
+    except Exception as e:
+        out['in_map'] = None
+        out['in_map_error'] = f'{type(e).__name__}: {e}'
+
+    inst = _CAMPAIGN.get('obj')
+    out['campaign'] = None if inst is None else {
+        'chapter': _CAMPAIGN.get('chapter'),
+        'stage': getattr(_CAMPAIGN.get('loader'), 'stage', None),
+        'instantiated': True,
+    }
+
+    try:
+        cfg = _map_config()
+        keys = ('Campaign_Name', 'Campaign_Mode', 'Campaign_UseClearMode', 'Campaign_UseAutoSearch',
+                'Fleet_Fleet1', 'Fleet_Fleet2', 'Submarine_Fleet', 'Emotion_Mode',
+                'Emulator_ScreenshotMethod', 'Emulator_ControlMethod')
+        config = {}
+        for key in keys:
+            value = getattr(cfg, key, None)
+            config[key] = value if isinstance(value, (str, int, float, bool)) or value is None \
+                else str(value)
+        out['config'] = config
+        out['config_name'] = getattr(cfg, 'config_name', None)
+    except Exception as e:
+        out['config'] = None
+        out['config_error'] = f'{type(e).__name__}: {e}'
+    return out
+
+
 def _asset_id_map():
     """id(Button 对象) -> '子模块/资产名'，实时扫描已导入的 module.*.assets。
 
@@ -2666,6 +2745,7 @@ OPS = {
     'template_match': op_template_match,
     'ocr': op_ocr,
     'page_current': op_page_current,
+    'account_state': op_account_state,
     'ui_page_graph': op_ui_page_graph,
     'cached_rule_check': op_cached_rule_check,
     'page_positive_control': op_page_positive_control,
