@@ -21,7 +21,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import alas_vision as av          # noqa: E402
 import adb_util                   # noqa: E402
 
-ADB = os.environ['STUB_ADB']
+try:
+    ADB = os.environ['STUB_ADB']
+except KeyError:
+    # `--report-only` 只重建 docs/regression.md（不导航、不用 adb），不该被这个变量拦住；
+    # 真机跑则给出**可照做的**报错，而不是一个光秃秃的 KeyError。
+    if '--report-only' in sys.argv:
+        ADB = ''
+    else:
+        raise SystemExit(
+            '需要 STUB_ADB 环境变量（指向 adb 可执行文件）。PowerShell 例：\n'
+            r'  $env:STUB_ADB = "<仓库>\.runtime\venv314\Lib\site-packages'
+            r'\adbutils\binaries\adb.exe"' + '\n'
+            '只想重建文档时用：--report-only（不需要该变量）')
 SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
 PROBE = os.path.join(HERE, '..', 'data', '_probe.png')
 ALASHUB = os.environ.get('ALASHUB', os.path.join(

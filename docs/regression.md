@@ -52,7 +52,7 @@
 
 ## 顺带发现：上游页面图里有"无入边"节点
 
-上游图共 53 节点 / 127 边，其中 **4 个节点没有任何入边**：`page_main_white`, `page_unknown`, `page_channel`, `page_rpg_city`。
+上游图共 53 节点 / 127 边，其中 **4 个节点没有任何入边**：`page_rpg_city`, `page_channel`, `page_main_white`, `page_unknown`。
 
 这类节点**不可能是导航目标**（没人能"走到"它），它们是：
 
