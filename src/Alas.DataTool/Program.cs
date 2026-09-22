@@ -1,4 +1,5 @@
 using Alas.Core;
+using Alas.Device;
 using Alas.Vision;
 
 namespace Alas.DataTool;
@@ -79,11 +80,14 @@ internal static class Program
                 string toolsDir7 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
                     "..", "..", "..", "..", "..", "tools"));
                 string? campChapter = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
+                string? campAdb = null, campSerial = null;
                 bool campRun = false, campAllow = false, campRepeat = false;
                 double campMax = 300; int campRounds = 1;
                 for (int i = 1; i < args.Length - 1; i++)
                 {
                     if (args[i] == "--chapter") campChapter = args[i + 1];
+                    if (args[i] == "--adb") campAdb = args[i + 1];
+                    if (args[i] == "--serial") campSerial = args[i + 1];
                     if (args[i] == "--run") campRun = true;
                     if (args[i] == "--allow-actions") campAllow = true;
                     if (args[i] == "--repeat") campRepeat = true;
@@ -102,8 +106,27 @@ internal static class Program
                     : new[] { campChapter };
                 Console.WriteLine($"[批量    ] {stageList.Length} 关，同一进程内连续驱动");
                 using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(repoDir, toolsDir7);
+                // **跨关状态复位**：实测 2-1 跑完后游戏已不在战役页，下一关的 ensure_chapter
+                // 会在错误画面上执行 -> CampaignNameError（见 docs/s3-entry-sequence.md）。
+                // 所以每关（除首关）开始前，先确保回到 page_campaign。
+                Device.DeviceController? campDev = null;
+                Alas.Navigation.PageNavigator? campNav = null;
+                if (campAdb is not null && campSerial is not null)
+                {
+                    campDev = new Device.DeviceController(new ProcessAdbTransport(campAdb), vision, campSerial);
+                    campNav = new Alas.Navigation.PageNavigator(vision,
+                        new Alas.Navigation.DeviceNavigationAdapter(campDev),
+                        Alas.Navigation.PageGraph.Load(vision));
+                }
+                int campIdx = 0;
                 foreach (var one in stageList)
                 {
+                    if (campIdx > 0 && campNav is not null)
+                    {
+                        var nav = campNav.Goto("page_campaign");
+                        Console.WriteLine($"[复位    ] 第 {campIdx + 1} 关前回战役页 success={nav.Success}");
+                    }
+                    campIdx++;
                     var r = vision.RunCampaignPlan(one, dryRun: !campRun, allowActions: campAllow,
                                                    maxSeconds: campMax, maxRounds: campRounds,
                                                    repeatUntilCleared: campRepeat);

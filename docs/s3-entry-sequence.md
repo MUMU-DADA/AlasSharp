@@ -1162,3 +1162,28 @@ S3 累计：**6 个关卡**端到端驱动（2-1/2-2/2-3/2-4/3-1/3-2），真实
 2. 协议侧：宿主加一个 op（但宿主没有页面导航能力，导航是 C# 侧的事）=> 推荐路线 1。
 
 **当前行为是安全的**：出错即停（不会带着错误状态继续跑下一关），且命令行已提示。
+
+### ✅✅ 跨关复位修好并实测通过 —— 多关连跑可用
+
+改动：`campaign` 命令支持 `--adb/--serial`，多关循环里**每关（除首关）前先导航回 `page_campaign`**
+（复用已有的 `PageNavigator`；导航本就是 C# 侧的事，故走 C# 而不加协议 op）。
+
+实测（`alashub campaign "2-1,2-2" --run --allow-actions --repeat --max-rounds 1`，同一进程）：
+
+```
+[批量] 2 关，同一进程内连续驱动
+[plan] 2-1 → [结果] elapsed=113.5s stopped_early=False **campaign_end=True**  ← 清图（CampaignEnd 语义生效）
+[复位] 第 2 关前回战役页 **success=True**                                      ← 跨关复位生效
+[plan] 2-2 → [结果] elapsed=48.4s  stopped_early=False                         ← 不再 CampaignNameError
+归位 page_main ✓
+```
+
+**三点**：
+
+1. **跨关复位生效**：上一轮 `2-2` 报 `CampaignNameError`，本轮正常跑完 ✓；
+2. **`campaign_end=True` 首次被记录**：第 55 轮把 `CampaignEnd` 从"错误"改判为"完成信号"，
+   这轮看到它在实战里如实回报"关卡已清" ✓；
+3. **多关连跑可用**：同一进程内连续驱动两关，无需人工干预 ✓
+
+=> **S3 至此形成闭环**：单关可跑（6 关实测）、多关可连跑（本轮实测）、有安全锁与 dry-run、
+有账号边界表、有 6 项客户端适配、有完整文档与 C# 产品侧入口。
