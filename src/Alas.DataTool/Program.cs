@@ -1,4 +1,5 @@
 using Alas.Core;
+using Alas.Vision;
 
 namespace Alas.DataTool;
 
@@ -71,6 +72,45 @@ internal static class Program
                 }
                 return RunLoop.Run(runAdb, runSerial, repoDir, toolsDir6, runShot, runCtrl,
                     runTick, runSeconds, runMap);
+            }
+            if (command == "campaign")
+            {
+                // S3：按关卡 IR 的计划驱动上游（dry-run 默认；--run 才真打，需 --allow-actions）
+                string toolsDir7 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                    "..", "..", "..", "..", "..", "tools"));
+                string? campChapter = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
+                bool campRun = false, campAllow = false, campRepeat = false;
+                double campMax = 300; int campRounds = 1;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--chapter") campChapter = args[i + 1];
+                    if (args[i] == "--run") campRun = true;
+                    if (args[i] == "--allow-actions") campAllow = true;
+                    if (args[i] == "--repeat") campRepeat = true;
+                    if (args[i] == "--max-seconds" && double.TryParse(args[i + 1], out double ms2)) campMax = ms2;
+                    if (args[i] == "--max-rounds" && int.TryParse(args[i + 1], out int mr)) campRounds = mr;
+                }
+                if (campChapter is null)
+                {
+                    Console.WriteLine("用法: campaign <chapter 模块> [--run --allow-actions] " +
+                                      "[--repeat] [--max-seconds 300] [--max-rounds 1]");
+                    return 2;
+                }
+                using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(repoDir, toolsDir7);
+                var r = vision.RunCampaignPlan(campChapter, dryRun: !campRun, allowActions: campAllow,
+                                               maxSeconds: campMax, maxRounds: campRounds,
+                                               repeatUntilCleared: campRepeat);
+                Console.WriteLine($"[plan    ] {r.Chapter} stage={r.Stage} tier={r.Tier} dry_run={r.DryRun}");
+                Console.WriteLine($"[steps   ] {string.Join(" → ", r.PlanSteps ?? new())}");
+                Console.WriteLine($"[语义轨迹] {string.Join(", ", r.SemanticTrace ?? new())}");
+                if (r.Refused == true) Console.WriteLine($"[拒绝    ] {r.Error}");
+                if (r.Steps is not null)
+                    foreach (var step in r.Steps)
+                        Console.WriteLine("  " + string.Join(" ", step.Select(kv => $"{kv.Key}={kv.Value}")));
+                if (r.ElapsedSeconds is not null)
+                    Console.WriteLine($"[结果    ] elapsed={r.ElapsedSeconds}s stopped_early={r.StoppedEarly} " +
+                                      $"stop_reason={r.StopReason} campaign_end={r.CampaignEnd}");
+                return r.Error is null || r.Refused == true ? 0 : 1;
             }
             if (command == "capture")
             {

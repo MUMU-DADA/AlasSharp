@@ -216,7 +216,9 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
   （IR / 模块与形状 / 关卡名 / 配置绑定 / 调用词表 / **图内帧可识别性**）；
 - `tools/diagnostics/s3_plan_coverage.py` —— 全量统计"哪些章节现在就能跑"（1374 章中 88.1% 计划完整）；
 - 协议 op `s3_run_plan`（dry-run 默认 true；真跑需 `allow_actions=true`，
-  带 `max_seconds` / `repeat_until_cleared` / 上游完成信号）。
+  带 `max_seconds` / `repeat_until_cleared` / 上游完成信号）；
+- **C# 产品侧入口**：`IVisionEngine.RunCampaignPlan(...)` 与
+  `alashub campaign <章模块>`（dry-run 默认；`--run --allow-actions` 才真打）。
 
 实测（本账号）：计划执行器已在 **3 个关卡**上跑通、共 **13 次真实战斗全部无错**；
 4 张图已确认可识别（2-1 / 2-2 / 3-1 / 3-2）。已知不支持：第 1 章（7 格单行图，上游检测器失效）。

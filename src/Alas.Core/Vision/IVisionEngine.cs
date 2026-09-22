@@ -55,6 +55,34 @@ public interface IVisionEngine : IDisposable
     /// 比 `Screenshot()` 的 `adb → C# → 宿主` 少一次跨语言传输与落盘/读盘。
     /// </summary>
     DeviceCaptureResult CaptureViaEngine(bool raw = true);
+
+    /// <summary>
+    /// 按关卡 IR 的计划顺序驱动**上游自己的** `battle_*` 方法（S3 主入口）。
+    /// **战斗逻辑不重写** —— C# 只做编排，动作用上游实现。
+    /// `dryRun` 默认 true：只回计划内容，不碰游戏；真跑必须 `allowActions = true`
+    /// （宿主侧还有一道硬性安全联锁）。详见 docs/s3-entry-sequence.md。
+    /// </summary>
+    CampaignPlanResult RunCampaignPlan(string chapter, bool dryRun = true,
+                                       bool allowActions = false, double maxSeconds = 300,
+                                       int maxRounds = 1, bool repeatUntilCleared = false);
+}
+
+/// <summary>`s3_run_plan` 的返回：计划步骤与逐步结果。</summary>
+public sealed class CampaignPlanResult
+{
+    [JsonPropertyName("chapter")] public string? Chapter { get; set; }
+    [JsonPropertyName("stage")] public string? Stage { get; set; }
+    [JsonPropertyName("tier")] public string? Tier { get; set; }
+    [JsonPropertyName("dry_run")] public bool DryRun { get; set; }
+    [JsonPropertyName("plan_steps")] public List<string>? PlanSteps { get; set; }
+    [JsonPropertyName("semantic_trace")] public List<string>? SemanticTrace { get; set; }
+    [JsonPropertyName("steps")] public List<Dictionary<string, JsonElement>>? Steps { get; set; }
+    [JsonPropertyName("elapsed_s")] public double? ElapsedSeconds { get; set; }
+    [JsonPropertyName("stopped_early")] public bool? StoppedEarly { get; set; }
+    [JsonPropertyName("stop_reason")] public string? StopReason { get; set; }
+    [JsonPropertyName("campaign_end")] public bool? CampaignEnd { get; set; }
+    [JsonPropertyName("refused")] public bool? Refused { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
 }
 
 /// <summary>`device_configure` 的返回：当前选择的设备后端。</summary>
@@ -142,6 +170,19 @@ public abstract class VisionEngineBase : IVisionEngine
 
     public DeviceCaptureResult CaptureViaEngine(bool raw = true)
         => CallTyped<DeviceCaptureResult>("device_capture_set", new { raw });
+
+    public CampaignPlanResult RunCampaignPlan(string chapter, bool dryRun = true,
+                                              bool allowActions = false, double maxSeconds = 300,
+                                              int maxRounds = 1, bool repeatUntilCleared = false)
+        => CallTyped<CampaignPlanResult>("s3_run_plan", new
+        {
+            chapter,
+            dry_run = dryRun,
+            allow_actions = allowActions,
+            max_seconds = maxSeconds,
+            max_rounds = maxRounds,
+            repeat_until_cleared = repeatUntilCleared,
+        });
 
     protected int NextId() => Interlocked.Increment(ref _nextId);
 
