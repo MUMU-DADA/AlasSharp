@@ -7,7 +7,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 仓库 | `csharp`（AlasSharp）工作区**干净**，**85 个提交未推送** |
+| 仓库 | `csharp`（AlasSharp）工作区**干净**，**89 个提交未推送**（以 git log --oneline origin/master..master 为准） |
 | 游戏 | **`page_main`**，干净、不在任何地图/出击中，无未完出击 |
 | 账号 | 出击若干次（每次约 10 油），全程**周回/自律关闭**；无失控循环 |
 | 验收 | `verify_all --docs-only` → **0 步异常**；
@@ -86,7 +86,7 @@
 | --- | --- |
 | `origin` 指向 | **https://github.com/<source-owner>/AlasSharp.git**（你自己的仓库，**不是** upstream / azurpilot）✓ |
 | 分支 | `master` ✓ |
-| 待推送 | 88 个提交 / 51 个文件（tools 36 / src 7 / docs 6 / README 1 / .gitignore 1）|
+| 待推送 | 89 个提交 / 51 个文件（tools / src / docs / README / .gitignore）|
 | 可疑二进制/大文件 | **无**（无 `.runtime/`、无 vendor、无 onnx/exe/dll/jar/apk）✓ |
 | `.gitignore` 改动 | 仅新增 `.runtime/` —— **合规**（项目级运行时目录，类比 `.venv/`；个人文件才该进 `.git/info/exclude`）✓ |
 | 工作区 | 干净（0 项未提交）✓ |
