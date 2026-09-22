@@ -44,6 +44,32 @@ internal static class Program
                 fixture ??= Path.Combine(dataDir, "fixtures", "matching.json");
                 return MatchingCheck.Run(fixture, repoDir);
             }
+            if (command == "run")
+            {
+                // 常驻 runner 骨架（S3 的壳）：设备层只构造一次，之后按 tick 循环抓帧+判定
+                string toolsDir6 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                    "..", "..", "..", "..", "..", "tools"));
+                string? runAdb = null, runSerial = null;
+                string runShot = "scrcpy", runCtrl = "MaaTouch";
+                double runTick = 0.5, runSeconds = 20;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--adb") runAdb = args[i + 1];
+                    if (args[i] == "--serial") runSerial = args[i + 1];
+                    if (args[i] == "--screenshot") runShot = args[i + 1];
+                    if (args[i] == "--control") runCtrl = args[i + 1];
+                    if (args[i] == "--tick" && double.TryParse(args[i + 1], out double tk)) runTick = tk;
+                    if (args[i] == "--seconds" && double.TryParse(args[i + 1], out double sc)) runSeconds = sc;
+                }
+                if (runAdb is null || runSerial is null)
+                {
+                    Console.WriteLine("用法: run --adb <adb> --serial <serial> " +
+                        "[--screenshot scrcpy] [--control MaaTouch] [--tick 0.5] [--seconds 20]");
+                    return 2;
+                }
+                return RunLoop.Run(runAdb, runSerial, repoDir, toolsDir6, runShot, runCtrl,
+                    runTick, runSeconds);
+            }
             if (command == "capture")
             {
                 // 设备通道对比：C# 自截 vs 引擎截图（后端可切），见 CaptureCheck

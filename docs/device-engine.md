@@ -309,3 +309,30 @@ alashub goto page_main --adb <adb> --serial 127.0.0.1:16384     --capture-engine
 ```powershell
 alashub goto page_campaign --adb <adb> --serial 127.0.0.1:16384 --capture-engine --rounds 3
 ```
+
+## 常驻 runner 骨架（`alashub run`）：稳态数字确定，这就是 S3 的壳
+
+CLI 一次调用一个进程，设备层初始化（约 2.3s）会吃掉全部收益；S3 的自动化循环必然是**长驻**的。
+本轮把那个壳搭起来：`alashub run`（只"看"不"动"，安全观测器）
+
+1. 一次性构造识图引擎 + 设备层（含后端选择）并预热；
+2. 之后按 tick 循环：引擎抓帧（像素不跨语言边界）→ 页面判定 → 记耗时；
+3. 定期打印 tick，结束时给稳态统计（抓帧/判定/tick 间隔）。
+
+实测 20 秒（tick 0.5s，默认 scrcpy + MaaTouch）：
+
+```
+[runner  ] screenshot=scrcpy control=MaaTouch tick=0.50s duration=20s
+[warmup  ] 设备层构造+首次抓帧 2327 ms （长驻进程里只付一次）
+[稳态    ] 共 42 tick / 20.0s（2.10 tick/s，错误 0）
+[抓帧    ] n=42 中位=106 p25=104 p75=107 最大=122
+[判定    ] n=42 中位=20  p25=20  p75=21  最大=144
+[tick间隔] n=42 中位=500 p25=496 p75=503 最大=518
+```
+
+结论：
+- **抓帧 106 ms（极稳，p25–p75 只差 3ms）**，判定 20 ms ⇒ 单 tick 约 126 ms，**上限约 8 fps**；
+- 设备层初始化 2.3s 只付一次；tick 调度准时（500±3ms）；
+- 42 tick 零错误。
+
+下一步（S3）：把战斗/关卡循环挂在 tick 上，并让"设备层常驻"成为正式运行形态。
