@@ -70,6 +70,10 @@ def main() -> int:
             print('**失败**：没有产出运行目录')
             return 1
         run_dir = run_dirs[-1]
+        # 反例用的副本要在**任何改动之前**复制：否则第二个反例会读到第一个反例改坏的状态，
+        # 报出叠加的 findings（曾经如此），让"缺日志"这条断言看不出真正的原因。
+        no_log = tmpdir / 'broken-no-log'
+        shutil.copytree(run_dir, no_log)
 
         # ---- 正常路径：报告要能把这些事实读出来
         report_json = tmpdir / 'report.json'
@@ -134,9 +138,7 @@ def main() -> int:
             if not ok:
                 failures.append(f'缺工件没被报出来：findings={codes}')
 
-        # ---- 反例二：删掉会话日志 → 必须报 log_missing
-        no_log = tmpdir / 'broken-no-log'
-        shutil.copytree(run_dir, no_log)
+        # ---- 反例二：删掉会话日志 → 必须报 log_missing（副本在任何改动前就已复制）
         (no_log / 'session-log.jsonl').unlink()
         out2 = tmpdir / 'broken2.json'
         run([str(EXE), 'report', '--run', str(no_log), '--json', str(out2)])
