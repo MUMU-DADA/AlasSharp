@@ -214,6 +214,38 @@ def main() -> int:
             if not ok:
                 failures.append(f'{name}: {detail}')
 
+        # ---- 单批命令的工件形态（没有 queue.json/state.json）：报告同样要读得全
+        print()
+        print('=== 单批命令（campaign --artifacts）===')
+        campaign_root = tmpdir / 'campaign-artifacts'
+        campaign = run([str(EXE), 'campaign', CHAPTER, '--artifacts', str(campaign_root)])
+        campaign_run = sorted(p for p in campaign_root.glob('*') if p.is_dir())
+        if campaign.returncode != 0 or not campaign_run:
+            failures.append(f'campaign 没产出运行目录：退出码={campaign.returncode}')
+        else:
+            campaign_json = tmpdir / 'campaign-report.json'
+            run([str(EXE), 'report', '--run', str(campaign_run[-1]), '--json', str(campaign_json)])
+            campaign_report = json.loads(campaign_json.read_text(encoding='utf-8'))
+            files = {p.name for p in campaign_run[-1].iterdir()}
+            campaign_checks = [
+                ('没有 queue.json / state.json（单批形态）',
+                 files == {'index.json', 'session-log.jsonl', 'sortie-2-1.json'},
+                 f'files={sorted(files)}'),
+                ('批次结论读得到', campaign_report['batch_outcome'] == 'dry_run',
+                 f"batch_outcome={campaign_report['batch_outcome']}"),
+                ('关卡条目读得到', campaign_report['totals']['stages'] == 1,
+                 f"stages={campaign_report['totals']['stages']}"),
+                # 这两项以前只在 queue.json 里有，单批形态下必须是 `?` —— 现在要从 index.json 取
+                ('宿主初始化次数不再是未知', campaign_report['host_start_count'] == 1,
+                 f"host_start_count={campaign_report['host_start_count']}"),
+                ('证据完整', campaign_report['evidence_complete'] is True,
+                 f"findings={[f['code'] for f in campaign_report['findings']]}"),
+            ]
+            for name, ok, detail in campaign_checks:
+                print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+                if not ok:
+                    failures.append(f'{name}: {detail}')
+
     print()
     if failures:
         print(f'结果: FAIL（{len(failures)} 项）')
