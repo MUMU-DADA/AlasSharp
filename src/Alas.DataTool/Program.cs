@@ -137,7 +137,8 @@ internal static class Program
                 {
                     StopOnFailure = !queueFlags.ContinueOnError,
                 }.Register(new Alas.Tasks.CampaignBatchTask())
-                 .Register(new Alas.Tasks.AccountStateTask());
+                 .Register(new Alas.Tasks.AccountStateTask())
+                 .Register(new Alas.Tasks.OsStateTask());
                 if (queueFlags.Resume)
                 {
                     var done = Alas.Tasks.TaskQueueFile.ReadCompletedState(queueSession.RunDirectory);
