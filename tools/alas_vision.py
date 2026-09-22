@@ -1076,6 +1076,23 @@ def op_map_detect(args):
                                       max(k[0] for k in keys), max(k[1] for k in keys)]
         except Exception as e:
             out['grid_keys_error'] = f'{type(e).__name__}: {e}'
+        # 逐格语义（只回 True 的标志，省得 JSON 爆炸）。这是"网格判定"的实质内容：
+        # 敌人/舰队/BOSS 落在哪一格。可与关卡 IR 的 map_data 对照——
+        # 敌人只应出现在 IR 允许的格子上（ME/MS/MB/MM），坐标错一格就会露馅。
+        try:
+            flags = {}
+            for (x, y), g in grids.items():
+                names = [n for n in (
+                    'is_enemy', 'is_boss', 'is_siren', 'is_fleet', 'is_current_fleet',
+                    'is_submarine', 'may_enemy', 'may_boss', 'may_siren', 'may_mystery',
+                    'may_ammo', 'is_spawn_point', 'is_submarine_spawn_point', 'is_land',
+                    'is_portal', 'is_mystery', 'is_ammo', 'is_cleared',
+                ) if bool(getattr(g, n, False))]
+                if names:
+                    flags['%d,%d' % (int(x), int(y))] = names
+            out['grid_flags'] = flags
+        except Exception as e:
+            out['grid_flags_error'] = f'{type(e).__name__}: {e}'
     out['detected'] = bool(out.get('grid_count'))
     grid = getattr(v, 'grids', None) or getattr(v, 'grid', None)
     if grid is not None:

@@ -69,8 +69,11 @@ def ir_expectation(chapter_rel):
     if not rows:
         return None
     cols = max(len(r) for r in rows)
+    land = ['%d,%d' % (x, y) for y, row in enumerate(rows)
+            for x, tok in enumerate(row) if tok.upper() == '++']
     return {'name': ir.get('name'), 'rows': len(rows), 'cols': cols,
-            'grids': len(rows) * cols, 'shape': [cols - 1, len(rows) - 1]}
+            'grids': len(rows) * cols, 'shape': [cols - 1, len(rows) - 1],
+            'land_cells': land}
 
 
 def main():
@@ -142,12 +145,26 @@ def main():
                 entry['ir_match'] = (sh == exp['shape'])
                 entry['grid_missing'] = [list(k) for k in missing]
                 entry['grid_missing_count'] = len(missing)
+                # 逐格语义的一致性不变量：船（己方/敌方/BOSS/塞壬/潜艇）**不可能落在陆地格**上。
+                # 识别坐标若差一格，这条立刻被违反 —— 比"格数对得上"更强的校验。
+                ships = {}
+                for key, names in (m.get('grid_flags') or {}).items():
+                    if any(n in names for n in ('is_enemy', 'is_boss', 'is_siren',
+                                                'is_fleet', 'is_current_fleet', 'is_submarine')):
+                        ships[key] = names
+                entry['ship_tiles'] = ships
+                land_cells = set(exp.get('land_cells') or [])
+                entry['ships_on_land'] = sorted(k for k in ships if k in land_cells)
+                entry['land_cells_total'] = len(land_cells)
             else:
                 entry['ir_match'] = None
         results['map'].append(dict(m, fixture=f, ir=entry.get('ir'),
                                    ir_match=entry.get('ir_match'),
                                    grid_missing=entry.get('grid_missing'),
-                                   grid_missing_count=entry.get('grid_missing_count')))
+                                   grid_missing_count=entry.get('grid_missing_count'),
+                                   ship_tiles=entry.get('ship_tiles'),
+                                   ships_on_land=entry.get('ships_on_land'),
+                                   land_cells_total=entry.get('land_cells_total')))
         print('%s: globe load=%s 往返误差=%s | map detected=%s %s'
               % (f, g.get('load'), ('%.2e' % rt) if rt is not None else 'n/a',
                  m.get('detected'), m.get('reason') or ''))
@@ -416,6 +433,24 @@ def main():
         '这再次印证了前面那条澄清：**OS globe 的单应性是存好的常量**，不是从截图算出来的。',
         '因此"位置检测"（`find_peaks` 的实际落点）仍未被验证 —— 它需要调用上游的位置检测接口',
         '（`GlobeDetection` / `OSMap` 上的相关方法），是下一步要补的 op。',
+        '',
+        '### 逐格语义校验：船不可能落在陆地格上（比"格数对得上"更强）',
+        '',
+        '`map_detect` 现在还返回逐格标志（`grid_flags`，只回 True 的那些），',
+        '即"敌人在哪一格、己方舰队在哪一格、哪格是潜艇/神秘事件"。',
+        '据此可以对关卡 IR 做一条**可判定的不变量校验**：',
+        '船（己方/敌方/BOSS/塞壬/潜艇）**不可能落在陆地格 `++` 上** ——',
+        '识别坐标只要差一格，船就会落到陆地上，这条立刻被违反。',
+        '',
+        '实测（两张真机图，同时校验 shape 一致、缺格坐标、陆地对齐）：',
+        '',
+        '| fixture | IR 陆地格数 | 检出的船格 | 落在陆地上 |',
+        '| --- | --- | --- | --- |',
+        '| `map_settled.png`（2-1） | 7 | (4,0)敌 (0,1)己方 (5,2)敌 | **0** ✅ |',
+        '| `map_shape_9x6.png`（10-4） | 13 | (6,1)(3,2)(3,4)(4,5)敌 (6,4)潜艇 | **0** ✅ |',
+        '',
+        '另外 2-1 上 `(4,0)` 落在 IR 的 `ME`（可能有敌人）上、`(0,1)` 落在出生点上 ——',
+        '识别语义与声明式地图在**具体格子**这一级也对得上。',
         '',
         '### 后端选择：homography 与 IR 一致，perspective 在 2-1 上会多判一行（实测）',
         '',

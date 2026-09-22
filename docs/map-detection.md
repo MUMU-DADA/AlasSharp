@@ -41,7 +41,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
     "globe_center: (np.float64(1423.0), np.float64(1690.0))",
-    "0.075s      similarity: 0.066",
+    "0.074s      similarity: 0.066",
     "Low similarity when matching OS globe"
   ],
   "similarity": 0.066,
@@ -283,6 +283,24 @@ TypeError: arrays to stack must be passed as a "sequence" type ...
 这再次印证了前面那条澄清：**OS globe 的单应性是存好的常量**，不是从截图算出来的。
 因此"位置检测"（`find_peaks` 的实际落点）仍未被验证 —— 它需要调用上游的位置检测接口
 （`GlobeDetection` / `OSMap` 上的相关方法），是下一步要补的 op。
+
+### 逐格语义校验：船不可能落在陆地格上（比"格数对得上"更强）
+
+`map_detect` 现在还返回逐格标志（`grid_flags`，只回 True 的那些），
+即"敌人在哪一格、己方舰队在哪一格、哪格是潜艇/神秘事件"。
+据此可以对关卡 IR 做一条**可判定的不变量校验**：
+船（己方/敌方/BOSS/塞壬/潜艇）**不可能落在陆地格 `++` 上** ——
+识别坐标只要差一格，船就会落到陆地上，这条立刻被违反。
+
+实测（两张真机图，同时校验 shape 一致、缺格坐标、陆地对齐）：
+
+| fixture | IR 陆地格数 | 检出的船格 | 落在陆地上 |
+| --- | --- | --- | --- |
+| `map_settled.png`（2-1） | 7 | (4,0)敌 (0,1)己方 (5,2)敌 | **0** ✅ |
+| `map_shape_9x6.png`（10-4） | 13 | (6,1)(3,2)(3,4)(4,5)敌 (6,4)潜艇 | **0** ✅ |
+
+另外 2-1 上 `(4,0)` 落在 IR 的 `ME`（可能有敌人）上、`(0,1)` 落在出生点上 ——
+识别语义与声明式地图在**具体格子**这一级也对得上。
 
 ### 后端选择：homography 与 IR 一致，perspective 在 2-1 上会多判一行（实测）
 
