@@ -194,6 +194,7 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 |---|---|
 | `docs/page-verification.md` | 53 个页面规则的真机导航验证：29 个已在该页命中，5 个受游戏状态阻塞，19 个原因已定位 |
 | `docs/navigation.md` | 页面导航图（控制能力）：图从上游运行时获取、变体择优、真机多跳运行记录 |
+| `docs/controls.md` | 20 个控件规则（Switch/Scroll）+ 滑动控制的真机验证与总账 |
 
 ## 路线图
 

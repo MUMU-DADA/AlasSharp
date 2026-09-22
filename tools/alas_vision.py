@@ -400,7 +400,12 @@ def op_ui_rule_check(args):
                 results[meth] = f'<{type(v).__name__}>'
         except Exception as e:
             results[meth] = f'{type(e).__name__}: {e}'
-    return {'module': args['module'], 'name': args['name'], 'class': kind, 'results': results}
+    return {'module': args['module'], 'name': args['name'], 'class': kind,
+            # Scroll 的拖拽区域与方向：控件验证要在**它自己的区域**里拖，
+            # 在别处滑动等于测了个寂寞（命中率与 at_top/at_bottom 都不作数）
+            'area': [int(v) for v in obj.area] if hasattr(obj, 'area') else None,
+            'is_vertical': bool(getattr(obj, 'is_vertical', False)),
+            'results': results}
 
 def op_page_list(args):
     """列出上游 module/ui/page.py 定义的页面及其 check_button（识图规则的入口）。"""
