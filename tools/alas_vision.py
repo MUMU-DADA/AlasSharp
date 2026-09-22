@@ -800,6 +800,69 @@ def op_cached_rule_check(args):
             'hit': bool(hit), 'detail': detail, 'errors': errors}
 
 
+def op_page_positive_control(args):
+    """合成正对照：把每条页面规则的 check 素材贴到**它自己的区域**，看规则返回真。
+
+    口径必须说清楚：这**不等于真机命中**。它只证明"规则本身是活的"——
+    素材文件能加载、区域与模板配对正确、判定方向没写反（不是恒假）。
+    用途是把「页面到不了」（账号/活动/客户端版本所限）与「规则坏了」分开：
+    受阻塞的 24 个页面若连正对照都过不了，那就是实现问题而非可达性问题。
+
+    做法：黑底画布 → 把 check 素材自己的模板图贴到它的 area → 跑 ui_page_appear。
+    注意贴的是 `area` 而不是 `button`：上游 Button.match 裁的就是 area 那块，
+    模板图本身也是从 area 截出来的。
+    """
+    import numpy as np
+    from module.ui.page import Page
+
+    saved = _state['image']
+    results = []
+    try:
+        for name, page in sorted(Page.all_pages.items()):
+            cb = page.check_button
+            if cb is None:
+                results.append({'page': name, 'verdict': 'skip',
+                                'detail': 'Page(None)：没有 check 素材（合成实体）'})
+                continue
+            try:
+                cb.ensure_template()
+                template = cb.image
+                if isinstance(template, list):      # gif 多帧
+                    template = template[0]
+                if template is None:
+                    results.append({'page': name, 'verdict': 'fail',
+                                    'detail': '素材没有模板图（ensure_template 后仍为空）'})
+                    continue
+                h, w = template.shape[:2]
+                x1, y1, x2, y2 = [int(v) for v in cb.area]
+                canvas = np.zeros((720, 1280, 3), dtype=np.uint8)
+                # 画布要够大：素材区域可能超出 1280x720（不同分辨率素材）
+                if y1 + h > 720 or x1 + w > 1280:
+                    results.append({'page': name, 'verdict': 'skip',
+                                    'detail': '素材区域 %s 超出 1280x720，合成画布放不下'
+                                              % list(cb.area)})
+                    continue
+                canvas[y1:y1 + h, x1:x1 + w] = template
+                _state['image'] = canvas
+                appear = bool(op_page_appear({'page': name})['appear'])
+                results.append({'page': name, 'verdict': 'pass' if appear else 'fail',
+                                'detail': '素材 %s 贴到 area=%s（%dx%d）后 appear=%s'
+                                          % (getattr(cb, 'name', None), list(cb.area),
+                                             w, h, appear)})
+            except Exception as e:
+                results.append({'page': name, 'verdict': 'error',
+                                'detail': '%s: %s' % (type(e).__name__, e)})
+    finally:
+        _state['image'] = saved      # 一定要还原，否则后续 op 会拿着合成图判定
+
+    passed = sum(1 for r in results if r['verdict'] == 'pass')
+    skipped = sum(1 for r in results if r['verdict'] == 'skip')
+    failed = [r for r in results if r['verdict'] in ('fail', 'error')]
+    return {'results': results, 'total': len(results), 'passed': passed,
+            'skipped': skipped, 'failed': len(failed),
+            'failed_pages': [r['page'] for r in failed]}
+
+
 def op_ui_rules_sweep(args):
     """
     界面与控件识别的**统一验收**：一次跑完三类实体并汇总。
@@ -922,6 +985,7 @@ OPS = {
     'page_current': op_page_current,
     'ui_page_graph': op_ui_page_graph,
     'cached_rule_check': op_cached_rule_check,
+    'page_positive_control': op_page_positive_control,
 }
 
 
