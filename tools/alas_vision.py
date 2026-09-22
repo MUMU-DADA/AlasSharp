@@ -1077,6 +1077,74 @@ def op_globe_detect(args):
     return out
 
 
+def op_map_detect_trace(args):
+    """逐步跑上游的地图检测链，定位"画面明明有网格，却报 No vertical line detected"卡在哪一步。
+
+    上游 `Perspective.load` 的链条是：
+      load_image(预处理) → detect_lines ×4（inner/edge × 横/竖）
+   而 `detect_lines` 里会 **与 `ui_mask_stroke` 相与**——遮罩把"属于 UI 的像素"置零，
+    再从剩下的峰值图跑 HoughLines。所以最可能的失效点是遮罩与本客户端 UI 对不上
+    （整片地图被遮掉 → 峰值全零 → 找不到线）。
+    """
+    import numpy as np
+    import module.map_detection.perspective as persp
+    from module.map_detection.utils_assets import Assets
+
+    image = _require_image()
+    cfg = _map_config()
+    p = persp.Perspective(config=cfg)
+    out = {}
+    try:
+        img = p.load_image(image)
+    except Exception as e:
+        return {'load_image_error': f'{type(e).__name__}: {e}'}
+    out['load_image'] = {'shape': list(img.shape), 'mean': round(float(img.mean()), 2),
+                         'nonzero_pct': round(float((img > 0).mean()) * 100, 2)}
+    mask = Assets().ui_mask_stroke
+    out['mask_stroke'] = {'shape': list(mask.shape),
+                          'nonzero_pct': round(float((mask > 0).mean()) * 100, 2)}
+    out['detecting_area'] = [int(v) for v in cfg.DETECTING_AREA]
+
+    pa = cfg.DETECTING_AREA
+    calls = [
+        ('inner_h', True, 'INTERNAL_LINES_FIND_PEAKS_PARAMETERS',
+         'INTERNAL_LINES_HOUGHLINES_THRESHOLD', 'HORIZONTAL_LINES_THETA_THRESHOLD', 0),
+        ('inner_v', False, 'INTERNAL_LINES_FIND_PEAKS_PARAMETERS',
+         'INTERNAL_LINES_HOUGHLINES_THRESHOLD', 'VERTICAL_LINES_THETA_THRESHOLD', 0),
+        ('edge_h', True, 'EDGE_LINES_FIND_PEAKS_PARAMETERS',
+         'EDGE_LINES_HOUGHLINES_THRESHOLD', 'HORIZONTAL_LINES_THETA_THRESHOLD', pa[2] - pa[0]),
+        ('edge_v', False, 'EDGE_LINES_FIND_PEAKS_PARAMETERS',
+         'EDGE_LINES_HOUGHLINES_THRESHOLD', 'VERTICAL_LINES_THETA_THRESHOLD', pa[3] - pa[1]),
+    ]
+    for label, horiz, pname, tname, thname, pad in calls:
+        entry = {}
+        try:
+            peaks = p.find_peaks(img, is_horizontal=horiz, param=getattr(cfg, pname), pad=pad)
+            entry['peaks_raw'] = int((peaks > 0).sum())
+            if peaks.shape == mask.shape:
+                entry['peaks_after_mask'] = int(((peaks & mask) > 0).sum())
+            else:
+                entry['peaks_after_mask'] = f'形状不匹配 peaks{list(peaks.shape)} vs mask{list(mask.shape)}'
+            lines = p.hough_lines(peaks, horiz, getattr(cfg, tname), getattr(cfg, thname))
+            entry['lines'] = len(lines)
+            # HoughLines 的**原始**输出与角度分布：用来区分"Hough 什么都没找到"与
+            # "Hough 找到了但被角度过滤器全滤掉"（后者意味着本客户端的地图几何
+            # 与上游预期的透视梯形不一致）。
+            import cv2
+            raw = cv2.HoughLines(peaks, 1, np.pi / 180, int(getattr(cfg, tname)))
+            entry['hough_raw'] = 0 if raw is None else int(len(raw))
+            if raw is not None and len(raw):
+                deg = np.rad2deg(raw[:, 0, 1])
+                entry['hough_theta_deg'] = [round(float(deg.min()), 2), round(float(deg.max()), 2)]
+            entry['line_params'] = {'hough_threshold': int(getattr(cfg, tname)),
+                                    'theta_threshold': float(getattr(cfg, thname)),
+                                    'pad': int(pad)}
+        except Exception as e:
+            entry['error'] = f'{type(e).__name__}: {e}'
+        out[label] = entry
+    return out
+
+
 def op_ui_rules_sweep(args):
     """
     界面与控件识别的**统一验收**：一次跑完三类实体并汇总。
@@ -1203,6 +1271,7 @@ OPS = {
     'rule_positive_control': op_rule_positive_control,
     'map_detection_assets': op_map_detection_assets,
     'map_detect': op_map_detect,
+    'map_detect_trace': op_map_detect_trace,
     'globe_detect': op_globe_detect,
 }
 
