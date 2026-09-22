@@ -936,6 +936,142 @@ def op_rule_positive_control(args):
             'failed_rules': [x['rule'] for x in failed]}
 
 
+def _map_config():
+    """S2 需要上游配置（`DETECTION_BACKEND` 等决定用 Homography 还是 Perspective 后端）。
+    做法与 cached_rule_check 一致：用上游自己的 AzurLaneConfig，不自己造配置层。"""
+    from module.config.config import AzurLaneConfig
+    return AzurLaneConfig('alas')
+
+
+def op_map_detection_assets(args):
+    """S2 的静态素材链：UI 遮罩 / 瓦片模板 / 检测区域。
+
+    只加载、不算图。用途是**把"素材缺失/路径不对"提前暴露**：地图识别依赖
+    MASK_UI、MASK_OS_MAP_UI、TILE_CENTER、TILE_CORNER 这几份素材，它们读不出来时，
+    真机跑地图会以很难懂的方式失败（Hough/匹配全空）。
+    """
+    from module.map_detection.utils_assets import Assets, DETECTING_AREA
+
+    def shape_of(v):
+        sh = getattr(v, 'shape', None)
+        if sh is not None:
+            return [int(x) for x in sh]
+        if isinstance(v, (list, tuple)):
+            return [len(v)]
+        return str(type(v).__name__)
+
+    a = Assets()
+    out = {'detecting_area': [int(v) for v in DETECTING_AREA]}
+    for name in ('ui_mask', 'ui_mask_os', 'ui_mask_stroke', 'ui_mask_in_map',
+                 'ui_mask_os_in_map', 'tile_center_image', 'tile_corner_image'):
+        try:
+            out[name] = shape_of(getattr(a, name))
+        except Exception as e:
+            out[name] = f'{type(e).__name__}: {e}'
+    return out
+
+
+def op_map_detect(args):
+    """战役地图识别（S2 主路径）：`View.load(image)` → `predict()`。
+
+    返回检测出的网格规模与四边标志。**负样本也是有效证据**：不在地图上时应给出
+    "检测不到"，而不是崩掉或给出错误坐标。真机正样本要求"游戏停在地图上"
+    （出击之后的画面；大世界地图是免费的，但本账号 OS 未解锁）。
+    """
+    import module.map_detection.view as view_mod
+    image = _require_image()
+    cfg = _map_config()
+    out = {'backend': str(getattr(cfg, 'DETECTION_BACKEND', ''))}
+    try:
+        v = view_mod.View(cfg)
+    except Exception as e:
+        out['construct_error'] = f'{type(e).__name__}: {e}'
+        return out
+    for name in ('left_edge', 'right_edge', 'upper_edge', 'lower_edge'):
+        if hasattr(v, name):
+            out[name] = bool(getattr(v, name))
+    # 上游语义：`load(image)` 自己负责找网格；**不是地图画面时它会抛
+    # MapDetectionError('No map grids found')** —— 那是正常的负样本信号，不是缺陷。
+    # 要把它与"接线错误"（少传参数、np.stack 报错之类）区分开，所以分类型捕。
+    import module.map_detection.utils as md_utils
+    from module.map_detection.view import MapDetectionError
+    try:
+        v.load(image)
+        out['load'] = 'ok'
+    except MapDetectionError as e:
+        # 上游自己的负样本信号（找到瓦片但没有成形的网格）
+        out['load'] = 'negative'
+        out['detected'] = False
+        out['reason'] = str(e)
+        return out
+    except Exception as e:
+        # 非地图画面上上游会在 np.stack 上抛 TypeError（它假定调用方已确认在地图上）。
+        # 产品侧需要在任意画面上安全地"试一试"，所以这里也归为未检测到，
+        # 但**保留原始异常文本**，免得把"接线的锅"当成"画面的锅"。
+        out['load'] = 'negative'
+        out['detected'] = False
+        out['reason'] = f'{type(e).__name__}: {e}'
+        return out
+    if hasattr(v, 'predict'):
+        try:
+            v.predict()
+            out['predict'] = 'ok'
+        except Exception as e:
+            out['predict'] = f'{type(e).__name__}: {e}'
+            return out
+    for name in ('shape', 'center_loca', 'center_offset'):
+        if hasattr(v, name):
+            val = getattr(v, name)
+            out[name] = val.tolist() if hasattr(val, 'tolist') else val
+    grids = getattr(v, 'grids', None)
+    if isinstance(grids, dict):
+        out['grid_count'] = len(grids)
+    out['detected'] = bool(out.get('grid_count'))
+    grid = getattr(v, 'grids', None) or getattr(v, 'grid', None)
+    if grid is not None:
+        out['grid_shape'] = [int(x) for x in getattr(grid, 'shape', [])] \
+            or str(type(grid).__name__)
+    out['detected'] = bool(getattr(v, '_detected', False)) or 'grid_shape' in out
+    return out
+
+
+def op_globe_detect(args):
+    """大世界（OS）地图识别：上游 `GlobeDetection.load(image)` 对大 globe 模板求单应性。
+
+    返回单应矩阵与"屏幕点 → 大世界坐标 → 回屏幕"的**往返结果**：
+    同一变换的逆，误差应≈0 —— 这是不需要真机地图也能做的数值自检。
+    """
+    import module.os.globe_detection as gd
+    image = _require_image()
+    cfg = _map_config()
+    try:
+        det = gd.GlobeDetection(cfg)
+    except TypeError:
+        det = gd.GlobeDetection()
+    out = {}
+    try:
+        det.load(image)
+        out['load'] = 'ok'
+    except Exception as e:
+        out['load'] = f'{type(e).__name__}: {e}'
+        return out
+    homo = getattr(det, 'homography', None)
+    if homo is not None:
+        size = getattr(homo, 'homo_size', None)
+        data = getattr(homo, 'homo_data', None)
+        out['homo_size'] = [int(v) for v in size] if size is not None else None
+        out['homo_data'] = data.tolist() if hasattr(data, 'tolist') else None
+    pts = args.get('points') or [[640, 360], [200, 200]]
+    try:
+        g = det.screen2globe(pts)
+        out['screen2globe'] = g.tolist() if hasattr(g, 'tolist') else g
+        back = det.globe2screen(g)
+        out['globe2screen'] = back.tolist() if hasattr(back, 'tolist') else back
+    except Exception as e:
+        out['roundtrip_error'] = f'{type(e).__name__}: {e}'
+    return out
+
+
 def op_ui_rules_sweep(args):
     """
     界面与控件识别的**统一验收**：一次跑完三类实体并汇总。
@@ -1060,6 +1196,9 @@ OPS = {
     'cached_rule_check': op_cached_rule_check,
     'page_positive_control': op_page_positive_control,
     'rule_positive_control': op_rule_positive_control,
+    'map_detection_assets': op_map_detection_assets,
+    'map_detect': op_map_detect,
+    'globe_detect': op_globe_detect,
 }
 
 

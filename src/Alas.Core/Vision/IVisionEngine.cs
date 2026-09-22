@@ -40,6 +40,8 @@ public interface IVisionEngine : IDisposable
                                   bool probeScore = false);
     TemplateMatchResult TemplateMatch(string asset, string? name = null);
     string Ocr(double[] area, string lang = "azur_lane", string? letter = null);
+    /// <summary>通用 op 调用（结果反序列化为 T）：S2 地图识别等尚未定型的 op 用它。</summary>
+    T CallTyped<T>(string op, object? args = null);
 }
 
 /// <summary>协议编解码：请求 {"id","op","args"}，响应 {"id","ok","result"|"error"}。</summary>
@@ -96,6 +98,13 @@ public abstract class VisionEngineBase : IVisionEngine
     private T Call<T>(string op, object? args = null)
         => Call(op, args).Deserialize<T>(VisionProtocol.Json)
            ?? throw new InvalidDataException($"{op} 的响应无法反序列化为 {typeof(T).Name}");
+
+    /// <summary>
+    /// 发一次请求并把结果反序列化成 <typeparamref name="T"/>。
+    /// 给"S2 地图识别"这类**尚未定型**的 op 用：先拿到结构化结果，再决定要不要在
+    /// <see cref="IVisionEngine"/> 上开专用方法（否则接口会退化成一长串协议清单）。
+    /// </summary>
+    public T CallTyped<T>(string op, object? args = null) => Call<T>(op, args);
 
     protected int NextId() => Interlocked.Increment(ref _nextId);
 
