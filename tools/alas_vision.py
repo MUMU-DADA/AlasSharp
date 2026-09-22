@@ -1335,7 +1335,12 @@ def op_s3_run_plan(args):
     out = {'chapter': chapter, 'stage': stage,
            'tier': (ir.get('campaign') or {}).get('tier'),
            'planned_methods': planned, 'dry_run': dry,
-           'calls_in_order': [c for b in planned for c in b['calls']]}
+           # `calls` 是**语义轨迹**（从 battle_* 方法体 AST 抽出来的，**同时包含顶层步骤与
+           # 嵌套辅助调用**，例如 check_accessibility(grid) 是上游内部辅助方法、需要参数）。
+           # 所以它**不是可逐条重放的清单** —— 真正的计划步骤是 `planned_methods` 里的
+           # `battle_*` 方法本身（它们内部会去做清神秘/BOSS/可达性检查）。
+           'semantic_trace': [c for b in planned for c in b['calls']],
+           'plan_steps': [b['method'] for b in planned]}
     if dry:
         out['note'] = ('dry_run：未触碰游戏。真跑需 allow_actions=true，'
                        '并会在同一进程内完成 init→enter_map→map_init→各调用')
@@ -1362,14 +1367,16 @@ def op_s3_run_plan(args):
     if not steps[-1].get('error'):
         r = op_s3_campaign_call({'name': 'map_init', 'args': ['@MAP'], 'allow_actions': True})
         steps.append({'step': 'map_init', 'ms': r.get('ms'), 'error': r.get('error')})
-    for call in out['calls_in_order']:
+    # 执行**计划步骤本身**（battle_* 方法），而不是逐条重放语义轨迹 —— 见上面说明。
+    for _step_name in out['plan_steps']:
         if _t.time() - t_start > max_s:
-            steps.append({'step': call, 'skipped': '超过 max_seconds'})
+            steps.append({'step': _step_name, 'skipped': '超过 max_seconds'})
             break
-        r = op_s3_campaign_call({'name': call, 'allow_actions': True})
-        steps.append({'step': call, 'ms': r.get('ms'), 'error': r.get('error')})
-        if r.get('error'):
+        if steps and steps[-1].get('error'):
+            steps.append({'step': _step_name, 'skipped': '前一步出错，停止'})
             break
+        r = op_s3_campaign_call({'name': _step_name, 'allow_actions': True})
+        steps.append({'step': _step_name, 'ms': r.get('ms'), 'error': r.get('error')})
     out['steps'] = steps
     out['elapsed_s'] = round(_t.time() - t_start, 1)
     out['stopped_early'] = bool(steps and steps[-1].get('error'))

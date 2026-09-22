@@ -445,3 +445,37 @@ battle_2  complete=False  ['clear_all_mystery', 'fleet_boss.clear_boss',
 
 **账号影响**：进入 2-1 两次（每次约 10 油，油量 24831 量级）；周回/自律全程关闭
 （上游配置键设定并读回确认）；无失控循环（每步有上限、出错即停）；两次都以撤退收尾。
+
+## ✅✅✅ 完整计划执行成功（S3 核心里程碑）+ 一个重要的语义澄清
+
+修正执行器后再跑 2-1（`max_seconds=600`）：
+
+```
+STAGE=2-1 tier=C elapsed=56.7s stopped_early=False     ← 全部完成，无提前停止
+STEP ensure_chapter   153.7 ms   ok
+STEP get_entrance       0.0 ms   ok
+STEP enter_map       7223.6 ms   ok
+STEP map_init        2085.8 ms   ok
+STEP battle_0       37705.2 ms   ok     ← 计划步骤 1
+STEP battle_2        9516.3 ms   ok     ← 计划步骤 2（含 BOSS）
+```
+
+**6/6 步全绿**。这就是 S3 的核心：**宿主驱动上游把一整套关卡计划跑完**，而不是单次调用。
+
+### 修正：`calls` 是**语义轨迹**，不是可重放的清单
+
+`check_accessibility(self, grid, fleet=None)` 是**上游内部的辅助方法**（章节里没人直接调它），
+而 IR 的 `calls` 是从 `battle_*` 方法体 AST 抽出来的，**同时含顶层步骤与嵌套辅助调用**。
+所以"把 calls 逐条重放"本身是错的。
+
+=> 正确做法（已改）：**按序调用上游自己的 `battle_*` 方法**（它们内部自会做清神秘/BOSS/可达性检查）。
+dry-run 现在给出真正的计划步骤：2-1 → `['battle_0','battle_2']`；1-1 → `['battle_0','battle_1']`（tier A）。
+
+### 澄清：**一轮 ≠ 清图**
+
+跑完一轮后 `is_in_map=True`、图内仍有 4 个船标志 —— 这与上游设计一致：
+`CampaignBase.run()` 是**循环**调用战斗步骤直到满足结束条件（`map_clear_percentage` 等）。
+我的执行器目前只跑**一轮**，所以"6/6 步无错"应准确表述为
+**"计划的一轮迭代完整成功"**，而不是"关卡已清"。
+
+下一步（若要一次清图）：加 `repeat_until_cleared` + 最大轮数上限，语义对齐上游 `run()` 的循环。
