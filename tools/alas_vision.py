@@ -1100,12 +1100,62 @@ def op_globe_detect(args):
     except TypeError:
         det = gd.GlobeDetection()
     out = {}
+    # 位置检测的结果就在上游对象上：`load()` 内部把截图做透视变换、与 globe 模板
+    # `cv2.matchTemplate`，落点写进 `self.center_loca`（日志里叫 globe_center）；
+    # 匹配度 similarity 只打日志、不存属性 —— 所以这里挂一个 logging handler
+    # 把**上游自己打的那行**取回来，而不是在 op 里把匹配重算一遍。
+    import logging
+
+    class _Cap(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.messages = []
+
+        def emit(self, record):
+            try:
+                self.messages.append(record.getMessage())
+            except Exception:
+                pass
+
+    cap = _Cap()
+    try:
+        from module.logger import logger as _alas_logger
+        _alas_logger.addHandler(cap)
+    except Exception:
+        cap = None
     try:
         det.load(image)
         out['load'] = 'ok'
+        # 检测到的位置（大世界坐标）
+        loca = getattr(det, 'center_loca', None)
+        if loca is not None:
+            try:
+                out['center_loca'] = [float(v) for v in loca]
+            except Exception:
+                out['center_loca'] = str(loca)
+        if cap is not None:
+            lines = [m for m in cap.messages
+                     if 'similarity' in m or 'globe_center' in m or 'homo_storage' in m]
+            out['log_lines'] = [str(m).strip() for m in lines][-6:]
+            for m in lines:
+                if 'similarity' in m:
+                    import re as _re
+                    nums = _re.findall(r'[0-9]*\.?[0-9]+', str(m))
+                    if nums:
+                        try:
+                            out['similarity'] = float(nums[-1])
+                        except Exception:
+                            pass
     except Exception as e:
         out['load'] = f'{type(e).__name__}: {e}'
         return out
+    finally:
+        if cap is not None:
+            try:
+                from module.logger import logger as _alas_logger2
+                _alas_logger2.removeHandler(cap)
+            except Exception:
+                pass
     homo = getattr(det, 'homography', None)
     if homo is not None:
         size = getattr(homo, 'homo_size', None)
