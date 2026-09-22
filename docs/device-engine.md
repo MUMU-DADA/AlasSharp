@@ -85,3 +85,32 @@ WARNING  Failed to call nemu_connect, result=0            ← IPC 连接失败
 
 `adb` 原始截图 **396–402 ms**（多次测量稳定），与 C# 侧自测的 433 ms 同档 —— 这就是当前基线。
 
+## 两个真正的集成修复（不修这两个，多数后端都"看起来不可用"）
+
+### 修 1：把项目内固定的 adb 挂到 PATH（`_device_engine()`）
+
+引擎内部有些地方直接调**裸 `adb`**（`adb push` 推 MaaTouch / minitouch / DroidCast 的二进制），
+裸名解析不到就报 `FileNotFoundError: [WinError 2]`。**它会伪装成"某个后端不可用"**：
+droidcast 最初就是死在这一步（先报 u2 的 ConnectionError，紧接着 push 失败）。
+
+### 修 2：`device_click` 要把坐标包成上游 `Button`
+
+ALAS 的 `Control.click/swipe` 收的是 **Button 对象**（内部取 `button.button` 作为可点区域），
+直接传 int 会报 `'int' object has no attribute 'button'`。
+
+## 修完之后的实测（稳态，`raw=true`）
+
+| 后端 | 截图 | 点击 |
+| --- | --- | --- |
+| `adb` | 393–402 ms | **64.5 ms** |
+| `droidcast` | **337 / 343 / 344 / 342 ms（中位 ≈343）** ✅ 比 adb 快约 13% | — |
+| `minitouch` | — | **68.3 ms** ✅ |
+| `MaaTouch` | — | 375.8 ms（首击含初始化/push，需预热再测） |
+| `ascreencap` | 上游判词：`not available for this device, please use other screenshot methods`（Android 12 无二进制） | — |
+| `nemu_ipc` | `Failed to call nemu_connect, result=0`（需模拟器侧配置） | — |
+
+**结论（本轮）**：`droidcast` 是第一个**真正跑赢 adb 基线**的截图后端（≈343 ms vs ≈397 ms，快约 13%），
+代价小（一个 95 KB 的 APK + adb forward），可作为生产候选；输入侧 `minitouch`/`ADB` 都在 ~65 ms 量级。
+下一步：把 droidcast 稳态再压一压（分辨率/编码参数），以及预热后重测 MaaTouch。
+
+

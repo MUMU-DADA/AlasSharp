@@ -1433,6 +1433,15 @@ def _device_engine():
     #      Serial 变回 'auto'，设备探测失败，Device.__init__ 重试 4 次后抛
     #      `RequestHumanTakeover`（消息还是空的，极具误导性）。
     import module.device.pkg_resources
+    # 把项目内固定的 adb 目录挂到 PATH 上：引擎内部有些地方直接调**裸 `adb`**
+    # （例如 `adb push` 推 MaaTouch/minitouch/DroidCast 的二进制），
+    # 裸名解析不到时就报 `FileNotFoundError: [WinError 2]` —— 实测踩过，
+    # 而且它会**伪装成"某个后端不可用"**（droidcast 就是这么失败的）。
+    _adb_dir = os.path.normpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), '..', '.runtime', 'venv314',
+        'Lib', 'site-packages', 'adbutils', 'binaries'))
+    if os.path.isdir(_adb_dir) and _adb_dir not in os.environ.get('PATH', ''):
+        os.environ['PATH'] = _adb_dir + os.pathsep + os.environ.get('PATH', '')
     with cfg.multi_set():
         cfg.Emulator_Serial = serial
         cfg.Emulator_ScreenshotMethod = shot
@@ -1513,11 +1522,23 @@ def op_device_screencap(args):
     return out
 
 
+def _button_at(x, y, name='point'):
+    """把裸坐标包成上游 `Button`。
+
+    ALAS 的 `Control.click/swipe` 收的是 **Button 对象**（内部取 `button.button` 作为可点区域），
+    直接传 int 会报 `'int' object has no attribute 'button'`（实测踩过）。
+    """
+    from module.base.button import Button
+    x, y = int(x), int(y)
+    area = (x - 1, y - 1, x + 1, y + 1)
+    return Button(area=area, color=(), button=area, name=name)
+
+
 def op_device_click(args):
     import time as _time
     dev = _device_engine()
     t0 = _time.time()
-    dev.click(args['x'], args['y'])
+    dev.click(_button_at(args['x'], args['y']))
     return {'ms': round((_time.time() - t0) * 1000, 1)}
 
 
