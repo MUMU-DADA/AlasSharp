@@ -46,8 +46,13 @@ KNOWN_FIXTURES = {
     '活动图': 'data/fixtures/map_event.png',
 }
 # 已知上游检测器失效的图（写在文档里，这里做硬提醒）
+# 已知上游检测器失效的图。**按章整体标注**：第 1 章第一关 MAP.shape=(6,0)（7 格单行），
+# 与 1-1 同形，故整章同族预期不支持（口径修正：此前只标了 1-1，1-2/1-3 会被误判为 ready）。
 KNOWN_UNSUPPORTED = {
     '1-1': '单行 7 格小图：上游 map_init 与本地盲检均报 No vertical line detected',
+}
+KNOWN_UNSUPPORTED_CHAPTERS = {
+    '1': '整章为 7 格单行图（MAP.shape=(6,0)），与 1-1 同形；上游检测器对该几何失效',
 }
 
 
@@ -137,8 +142,11 @@ def main():
 
     # 6. 图内帧可识别性（关键项）
     fixture = args.fixture or KNOWN_FIXTURES.get(stage)
+    _ch = stage.split('-')[0] if stage and '-' in stage else ''
     if stage in KNOWN_UNSUPPORTED:
         check('图内帧可识别', False, '已知失效：%s' % KNOWN_UNSUPPORTED[stage])
+    elif _ch in KNOWN_UNSUPPORTED_CHAPTERS:
+        check('图内帧可识别', False, '已知失效（整章）：%s' % KNOWN_UNSUPPORTED_CHAPTERS[_ch])
     elif fixture and os.path.exists(os.path.join(ROOT, fixture)):
         op('screenshot_load', path=os.path.join(ROOT, fixture))
         d = op('map_detect', mode='main')
