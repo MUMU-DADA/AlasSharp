@@ -1218,3 +1218,24 @@ goto page_campaign）；**dry-run 不做任何导航**（已实测：dry-run 输
 结果：round=1 step=battle_0 ms=28319.5 error= completed= | round=1 step=battle_2 ms=9732.4 error= completed= | round=1 check=sortie_state value=still_in_map | round=2 step=battle_0 ms=41436.5 error= completed= | round=2 step=battle_2 ms=26830.6 error= completed= | round=2 check=sortie_state value=still_in_map | round=3 step=battle_0 ms=23421.2 error= completed= | round=3 step=battle_2 ms=56527.5 error= completed=True | [结果    ] elapsed=257.2s stopped_early=False stop_reason= campaign_end=True
 
 归位 page_main ✓
+
+
+## 🔄 换账号后重探（新账号进度高得多）
+
+**可达范围**（只切章不出击，零耗油）：**第 1–12 章 + 14 章**均 `entrance=stored` ✓
+（CH13 探测时报 FAIL，77 ms，属瞬时特例而非"不可达"的 15–21 s 特征）。
+对比旧账号（仅第 1–3 章）—— 批量范围大幅扩展。
+
+### 但"地图能否识别"与账号无关，是**图本身的属性**
+
+| 关卡 | 布局 | 格数 | 结果 |
+| --- | --- | --- | --- |
+| 2-1 | (5,3) → 6×4 | 24 | ✅ 正常 |
+| **7-1** | **(7,2) → 8×3** | **24** | ❌ `No vertical line detected` |
+
+**这推翻了"格数阈值 21–24"的假说**：7-1 与 2-1 **同为 24 格**，一个失败一个成功
+=> 决定因素**不是格数**，更可能是**长宽比/网格布局**（或该图的具体渲染）。
+（我此前把它标注为"仅是相关性、不是判据"是对的。）
+
+**下一步**：按布局逐个试各章第一关，绘出"哪些布局可识别"的图谱，
+再据此选批量目标（每关约 10 油、1 分钟）。
