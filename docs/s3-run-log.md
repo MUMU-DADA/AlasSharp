@@ -66,20 +66,29 @@ A 直接去打 BOSS，B 继续清小怪，直到 `Enemy remain: []` 才 `Brute c
 | 1-1 | **单行图**（7 格一行）：上游检测器 `No vertical line detected`，5 档降阈值重试都无效 | `data/fixtures/subchapter_1_1.png`（真图内帧）+ `probe_backends.py` |
 | 7-1 | **三行图，识别到一半就进不去战斗**：`map_init` 一次成功一次失败（已加"挪机位重试"缓解），进图后反复 `Arrive B1 (is_fleet)` 却始终不触发战斗；视图只检出 **12–15 格**（该图应为 24 格） | `%TEMP%\run_71*.log`，并见下面的复盘 |
 
-### 7-1 复盘（2026-09-22 深夜，为什么会卡在这）
+### 7-1 复盘（2026-09-22 深夜 → 09-23 凌晨，两轮定位）
 
 1. **旧结论的证据是错的**：`data/fixtures/inmap_7-1.png` 其实是**主界面**，不是图内帧 ——
    所以"7-1 识别不了"这条一直没有有效证据。
-2. **真机复测**：`map_init` 第一次报 `MapDetectionError: Vanish point and distant point too close`
-   （日志里 `vanish_point == distant_point == (654, -1425)`），第二次（挪机位后）成功 ——
-   三行图网格线近于平行，机位不巧时消失点退化。**这不是"图不支持"，是机位相关的退化**，
-   已加"设备级滑动换机位 + 重试（上限 3 次）"，实测第 2 次即通过。
-3. **但进图后仍然跑不动**：视图只检出 12–15 格（该图 24 格），且屏幕上一直挂着
-   「已切换到第三舰队」信息条 —— 目标格映射因此错位：每 23 秒一次
-   `Arrive B1 (is_fleet)`，**从头到尾没有一次 `Combat preparation`**，空转 6 分钟后我手动收尾
-   （用上游自己的 `withdraw()`：`POPUP_CONFIRM_WITHDRAW` → `In stage.` → `in_map=False` ✓）。
-4. 结论：**7-1 暂列不可用**，与 1-1 同栏；要修得先解决"三行图 + 信息条遮挡"下的视图格数不足
-   （`handle_info_bar()` 只在 `map_init` 里调过，进图后循环里没有重新处理信息条）。
+2. **第一轮真机复测**：`map_init` 第一次报 `MapDetectionError: Vanish point and distant point too close`
+   （`vanish_point == distant_point == (654, -1425)`），挪机位后第二次成功 → 进了 `BATTLE_0`
+   （真打了一场）。但随后开始空转：每 ~23 秒一次 `Arrive B1 (is_fleet)`，**从未** `Combat preparation`。
+3. **第二轮定点探针**（`probe_71_view.py`：`s3_run_plan(stop_after='map_init')` + 连续 `s3_probe_view`）
+   把两个猜测都排除了：
+   - **信息条不是原因** —— 探针里 `info_bar_count` 全程 **0**，屏幕上是干净的；
+     调上游 `handle_info_bar()` 后复测，格数一点没变。
+   - **真正卡在检测**：`map_init` 三次尝试分别是
+     `Vanish point and distant point too close` → `No vertical line detected` → `No vertical line detected`，
+     之后每一次 `update()` 都失败（`View` 连 `grids` 都没建起来）。
+4. **现场帧离线对照（`data/_71_inmap.png`，真图内帧）**：
 
-> 注：困难 1-4（3 行、21 格）用真图内帧能正常识别，所以**"≤3 行"不是一条干净的判据**；
-> 真正的差别在"视图能检出多少格"（1-4 检出 21/21 ✓，7-1 只检出 12–15/24 ✗）。
+   | 后端 | 结果 |
+   | --- | --- |
+   | `homography` | ✗ `Vanish point and distant point too close`；线族统计：水平 7 条（5 内部 / 2 边界）、**垂直 10 条但只有 2 条内部、0 条边界** |
+   | `perspective` | ✓ 能检出，但**多判**：43 格 / `shape=[7,5]`，该图应为 24 格 / `[7,2]` |
+
+5. 结论：**7-1 暂列不可用**，与 1-1 同栏。要修得动检测器本身（垂直内部线只拟合出 2 条），
+   不是"换个机位/换个后端/清个信息条"能解决的 —— 三个办法这一轮都实测排除了。
+
+> 注：困难 1-4（3 行、21 格）用真图内帧**能**正常识别，`8-1` 实际是 **4 行**（`shape=(9,3)`）——
+> 所以"≤3 行 = 不支持"这条旧概括不成立，别再拿行数当判据。

@@ -1810,6 +1810,14 @@ def op_s3_run_plan(args):
     repeat = bool(args.get('repeat_until_cleared'))
     max_rounds = int(args.get('max_rounds') or 3)
 
+    # **诊断出口**：`stop_after='map_init'` 时，进图 + 图内初始化做完就停，**不打任何一场**。
+    # 用途：把"进图/识别"这一段单独拿出来量（视图检出多少格、信息条在不在、相机对不对），
+    # 而不用为了看一眼状态先打一场（此前只能靠完整跑一遍再从日志里反推 ✗）。
+    if str(args.get('stop_after') or '') == 'map_init':
+        out['stopped_after'] = 'map_init'
+        out['steps'] = steps
+        return out
+
     def _sortie_state():
         """用**上游自己的状态**判断是否该继续（本地 `enemies_left` 已被两次证明不可靠）。
 
@@ -2376,6 +2384,58 @@ def op_map_detect_trace(args):
     return out
 
 
+def op_s3_probe_view(args):
+    """**只读**探针：当前帧里上游检测出多少格、信息条在不在、相机在哪。
+
+    为什么需要：7-1 那类"进图后空转"的现场，日志只能反推出"视图格数不足"（12–15 格 vs 应有 24 格），
+    但看不到**当时**的信息条状态与相机。本 op 用上游自己的检测（`update()` → `View.load` + `predict`）
+    把这些值直接量出来，配合 `s3_run_plan(stop_after='map_init')` 就能把"进图/识别"这一段单独定位。
+
+    不改游戏状态（只截图 + 识别），所以不需要 allow_actions。
+    """
+    inst = _CAMPAIGN.get('obj')
+    if inst is None:
+        return {'error': '尚未初始化，先调 s3_campaign_init'}
+    out = {'chapter': _CAMPAIGN.get('chapter')}
+    try:
+        out['in_map'] = bool(inst.is_in_map())
+    except Exception as e:
+        out['in_map'] = f'{type(e).__name__}: {e}'
+    try:
+        out['info_bar_count'] = int(inst.info_bar_count())
+    except Exception as e:
+        out['info_bar_count'] = f'{type(e).__name__}: {e}'
+    try:
+        inst.device.screenshot()
+        inst.update()                      # 截图 → View.load → predict（含相机修正）
+    except Exception as e:
+        out['update_error'] = f'{type(e).__name__}: {e}'
+    try:
+        v = inst.view
+        out['view_cells'] = len(v.grids)
+        out['view_shape'] = [int(x) + 1 for x in v.shape]
+        out['view_show'] = [' '.join([v[(x, y)].str if (x, y) in v else '..'
+                                      for x in range(int(v.shape[0]) + 1)])
+                            for y in range(int(v.shape[1]) + 1)]
+        out['camera'] = [int(x) for x in inst.camera]
+    except Exception as e:
+        out['view_error'] = f'{type(e).__name__}: {e}'
+    # 地图侧的标志（累积记忆）：看清"上游认为还剩什么"
+    for key in ('is_enemy', 'is_boss', 'is_fleet', 'is_current_fleet', 'is_mystery',
+                'may_boss'):
+        try:
+            grids = inst.map.select(**{key: True})
+            out[key] = [str(g) for g in grids]
+        except Exception:
+            pass
+    try:
+        out['battle_count'] = getattr(inst, 'battle_count', None)
+        out['ammo_count'] = getattr(inst, 'ammo_count', None)
+    except Exception:
+        pass
+    return out
+
+
 def op_map_grids(args):
     """逐格 dump 当前画面的**预测标志**与「BOSS 图标判据」的分数。
 
@@ -2857,6 +2917,7 @@ OPS = {
     's3_campaign_init': op_s3_campaign_init,
     's3_campaign_info': op_s3_campaign_info,
     's3_campaign_call': op_s3_campaign_call,
+    's3_probe_view': op_s3_probe_view,
     'device_capture_set': op_device_capture_set,
     'device_configure': op_device_configure,
     'device_info': op_device_info,
