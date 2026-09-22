@@ -1008,3 +1008,11 @@ AFTER page_campaign → 归位 page_main ✓
 **S3 累计**：**5 个关卡**端到端驱动（2-1 / 2-2 / 2-3 / 3-1 / 3-2），
 真实战斗次数 **17 次以上**，全部 `err=None`；已验证可识别的图 **5 张**
 （2-1/2-2/2-3/3-1/3-2，其中 2-3 由 `map_init` 成功间接确认）。
+
+
+### 2-4 跑通（第 6 个端到端驱动的关卡）
+
+本关实测：PLAN stage=2-4 elapsed=62.1s stopped_early=False ; ensure_chapter         ms=156.4     ok ; abort_unfinished       ms=None      dialog=False ; get_entrance           ms=0.0       ok ; enter_map              ms=15590.3   ok ; map_init               ms=1373.8    ok ; battle_0               ms=40374.9   ok ; battle_3               ms=4274.2    ok ; AFTER pages=['page_campaign']
+
+无异常分支、一次跑完（与 2-3 一样属"平淡的成功"）。
+S3 累计：**6 个关卡**端到端驱动（2-1/2-2/2-3/2-4/3-1/3-2），真实战斗 20+ 次全部 err=None。
