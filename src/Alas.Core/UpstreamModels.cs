@@ -80,6 +80,7 @@ public sealed class CampaignPlan
     /// <summary>A = JSON 规则表即可；B = 计划完整但用到词表外算子；C = 需插件或原生实现。</summary>
     [JsonPropertyName("tier")] public string Tier { get; set; } = "";
     [JsonPropertyName("has_siren")] public bool HasSiren { get; set; }
+    [JsonPropertyName("attributes")] public Dictionary<string, JsonElement> Attributes { get; set; } = new();
     [JsonPropertyName("battles")] public List<CampaignBattle> Battles { get; set; } = new();
 
     /// <summary>非 battle_* 的覆写钩子且含真实逻辑 —— C# 引擎必须实现这些。</summary>
@@ -87,6 +88,26 @@ public sealed class CampaignPlan
 
     /// <summary>纯 return super().X() 的覆写 —— 只需虚方法分派，无新增逻辑。</summary>
     [JsonPropertyName("super_delegates")] public List<string> SuperDelegates { get; set; } = new();
+}
+
+public sealed class CampaignConfigOrigin
+{
+    [JsonPropertyName("module")] public string Module { get; set; } = "";
+    [JsonPropertyName("class")] public string Class { get; set; } = "";
+    [JsonPropertyName("line")] public int Line { get; set; }
+    [JsonPropertyName("expression")] public string Expression { get; set; } = "";
+}
+
+/// <summary>章节 Config 的静态导出证据；Config 本身仍保留在 CampaignIr.Config。</summary>
+public sealed class CampaignConfigExport
+{
+    [JsonPropertyName("present")] public bool Present { get; set; }
+    [JsonPropertyName("complete")] public bool Complete { get; set; }
+    [JsonPropertyName("mro")] public List<string> Mro { get; set; } = new();
+    [JsonPropertyName("origins")] public Dictionary<string, CampaignConfigOrigin> Origins { get; set; } = new();
+    [JsonPropertyName("typed_values")] public Dictionary<string, JsonElement> TypedValues { get; set; } = new();
+    [JsonPropertyName("source_files")] public List<string> SourceFiles { get; set; } = new();
+    [JsonPropertyName("unresolved")] public List<JsonElement> Unresolved { get; set; } = new();
 }
 
 /// <summary>单个关卡的中间表示（IR），对应上游 campaign/**/campaign_*.py。</summary>
@@ -100,6 +121,7 @@ public sealed class CampaignIr
 
     [JsonPropertyName("map")] public Dictionary<string, JsonElement> Map { get; set; } = new();
     [JsonPropertyName("config")] public Dictionary<string, JsonElement> Config { get; set; } = new();
+    [JsonPropertyName("config_meta")] public CampaignConfigExport ConfigMeta { get; set; } = new();
     [JsonPropertyName("campaign")] public CampaignPlan Campaign { get; set; } = new();
     [JsonPropertyName("unresolved")] public List<string> Unresolved { get; set; } = new();
 
@@ -135,6 +157,8 @@ public sealed class CampaignIndexEntry
     [JsonPropertyName("native_overrides")] public List<string> NativeOverrides { get; set; } = new();
     [JsonPropertyName("super_delegates")] public List<string> SuperDelegates { get; set; } = new();
     [JsonPropertyName("config_keys")] public List<string> ConfigKeys { get; set; } = new();
+    [JsonPropertyName("config_present")] public bool ConfigPresent { get; set; }
+    [JsonPropertyName("config_complete")] public bool ConfigComplete { get; set; }
     [JsonPropertyName("map_keys")] public List<string> MapKeys { get; set; } = new();
     [JsonPropertyName("needs_review")] public bool NeedsReview { get; set; }
 }

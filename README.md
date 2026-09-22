@@ -60,6 +60,7 @@
 | 素材绑定 | **1793** 条，0 条需要求值，四服齐全 |
 | 素材缺图 | **0** |
 | 关卡 IR | **1437** 个，网格不自洽 **0**，计划不变量违例 **0** |
+| 章节 Config | **1375/1375** 个有效 Config 完整导出；继承、导入、常量表达式和容器类型均保留来源证据 |
 | 计划可还原性 | tier A 关卡 **1000/1000** 的步骤都能在源码中找到 |
 | 导出确定性 | 重算与磁盘产物**逐字节一致** |
 | C# 侧独立校验 | 退出码 0 |
@@ -69,8 +70,8 @@
 | 级别 | 数量 | 占比 | C# 侧怎么做 |
 |---|---|---|---|
 | **A** | 1000 | 69.6% | JSON 规则表驱动，零代码 |
-| **B** | 221 | 15.4% | 计划完整，补齐词表外算子 |
-| **C** | 216 | 15.0% | 计划不完整（含赋值/嵌套条件）—— 需插件或原生实现 |
+| **B** | 212 | 14.8% | 计划完整，补齐词表外算子 |
+| **C** | 225 | 15.7% | 计划不完整（含赋值/嵌套条件）—— 需插件或原生实现 |
 
 另外查出：非 `battle_*` 的**引擎钩子**涉及 48 个关卡，去重后仅 **17 个方法**
 （另有 8 处是纯 `super` 委托，无需新增逻辑）。这是引擎侧最精确的工作量清单。
@@ -153,6 +154,7 @@ tools/                  构建期脚本（需要 Python）
   export_upstream_data.py   上游 .py 产物 → JSON + Schema + 溯源清单
   sync_upstream_assets.py   上游静态资源快照同步/校验（写入 vendor/upstream）
   verify_export.py          数据契约校验（Python 侧）
+  diagnostics/verify_config_export.py  Config 继承/表达式/类型回归
   vision_worker.py          识图引擎 worker（调用上游模块）
   make_*_fixture.py         对拍基准生成
   diagnostics/              定位过程留下的诊断脚本
@@ -174,6 +176,10 @@ python tools/sync_all.py --fetch           # 先在 fork 里 git fetch upstream�
 
 **更新 ≠ 适配完成**：上游代码变更可能在 C# 侧静默失效（例如改了 asset id 而 C# 里硬编码了旧的，
 本项目早期就踩过）。所以更新后必须跑一致性验收 —— `--verify` 就是这一步。
+
+章节 JSON 中的 `config` 现在是上游章节 `Config` 的有效字段，导出器会展开导入、C3 继承和可安全求值的常量表达式；`config_meta` 保存 MRO、字段来源、类型标签和未解析项，`campaign.attributes` 单独保存 `Campaign` 类属性。离线 `show`、S3 dry-run 和 `verify_export.py` 会展示或校验这些证据。
+
+运行时不会把 JSON 配置重新解释成战斗配置：地图识别仍由上游 `_map_config(chapter)` 合并 `AzurLaneConfig` 与章节 `Config`，实战仍由 `CampaignRun.load_campaign()` 加载原生 `Campaign`。因此导出配置用于离线可见性、漂移校验和来源追踪，不会替代上游运行链。
 vendor/upstream/        上游静态资源的逐字节镜像（模板图/OCR 权重/设备端二进制）
                         来源 commit 与逐文件 sha256 见其中的 MANIFEST.json 与 README
 data/                   上游数据契约的导出产物（运行期生成，不入库）

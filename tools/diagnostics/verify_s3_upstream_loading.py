@@ -11,8 +11,10 @@ Run with .runtime/venv314/Scripts/python.exe tools/diagnostics/verify_s3_upstrea
 from __future__ import annotations
 
 import importlib
+import copy
 from contextlib import redirect_stdout
 import io
+import json
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -127,6 +129,36 @@ class UpstreamLoadingTests(unittest.TestCase):
         self.assertEqual(plain.INTERNAL_LINES_HOUGHLINES_THRESHOLD,
                          template_config().INTERNAL_LINES_HOUGHLINES_THRESHOLD)
         self.assertIsNot(first, second)
+
+    def test_exported_config_fields_and_types_match_native_classes(self):
+        from s3_preflight import compare_exported_config
+        # Import, inherited Config, nested arithmetic and Campaign-only data.
+        chapters = ('campaign_main.campaign_1_4', 'campaign_main.campaign_14_1',
+                    'event_20260908_cn.a1', 'war_archives_20230525_cn.t1')
+        with patch.object(av, '_device_engine', side_effect=AssertionError('audit touched device')), \
+                patch.object(av, 'op_s3_campaign_init', side_effect=AssertionError('audit initialized Campaign')), \
+                patch.object(AzurLaneConfig, '__init__', side_effect=AssertionError('audit loaded account config')):
+            for chapter in chapters:
+                with self.subTest(chapter=chapter):
+                    path = ROOT / 'data' / 'campaign' / Path(*chapter.split('.')).with_suffix('.json')
+                    ir = json.loads(path.read_text(encoding='utf-8'))
+                    module = importlib.import_module('campaign.' + chapter)
+                    self.assertEqual(compare_exported_config(ir, module.Config), [])
+
+    def test_native_config_audit_detects_missing_fields_and_lost_tuple_type(self):
+        from s3_preflight import compare_exported_config
+        chapter = 'campaign.campaign_main.campaign_1_4'
+        module = importlib.import_module(chapter)
+        ir = json.loads((ROOT / 'data/campaign/campaign_main/campaign_1_4.json')
+                        .read_text(encoding='utf-8'))
+        broken = copy.deepcopy(ir)
+        del broken['config']['INTERNAL_LINES_FIND_PEAKS_PARAMETERS']
+        differences = compare_exported_config(broken, module.Config)
+        self.assertIn('缺少字段 INTERNAL_LINES_FIND_PEAKS_PARAMETERS', differences)
+        broken = copy.deepcopy(ir)
+        broken['config_meta']['typed_values']['HOMO_CANNY_THRESHOLD']['type'] = 'list'
+        differences = compare_exported_config(broken, module.Config)
+        self.assertIn('字段值或类型不一致 HOMO_CANNY_THRESHOLD', differences)
 
     def test_known_camera_frames_use_inherited_config(self):
         cases = [

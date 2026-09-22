@@ -82,6 +82,31 @@ class CampaignRuleTests(unittest.TestCase):
             self.assertFalse(result['ir_plan_complete'])
             self.assertEqual(result['plan_steps'], [])
 
+    def test_config_metadata_preserves_origins_without_runtime_imports(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = self.write_rule(root, 'event_a')
+            ir = json.loads(path.read_text(encoding='utf-8'))
+            origin = {'module': 'campaign.event_a.base', 'class': 'Config',
+                      'line': 3, 'expression': '255 - 49'}
+            ir.update(config={'THRESHOLD': 206}, config_meta={
+                'present': True, 'complete': True, 'origins': {'THRESHOLD': origin}})
+            path.write_text(json.dumps(ir), encoding='utf-8')
+            result = load_campaign_rules('campaign.event_a.a1', root)
+            self.assertTrue(result['config_present'])
+            self.assertTrue(result['config_complete'])
+            self.assertEqual(result['config_count'], 1)
+            self.assertEqual(result['config_origins'], {'THRESHOLD': origin})
+            self.assertEqual(result['config_sources'], ['campaign.event_a.base.Config'])
+            self.assertEqual(result['runtime_config_source'], 'campaign.event_a.a1.Config')
+
+    def test_legacy_config_metadata_is_unknown(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.write_rule(root, 'event_a')
+            result = load_campaign_rules('campaign.event_a.a1', root)
+            self.assertIsNone(result['config_present'])
+            self.assertIsNone(result['config_complete'])
+            self.assertEqual(result['config_count'], 0)
+
     def test_every_exported_source_resolves_to_its_own_file(self):
         paths = list(CAMPAIGN_DATA.rglob('*.json'))
         self.assertGreater(len(paths), 1000)

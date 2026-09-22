@@ -36,7 +36,12 @@ import subprocess
 import sys
 from collections import Counter, defaultdict
 
-EXPORTER_VERSION = '1.0.0'
+try:
+    from .upstream_config_export import ConfigResolver
+except ImportError:
+    from upstream_config_export import ConfigResolver
+
+EXPORTER_VERSION = '2.0.0'
 SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
@@ -48,11 +53,6 @@ TEMPLATE_VOCAB = {'clear_siren', 'clear_filter_enemy', 'battle_default', 'clear_
 MAP_ATTRS = ('shape', 'camera_data', 'camera_data_spawn_point', 'map_data', 'map_data_loop',
              'weight_data', 'spawn_data', 'spawn_data_loop', 'portal_data', 'land_based_data',
              'wall_data')
-CONFIG_ATTRS = ('MAP_HAS_SIREN', 'MAP_HAS_MOVABLE_ENEMY', 'MAP_HAS_MAP_STORY',
-                'MAP_HAS_FLEET_STEP', 'MAP_HAS_AMBUSH', 'MAP_HAS_MYSTERY', 'MAP_HAS_PORTAL',
-                'MAP_HAS_LAND_BASED', 'MAP_SIREN_TEMPLATE', 'MOVABLE_ENEMY_TURN',
-                'STAR_REQUIRE_1', 'STAR_REQUIRE_2', 'STAR_REQUIRE_3', 'ENEMY_FILTER',
-                'FLEET_REQUIRE', 'MAP_HAS_LOOP')
 
 
 # --------------------------------------------------------------------- 工具
@@ -354,6 +354,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
     index, unresolved_all = [], []
     source_files = []
     stats = Counter()
+    config_resolver = ConfigResolver(root)
     # 有的章节地图不是字面量，而是**从别的章节拷来的**（例：campaign_15_4_121 里
     # `from .campaign_15_4 import MAP as MAP_15_4` + `MAP = copy.copy(MAP_15_4)`）。
     # 只抓字面量的话这种章节会导出成空地图 —— 而空地图不会表现成"识别不准"，
@@ -365,7 +366,8 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
         rel = os.path.relpath(path, root).replace('\\', '/')
         source_files.append(path)
         try:
-            tree = ast.parse(open(path, encoding='utf-8').read())
+            with open(path, encoding='utf-8') as source:
+                tree = ast.parse(source.read())
         except SyntaxError as e:
             manifest['errors'].append({'file': rel, 'error': f'SyntaxError: {e}'})
             continue
@@ -404,7 +406,8 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
             return _UNRESOLVED
 
         ir = {'source': rel, 'name': None, '_name_source': None, 'map': {}, 'config': {},
-              'campaign': {'battles': []}, 'unresolved': []}
+              'config_meta': {}, 'campaign': {'battles': [], 'attributes': {}},
+              'unresolved': []}
 
         for node in tree.body:
             if isinstance(node, ast.Assign) and len(node.targets) == 1:
@@ -437,7 +440,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
                         else:
                             ir['name'] = name_from_path(rel)
                             ir['_name_source'] = 'path'
-            elif isinstance(node, ast.ClassDef):
+            elif isinstance(node, ast.ClassDef) and node.name == 'Campaign':
                 cls_attrs = {}
                 for sub in node.body:
                     if isinstance(sub, ast.Assign) and len(sub.targets) == 1 \
@@ -445,8 +448,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
                         attr = sub.targets[0].id
                         v = resolve(sub.value)
                         if v is _UNRESOLVED:
-                            if attr in CONFIG_ATTRS or attr in ('ENEMY_FILTER', 'MAP'):
-                                ir['unresolved'].append(f'{node.name}.{attr}')
+                            ir['unresolved'].append(f'{node.name}.{attr}')
                         elif v != '<self>':
                             cls_attrs[attr] = v
                     elif isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)) \
@@ -464,12 +466,27 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
                             'dead_code': dead,
                             'stmt_count': len(body),
                         })
-                if node.name == 'Config':
-                    ir['config'] = cls_attrs
-                elif node.name == 'Campaign':
-                    ir['config'].update({k: v for k, v in cls_attrs.items() if k != 'MAP'})
+                if node.name == 'Campaign':
+                    ir['campaign']['attributes'].update(
+                        {k: v for k, v in cls_attrs.items() if k != 'MAP'})
                     ir['campaign']['class'] = node.name
                     ir['campaign']['bases'] = [ast.unparse(b) for b in node.bases]
+
+        # Config is a separate inheritance graph from Campaign. Resolve the effective
+        # chapter overrides from source so imported/re-exported Config classes, C3
+        # inheritance and constant expressions are preserved in one general path.
+        config_export = config_resolver.export('campaign.' + module)
+        ir['config'] = config_export['values']
+        ir['config_meta'] = {
+            key: config_export[key]
+            for key in ('present', 'complete', 'mro', 'origins', 'typed_values',
+                        'source_files', 'unresolved')
+        }
+        if not config_export['complete']:
+            for issue in config_export['unresolved']:
+                field = issue.get('field')
+                prefix = f'Config.{field}' if field else 'Config'
+                ir['unresolved'].append(f"{prefix}: {issue.get('reason', issue)}")
 
         # 关卡名兜底
         if not ir['name']:
@@ -535,8 +552,11 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
             'native_overrides': native_overrides,
             'super_delegates': super_delegates,
             'config_keys': sorted(ir['config'].keys()),
+            'config_present': ir['config_meta']['present'],
+            'config_complete': (ir['config_meta']['present']
+                               and ir['config_meta']['complete']),
             'map_keys': sorted(ir['map'].keys()),
-            'needs_review': tier == 'C',
+            'needs_review': tier == 'C' or not ir['config_meta']['complete'],
         })
 
     # ---- 第二遍：补"从别的章节拷地图"的那些章节
@@ -588,6 +608,10 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
 
     manifest['campaign'] = {
         **stats,
+        'config_modules': sum(1 for r in index if r['config_present']),
+        'config_complete': sum(1 for r in index
+                               if r['config_present'] and r['config_complete']),
+        'config_fields': sum(len(r['config_keys']) for r in index),
         'template_only_pct': round(100 * stats['template_only'] / max(stats['files'], 1), 1),
         'needs_review': sum(1 for r in index if r['needs_review']),
         'unresolved_detail': unresolved_all,
@@ -646,7 +670,7 @@ CAMPAIGN_SCHEMA = {
     '$schema': 'https://json-schema.org/draft/2020-12/schema',
     'title': 'ALAS campaign IR',
     'type': 'object',
-    'required': ['source', 'map', 'config', 'campaign'],
+    'required': ['source', 'map', 'config', 'config_meta', 'campaign'],
     'properties': {
         'source': {'type': 'string'},
         'name': {'type': ['string', 'null'],
@@ -655,6 +679,29 @@ CAMPAIGN_SCHEMA = {
                         'description': 'path = 从文件名兜底派生，不是上游的权威名字'},
         'map': {'type': 'object', 'additionalProperties': True},
         'config': {'type': 'object', 'additionalProperties': True},
+        'config_meta': {
+            'type': 'object',
+            'required': ['present', 'complete', 'mro', 'origins', 'typed_values',
+                         'source_files', 'unresolved'],
+            'properties': {
+                'present': {'type': 'boolean'},
+                'complete': {'type': 'boolean'},
+                'mro': {'type': 'array', 'items': {'type': 'string'}},
+                'origins': {'type': 'object', 'additionalProperties': {
+                    'type': 'object',
+                    'required': ['module', 'class', 'line', 'expression'],
+                    'properties': {
+                        'module': {'type': 'string'},
+                        'class': {'type': 'string'},
+                        'line': {'type': 'integer'},
+                        'expression': {'type': 'string'},
+                    },
+                }},
+                'typed_values': {'type': 'object', 'additionalProperties': True},
+                'source_files': {'type': 'array', 'items': {'type': 'string'}},
+                'unresolved': {'type': 'array', 'items': {'type': 'object'}},
+            },
+        },
         'campaign': {
             'type': 'object',
             'required': ['battles'],
@@ -673,6 +720,11 @@ CAMPAIGN_SCHEMA = {
                     'description': 'A=JSON 规则表即可；B=计划完整但用了词表外算子；C=需插件或原生实现',
                 },
                 'has_siren': {'type': 'boolean'},
+                'attributes': {
+                    'type': 'object',
+                    'additionalProperties': True,
+                    'description': 'Campaign 类数据属性；与章节 Config 分开保存',
+                },
                 'native_overrides': {
                     'type': 'array', 'items': {'type': 'string'},
                     'description': '非 battle_* 的覆写钩子且含真实逻辑，C# 引擎必须实现'},
@@ -728,14 +780,23 @@ def _write_json(path: str, obj):
 
 def git_rev(repo: str):
     try:
+        top = subprocess.run(['git', '-C', repo, 'rev-parse', '--show-toplevel'],
+                             capture_output=True, text=True, timeout=30)
+        # A runtime snapshot inside the host checkout is not an upstream Git
+        # checkout. Never label its sources with the enclosing host commit.
+        if top.returncode or os.path.normcase(os.path.realpath(top.stdout.strip())) != \
+                os.path.normcase(os.path.realpath(repo)):
+            return None, None
         out = subprocess.run(['git', '-C', repo, 'rev-parse', 'HEAD'],
                              capture_output=True, text=True, timeout=30)
+        if out.returncode:
+            return None, None
         rev = out.stdout.strip()
         out2 = subprocess.run(['git', '-C', repo, 'status', '--porcelain'],
                               capture_output=True, text=True, timeout=30)
-        return rev, out2.stdout.strip()
+        return rev, out2.stdout.strip() if out2.returncode == 0 else None
     except Exception as e:
-        return None, f'<git unavailable: {e}>'
+        return None, None
 
 
 def main():
@@ -758,7 +819,7 @@ def main():
         'exporter_version': EXPORTER_VERSION,
         'upstream_repo': os.path.abspath(args.repo),
         'upstream_commit': rev,
-        'upstream_dirty': bool(dirty),
+        'upstream_dirty': bool(dirty) if dirty is not None else None,
         'errors': [],
     }
 
@@ -776,7 +837,7 @@ def main():
         'mode': 'export',
         'out': os.path.abspath(args.out),
         'upstream_commit': rev,
-        'upstream_dirty': bool(dirty),
+        'upstream_dirty': bool(dirty) if dirty is not None else None,
         'assets': {k: v for k, v in manifest['assets'].items()
                    if k not in ('source_hashes', 'by_module', 'unresolved')},
         'campaign': {k: v for k, v in manifest['campaign'].items()
@@ -808,11 +869,9 @@ def _compare_dirs(a, b):
     它们不在临时目录里，会被误报成差异（实测踩过）。
     """
     OWNED_FILES = {'assets.json', 'campaign_index.json', 'manifest.json'}
-    OWNED_DIRS = ('campaign/', 'schema/')
+    OWNED_DIRS = ('campaign/', 'schema/', 'rules/')
 
     def owned(rel):
-        if rel == 'manifest.json':
-            return False        # manifest 含时间戳/哈希，不参与逐字节比对
         return rel in OWNED_FILES or rel.startswith(OWNED_DIRS)
 
     diffs = []
@@ -832,6 +891,18 @@ def _compare_dirs(a, b):
         diffs.append({'file': rel, 'issue': 'only-in-one-side'})
     for rel in sorted(fa & fb):
         pa, pb = os.path.join(a, rel), os.path.join(b, rel)
+        if rel == 'manifest.json':
+            # Paths/working-tree state are machine-specific. The remaining
+            # provenance (including hashes) must participate in drift checks.
+            def stable_manifest(path):
+                with open(path, encoding='utf-8') as stream:
+                    result = json.load(stream)
+                for key in ('upstream_repo', 'upstream_dirty'):
+                    result.pop(key, None)
+                return result
+            if stable_manifest(pa) != stable_manifest(pb):
+                diffs.append({'file': rel, 'issue': 'provenance-differs'})
+            continue
         if open(pa, 'rb').read() != open(pb, 'rb').read():
             diffs.append({'file': rel, 'issue': 'content-differs'})
     return diffs

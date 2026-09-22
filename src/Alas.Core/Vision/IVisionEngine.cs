@@ -81,6 +81,12 @@ public sealed class CampaignPlanResult
     [JsonPropertyName("dry_run")] public bool DryRun { get; set; }
     [JsonPropertyName("plan_steps")] public List<string>? PlanSteps { get; set; }
     [JsonPropertyName("semantic_trace")] public List<string>? SemanticTrace { get; set; }
+    [JsonPropertyName("config_present")] public bool? ConfigPresent { get; set; }
+    [JsonPropertyName("config_complete")] public bool? ConfigComplete { get; set; }
+    [JsonPropertyName("config_count")] public int? ConfigCount { get; set; }
+    [JsonPropertyName("config_origins")] public Dictionary<string, Alas.Core.CampaignConfigOrigin>? ConfigOrigins { get; set; }
+    [JsonPropertyName("config_sources")] public List<string>? ConfigSources { get; set; }
+    [JsonPropertyName("runtime_config_source")] public string? RuntimeConfigSource { get; set; }
     [JsonPropertyName("steps")] public List<Dictionary<string, JsonElement>>? Steps { get; set; }
     [JsonPropertyName("elapsed_s")] public double? ElapsedSeconds { get; set; }
     [JsonPropertyName("stopped_early")] public bool? StoppedEarly { get; set; }

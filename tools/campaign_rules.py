@@ -69,6 +69,20 @@ def load_campaign_rules(chapter: str, data_dir: Path | str = CAMPAIGN_DATA) -> d
                 'plan_complete': b.get('plan_complete') is True} for b in battles]
     incomplete = [b['method'] for b in planned if not b['plan_complete']]
     complete = bool(planned) and not incomplete and campaign.get('plan_complete') is True
+    config = ir.get('config', {})
+    config_meta = ir.get('config_meta', {})
+    if not isinstance(config, dict) or not isinstance(config_meta, dict):
+        raise CampaignRuleError('ir_invalid', f'IR config/config_meta 必须是对象: {path}')
+    origins = config_meta.get('origins') or {}
+    if not isinstance(origins, dict) or any(not isinstance(value, dict)
+                                           for value in origins.values()):
+        raise CampaignRuleError('ir_invalid', f'IR config_meta.origins 必须是对象: {path}')
+    config_sources = sorted({f'{origin["module"]}.{origin["class"]}'
+                             for origin in origins.values()
+                             if origin.get('module') and origin.get('class')})
+    config_complete = (None if 'present' not in config_meta or 'complete' not in config_meta
+                       else config_meta.get('present') is True
+                       and config_meta.get('complete') is True)
     folder, name = parts[1:]
     # Display metadata follows CampaignRun.load_campaign. Live navigation uses
     # the actual loader.stage so inherited event navigation remains upstream.
@@ -89,6 +103,14 @@ def load_campaign_rules(chapter: str, data_dir: Path | str = CAMPAIGN_DATA) -> d
                            'incomplete' if planned else 'no_exported_battle_methods'),
         'incomplete_methods': incomplete,
         'native_overrides': list(campaign.get('native_overrides') or []),
+        # Export evidence is visible even when the native Campaign remains executable.
+        # A legacy IR without metadata is unknown, never implicitly complete.
+        'config_present': config_meta.get('present'),
+        'config_complete': config_complete,
+        'config_count': len(config),
+        'config_origins': origins,
+        'config_sources': config_sources,
+        'runtime_config_source': chapter + '.Config',
         'execution_mode': 'upstream_campaign',
         'runtime_entrypoint': 'Campaign.run',
         'runtime_dispatch': 'execute_a_battle',

@@ -147,6 +147,13 @@ internal static class Program
                     Console.WriteLine($"[plan    ] {r.Chapter} stage={r.Stage} tier={r.Tier} dry_run={r.DryRun}");
                     Console.WriteLine($"[steps   ] {string.Join(" → ", r.PlanSteps ?? new())}");
                     Console.WriteLine($"[语义轨迹] {string.Join(", ", r.SemanticTrace ?? new())}");
+                    if (r.ConfigCount is not null)
+                    {
+                        Console.WriteLine($"[Config  ] present={r.ConfigPresent?.ToString() ?? "unknown"} " +
+                                          $"complete={r.ConfigComplete?.ToString() ?? "unknown"} fields={r.ConfigCount}");
+                        Console.WriteLine($"[配置来源] {string.Join(", ", r.ConfigSources ?? new())}");
+                        Console.WriteLine($"[原生配置] {r.RuntimeConfigSource}");
+                    }
                     if (r.Refused == true) Console.WriteLine($"[拒绝    ] {r.Reason ?? r.Error}");
                     if (r.Error is not null) Console.WriteLine($"[错误    ] {r.Error}");
                     if (r.Steps is not null)
@@ -356,9 +363,10 @@ internal static class Program
         if (noServers > 0) problems.Add($"{noServers} 个素材没有任何服务器变体");
         if (noArea > 0) problems.Add($"{noArea} 个 Button/Mask 没有 area（无法定位）");
 
-        // ---- 关卡：网格自洽 + 计划不变量 + 分级
+        // ---- 关卡：网格自洽 + Config 导出 + 计划不变量 + 分级
         var tiers = new Dictionary<string, int>();
         int gridBad = 0, planBad = 0, sirenCount = 0, bossKnown = 0;
+        int configModules = 0, configComplete = 0, configFields = 0, configIncomplete = 0;
         int chaptersWithOverrides = 0, superDelegateCount = 0;
         var overrideMethods = new SortedSet<string>(StringComparer.Ordinal);
         var badSample = new List<string>();
@@ -372,6 +380,16 @@ internal static class Program
             foreach (var m in entry.NativeOverrides) overrideMethods.Add(m);
 
             var ir = catalog.LoadCampaign(entry);
+
+            if (ir.ConfigMeta.Present)
+            {
+                configModules++;
+                configFields += ir.Config.Count;
+                if (ir.ConfigMeta.Complete)
+                    configComplete++;
+                else
+                    configIncomplete++;
+            }
 
             var shape = CampaignIr.ParseShape(ir.Shape);
             string? grid = ir.MapData;
@@ -421,9 +439,12 @@ internal static class Program
         }
         Console.WriteLine($"[关卡] 网格不自洽 {gridBad}，计划不变量违例 {planBad}，"
                           + $"有塞壬 {sirenCount}，boss 回合已知 {bossKnown}");
+        Console.WriteLine($"[Config] 有效模块 {configModules}，完整 {configComplete}，"
+                          + $"字段 {configFields}，不完整 {configIncomplete}");
         foreach (var s in badSample) Console.WriteLine($"       {s}");
         if (gridBad > 0) problems.Add($"{gridBad} 个关卡网格与 shape 不自洽");
         if (planBad > 0) problems.Add($"{planBad} 处计划不变量违例");
+        if (configIncomplete > 0) problems.Add($"{configIncomplete} 个章节 Config 导出不完整");
 
         // ---- 分级（决定 S3 的工作量构成）
         Console.WriteLine();
@@ -486,6 +507,11 @@ internal static class Program
         Console.WriteLine($"shape    : {ir.Shape}");
         Console.WriteLine($"map 字段 : {string.Join(", ", ir.Map.Keys.OrderBy(k => k, StringComparer.Ordinal))}");
         Console.WriteLine($"config   : {string.Join(", ", ir.Config.Keys.OrderBy(k => k, StringComparer.Ordinal))}");
+        Console.WriteLine($"Config 导出: present={ir.ConfigMeta.Present} complete={ir.ConfigMeta.Complete} " +
+                          $"fields={ir.Config.Count}");
+        foreach (var group in ir.ConfigMeta.Origins.OrderBy(kv => kv.Key, StringComparer.Ordinal)
+                     .GroupBy(kv => $"{kv.Value.Module}.{kv.Value.Class}"))
+            Console.WriteLine($"配置来源 : {group.Key} → {string.Join(", ", group.Select(kv => kv.Key))}");
 
         string? grid = ir.MapData;
         if (grid is not null)

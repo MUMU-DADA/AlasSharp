@@ -44,6 +44,53 @@ def op(name, **args):
     return response['result']
 
 
+def compare_exported_config(ir, config_class):
+    """Compare exported data against Python's real public Config lookup.
+
+    The independent oracle is the imported class, without constructing a
+    Campaign, device or account config. Type evidence distinguishes tuple/list
+    and nested dictionary key types which ordinary JSON cannot preserve.
+    """
+    native = {name: getattr(config_class, name) for name in dir(config_class)
+              if not name.startswith('_') and not callable(getattr(config_class, name))}
+
+    def typed(value):
+        kind = type(value).__name__
+        if value is None or type(value) in (bool, int, float, str):
+            return {'type': kind, 'value': value}
+        if type(value) in (list, tuple, set, frozenset):
+            items = [typed(item) for item in value]
+            if type(value) in (set, frozenset):
+                items.sort(key=lambda item: json.dumps(item, sort_keys=True))
+            return {'type': kind, 'items': items}
+        if type(value) is dict:
+            return {'type': kind, 'items': [
+                {'key': typed(key), 'value': typed(item)} for key, item in value.items()]}
+        raise TypeError(f'unsupported native Config value type: {kind}')
+
+    differences = []
+    meta = ir.get('config_meta') or {}
+    exported = ir.get('config') or {}
+    if meta.get('present') is not True or meta.get('complete') is not True:
+        differences.append('配置导出缺失或不完整')
+    missing = sorted(set(native) - set(exported))
+    extra = sorted(set(exported) - set(native))
+    differences += [f'缺少字段 {name}' for name in missing]
+    differences += [f'多余字段 {name}' for name in extra]
+    typed_values = meta.get('typed_values') or {}
+    if set(typed_values) != set(native):
+        differences.append('类型证据字段集合不一致')
+    for name, value in native.items():
+        if typed_values.get(name) != typed(value):
+            differences.append(f'字段值或类型不一致 {name}')
+        # Current upstream Config values are JSON-compatible. The typed check
+        # above separately retains containers and dictionary key types.
+        plain = json.loads(json.dumps(value))
+        if name in exported and exported[name] != plain:
+            differences.append(f'JSON 字段值不一致 {name}')
+    return differences
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('chapter')
@@ -76,6 +123,10 @@ def main(argv=None):
               f'{module.Config.__module__}.{module.Config.__name__}; '
               f'backend={cfg.DETECTION_BACKEND}; '
               f'line_threshold={cfg.INTERNAL_LINES_HOUGHLINES_THRESHOLD}')
+        differences = compare_exported_config(ir, module.Config)
+        check('导出 Config 与上游', 'FAIL' if differences else 'PASS',
+              '; '.join(differences) if differences else
+              f'{len(ir["config"])} 个字段及嵌套值类型一致')
         methods = rules['plan_steps']
         missing = [name for name in methods if not callable(getattr(module.Campaign, name, None))]
         check('原生战斗方法', 'FAIL' if missing else 'PASS',

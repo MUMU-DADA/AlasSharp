@@ -18,6 +18,11 @@ import os
 import re
 import sys
 
+try:
+    from .upstream_config_export import ConfigResolver
+except ImportError:
+    from upstream_config_export import ConfigResolver
+
 SHAPE_RE = re.compile(r'^([A-Za-z])(\d+)$')
 
 
@@ -56,11 +61,40 @@ def check(repo: str, data: str) -> dict:
         problems.append(f'{len(missing)} 个素材引用的图片不存在')
 
     # ---- 3. 网格自洽 + 4/5. 计划与源码比对
-    grid_bad, plan_bad, rendered_ok, rendered_checked = [], [], 0, 0
+    grid_bad, plan_bad, config_bad, rendered_ok, rendered_checked = [], [], [], 0, 0
+    config_resolver = ConfigResolver(repo)
     tier_count = {'A': 0, 'B': 0, 'C': 0}
     for entry in index['chapters']:
         tier_count[entry['tier']] = tier_count.get(entry['tier'], 0) + 1
         ir = json.load(open(os.path.join(data, entry['json']), encoding='utf-8'))
+
+        # Effective Config must be reproducible from source. This catches imported
+        # Config classes, inherited overrides and constant expressions that a local
+        # class-body-only exporter would silently omit.
+        module = entry['source'][:-3].replace('/', '.').replace('\\', '.')
+        expected_config = config_resolver.export(module)
+        meta = ir.get('config_meta') or {}
+        config_differences = []
+        if ir.get('config') != expected_config['values']:
+            config_differences.append('values')
+        for key in ('present', 'complete', 'mro', 'origins', 'typed_values',
+                    'source_files', 'unresolved'):
+            if meta.get(key) != expected_config[key]:
+                config_differences.append(key)
+        if not expected_config['complete']:
+            config_differences.append('incomplete')
+        if entry.get('config_keys') != sorted(expected_config['values']):
+            config_differences.append('index.config_keys')
+        if entry.get('config_present') != expected_config['present']:
+            config_differences.append('index.config_present')
+        expected_config_complete = (expected_config['present']
+                                    and expected_config['complete'])
+        if entry.get('config_complete') != expected_config_complete:
+            config_differences.append('index.config_complete')
+        if config_differences:
+            config_bad.append({'file': entry['source'],
+                               'differences': sorted(set(config_differences)),
+                               'unresolved': expected_config['unresolved']})
 
         shape = ir['map'].get('shape')
         grid = ir['map'].get('map_data')
@@ -114,15 +148,20 @@ def check(repo: str, data: str) -> dict:
 
     stats['grid_mismatch'] = len(grid_bad)
     stats['plan_issues'] = len(plan_bad)
+    stats['config_checked'] = len(index['chapters'])
+    stats['config_issues'] = len(config_bad)
     stats['tier_A_render_check'] = f'{rendered_ok}/{rendered_checked}'
     stats['tiers'] = tier_count
     if grid_bad:
         problems.append(f'{len(grid_bad)} 个关卡网格与 shape 不自洽')
     if plan_bad:
         problems.append(f'{len(plan_bad)} 个关卡计划有问题')
+    if config_bad:
+        problems.append(f'{len(config_bad)} 个模块的有效 Config 导出不完整或不一致')
 
     return {'ok': not problems, 'problems': problems, 'stats': stats,
             'grid_bad_sample': grid_bad[:5], 'plan_bad_sample': plan_bad[:5],
+            'config_bad_sample': config_bad[:5],
             'missing_sample': missing[:5]}
 
 

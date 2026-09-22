@@ -33,6 +33,12 @@
 IR JSON 是身份、计划摘要和校验信息，**当前不是独立 JSON 战斗解释器**。
 导出器无法完整表达的嵌套方法仍由上游原生方法执行，不能把摘要逐条重放。
 
+章节 `Config` 的导出已与战斗计划分开处理：导出器通过源码解析展开 `Config` 的相对导入、C3 继承和安全的常量/容器表达式，写入 `config`；`config_meta` 保留有效 MRO、每个字段的声明来源、Python 容器类型标签和未解析项；`Campaign` 类属性写入 `campaign.attributes`，不再与 `Config` 混在一起。当前快照中 1,375 个有效 `Config` 模块全部完整，`verify_export.py` 会把导出结果与源码解析结果逐字段对照，S3 离线预检还会与真实 `Config` 类的公开字段和值做独立复核。
+
+全量原生导入对照中有 1,372 个模块逐字段通过；3 个历史活动模块无法导入，是上游 `module.campaign.assets` 缺少 `C2`、`D3` 和 `EVENT_20200312CN_SP3` 素材符号导致的 Campaign 导入错误，不是 Config 导出差异。这 3 个模块的静态 Config 仍由源码解析完整导出，待上游素材补齐后可再做原生对照。
+
+已完成的功能不应改成从 JSON 读取运行时配置。S2 `map_detect`/`map_detect_trace` 继续调用上游 `_map_config(chapter)`，S3 初始化继续调用上游 `CampaignRun.load_campaign()`；JSON 配置仅用于 `show`、dry-run 的来源可见性和漂移校验。这样既能发现导出缺失，也不会让一份静态摘要取代上游的配置合并语义。
+
 ## 结果语义
 
 `CampaignEnd` 仅表示出击结束。上游 `withdraw()` 也可能经 `handle_in_stage()`
