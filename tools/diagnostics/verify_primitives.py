@@ -137,10 +137,11 @@ if ok:
         time.sleep(0.5)
     shot()
     moved = op('ui_rule_check', module=SCROLL[0], name=SCROLL[1])['results']
-    # 判据：这一串滑动让**判定发生了变化**。不要预设方向 —— 这里拖的是右侧滚动条
-    # 滑块（area=[1257,94,1263,585]），"往下拖 6 次 = 离开顶部，往上拖 3 次 = 回顶"，
-    # 第一版把期望方向写反了，把已经翻转的结果判成了 miss。
-    flipped = top.get('at_top') != moved.get('at_top')
+    # 判据：这一串滑动**过程中判定发生过变化**即可，不要只比最后两步 ——
+    # 上一次换了账号后出现 True → False → False：起始在顶、往下拖 6 次离开顶部（翻转成立），
+    # 再往上拖 3 次没回到顶，只比最后两步就会把已经成立的翻转判成 miss。
+    # 方向也不要预设：这里拖的是右侧滚动条滑块。
+    flipped = len({before.get('at_top'), top.get('at_top'), moved.get('at_top')}) > 1
     print('[滑动 ] at_top: 起始=%s 往下拖6次=%s 往上拖3次=%s（翻转=%s）'
           % (before.get('at_top'), top.get('at_top'), moved.get('at_top'), flipped))
     results.append({'primitive': 'swipe (real device)', 'from': 'page_storage',
