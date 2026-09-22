@@ -594,6 +594,71 @@ IR 交叉校验通过（shape 一致、缺格 0）。
 顺带记录：用户此时切的画面（`pages=[]`）检出 `30 格 / shape [7,3] / thr=75 / 3 个标志`，
 已存为 `data/fixtures/map_event.png` 待确认是否活动图（若是，需问用户是哪一关以登记 IR）。
 
+## BOSS 图标：形状模板是对的，**颜色不对**（2026-09-22 定位并修复）
+
+这是"清完小怪、只剩 BOSS 就主动撤退"的根因，也是本项目**唯一一个靠一帧画面就彻底定位**的
+客户端差异 —— 记在这里因为它最能说明"上游流程没问题，差的是像素"。
+
+### 上游怎么认 BOSS
+
+`module/map_detection/grid_predictor.py:226-242`：
+
+```python
+image = self.relative_crop((-0.55, -0.2, 0.45, 0.2), shape=(50, 20))   # 格子上方一条
+image = color_similarity_2d(image, color=(255, 77, 82))                # ① 先转成"与红色有多像"
+if TEMPLATE_ENEMY_BOSS.match(image, similarity=0.75):                  # ② 再匹配眼睛形状
+    return True
+```
+
+`TEMPLATE_ENEMY_BOSS.png`（`assets/cn/template/`，41×17）的形状**就是 BOSS 图标那对发光眼睛**
+（渲染出来是暗底上两道亮弧）。关键在①：它把画面先映射成"与红色 `(255,77,82)` 的相似度"，
+眼睛不是红色时，形状再对也是 0 分。
+
+### 本客户端实测
+
+清完 6 只小怪、BOSS 刚刷出的那一帧（`data/_map_now3.png`）：
+
+| 判据 | BOSS 格 | 其余 29 格最高 |
+| --- | --- | --- |
+| 上游红色 `(255,77,82)` | **-0.382** ✗ | 0.449 |
+| 蓝色 `(82,77,255)` | **0.981** ✓ | 0.452 |
+| luma（不吃色相） | 0.968 ✓ | 0.485 |
+
+眼睛 RGB 实测 ≈ `(59, 67, 250)` —— 正好是上游那个红色常量的**通道互换**。所以垫片
+`apply_boss_icon_color_compat()` 只补一条 R/B 互换后的判据，阈值沿用上游的 0.75；
+上游原判据仍先跑，命中即返回。
+
+### 为什么"认出来"还不够（这一层容易漏）
+
+`module/map_detection/grid_info.py:220-225` 只接受**声明为 `MB` 的格**：
+
+```python
+if info.is_boss:
+    if not self.is_land and self.may_boss:   # ← map_data 里必须是 MB
+        self.is_boss = True
+    else:
+        return False                          # ← 否则丢掉
+```
+
+所以要用 `probe_boss_global.py` 离线确认"识别出的格子对齐到全局后落在 `may_boss` 上"：
+11-1 的 `may_boss = [H1, A2, F3, G6]`，实测 BOSS 落在 **F3** ✓。
+
+### 复现与回归
+
+```powershell
+# 离线（不碰游戏，同一帧可反复试）
+python tools/diagnostics/oneoff/probe_boss_icon.py data/_map_now3.png --icons
+python tools/diagnostics/oneoff/probe_boss_global.py data/_map_now3.png
+# 真机（从"只剩 BOSS"的半途状态接着打，不消耗小怪那 6 场）
+python tools/diagnostics/oneoff/resume_boss.py --chapter campaign.campaign_main.campaign_11_1 \
+    --battle-count 6 --fleet1 3 --fleet2 6
+```
+
+真机验证记录：`Full scan find boss.` → **`Boss found: [F3]`** → `BATTLE_6` →
+`Using function: battle_6` → `Is boss: [F3]` → `<<< CLEAR BOSS >>>` → 战斗 →
+回到章节页（`In stage.`，出击正常收尾）。事后 11-1 的关卡信息面板为
+**威胁排除 100%**、三个条件全亮、章节页徽章是 `Clear!` + `COMPLETELY ELIMINATED` + ★★★。
+
 ## 复现
 
 ```powershell
