@@ -95,3 +95,22 @@ python tools\diagnostics\verify_runtime.py          # 11 例：只初始化一�
 python tools\diagnostics\verify_report.py           # 报告读得出事实；缺工件/缺日志/目录不存在都会被指出
 python tools\diagnostics\verify_architecture.py     # CLI 不复制业务状态机
 ```
+
+## 九、报告内联什么、不内联什么（设计取舍，别当成漏做）
+
+审计"同一份数据的多个出口"时核对过一处，结论是**有意为之**，写在这里免得以后被当成缺陷修掉：
+
+| 内容 | 在哪 | 报告里 |
+| --- | --- | --- |
+| 任务结论 / `error_kind` / `error` | `queue.json`、`task-*.json` | **内联**（列表与详情都用） |
+| 停止信息（`stopped_early` / `stop_reason`） | `queue.json`、`index.json` | **内联**（列表第一屏就要） |
+| 任务边界快照 | `task-*.json` | **内联**（判断跨任务复位就靠它） |
+| 日志计数与 scope 分布 | `session-log.jsonl` | **内联**（是摘要，不是明细） |
+| **各域的证据明细**（如战役的逐关 `stages`、调度的 `listed`） | `task-*.json` 的 `evidence` | **不内联，只给 `artifact` 路径** |
+
+理由：域证据是**可以很大的对象**（战役域带逐关结论、调度域带任务清单），
+把它们复制进报告等于同一份数据两处存在、两处过期；而报告要给的是"**发生了什么 + 去哪个文件看**"。
+`artifact` 路径已经在每个条目里，消费方按需读。
+
+**什么时候该改这个决定**：如果出现"只读报告、拿不到工件文件"的消费方（例如只能拿 JSON 发出去的前端），
+那就该给它一个**单独的导出**（按需内联），而不是把报告本身变重。
