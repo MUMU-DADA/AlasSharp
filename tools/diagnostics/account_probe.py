@@ -70,7 +70,7 @@ def main():
         rows.append({'chapter': ch, 'stages': stages,
                      'error': (str(err)[:80] if err else None)})
         print(f'  第 {ch:2d} 章: ' + (f'{len(stages)} 关 {stages}' if stages
-                                      else f'✗ {err}'), flush=True)
+                                      else f'FAIL {err}'), flush=True)
 
     ok = [r for r in rows if r['stages']]
     print(f'\n可达章节 {len(ok)}/{len(rows)}；'
@@ -89,3 +89,4 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
+
