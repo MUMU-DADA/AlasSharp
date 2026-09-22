@@ -192,6 +192,28 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 | S4 任务域 | 大世界 / 岛屿 / 科研 / 活动… | 待开始 |
 | S5 前端 | 读上游 `args.json` 渲染配置 | 待开始 |
 
+### 建议的起手顺序
+
+1. **设备层最小闭环**（`ADB` 截图，先只做一种截图方式）—— 没有它，S2/S3 都无法端到端验证。
+2. **S3 引擎实现**按调用频次从高到低做，前 5 个方法覆盖绝大多数关卡：
+   `battle_default`(1601) / `clear_siren`(1371) / `clear_boss`(1303) /
+   `clear_filter_enemy`(1041) / `clear_enemy`(417)。
+   契约全貌在 `.bench/engine_contract.json`（120 方法 + 139 模块依赖闭包）；
+   钩子清单见 `alashub verify` 的「引擎钩子」段（48 个关卡、去重 17 个方法）。
+3. **S2 地图识别** —— 依赖 S1 的识图宿主，通路已打通，可直接调用。
+
+### 接手须知（踩过的坑，别再踩一遍）
+
+- **首调 530 ms 是一次性导入代价**，不是每帧成本。应用启动时应预热，别落在第一帧上。
+- **改了 `tools/export_upstream_data.py` 的归一化规则，必须重跑 `alashub campaign`**。
+  分级会随之变化：本轮修掉两个保真缺陷后 tier B 221→212、tier C 216→225。
+  只跑 S0 的 `verify` **查不出丢步** —— 它只验证「计划里的算子在源码中出现」，
+  不验证「源码里的调用是否都在计划里」。**能查丢步的是 S3 的序列对拍。**
+- **解释器的保真红线**：表示不了的控制流一律标为未解析并降级 tier C，
+  绝不输出「少几步的完整计划」；`return` 之后的语句按 Python 语义标为 `dead_code` 不执行。
+- 工具链：`dotnet build Alas.sln` 在受限沙箱内会失败（解决方案级 Restore 静默失败），
+  用项目级构建；git 需要 `http.sslBackend=openssl` + 非 shell 的凭据方式（见下方环境限制）。
+
 ---
 
 ## 环境限制（本机实测，供排障参考）
