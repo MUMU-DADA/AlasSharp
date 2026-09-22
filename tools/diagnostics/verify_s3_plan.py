@@ -160,12 +160,15 @@ class S3DryRunTests(unittest.TestCase):
 
     @contextmanager
     def native_protocol(self, navigation_error=None, native_error=None, own_enter=False,
-                        prior_map=False, withdraw_error=None, cached_image=True):
+                        prior_map=False, withdraw_error=None, cached_image=True,
+                        navigation_withdraw=False):
         """Use real protocol dispatch with fake Campaign methods and no device."""
         events = []
 
         class FakeCampaign:
             config = SimpleNamespace(Campaign_Mode='normal')
+            # 导航期就撤退时没人设过 ENTRANCE；给它一个空值，别让替身自己抛 AttributeError。
+            ENTRANCE = None
             device = SimpleNamespace(
                 has_cached_image=cached_image,
                 stuck_record_clear=lambda: events.append(('clear_stuck',)),
@@ -178,7 +181,8 @@ class S3DryRunTests(unittest.TestCase):
 
             def withdraw(self):
                 from module.exception import CampaignEnd
-                events.append(('withdraw_previous',))
+                events.append(('navigation_withdraw',) if navigation_withdraw
+                              else ('withdraw_previous',))
                 if withdraw_error:
                     raise RuntimeError(withdraw_error)
                 raise CampaignEnd('In stage.')
@@ -187,6 +191,9 @@ class S3DryRunTests(unittest.TestCase):
                 events.append(('navigate', name, mode))
                 if navigation_error:
                     raise RuntimeError(navigation_error)
+                if navigation_withdraw:
+                    # 客户端状态残留时上游导航自己会撤退一次（实测 2026-09-23 02:10:37）。
+                    return self.withdraw()
                 self.config.Campaign_Mode = 'hard'
                 self.ENTRANCE = 'resolved entrance'
                 return True
@@ -313,6 +320,24 @@ class S3DryRunTests(unittest.TestCase):
             self.assertEqual(result['outcome'], 'error')
             self.assertIn('cannot withdraw', result['error'])
             self.assertFalse(result['cleared'])
+
+    def test_navigation_time_withdrawal_is_recorded_and_never_a_clear(self):
+        """导航期间上游自己撤退（客户端状态残留）不能静默消失，更不能变成通关。
+
+        真机证据：`data/s3_native_small_and_clearall.log` 02:10:37
+        `handle_campaign_ui_additional -> self.withdraw()`，当时这一步在 `ensure_campaign_ui`
+        的返回里被吞掉，事后只能翻原始日志（见 `docs/result-evidence.md`）。
+        """
+        with self.native_protocol(navigation_withdraw=True) as state:
+            result = self.invoke(chapter='campaign.campaign_main.campaign_2_1',
+                                 dry_run=False, allow_actions=True)
+            ui = next(step for step in result['steps'] if step['step'] == 'ensure_campaign_ui')
+            self.assertEqual(ui['navigation_end'], 'withdrawn')
+            self.assertTrue(ui['navigation_withdrawn'])
+            self.assertFalse(result['cleared'])
+            self.assertNotEqual(result['outcome'], 'cleared')
+            state.native.assert_called_once()
+            self.assertIn(('navigation_withdraw',), state.events)
 
 
 if __name__ == '__main__':

@@ -3,8 +3,13 @@
 CampaignEnd means the sortie ended; upstream raises it for withdrawal too.
 Stage clearance percentage is cumulative and may already be 100% at entry.
 Neither value alone proves that this sortie defeated the boss.
+
+判定结果统一交给 `sortie_contract`（sortie-result/1）：这里只负责**取证据**
+（调用栈帧、战果点击），结论与"结论是否站得住"由那张不变量表说了算。
 """
 from contextlib import contextmanager
+
+from sortie_contract import stamp
 
 
 @contextmanager
@@ -94,7 +99,12 @@ to the exception. Inspect the executing frames, not just the exception text.
 
 
 def finalize_sortie_result(out, steps, end=None):
-    """Do not let a later 'skipped' step erase an earlier failure."""
+    """Do not let a later 'skipped' step erase an earlier failure.
+
+    收尾时统一盖上 sortie-result/1 合同戳：补 `contract` / `cleared` / `failure` /
+    `failure_frames`，并让生产方**自报**违例（`contract_violations`）。
+    真出违例时不在这里抛异常：结果本身要留给调用方和工件，消费方（C#）会拒绝它。
+    """
     failures = [step for step in steps if step.get('error')]
     if end:
         for key in ('campaign_end', 'cleared', 'outcome', 'end_evidence'):
@@ -109,4 +119,4 @@ def finalize_sortie_result(out, steps, end=None):
         out.update(campaign_end=False, cleared=False, outcome='incomplete')
         out.setdefault('stop_reason', 'round_limit')
     out['stopped_early'] = not out['cleared']
-    return out
+    return stamp(out)

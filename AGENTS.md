@@ -37,6 +37,20 @@
 - 导出器必须完整保留素材的所属模块、唯一 id、kind、服务器变体、`area`、`button`、`color`、`file` 和来源信息；不能因为字段暂时没有被某个单一调用点使用就省略。任何模块遗漏、服务器变体丢失、文件引用错误或字段错误映射都必须由导出校验失败暴露，不能静默回退。
 - 调整素材导出字段或语义时，必须同步更新 JSON Schema、C# 数据模型、`alashub verify`、`tools/verify_export.py`、两个夹具生成脚本以及 manifest / 同步校验链，并验证所有消费者。不得按地图、页面、服务器或少数素材名称增加专用坐标、阈值或 fallback；素材失败时先检查模块来源、服务器变体、文件路径和上游调用链。
 
+## 结果判定：只能走 sortie-result/1 合同
+
+Frozen：结论口径写在 `docs/result-contract.md`，生产方 `tools/sortie_contract.py`、消费方
+`src/Alas.Core/Campaign/SortieResult.cs` 各实现一份，`tools/diagnostics/verify_result_contract.py` 逐例对拍。
+改动结果判定时必须遵守：
+
+- 不得在任何调用点用单个字段拼通关结论；`CampaignEnd` 只表示"出击结束"（撤退也抛它），不能单独证明通关。
+- 改词表、不变量或违例码，必须**同时**改 Python 与 C# 两侧，并跑
+  `python tools/diagnostics/verify_result_contract.py`（35 例）与
+  `python tools/diagnostics/verify_architecture.py`（词表/违例码漂移会直接失败）。
+- `docs/result-evidence.md` 由 `tools/diagnostics/audit_real_records.py` 从 `data/*.log` 重建，不手写；
+  发现"声称结果与原始证据对不上"时，先修证据链或补真机验证，不得改小核对规则来让它变绿。
+- 失败必须可定位：`error` 带调用栈尾部，存下来的失败帧必须登记在 `failure_frames`。
+
 ## 后续整体迁移方向：R0-R5 路线与长期不可变边界
 
 完整路线、阶段门槛和依赖见 [整体迁移路线 v2 与不可变边界](docs/architecture-roadmap.md)。后续开发必须按 **R0 真值与证据 → R1 常驻运行时 → R2 任务域垂直切片 → R3 原生钩子迁移 → R4 前端 → R5 宿主替换评估** 推进。不能跳过前置阶段，也不能把“独立 C# 关卡引擎”提前当成当前交付目标。

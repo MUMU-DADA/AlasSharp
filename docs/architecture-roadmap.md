@@ -10,6 +10,7 @@
 - 识图、页面规则、地图检测和 OCR 通过 `IVisionEngine` 进入上游宿主；C# 的 `Imaging` 目录只作对拍证据。
 - S3 生产路径使用上游 `CampaignRun.load_campaign()`、章节 `Config` 合并、`MAP`、入口准备和原生 `Campaign.run()`；不完整 IR 不能被当成可重放计划。
 - 真跑结果已经区分成功、撤退、错误和未知退出；`CampaignEnd` 本身只表示流程结束，不能单独证明清图。
+- 结果口径已经冻结为 `sortie-result/1` 合同（两侧实现 + 逐例对拍 + 静态守卫）；后续任何结果判定都必须过合同，不得在调用点自己拼 `cleared`。
 
 ## 阶段顺序
 
@@ -20,6 +21,27 @@
 交付物：结果状态契约、真实/撤退/错误/限额的离线回归、失败帧和调用栈关联、现有实机记录的重新核对。
 
 阶段门槛：同一组替身测试能稳定区分四类结果；至少一条真实成功结算和一条真实撤退证据都能从日志解释；没有任何代码以 `CampaignEnd` 单字段判定通关。
+
+**状态：基本完成**（缺口逐条列在下面）。
+
+| 交付物 | 落地 | 证据 |
+| --- | --- | --- |
+| 结果合同 | `sortie-result/1`：7 个结果词 + 22 条不变量，Python（`tools/sortie_contract.py`）与 C#（`src/Alas.Core/Campaign/SortieResult.cs`）各一份 | `docs/result-contract.md` |
+| 四类结果离线回归 | 替身跑出通关/撤退/报错/限额四类文档，另加 20 条反例必须被拒绝 | `tools/diagnostics/verify_result_contract.py`（35 例） |
+| 跨语言不分叉 | 同一批文档喂给两侧，`outcome`/`cleared`/违例码集合逐例相同；词表与违例码另有静态守卫 | 同上 + `verify_architecture.py` |
+| 失败帧与调用栈关联 | 合同里的 `failure{step,error,traceback_tail,frame}` + `failure_frames` 登记；初始化各失败分支补调用栈尾部 | 同上 |
+| 实机记录重新核对 | 归档日志逐条重核：4 条真实通关、2 起真实撤退全部可解释，0 条自相矛盾 | `tools/diagnostics/audit_real_records.py` → `docs/result-evidence.md` |
+| 禁止单字段判通关 | 运行期由合同裁决（`alashub contract` / `campaign`），静态由守卫扫 `cleared = … campaign_end` | `verify_architecture.py` |
+| 跨关复位定义 | 设备记录清理、上一局撤退、导航期撤退留证、每关独立证据文档 | `docs/result-contract.md` 第四节 |
+
+**R0 未完成的缺口**（不阻塞 R1 开工，但要挂着）：
+
+1. 归档里**没有**"本局撤退被判 `outcome=withdrawn`"的真机记录 —— 现有 2 起撤退都是进图前清理
+   （`prepare_campaign_navigation`）或导航期上游自行撤退。补它需要一次真实出击后主动撤退
+   （消耗石油、改变账号状态），设备在线且获授权时再做；离线分支已由替身用例覆盖。
+2. `ensure_campaign_ui` 的返回值里出现 `CampaignEnd` 时，目前只**留证**
+   （`navigation_end` / `navigation_withdrawn`），不改控制流 —— 保持上游语义不变；
+   是否要在导航期撤退后重试导航，等有真机复现再定，不凭猜测加分支。
 
 ### R1：常驻运行时基础
 

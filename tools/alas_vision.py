@@ -1330,7 +1330,8 @@ def op_s3_campaign_init(args):
     try:
         cfg.bind('Campaign')
     except Exception as e:
-        return {'error': f'配置绑定 Campaign 失败: {type(e).__name__}: {e}'}
+        return {'error': f'配置绑定 Campaign 失败: {type(e).__name__}: {e}',
+                'traceback_tail': traceback.format_exc().strip().splitlines()[-8:]}
     # **配置必须跟着章节走**，否则 Campaign 会按错误关卡取参数（实测踩过：
     # 实例化 2-1，而 config.Campaign_Name 还是上一次跑过的 '12-4'）。
     # 同时把截图/输入后端显式设回我们的默认 —— bind('Campaign') 会把它们重置成引擎默认
@@ -1373,7 +1374,8 @@ def op_s3_campaign_init(args):
             cfg.Fleet_Fleet2 = int(args.get('fleet2', 0))
             cfg.Submarine_Fleet = int(args.get('submarine_fleet', 0))
     except Exception as e:
-        return {'error': f'配置章节绑定失败: {type(e).__name__}: {e}', 'stage': stage}
+        return {'error': f'配置章节绑定失败: {type(e).__name__}: {e}', 'stage': stage,
+                'traceback_tail': traceback.format_exc().strip().splitlines()[-8:]}
     try:
         from module.campaign.run import CampaignRun
         package, folder, name = chapter.split('.')
@@ -1386,7 +1388,8 @@ def op_s3_campaign_init(args):
         loader.load_campaign(name, folder=folder)
         inst = loader.campaign
     except Exception as e:
-        return {'error': f'实例化失败: {type(e).__name__}: {e}', 'chapter': chapter}
+        return {'error': f'实例化失败: {type(e).__name__}: {e}', 'chapter': chapter,
+                'traceback_tail': traceback.format_exc().strip().splitlines()[-8:]}
     # **种一帧**：ALAS 的方法假定 `device.image` 已存在，而它只在 screenshot() 之后才有。
     # 少了这一步，第一个动作就会死在 `AttributeError: 'Device' object has no attribute 'image'`
     # （实测踩过）。顺带也预热了截图后端。
@@ -1399,7 +1402,8 @@ def op_s3_campaign_init(args):
         dev.screenshot()
         seeded = round((_t.time() - t0) * 1000, 1)
     except Exception as e:
-        return {'error': f'初始化截图失败: {type(e).__name__}: {e}', 'chapter': chapter}
+        return {'error': f'初始化截图失败: {type(e).__name__}: {e}', 'chapter': chapter,
+                'traceback_tail': traceback.format_exc().strip().splitlines()[-8:]}
     _CAMPAIGN['obj'] = inst
     _CAMPAIGN['chapter'] = chapter
     _CAMPAIGN['loader'] = loader
@@ -1658,15 +1662,20 @@ def op_s3_run_plan(args):
     import time as _t
     chapter = str(args.get('chapter') or 'campaign.campaign_main.campaign_2_1')
     dry = bool(args.get('dry_run', True))
+    from sortie_contract import stamp
     if not dry and not args.get('allow_actions'):
-        return {'refused': True,
-                'reason': '真跑需要 allow_actions=true（dry_run 默认可离线校验）'}
+        return stamp({'refused': True, 'dry_run': dry, 'chapter': chapter,
+                      'outcome': 'refused',
+                      'reason': '真跑需要 allow_actions=true（dry_run 默认可离线校验）'})
     from campaign_rules import CampaignRuleError, load_campaign_rules
     try:
         out = load_campaign_rules(chapter)
     except CampaignRuleError as exc:
-        return {'chapter': chapter, 'dry_run': dry, 'stage': 'rules',
-                'error': str(exc), 'error_code': exc.code}
+        return stamp({'chapter': chapter, 'dry_run': dry, 'stage': 'rules',
+                      'outcome': 'error', 'error': str(exc), 'error_code': exc.code,
+                      'failure': {'step': 'load_campaign_rules', 'error': str(exc),
+                                  'traceback_tail': traceback.format_exc()
+                                  .strip().splitlines()[-8:], 'frame': None}})
     stage = out['stage']
     out['dry_run'] = dry
     if dry:
@@ -1674,7 +1683,7 @@ def op_s3_run_plan(args):
                        'plan_steps 是已导出的战斗方法，calls 是语义轨迹；'
                        '真跑由上游 execute_a_battle 结合战斗计数和 MAP 规则分派，'
                        '不重放 JSON，IR 不完整不代表原生 Campaign 不可执行。')
-        return out
+        return stamp(out)
 
     # 舰队选择也要能由调用方指定（不同账号/关卡要用不同舰队；此前只走 init 的默认值）。
     init = op_s3_campaign_init({'chapter': chapter,
@@ -1690,8 +1699,12 @@ def op_s3_run_plan(args):
                                 # 心情模式（低心情强制出击弹窗的开关，默认 calculate_ignore）
                                 'emotion_mode': args.get('emotion_mode')})
     if init.get('error'):
-        out.update({'error': init['error'], 'stage': 'init'})
-        return out
+        # 初始化失败也是结果：按合同给出 `error` + 调用栈尾部，别让它只剩一句话。
+        out.update({'error': init['error'], 'stage': 'init', 'outcome': 'error',
+                    'failure': {'step': 's3_campaign_init', 'error': init['error'],
+                                'traceback_tail': list(init.get('traceback_tail') or []),
+                                'frame': None}})
+        return stamp(out)
     inst = _CAMPAIGN.get('obj')
     stage = _CAMPAIGN['loader'].stage
     out['stage'] = stage
@@ -1728,7 +1741,14 @@ def op_s3_run_plan(args):
     r = op_s3_campaign_call({'name': 'ensure_campaign_ui',
                              'args': [stage, inst.config.Campaign_Mode],
                              'allow_actions': True})
-    steps.append({'step': 'ensure_campaign_ui', 'ms': r.get('ms'), 'error': r.get('error')})
+    ui_step = {'step': 'ensure_campaign_ui', 'ms': r.get('ms'), 'error': r.get('error')}
+    if r.get('campaign_end'):
+        # 导航期间上游自己调了 `withdraw()`（客户端状态残留时会发生）：这是"上一局/客户端
+        # 状态"的清理，不是本局结论，但**必须留在证据里**。归档日志里 2026-09-23 02:10:37
+        # 那次就被静默吞掉了 —— 事后只能靠原始日志猜（见 docs/result-evidence.md）。
+        ui_step['navigation_end'] = r.get('outcome')
+        ui_step['navigation_withdrawn'] = bool((r.get('end_evidence') or {}).get('withdrawn'))
+    steps.append(ui_step)
     if r.get('error'):
         out['steps'] = steps
         out['elapsed_s'] = round(_t.time() - t_start, 1)
@@ -1761,11 +1781,15 @@ def op_s3_run_plan(args):
 
     inst.enter_map = enter_with_dialog_handler
     try:
-        result = run_native_campaign(
-            inst, max_rounds=int(args.get('max_rounds') or 20)
+        # 失败帧/结果工件的落盘目录由调用方给；不给就沿用 run_native_campaign 的默认目录。
+        native_kwargs = dict(
+            max_rounds=int(args.get('max_rounds') or 20)
             if args.get('repeat_until_cleared', True) else 1,
             max_seconds=max_s, stop_after=args.get('stop_after'),
             battle_count=args.get('battle_count'))
+        if args.get('artifact_dir'):
+            native_kwargs['artifact_dir'] = args['artifact_dir']
+        result = run_native_campaign(inst, **native_kwargs)
     finally:
         if owned_enter:
             inst.enter_map = own_enter

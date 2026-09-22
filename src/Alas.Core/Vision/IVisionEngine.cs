@@ -64,21 +64,25 @@ public interface IVisionEngine : IDisposable
     /// `clearAll` 选的是上游两套战斗流程里的哪一套：
     ///   false（默认）= `battle_{battle_count}`：BOSS 一刷出来就打 BOSS；
     ///   true         = `MAP_CLEAR_ALL_THIS_TIME` 分支：先清光小怪，清完才打 BOSS。
+    /// `artifactsDir` 非空时，失败帧与结果文档落在该目录（R0 证据链的落盘位置）。
     /// </summary>
     CampaignPlanResult RunCampaignPlan(string chapter, bool dryRun = true,
                                        bool allowActions = false, double maxSeconds = 1500,
                                        int maxRounds = 20, bool repeatUntilCleared = true,
                                        int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0,
-                                       bool clearAll = false, string? serial = null);
+                                       bool clearAll = false, string? serial = null,
+                                       string? artifactsDir = null);
 }
 
-/// <summary>`s3_run_plan` 的返回：计划步骤与逐步结果。</summary>
-public sealed class CampaignPlanResult
+/// <summary>
+/// `s3_run_plan` 的返回：计划元数据 + <see cref="SortieResult"/> 的结果合同字段。
+///
+/// 合同字段**继承**而不是重抄一遍：结果口径只有一处定义（`Alas.Campaign.SortieResult`），
+/// 这里只往上加"这一关的规则元数据"。判定一律走 `SortieContract.Violations`。
+/// </summary>
+public sealed class CampaignPlanResult : Alas.Campaign.SortieResult
 {
-    [JsonPropertyName("chapter")] public string? Chapter { get; set; }
-    [JsonPropertyName("stage")] public string? Stage { get; set; }
     [JsonPropertyName("tier")] public string? Tier { get; set; }
-    [JsonPropertyName("dry_run")] public bool DryRun { get; set; }
     [JsonPropertyName("plan_steps")] public List<string>? PlanSteps { get; set; }
     [JsonPropertyName("semantic_trace")] public List<string>? SemanticTrace { get; set; }
     [JsonPropertyName("config_present")] public bool? ConfigPresent { get; set; }
@@ -87,17 +91,8 @@ public sealed class CampaignPlanResult
     [JsonPropertyName("config_origins")] public Dictionary<string, Alas.Core.CampaignConfigOrigin>? ConfigOrigins { get; set; }
     [JsonPropertyName("config_sources")] public List<string>? ConfigSources { get; set; }
     [JsonPropertyName("runtime_config_source")] public string? RuntimeConfigSource { get; set; }
-    [JsonPropertyName("steps")] public List<Dictionary<string, JsonElement>>? Steps { get; set; }
-    [JsonPropertyName("elapsed_s")] public double? ElapsedSeconds { get; set; }
-    [JsonPropertyName("stopped_early")] public bool? StoppedEarly { get; set; }
-    [JsonPropertyName("stop_reason")] public string? StopReason { get; set; }
-    [JsonPropertyName("campaign_end")] public bool? CampaignEnd { get; set; }
-    [JsonPropertyName("cleared")] public bool? Cleared { get; set; }
-    [JsonPropertyName("outcome")] public string? Outcome { get; set; }
-    [JsonPropertyName("end_reason")] public string? EndReason { get; set; }
-    [JsonPropertyName("refused")] public bool? Refused { get; set; }
-    [JsonPropertyName("reason")] public string? Reason { get; set; }
-    [JsonPropertyName("error")] public string? Error { get; set; }
+    [JsonPropertyName("execution")] public string? Execution { get; set; }
+    [JsonPropertyName("upstream_returned")] public bool? UpstreamReturned { get; set; }
 }
 
 /// <summary>`device_configure` 的返回：当前选择的设备后端。</summary>
@@ -190,7 +185,8 @@ public abstract class VisionEngineBase : IVisionEngine
                                               bool allowActions = false, double maxSeconds = 1500,
                                               int maxRounds = 20, bool repeatUntilCleared = true,
                                               int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0,
-                                              bool clearAll = false, string? serial = null)
+                                              bool clearAll = false, string? serial = null,
+                                              string? artifactsDir = null)
         => CallTyped<CampaignPlanResult>("s3_run_plan", new
         {
             chapter,
@@ -204,6 +200,7 @@ public abstract class VisionEngineBase : IVisionEngine
             submarine_fleet = submarineFleet,
             clear_all = clearAll,
             serial,
+            artifact_dir = artifactsDir,
         });
 
     protected int NextId() => Interlocked.Increment(ref _nextId);

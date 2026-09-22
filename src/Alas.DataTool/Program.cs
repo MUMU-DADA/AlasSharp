@@ -74,7 +74,7 @@ internal static class Program
                 // S3：上游 Campaign.run() 负责整次出击；C# 传配置并报告结果。
                 string toolsDir7 = paths.ToolsDirectory;
                 string? campChapter = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
-                string? campAdb = null, campSerial = null;
+                string? campAdb = null, campSerial = null, campArtifacts = null;
                 bool campRun = false, campAllow = false, campRepeat = true;
                 double campMax = 1500; int campRounds = 20;
                 int campFleet1 = 1, campFleet2 = 0, campSub = 0;
@@ -97,6 +97,7 @@ internal static class Program
                     if (args[i] == "--chapter") campChapter = args[i + 1];
                     if (args[i] == "--adb") campAdb = args[i + 1];
                     if (args[i] == "--serial") campSerial = args[i + 1];
+                    if (args[i] == "--artifacts") campArtifacts = args[i + 1];
                     if (args[i] == "--max-seconds" && double.TryParse(args[i + 1], out double ms2)) campMax = ms2;
                     if (args[i] == "--max-rounds" && int.TryParse(args[i + 1], out int mr)) campRounds = mr;
                     if (args[i] == "--fleet1" && int.TryParse(args[i + 1], out int f1)) campFleet1 = f1;
@@ -106,7 +107,8 @@ internal static class Program
                 if (campChapter is null)
                 {
                     Console.WriteLine("用法: campaign <章模块[,章模块...]> [--run --allow-actions] " +
-                                      "[--serial <设备>] [--clear-all] [--max-seconds 1500] [--max-rounds 20]");
+                                      "[--serial <设备>] [--clear-all] [--max-seconds 1500] [--max-rounds 20] " +
+                                      "[--artifacts <目录>]");
                     return 2;
                 }
                 if (campRun && !campAllow)
@@ -130,6 +132,7 @@ internal static class Program
                         vision.ConfigureDevice(campSerial, screenshot: "scrcpy", control: "MaaTouch");
                 }
                 bool campFailed = false;
+                if (campArtifacts is not null) Directory.CreateDirectory(campArtifacts);
                 foreach (var one in stageList)
                 {
                     var r = vision.RunCampaignPlan(one, dryRun: !campRun, allowActions: campAllow,
@@ -137,7 +140,7 @@ internal static class Program
                                                    repeatUntilCleared: campRepeat,
                                                    fleet1: campFleet1, fleet2: campFleet2,
                                                    submarineFleet: campSub, clearAll: campClearAll,
-                                                   serial: campSerial);
+                                                   serial: campSerial, artifactsDir: campArtifacts);
                     Console.WriteLine($"[plan    ] {r.Chapter} stage={r.Stage} tier={r.Tier} dry_run={r.DryRun}");
                     Console.WriteLine($"[steps   ] {string.Join(" → ", r.PlanSteps ?? new())}");
                     Console.WriteLine($"[语义轨迹] {string.Join(", ", r.SemanticTrace ?? new())}");
@@ -167,9 +170,54 @@ internal static class Program
                         Console.WriteLine($"[结果    ] elapsed={r.ElapsedSeconds}s stopped_early={r.StoppedEarly} " +
                                           $"stop_reason={r.StopReason} outcome={r.Outcome} cleared={r.Cleared} " +
                                           $"campaign_end={r.CampaignEnd} end_reason={r.EndReason}");
-                    campFailed |= r.Refused == true || r.Error is not null || (campRun && r.Cleared != true);
+                    // 结算证据单独打出来：判"通关"靠的是它，不是 campaign_end（撤退也抛 CampaignEnd）。
+                    if (r.EndEvidence is not null)
+                        Console.WriteLine($"[结算证据] rank={r.EndEvidence.BattleRank ?? "-"} " +
+                                          $"source={r.EndEvidence.RankSource ?? "-"} " +
+                                          $"combat_status={r.EndEvidence.CombatStatus?.ToString() ?? "-"} " +
+                                          $"stage_observed={r.EndEvidence.StageObserved?.ToString() ?? "-"} " +
+                                          $"withdrawn={r.EndEvidence.Withdrawn?.ToString() ?? "-"}");
+                    if (r.Failure is not null)
+                        Console.WriteLine($"[失败    ] step={r.Failure.Step} error={r.Failure.Error} " +
+                                          $"frame={r.Failure.Frame ?? "-"}");
+                    var contractViolations = Alas.Campaign.SortieContract.Violations(r, campArtifacts);
+                    Console.WriteLine($"[合同    ] {Alas.Campaign.SortieContract.Describe(r, campArtifacts)}");
+                    if (campArtifacts is not null)
+                    {
+                        string stamp = DateTime.Now.ToString("yyyyMMdd'T'HHmmss");
+                        string file = Path.Combine(campArtifacts,
+                            $"sortie-{(r.Stage ?? one).Replace('/', '_')}-{stamp}.json");
+                        File.WriteAllText(file, System.Text.Json.JsonSerializer.Serialize(r,
+                            new System.Text.Json.JsonSerializerOptions
+                            {
+                                WriteIndented = true,
+                                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+                            }));
+                        Console.WriteLine($"[工件    ] {file}");
+                    }
+                    campFailed |= r.Refused == true || r.Error is not null
+                                  || contractViolations.Count > 0
+                                  || (campRun && r.Cleared != true);
                 }
                 return campFailed ? 1 : 0;
+            }
+            if (command == "contract")
+            {
+                // 结果合同（sortie-result/1）的离线裁决：与 Python 侧逐例对拍用。
+                string? contractFixture = null, contractArtifacts = null, contractJson = null;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--fixture") contractFixture = args[i + 1];
+                    if (args[i] == "--artifacts") contractArtifacts = args[i + 1];
+                    if (args[i] == "--json") contractJson = args[i + 1];
+                }
+                if (contractFixture is null)
+                {
+                    Console.WriteLine("用法: contract --fixture <用例.json> [--artifacts <失败帧目录>] " +
+                                      "[--json <裁决.json>]");
+                    return 2;
+                }
+                return ContractCheck.Run(contractFixture, contractArtifacts, contractJson);
             }
             if (command == "capture")
             {
@@ -292,7 +340,8 @@ internal static class Program
                 "show" => Show(catalog, target),
                 "campaign" => CampaignCheck.Run(catalog, target),
                 _ => Fail($"未知命令: {command}"
-                          + "（可用: verify / list / show / imaging / matching / vision / campaign）"),
+                          + "（可用: verify / list / show / imaging / matching / vision / campaign / "
+                          + "map / map-ir / capture / device / goto / run / contract）"),
             };
         }
         catch (Exception ex)
