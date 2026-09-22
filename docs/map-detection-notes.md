@@ -271,3 +271,25 @@ if not self.emotion.is_ignore:      # is_ignore = 'ignore' in config.Emotion_Mod
 ⇒ 下一轮先打印**现场实例**的 `VANISH_POINT_RANGE` / `DISTANCE_POINT_X_RANGE`（以及章节 `Config`
 是否改了它们），再决定修法。**这一步是只读的，不需要出击**（`s3_campaign_init` + 读属性即可）。
 
+
+### 补记（round 138）：现场与离线配置**完全一致**（该假设也证伪），剩一个未解矛盾
+
+只读核对（`s3_campaign_init` 后读实例属性，未出击）：
+
+| 键 | 现场（bind Campaign 的实例） | 离线 `_map_config()` |
+| --- | --- | --- |
+| `VANISH_POINT_RANGE` | `((540, 740), (-3000, -1000))` | 同 |
+| `DISTANCE_POINT_X_RANGE` | `((-3200, -1600),)` | 同 |
+| `INTERNAL_LINES_HOUGHLINES_THRESHOLD` | **75**（章节 `Config` 的 30 并未生效） | 75 |
+| `TRUST_EDGE_LINES` / `_THRESHOLD` | `False` / `5` | — |
+
+⇒ "现场配置与离线不同"**不成立**（连同上一轮的"区间太窄"，两个配置类假设都已证伪）。
+
+**仍未解释的矛盾（下轮从这里进）**：现场日志反复打印
+`vanish_point: (654, -1425)` / `distant_point: (654, -1425)`，而 `DISTANCE_POINT_X_RANGE` 是
+`(-3200, -1600)` —— **654 不可能由该区间的 `optimize.brute` 返回**。
+所以那一行大概率**不是 `perspective.py:125-126` 打的**，而是 `homography.py` 里自己算/自己打的一份
+（它另有 vanish/distant 的日志与几何代码）。
+下轮第一步：`grep -n "distant_point" module/map_detection/*.py`，确认失败到底发生在哪一处的几何里 ——
+**这仍然是纯读代码 + 离线复现，不需要出击**。
+
