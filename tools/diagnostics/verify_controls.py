@@ -60,6 +60,15 @@ PLAN = [
                   ('module.retire.dock', 'DOCK_FAVOURITE')]},
     {'page': 'page_game_room',
      'rules': [('module.minigame.minigame', 'MINIGAME_SCROLL')]},
+    # 未建模但可达：船坞长按舰船卡片进「角色详情」（上游 ship_info_enter 的入口），
+    # 装备类规则在这里才命中。这一步不靠 goto（图里没有这个页），靠长按进。
+    {'page': 'ship_detail', 'enter': {'long_press': (640, 300)},
+     'rules': [('module.equipment.equipment_change', 'EQUIPMENT_SCROLL'),
+               ('module.equipment.equipment_change', 'equipping_filter')],
+     # 装备筛选开关在「装备选择」浮层里：点一个装备槽只会打开选择器，不改动任何装备
+     'probe': {'clicks': [(720, 156)], 'rules': [('module.equipment.equipment_change',
+                                                  'equipping_filter')]},
+     'leave': 'back'},
 ]
 
 
@@ -182,11 +191,20 @@ elif not ensure_device():
 for step in ([] if REPORT_ONLY else PLAN):
     page = step['page']
     s = shot()
-    if page not in s:
+    if step.get('enter'):
+        # 图里没有这个"页"，但可以靠一个动作进去（如长按舰船卡片进角色详情）
+        act = step['enter']
+        if 'long_press' in act:
+            x, y = act['long_press']
+            swipe(x, y, x, y, 1100)
+            time.sleep(2.0)
+            print('[enter] %s：长按 (%d,%d) 1100ms' % (page, x, y))
+        s = shot()
+    elif page not in s:
         ok, info = goto(page)
         print('[goto ] %-16s %s  (%s)' % (page, 'OK' if ok else 'NG', info))
         s = shot()
-    if page not in s:
+    if not step.get('enter') and page not in s:
         print('[跳过 ] %s 不在屏幕上（当前 %s）' % (page, s))
         for module, name in step.get('rules', []):
             report.append({'page': page, 'rule': name, 'verdict': 'blocked',
@@ -259,6 +277,27 @@ for step in ([] if REPORT_ONLY else PLAN):
                                      % (before.get('at_top'), mid.get('at_top'),
                                         after.get('at_top')),
                            'area': area, 'seen': s})
+    if step.get('probe'):
+        # 再进一层的探测器：点一下（只打开选择器，不做任何改动），再看规则是否命中
+        for (px, py) in step['probe'].get('clicks', []):
+            swipe(px, py, px, py, 80)
+            time.sleep(2.0)
+            s2 = shot()
+            print('[probe] 点击 (%d,%d) 后当前命中 %s' % (px, py, s2))
+            for module, name in step['probe'].get('rules', []):
+                res = op('ui_rule_check', module=module, name=name)
+                hit, detail = judge(res)
+                print('   %-24s %-8s %-4s %s' % (name, res['class'],
+                                                 'HIT' if hit else 'miss', detail))
+                report.append({'page': page, 'rule': name + '#probe', 'class': res['class'],
+                               'verdict': 'hit' if hit else 'miss', 'detail': detail,
+                               'module': module, 'seen': s2})
+    if step.get('leave') == 'back':
+        # 进过浮层就要退出来，别把用户/后续步骤留在里面
+        subprocess.run([ADB, '-s', SERIAL, 'shell', 'input', 'keyevent', '4'],
+                       capture_output=True)
+        time.sleep(2.0)
+        print('[leave] 返回键退出，当前命中 %s' % (shot(),))
 
 hits = sum(1 for r in report if r['verdict'] == 'hit')
 miss = sum(1 for r in report if r['verdict'] == 'miss')
@@ -308,7 +347,7 @@ def build_doc():
     rows = []
     for x in report:
         rule = x['rule']
-        if rule.endswith('#drive') or rule.endswith('#swipe'):
+        if rule.endswith(('#drive', '#swipe', '#probe')):
             continue          # 动作行单独成节，不混进规则总账
         if x['verdict'] == 'hit':
             status = LABEL['hit']
@@ -329,7 +368,7 @@ def build_doc():
     rows.append(('EventShopUI.event_shop_tab_count_and_navbar', '运行时计算', LABEL['blocked'],
                  '需进活动商店（本账号当前活动页可达，但商店入口需要活动开放对应玩法）'))
     rows.sort(key=lambda r: (r[2], r[0]))
-    actions = [x for x in report if x['rule'].endswith('#swipe') or x['rule'].endswith('#drive')]
+    actions = [x for x in report if x['rule'].endswith(('#swipe', '#drive', '#probe'))]
 
     lines = [
         '# 控件识别与滑动控制验证记录',
@@ -362,7 +401,8 @@ def build_doc():
         '',
         '`#swipe` = 在 Scroll 自己的区域里真滑，看 `at_top` 是否翻转；',
         '`#drive` = 读出开关状态 → 点上游规则给出的另一个状态的按钮 → 再读确认变化',
-        '→ **复原原状态**（验证不该留下痕迹）。',
+        '→ **复原原状态**（验证不该留下痕迹）；',
+        '`#probe` = 再进一层的探测点击（只打开选择器，不做任何改动）。',
         '开关驱动是控制能力的核心回路：识别出状态不难，难的是改它并复核。',
         '',
         '## 20 个控件规则的总账',

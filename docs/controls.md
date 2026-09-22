@@ -30,7 +30,10 @@
 | `page_dock` | `Dock.dock_filter` | Setting | hit | {"observed_active": ["faction/meta"], "option_count": 52, "settings": ["extra", "faction", "index", "rarity", "sort"]} |
 | `page_dock` | `DOCK_SORTING#drive` | Switch | hit | Descending -> Ascending（点 Ascending @(1050, 28)），复原 -> Descending |
 | `page_dock` | `DOCK_FAVOURITE#drive` | Switch | hit | off -> on（点 on @(735, 26)），复原 -> off |
-| `page_game_room` | `MINIGAME_SCROLL` | Scroll | hit | at_top=False at_bottom=False |
+| `page_game_room` | `MINIGAME_SCROLL` | Scroll | hit | at_top=False at_bottom=True |
+| `ship_detail` | `EQUIPMENT_SCROLL` | Scroll | hit | at_top=True at_bottom=False |
+| `ship_detail` | `equipping_filter` | Switch | miss | appear=False |
+| `ship_detail` | `equipping_filter#probe` | Switch | miss | appear=False |
 
 ## 滑动控制与开关驱动（动作，不是识别）
 
@@ -39,10 +42,12 @@
 | `page_storage` | `MATERIAL_SCROLL#swipe` | at_top True -> False -> False |
 | `page_dock` | `DOCK_SORTING#drive` | Descending -> Ascending（点 Ascending @(1050, 28)），复原 -> Descending |
 | `page_dock` | `DOCK_FAVOURITE#drive` | off -> on（点 on @(735, 26)），复原 -> off |
+| `ship_detail` | `equipping_filter#probe` | appear=False |
 
 `#swipe` = 在 Scroll 自己的区域里真滑，看 `at_top` 是否翻转；
 `#drive` = 读出开关状态 → 点上游规则给出的另一个状态的按钮 → 再读确认变化
-→ **复原原状态**（验证不该留下痕迹）。
+→ **复原原状态**（验证不该留下痕迹）；
+`#probe` = 再进一层的探测点击（只打开选择器，不做任何改动）。
 开关驱动是控制能力的核心回路：识别出状态不难，难的是改它并复核。
 
 ## 20 个控件规则的总账
@@ -61,18 +66,18 @@
 | `DOCK_SCROLL` | Scroll | ✅ 已命中 | at_top=True at_bottom=False |
 | `DOCK_SORTING` | Switch | ✅ 已命中 | appear=True |
 | `Dock.dock_filter` | Setting | ✅ 已命中 | {"observed_active": ["faction/meta"], "option_count": 52, "settings": ["extra", "faction", "index", "rarity", "sort"]} |
+| `EQUIPMENT_SCROLL` | Scroll | ✅ 已命中 | at_top=True at_bottom=False |
 | `MATERIAL_SCROLL` | Scroll | ✅ 已命中 | at_top=True at_bottom=False |
-| `MINIGAME_SCROLL` | Scroll | ✅ 已命中 | at_top=False at_bottom=False |
+| `MINIGAME_SCROLL` | Scroll | ✅ 已命中 | at_top=False at_bottom=True |
 | `ShopUI._shop_bottom_navbar` | Navbar | ✅ 已命中 | {"active": 0, "total": 5, "info": [0, 0, 4], "buttons": ["SHOP_BOTTOM_NAVBAR_0_0", "SHOP_BOTTOM_NAVBAR_1_0", "SHOP_BOTTOM_NAVBAR_2_0", "SHOP_BOTTOM_NAVBAR_3_0", "SHOP_BOTTOM_NAVBAR_4_0"], "active_color": [33, 195, 239], "inactive_color": [181, 178, 181]} |
 | `StorageUI.storage_filter` | Setting | ✅ 已命中 | {"observed_active": [], "option_count": 6, "settings": ["rarity"]} |
 | `VOUCHER_SHOP_SCROLL` | Scroll | ✅ 已命中 | at_top=True at_bottom=False |
-| `EQUIPMENT_SCROLL` |  | ➡️ 需更深流程 | 需进「舰船详情 → 装备」浮层，不是页面图里的独立页 |
 | `FLEET_LOCK` | Switch | ➡️ 需更深流程 | 舰队编辑浮层里的锁定开关（不是 page_fleet 本身） |
 | `FORMATION` | Switch | ➡️ 需更深流程 | 出击前「阵型」面板 |
 | `RETIRE_CONFIRM_SCROLL` |  | ➡️ 需更深流程 | 需进退役确认弹窗 |
 | `SUBMARINE_HUNT` | Switch | ➡️ 需更深流程 | 潜艇面板（需先有潜艇） |
 | `SUBMARINE_VIEW` | Switch | ➡️ 需更深流程 | 同上 |
-| `equipping_filter` |  | ➡️ 需更深流程 | 同上（装备筛选开关在装备浮层里） |
+| `equipping_filter` | Switch | ➡️ 需更深流程 | appear=False |
 | `ShopUI.shop_nav_250814` | Switch | 🕐 UI 版本差异 | 本客户端是 250814 之前的老版商店 UI：可选状态是 NAV_GENERAL/NAV_MONTHLY，实测 unknown（新版商店才有这两个导航项；老版走 _shop_bottom_navbar，已命中） |
 | `ShopUI.shop_tab_250814` | Switch | 🕐 UI 版本差异 | 同上（9 个新版页签 TAB_* 都不在屏上） |
 

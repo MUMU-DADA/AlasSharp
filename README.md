@@ -190,6 +190,17 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 
 ## 验收记录
 
+识别与控制的总体状态（真机 = MuMu 模拟器 1280x720 国服）：
+
+| 范围 | 状态 | 证据 |
+|---|---|---|
+| 页面规则（53 个 Page） | 29 真机命中；5 受游戏状态阻塞；19 原因已定位（依赖阻塞页 / 活动类型不同 / 上游无入边） | `docs/page-verification.md` |
+| 控件规则（20 模块级 + 4 cached_property） | 已命中 15 条（含滑动 1、开关驱动 2）；未命中/阻塞逐条分类（需更深流程 / UI 版本差异 / 游戏状态阻塞） | `docs/controls.md` |
+| 控制原语（返回键 / 长按 / 滑动） | 4/4 真机验证；长按用**上游自己的判据**（`EQUIPMENT_OPEN`）验收 | `docs/primitives.md` |
+| 页面导航（`alashub goto`） | 运行时向上游要图 + 变体择优 + 未建模画面按返回自救 | `docs/navigation.md` |
+
+单项文档：
+
 | 文档 | 内容 |
 |---|---|
 | `docs/page-verification.md` | 53 个页面规则的真机导航验证：29 个已在该页命中，5 个受游戏状态阻塞，19 个原因已定位 |
