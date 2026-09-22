@@ -13,8 +13,8 @@
 | --- | --- | --- | --- |
 | keyevent BACK | `adb shell input keyevent 4` | hit | input keyevent 4 |
 | keyevent BACK | `adb shell input keyevent 4` | hit | input keyevent 4 |
-| long click (adb form) | `input swipe x y x y 1000~1200`（同点滑动） | hit | input swipe x y x y 1100（上游 long_click 的 adb 形态）→ EQUIPMENT_OPEN match=True score=0.9914；判据取自上游 ship_info_enter |
-| swipe (real device) | `input swipe x1 y1 x2 y2 <ms>` | hit | at_top: 起始 True -> 拖着滚动条滑块往下 6 次 False -> 往上 3 次 False：判定随滑动翻转，说明 input swipe 在真的驱动画面。上游的时长系数 ×2.5 未在此隔离验证（布尔判据分辨不出） |
+| long click (adb form) | `input swipe x y x y 1000~1200`（同点滑动） | hit | input swipe x y x y 1100（上游 long_click 的 adb 形态）→ EQUIPMENT_OPEN match=True score=0.9922；判据取自上游 ship_info_enter |
+| swipe (real device) | `input swipe x1 y1 x2 y2 <ms>` | hit | at_top: 起始 True -> 拖着滚动条滑块往下 6 次 False -> 往上 3 次 True：判定随滑动翻转，说明 input swipe 在真的驱动画面。上游的时长系数 ×2.5 未在此隔离验证（布尔判据分辨不出） |
 
 长按那一条值得单独说：判据用的是**上游自己的验收条件**。
 `module/equipment/equipment.py` 的 `ship_info_enter()` 等的就是 `EQUIPMENT_OPEN` 出现，
