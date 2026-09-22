@@ -13,7 +13,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 | 大世界单应性 | ✅ | `GlobeDetection.load` 成功并给出单应矩阵 |
 | 坐标往返自检 | ✅ | screen→globe→screen 误差 < 1e-6（同一变换的逆）
 | 非地图负样本 | ✅ | 非地图画面返回"未检测到 + 原因"，不崩 |
-| 地图正样本 | ⏳ 缺正样本 | 需要真机地图画面（见下） |
+| 地图正样本 | ✅ 1 张检测到网格 | 需要真机地图画面（见下） |
 
 ## 素材链明细
 
@@ -83,8 +83,8 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 | fixture | globe | 往返误差 | map detected | 原因 |
 | --- | --- | --- | --- | --- |
 | `map_2_1.png` | — | — | False | No vertical line detected |
-| `map_settled.png` | — | — | False | TypeError: arrays to stack must be passed as a "sequence" type such as list or t |
-| `os_map.png` | — | — | False | TypeError: arrays to stack must be passed as a "sequence" type such as list or t |
+| `map_settled.png` | — | — | True |  |
+| `os_map.png` | — | — | False | Vanish point and distant point too close |
 
 ## 正样本从哪来（这是完成 S2 验收的唯一缺口）
 
@@ -115,7 +115,21 @@ python tools/diagnostics/verify_map_detection.py                     # 重新验
 | **当前所在位置**（`find_peaks` / screen2globe 的实际落点） | ⏳ 必须真机 OS 地图截图 |
 | 战役地图的网格识别（`View.load` 正路径） | ⏳ 已抓到真机地图，但**检测失败**（见下节） |
 
-## 真机战斗地图正样本：检测失败，且已定位到具体一步
+## 真机战斗地图正样本：**已检测成功**（结论在最后，前面是完整排查过程）
+
+> **结论**：正样本 `map_settled.png` 检出 **24 格、shape [5,3]（即 6×4）**，
+> 与画面上的 A–F 列 × 1–4 行完全一致。真正的卡点是**上游与 numpy 2 不兼容**：
+> `Lines.cross` 里写的是 `np.vstack(self.cross_two_lines(...))`，而 `cross_two_lines`
+> 是**生成器**，numpy 2 不再接受（实测 numpy 2.4.6 报
+> `TypeError: arrays to stack must be passed as a "sequence" type`）。
+> 本环境是 Python 3.14，只能配 numpy 2，所以地图识别会卡在这一步 ——
+> **表象极像"识别不到地图"，实际与客户端 UI 毫无关系**。
+> 修法是 `apply_numpy2_compat()`：只把生成器具体化成 list，
+> **上游代码一行不改**，检测算法仍全部是上游的。
+> 另外 `map_2_1.png`（我第一张样本）是**入场动画期间**抓的脏样本，
+> 垫片后仍失败属正常，保留它作为"取样时机很重要"的证据。
+
+以下是完整排查过程（含两次被推翻的判断），保留下来是因为每一步都有可复现的数字。
 
 正样本 `data/fixtures/map_2_1.png` 是真实战斗地图（网格 A-F × 1-4，即 shape `F4`，含 Lv.11 敌舰）。
 `map_detect` 在它上面失败：homography 与 perspective **两个后端**都报

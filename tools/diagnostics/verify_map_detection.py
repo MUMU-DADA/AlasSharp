@@ -105,9 +105,17 @@ def main():
         rt = max(abs(x[0] - y[0]) + abs(x[1] - y[1])
                  for x, y in zip(pts_in, results['globe']['globe2screen']))
         rt_ok = rt < 1e-6
-    negative_ok = all((not m.get('detected')) and m.get('reason') for m in results['map']) \
-        if results['map'] else None
+    # 判定口径：
+    #   正样本 = 有 fixture 被检出（真机战斗地图）
+    #   负样本 = **非地图画面**（campaign 菜单那张 os_map.png）必须"未检出且给出原因"
+    negative_targets = [m for m in results['map']
+                        if 'os_map' in m.get('fixture', '') or 'menu' in m.get('fixture', '')]
+    negative_ok = all((not m.get('detected')) and m.get('reason')
+                      for m in negative_targets) if negative_targets else None
     positive = [m for m in results['map'] if m.get('detected')]
+    # 动画期/脏样本被检出与否不算判定项，但要在报告里如实列出
+    dirty = [m.get('fixture') for m in results['map']
+             if not m.get('detected') and not m.get('reason')]
 
     lines = [
         '# S2 地图识别适配与验收',
@@ -184,7 +192,21 @@ def main():
         '| **当前所在位置**（`find_peaks` / screen2globe 的实际落点） | ⏳ 必须真机 OS 地图截图 |',
         '| 战役地图的网格识别（`View.load` 正路径） | ⏳ 已抓到真机地图，但**检测失败**（见下节） |',
         '',
-        '## 真机战斗地图正样本：检测失败，且已定位到具体一步',
+        '## 真机战斗地图正样本：**已检测成功**（结论在最后，前面是完整排查过程）',
+        '',
+        '> **结论**：正样本 `map_settled.png` 检出 **24 格、shape [5,3]（即 6×4）**，',
+        '> 与画面上的 A–F 列 × 1–4 行完全一致。真正的卡点是**上游与 numpy 2 不兼容**：',
+        '> `Lines.cross` 里写的是 `np.vstack(self.cross_two_lines(...))`，而 `cross_two_lines`',
+        '> 是**生成器**，numpy 2 不再接受（实测 numpy 2.4.6 报',
+        '> `TypeError: arrays to stack must be passed as a "sequence" type`）。',
+        '> 本环境是 Python 3.14，只能配 numpy 2，所以地图识别会卡在这一步 ——',
+        '> **表象极像"识别不到地图"，实际与客户端 UI 毫无关系**。',
+        '> 修法是 `apply_numpy2_compat()`：只把生成器具体化成 list，',
+        '> **上游代码一行不改**，检测算法仍全部是上游的。',
+        '> 另外 `map_2_1.png`（我第一张样本）是**入场动画期间**抓的脏样本，',
+        '> 垫片后仍失败属正常，保留它作为"取样时机很重要"的证据。',
+        '',
+        '以下是完整排查过程（含两次被推翻的判断），保留下来是因为每一步都有可复现的数字。',
         '',
         '正样本 `data/fixtures/map_2_1.png` 是真实战斗地图（网格 A-F × 1-4，即 shape `F4`，含 Lv.11 敌舰）。',
         '`map_detect` 在它上面失败：homography 与 perspective **两个后端**都报',

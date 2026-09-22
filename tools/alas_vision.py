@@ -936,6 +936,40 @@ def op_rule_positive_control(args):
             'failed_rules': [x['rule'] for x in failed]}
 
 
+_NUMPY2_COMPAT_DONE = False
+
+
+def apply_numpy2_compat():
+    """上游与 numpy 2 的兼容垫片（**上游代码一行不改**）。
+
+    上游 `module/map_detection/utils.py` 的 `Lines.cross` 写的是：
+
+        points = np.vstack(self.cross_two_lines(self, other))
+
+    而 `cross_two_lines` 是个**生成器**。numpy 2 不再接受把生成器直接交给 `np.vstack`，
+    实测报：`TypeError: arrays to stack must be passed as a "sequence" type such as list or tuple.`
+
+    本环境是 Python 3.14（只能配 numpy 2.4.6），所以地图识别会卡在这一步 ——
+    表象很像"识别不到地图"，实际与客户端 UI 毫无关系。
+
+    垫片只把生成器具体化成 list，检测算法本身仍然全部是上游的。
+    """
+    global _NUMPY2_COMPAT_DONE
+    if _NUMPY2_COMPAT_DONE:
+        return
+    _NUMPY2_COMPAT_DONE = True
+    try:
+        import numpy as _np
+        from module.map_detection import utils as _md_utils
+        major = int(str(_np.__version__).split('.')[0])
+        if major >= 2 and hasattr(_md_utils.Lines, 'cross_two_lines'):
+            _orig = _md_utils.Lines.cross_two_lines
+            _md_utils.Lines.cross_two_lines = staticmethod(lambda l1, l2: list(_orig(l1, l2)))
+    except Exception:
+        # 垫片失败不该让 op 直接崩：真有问题会在调用处以原始异常暴露
+        pass
+
+
 def _map_config():
     """S2 需要上游配置（`DETECTION_BACKEND` 等决定用 Homography 还是 Perspective 后端）。
     做法与 cached_rule_check 一致：用上游自己的 AzurLaneConfig，不自己造配置层。"""
@@ -980,6 +1014,7 @@ def op_map_detect(args):
     """
     import module.map_detection.view as view_mod
     image = _require_image()
+    apply_numpy2_compat()
     cfg = _map_config()
     # 上游有两个检测后端（Homography / Perspective），由 config.DETECTION_BACKEND 选。
     # 允许显式指定：真机上出现过 homography 后端"找不到水平线/垂直线"而画面明明有网格，
@@ -1048,6 +1083,7 @@ def op_globe_detect(args):
     """
     import module.os.globe_detection as gd
     image = _require_image()
+    apply_numpy2_compat()
     cfg = _map_config()
     try:
         det = gd.GlobeDetection(cfg)
@@ -1091,6 +1127,7 @@ def op_map_detect_trace(args):
     from module.map_detection.utils_assets import Assets
 
     image = _require_image()
+    apply_numpy2_compat()
     cfg = _map_config()
     p = persp.Perspective(config=cfg)
     out = {}
