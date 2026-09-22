@@ -911,3 +911,24 @@ AFTER pages=['page_campaign']    ← 跑完时游戏已自己回到战役页（*
 4. 本轮 `max_rounds=2` 封顶（未设更大），所以 `campaign_end=None` 是"到轮数上限"而不是失败。
 
 **批量跑计划进度**：**2-1 ✅（CampaignEnd 清图）**、**2-2 ✅（2 轮 4 步，游戏自行结束）**。
+
+### ✅ 3-1 端到端跑通 + **新完成信号实测正确**
+
+```
+PLAN stage=3-1 elapsed=130.8s stopped_early=False（stop_reason=None：由 max_rounds 封顶结束）
+  R1 battle_0 57109.4 ok | R1 battle_3 7996.7 ok | R1 **sortie_state = still_in_map**
+  R2 battle_0 43683.4 ok | R2 battle_3 10460.0 ok
+AFTER pages=['page_campaign']    ← 跑完时游戏已自行回到战役页（出击已结束）
+归位 page_main ✓
+```
+
+**三点**：
+
+1. **新的完成信号（上游语义）实测正确**：第一轮后如实报 `still_in_map` → 继续第二轮；
+   不再出现那个不可靠的 `enemies_left` 数字（它此前一直误报 2/3）；
+2. **第 3 个端到端驱动的关卡**：2-1 ✅（CampaignEnd 清图）、2-2 ✅、**3-1 ✅**；
+3. `stop_reason=None` 是**如实**的 —— 本轮是被 `max_rounds=2` 封顶结束，而不是状态判定结束
+   （若要看到 `left_map` / `map_clear_100`，把 `max_rounds` 放宽即可）。
+
+**S3 累计实战数据**：`s3_run_plan` 已在 **3 个关卡**上执行，共 **13 次真实战斗**
+（2-1 五次 + 2-2 四次 + 3-1 四次），**全部 `err=None`**。
