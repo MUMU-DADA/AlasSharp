@@ -1345,7 +1345,17 @@ def op_s3_abort_unfinished(args):
     都会弹这个对话框，上游不识别 → 干等 60s → `GameStuckError`（实测 3-2）。
     做法：量「撤退」按钮区域的红像素占比，超阈值就点它。`dry=true` 只检测不点击。
     """
-    image = _require_image()
+    # **必须现抓一帧**：本 op 在 `enter_map` 卡住时被调用，而宿主缓存里（`_state['image']`）
+    # 还是进图**之前**那一帧 —— 读缓存会永远看不到当下的弹窗（实测：自愈时报 red=0.0 而弹窗就在屏幕上）。
+    import cv2 as _cv2
+    try:
+        _dev = _device_engine()
+        _dev.screenshot()
+        image = getattr(_dev, 'image', None)
+        if image is None:
+            image = _require_image()
+    except Exception:
+        image = _require_image()
     x1, y1, x2, y2 = _UNFINISHED_RED_BOX
     patch = image[y1:y2, x1:x2]
     try:

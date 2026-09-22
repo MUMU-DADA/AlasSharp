@@ -958,3 +958,33 @@ AFTER pages=['page_campaign']    ← 跑完时游戏已自行回到战役页（�
 
 **S3 累计实战数据**：`s3_run_plan` 已在 **3 个关卡**上执行，共 **13 次真实战斗**
 （2-1 五次 + 2-2 四次 + 3-1 四次），**全部 `err=None`**。
+
+### ✅✅ 自愈逻辑实测通过（并抓出/修掉一个我自己的 bug）
+
+第一次实测自愈时**失败了**，原因是我的 op 读的是**宿主缓存的帧**（`_state['image']`）——
+那还是进图**之前**那一帧，所以永远看不到当下的弹窗：
+
+```
+enter_map 60154.7 ms err=GameStuckError
+enter_map_abort  dialog=False red=0.0        ← 弹窗就在屏幕上，却说没有
+enter_map_retry  60092.1 ms err=GameStuckError
+```
+
+修法：op 里**现抓一帧**（`_device_engine().screenshot()`）再做像素判定。修后重测：
+
+```
+ensure_chapter    137.4 ms  ok
+abort_unfinished  dialog=False red=None       ← 进图前：确实无弹窗（正确）
+enter_map         60188.0 ms err=GameStuckError   ← 卡在弹窗上
+enter_map_abort   dialog=True  red=0.3271     ← ★ 正确识别
+enter_map_retry   **7925.7 ms ok**            ← ★★ 点掉弹窗后重试成功进图
+map_init          2944.6 ms  ok
+battle_0          54162.2 ms ok               ← 3-2 的两步战斗也跑完
+battle_3          10862.6 ms ok
+AFTER page_campaign ✓
+```
+
+**意义**：那个耗了约 10 轮才定位的"隐形陷阱"（未完成出击弹窗），现在**执行器自动处理** ——
+不再依赖"人记住每次出击必须真正结束"这种手工纪律。**3-2 也因此成为第 4 个端到端驱动的关卡。**
+
+**方法论又一次生效**：实测失败 → **看证据**（谁读的哪一帧）→ 找到"读缓存 vs 现抓"的差别 → 修 → 重测通过。
