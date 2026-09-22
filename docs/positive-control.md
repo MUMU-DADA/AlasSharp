@@ -31,6 +31,40 @@
 | --- | --- |
 | `page_unknown` | Page(None)：没有 check 素材（合成实体） |
 
+## 控件规则（模块级 Switch）的正对照
+
+做法：对开关的**每个状态**，单独把该状态的 check 素材贴到它自己的区域，
+再调上游 `Switch.get()` —— 应当正好返回那个状态名。
+
+| 项 | 数量 |
+| --- | --- |
+| 模块级规则总数 | 20 |
+| Switch 正对照通过 | **10** |
+| 跳过（Scroll：判定依赖颜色/掩码，贴模板图构造不出来） | 10 |
+| 失败 | 0 |
+
+通过的开关（含真机上到不了的）：
+
+| 开关 | 每个状态贴图后的 get() 结果 |
+| --- | --- |
+| `COMMISSION_SWITCH` | daily→daily；urgent→urgent |
+| `equipping_filter` | on→on；off→off |
+| `FLEET_LOCK` | on→on；off→off |
+| `FORMATION` | line_ahead→line_ahead；double_line→double_line；diamond→diamond |
+| `SUBMARINE_HUNT` | on→on；off→off |
+| `SUBMARINE_VIEW` | on→on；off→off |
+| `ISLAND_DOCK_SORTING` | Ascending→Ascending；Descending→Descending |
+| `SWITCH_LOCK` | lock→lock；unlock→unlock |
+| `DOCK_SORTING` | Ascending→Ascending；Descending→Descending |
+| `DOCK_FAVOURITE` | on→on；off→off |
+
+注意 `equipping_filter` / `FLEET_LOCK` / `FORMATION` / `SUBMARINE_HUNT` /
+`SUBMARINE_VIEW` / `ISLAND_DOCK_SORTING` / `SWITCH_LOCK` 这几条在真机上到不了，
+但正对照全过 —— 说明它们的**状态判定是活的**，缺的只是游戏走到那一屏的条件。
+
+10 个 Scroll 无法用贴图构造（`at_top`/`at_bottom` 比的是滚动条颜色掩码）；
+其中 6 个已在真机上命中过（见 `controls.md`），剩 4 个受阻塞。
+
 ## 与真机结果的关系
 
 正对照通过但真机没验过的页面共 23 个 —— 它们都是受外部条件阻塞的：

@@ -47,6 +47,18 @@ def main():
         json.dump(r, f, ensure_ascii=False, indent=2, default=str)
     print('明细: %s' % os.path.abspath(out))
 
+    # 控件规则（模块级 Switch）的正对照
+    rc = op('rule_positive_control')
+    print('=== 控件规则正对照：%d 条 ===' % rc['total'])
+    print('通过 %d / 跳过 %d / 失败 %d' % (rc['passed'], rc['skipped'], rc['failed']))
+    for x in rc['results']:
+        if x['verdict'] == 'fail':
+            print('  [fail] %s：%s' % (x['rule'], x['detail']))
+    out2 = os.path.join(HERE, '..', 'data', 'rule_positive_control.json')
+    with open(out2, 'w', encoding='utf-8') as f:
+        json.dump(rc, f, ensure_ascii=False, indent=2, default=str)
+    print('明细: %s' % os.path.abspath(out2))
+
     # 与真机验证结果对照：哪些页面"正对照过了但真机到不了"
     with open(os.path.join(HERE, '..', 'docs', 'page-verification.json'),
               encoding='utf-8') as f:
@@ -104,6 +116,35 @@ def main():
     else:
         lines.append('无')
     lines += [
+        '',
+        '## 控件规则（模块级 Switch）的正对照',
+        '',
+        '做法：对开关的**每个状态**，单独把该状态的 check 素材贴到它自己的区域，',
+        '再调上游 `Switch.get()` —— 应当正好返回那个状态名。',
+        '',
+        '| 项 | 数量 |',
+        '| --- | --- |',
+        '| 模块级规则总数 | %d |' % rc['total'],
+        '| Switch 正对照通过 | **%d** |' % rc['passed'],
+        '| 跳过（Scroll：判定依赖颜色/掩码，贴模板图构造不出来） | %d |' % rc['skipped'],
+        '| 失败 | %d |' % rc['failed'],
+        '',
+        '通过的开关（含真机上到不了的）：',
+        '',
+        '| 开关 | 每个状态贴图后的 get() 结果 |',
+        '| --- | --- |',
+    ]
+    for x in rc['results']:
+        if x['verdict'] == 'pass':
+            lines.append('| `%s` | %s |' % (x['rule'], x['detail']))
+    lines += [
+        '',
+        '注意 `equipping_filter` / `FLEET_LOCK` / `FORMATION` / `SUBMARINE_HUNT` /',
+        '`SUBMARINE_VIEW` / `ISLAND_DOCK_SORTING` / `SWITCH_LOCK` 这几条在真机上到不了，',
+        '但正对照全过 —— 说明它们的**状态判定是活的**，缺的只是游戏走到那一屏的条件。',
+        '',
+        '10 个 Scroll 无法用贴图构造（`at_top`/`at_bottom` 比的是滚动条颜色掩码）；',
+        '其中 6 个已在真机上命中过（见 `controls.md`），剩 4 个受阻塞。',
         '',
         '## 与真机结果的关系',
         '',

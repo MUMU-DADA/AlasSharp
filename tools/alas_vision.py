@@ -863,6 +863,79 @@ def op_page_positive_control(args):
             'failed_pages': [r['page'] for r in failed]}
 
 
+def op_rule_positive_control(args):
+    """模块级控件规则的合成正对照（目前覆盖 Switch）。
+
+    对每个开关的每个状态：单独把**该状态的 check 素材**贴到它自己的区域，
+    然后调上游 `Switch.get()` —— 应当正好返回那个状态名。
+    这证明开关的 state_list 是活的（素材能加载、状态与素材配对正确、get 的遍历有效），
+    与"页面上到不了"是两件事。
+
+    Scroll / Navbar / Setting 的判定依赖颜色与掩码，不是"贴模板图"能构造的，
+    这里如实标为 skipped，不假装验过。
+    """
+    import importlib
+    import numpy as np
+
+    saved = _state['image']
+    results = []
+    try:
+        rules = op_ui_rule_list({})['rules']
+        for r in rules:
+            mod = importlib.import_module(r['module'])
+            obj = getattr(mod, r['name'])
+            kind = type(obj).__name__
+            if kind != 'Switch':
+                results.append({'rule': r['name'], 'kind': kind, 'verdict': 'skip',
+                                'detail': '判定依赖颜色/掩码，贴模板图构造不出来'})
+                continue
+            states = getattr(obj, 'state_list', []) or []
+            if not states:
+                results.append({'rule': r['name'], 'kind': kind, 'verdict': 'fail',
+                                'detail': 'state_list 为空：这个开关没有任何状态'})
+                continue
+            per_state, errors = [], []
+            for data in states:
+                cb = data.get('check_button')
+                state = data.get('state')
+                if cb is None:
+                    errors.append('%s: 没有 check_button' % state)
+                    continue
+                try:
+                    cb.ensure_template()
+                    template = cb.image
+                    if isinstance(template, list):
+                        template = template[0]
+                    h, w = template.shape[:2]
+                    x1, y1 = int(cb.area[0]), int(cb.area[1])
+                    if y1 + h > 720 or x1 + w > 1280:
+                        errors.append('%s: 区域超出 1280x720' % state)
+                        continue
+                    canvas = np.zeros((720, 1280, 3), dtype=np.uint8)
+                    canvas[y1:y1 + h, x1:x1 + w] = template
+                    _state['image'] = canvas
+                    got = obj.get(_make_main_shim(canvas))
+                    per_state.append({'state': state, 'got': got, 'ok': got == state})
+                except Exception as e:
+                    errors.append('%s: %s: %s' % (state, type(e).__name__, e))
+            ok = bool(per_state) and all(s['ok'] for s in per_state)
+            results.append({'rule': r['name'], 'kind': kind,
+                            'verdict': 'pass' if ok else 'fail',
+                            'detail': '；'.join('%s→%s' % (s['state'], s['got'])
+                                                for s in per_state)
+                                      + ('；错误: %s' % '; '.join(errors) if errors else ''),
+                            'states': per_state})
+    finally:
+        _state['image'] = saved
+
+    passed = sum(1 for x in results if x['verdict'] == 'pass')
+    skipped = sum(1 for x in results if x['verdict'] == 'skip')
+    failed = [x for x in results if x['verdict'] == 'fail']
+    return {'results': results, 'total': len(results), 'passed': passed,
+            'skipped': skipped, 'failed': len(failed),
+            'failed_rules': [x['rule'] for x in failed]}
+
+
 def op_ui_rules_sweep(args):
     """
     界面与控件识别的**统一验收**：一次跑完三类实体并汇总。
@@ -986,6 +1059,7 @@ OPS = {
     'ui_page_graph': op_ui_page_graph,
     'cached_rule_check': op_cached_rule_check,
     'page_positive_control': op_page_positive_control,
+    'rule_positive_control': op_rule_positive_control,
 }
 
 
