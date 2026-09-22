@@ -13,7 +13,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 | 大世界单应性 | ✅ | `GlobeDetection.load` 成功并给出单应矩阵 |
 | 坐标往返自检 | ✅ | screen→globe→screen 误差 < 1e-6（同一变换的逆）
 | 非地图负样本 | ✅ | 非地图画面返回"未检测到 + 原因"，不崩 |
-| 地图正样本 | ✅ 6 张检测到网格 | 需要真机地图画面（见下） |
+| 地图正样本 | ✅ 9 张检测到网格 | 需要真机地图画面（见下） |
 | 检测 vs 关卡 IR | ✅ 3 张一致 | 检出的格数/形状必须与该关卡声明的 map_data 一致 |
 
 ## 素材链明细
@@ -41,7 +41,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
     "globe_center: (np.float64(2075.0), np.float64(414.0))",
-    "0.079s      similarity: 0.093",
+    "0.085s      similarity: 0.093",
     "Low similarity when matching OS globe"
   ],
   "similarity": 0.093,
@@ -96,6 +96,10 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 | --- | --- | --- | --- | --- |
 | `_probe_now.png` | — | — | True |  |
 | `_probe_r17.png` | — | — | True |  |
+| `inmap_2-2.png` | — | — | True |  |
+| `inmap_3-1.png` | — | — | True |  |
+| `inmap_3-2.png` | — | — | True |  |
+| `inmap_7-1.png` | — | — | False | error: OpenCV(5.0.0) D:\a\opencv-python\opencv-python\opencv\modules\core\src\al |
 | `map_2_1.png` | — | — | False | No vertical line detected |
 | `map_event.png` | — | — | True |  |
 | `map_hard_1_4.png` | — | — | True |  |
