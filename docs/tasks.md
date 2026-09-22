@@ -79,7 +79,33 @@ alashub queue --file queue.json [--run --allow-actions] [--serial <设备>] `
 ]}
 ```
 
-## 五、第二个域：账号状态（只读）
+## 六、第四个域：活动章节清点（纯离线）+ 生成队列
+
+`EventStateTask`（`kind = "event_state"`）回答"跑活动之前必须先知道的事"：导出的契约里
+**有哪些活动章节、计划完整度如何、哪些能跑**。
+
+- **没有第二份章节表**：数据来自 S0 冻结的同一份 `data/campaign` 契约（`alashub campaign` 用的也是它）；
+- **不认地图名/编号**：筛选条件是输入给的"来源目录前缀"（默认 `event_`），代码里没有关卡清单；
+- **输入**：`folder_prefix` / `only_complete` / `limit`；
+- **结论**：清单读出来即 `Succeeded` —— **"一个活动都没有"是有效状态**；契约读不出来才 `Failed`。
+
+把清点接到执行上的是 `alashub plan-queue`：
+
+```powershell
+# 生成的是**普通队列文件**：后面照样 queue / --resume / report，不需要新机制
+alashub plan-queue --out events.json --only-complete --limit 5
+alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真跑加 --run --allow-actions
+```
+
+筛选规则**只有一处**（`EventStateTask.Select`），清点任务与生成器共用 —— 两边各写一套
+筛选迟早会走偏。实测：`event_*` 匹配 879 章、其中计划完整 768 章（A 644 / B 124）；
+生成的 3 关队列 dry-run 全部跑通并逐任务落盘工件。
+
+> 纪律提醒：`plan-queue` 只做"翻译成任务"，**不新增判据**；队列里的任务默认 `required=false`
+> （一个活动关跑不动不该把整条队列停掉），但失败仍按"失败即停"停下，要跑完请显式
+> `--continue-on-error`。
+
+## 七、第二个域：账号状态（只读）
 
 `AccountStateTask`（`kind = "account_state"`）回答"现在是什么状态"：当前页面、**在不在图里**、
 服务器、章节实例与账号配置要点。它是**只读**的 —— 不点击、不导航，只有 `capture=true`

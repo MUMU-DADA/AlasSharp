@@ -162,6 +162,40 @@ internal static class Program
                 PrintQueueReport(queueResult, requests);
                 return queueResult.FailedCount == 0 ? 0 : 1;
             }
+            if (command == "plan-queue")
+            {
+                // R2 数据面：把活动清点结果翻译成**普通队列文件**（后面照样 queue/report/--resume）。
+                string prefix = "event_", outPath = ""; bool onlyComplete = false, dryRun = true;
+                int limit = 5, maxRounds = 20; double maxSeconds = 1500;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--folder-prefix") prefix = args[i + 1];
+                    if (args[i] == "--out") outPath = args[i + 1];
+                    if (args[i] == "--limit" && int.TryParse(args[i + 1], out int n)) limit = n;
+                    if (args[i] == "--max-rounds" && int.TryParse(args[i + 1], out int mr)) maxRounds = mr;
+                    if (args[i] == "--max-seconds" && double.TryParse(args[i + 1], out double ms)) maxSeconds = ms;
+                }
+                foreach (var a in args) { if (a == "--only-complete") onlyComplete = true; if (a == "--run") dryRun = false; }
+                if (outPath.Length == 0)
+                {
+                    Console.WriteLine("用法: plan-queue --out <队列.json> [--folder-prefix event_] "
+                                      + "[--only-complete] [--limit 5] [--max-rounds 20] [--max-seconds 1500] [--run]");
+                    return 2;
+                }
+                var (count, document) = Alas.Tasks.TaskQueuePlanner.Build(dataDir, prefix, onlyComplete,
+                    limit, maxRounds, maxSeconds, dryRun);
+                string full = Path.GetFullPath(outPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                File.WriteAllText(full, document.ToJsonString(
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                Console.WriteLine($"[计划    ] {count} 个任务（匹配 {document["matched"]}/"
+                                  + $"{document["chapters_total"]} 章，前缀 {prefix}"
+                                  + (onlyComplete ? "，只要计划完整" : "") + "）");
+                Console.WriteLine($"[队列文件] {full}");
+                Console.WriteLine($"[提醒    ] 生成的是普通队列文件：alashub queue --file <该文件>"
+                                  + (dryRun ? "（默认 dry-run）" : "（--run --allow-actions）"));
+                return 0;
+            }
             if (command == "report")
             {
                 // R2：把一次运行的工件读回来 —— 只读汇总 + 证据完整性检查（不重判通关）。

@@ -48,17 +48,7 @@ public sealed class EventStateTask : ITaskRunner
         try
         {
             var catalog = UpstreamData.Catalog.Open(context.Options.DataDirectory);
-            var matched = new List<CampaignIndexEntry>();
-            int total = 0;
-            foreach (var entry in catalog.Campaign.Chapters)
-            {
-                token.ThrowIfCancellationRequested();
-                total++;
-                string folder = Folder(entry.Source);
-                if (!folder.Contains(prefix, StringComparison.OrdinalIgnoreCase)) continue;
-                if (onlyComplete && !entry.PlanComplete) continue;
-                matched.Add(entry);
-            }
+            var matched = Select(catalog, prefix, onlyComplete, token, out int total);
             var byTier = matched.GroupBy(e => e.Tier ?? "?")
                 .OrderBy(g => g.Key, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.Count());
@@ -104,15 +94,36 @@ public sealed class EventStateTask : ITaskRunner
         return result;
     }
 
+    /// <summary>
+    /// 按"来源目录前缀"筛章节。**筛选规则只有这一处** —— 清点任务与
+    /// `alashub plan-queue`（据清点结果生成队列）都调它，避免两边各写一套筛选慢慢走偏。
+    /// </summary>
+    public static List<CampaignIndexEntry> Select(UpstreamData.Catalog catalog, string prefix,
+                                                  bool onlyComplete, CancellationToken token,
+                                                  out int total)
+    {
+        var matched = new List<CampaignIndexEntry>();
+        total = 0;
+        foreach (var entry in catalog.Campaign.Chapters)
+        {
+            token.ThrowIfCancellationRequested();
+            total++;
+            if (!Folder(entry.Source).Contains(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            if (onlyComplete && !entry.PlanComplete) continue;
+            matched.Add(entry);
+        }
+        return matched;
+    }
+
     /// <summary>`campaign/event_x/c3.py` → `event_x`（来源目录名）。</summary>
-    private static string Folder(string source)
+    public static string Folder(string source)
     {
         var parts = source.Replace('\\', '/').Split('/');
         return parts.Length >= 2 ? parts[^2] : source;
     }
 
     /// <summary>`campaign/event_x/c3.py` → `campaign.event_x.c3`（可执行的完整模块名）。</summary>
-    private static string Module(string source)
+    public static string Module(string source)
         => source.Replace('\\', '/').Replace("/", ".").Replace(".py", "");
 
     private static string? Text(TaskRequest request, string key)
