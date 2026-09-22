@@ -1601,8 +1601,21 @@ def op_s3_run_plan(args):
                 steps.append({'round': _round, 'step': _step_name, 'skipped': '前一步出错，停止'})
                 break
             r = op_s3_campaign_call({'name': _step_name, 'allow_actions': True})
+            # **客观进度**：上游的 map_clear_percentage（属性是 0..1）与弹药数 ——
+            # 此前我用 campaign_end=True 当"清图"判据，被用户当场否证（那其实是 withdraw 路径）。
+            _pct = None
+            _ammo = None
+            try:
+                _pct = round(float(getattr(inst, 'map_clear_percentage', -1)) * 100, 1)
+            except Exception:
+                pass
+            try:
+                _ammo = getattr(inst, 'ammo_count', None)
+            except Exception:
+                pass
             steps.append({'round': _round, 'step': _step_name, 'ms': r.get('ms'),
-                          'error': r.get('error'), 'completed': r.get('completed')})
+                          'error': r.get('error'), 'completed': r.get('completed'),
+                          'map_clear_pct': _pct, 'ammo': _ammo})
             if r.get('completed'):
                 # 上游宣布关卡完成 —— 这是**正常收尾**，不需要再跑下一轮
                 out['campaign_end'] = True
@@ -1620,6 +1633,11 @@ def op_s3_run_plan(args):
             continue
         break
     out['steps'] = steps
+    try:
+        out['map_clear_pct_final'] = round(float(getattr(inst, 'map_clear_percentage', -1)) * 100, 1)
+        out['cleared'] = bool(out['map_clear_pct_final'] >= 100)
+    except Exception:
+        out['cleared'] = None
     out['elapsed_s'] = round(_t.time() - t_start, 1)
     out['stopped_early'] = bool(steps and steps[-1].get('error'))
     return out
