@@ -556,18 +556,47 @@ def op_appear_on_batch(args):
 
 
 def op_button_match(args):
-    """直接调用上游 Button.match（底层 cv2.matchTemplate，含上游的参数顺序与自动交换）。"""
+    """直接调用上游 Button.match；可选地把实测相似度二分反解出来。
+
+    `similarity` 是**阈值**（上游默认 0.85），`score` 才是实测相似度。
+    上游 Button.match 只回 bool（内部算出的 sim 不外传，Button 也没有 match_result），
+    所以这里**只用上游的 match 本身**做二分：match 的语义是 `sim > similarity`，
+    单调，二分 20 次即可把 score 逼到 1e-6。这样不复制任何算法，
+    也不会出现"诊断分数与真实判定"两套实现漂移的问题。
+    """
     image = _require_image()
     button = _resolve(args['asset'])
     offset = args.get('offset', 30)
     similarity = args.get('similarity', 0.85)
     appear = bool(button.match(image, offset=offset, similarity=similarity))
-    return {
+    result = {
         'match': appear,
         'offset': offset,
         'similarity': similarity,
+        'score': None,
+        'score_error': None,
         'button_offset': list(button.button) if button._button_offset is not None else None,
     }
+    if not args.get('probe_score'):
+        return result
+    try:
+        if not button.match(image, offset=offset, similarity=0.0):
+            # 连阈值 0 都不匹配：说明 sim 为 NaN 或走的是 gif 分支的异常路径
+            result['score_error'] = '低于 0.0，无法二分（sim 非正或 NaN）'
+        elif button.match(image, offset=offset, similarity=1.0):
+            result['score'] = 1.0
+        else:
+            lo, hi = 0.0, 1.0
+            for _ in range(20):
+                mid = (lo + hi) / 2
+                if button.match(image, offset=offset, similarity=mid):
+                    lo = mid
+                else:
+                    hi = mid
+            result['score'] = round(lo, 6)
+    except Exception as e:
+        result['score_error'] = f'{type(e).__name__}: {e}'
+    return result
 
 
 def op_template_match(args):
@@ -725,6 +754,22 @@ def handle(req):
                 'traceback': traceback.format_exc().splitlines()[-3:]}
 
 
+def json_default(o):
+    """
+    兜底序列化：上游的识别函数经常把 numpy 标量/数组直接塞进返回值
+    （例如 Button.match 的 button_offset 是 np.int64），而 json.dumps
+    只认 Python 原生类型。没这一层，协议会以 TypeError 整体失败——
+    单个字段的类型瑕疵不该让一次识图判定丢掉。
+    """
+    item = getattr(o, 'item', None)
+    if callable(item) and getattr(o, 'shape', None) == ():
+        return item()
+    tolist = getattr(o, 'tolist', None)
+    if callable(tolist):
+        return tolist()
+    return str(o)
+
+
 def handle_line(request_json: str) -> str:
     """
     进程内宿主的入口：一行请求 JSON → 一行响应 JSON。
@@ -736,8 +781,8 @@ def handle_line(request_json: str) -> str:
         req = json.loads(request_json)
     except Exception as e:
         return json.dumps({'id': None, 'ok': False, 'error': f'JSON 解析失败: {e}'},
-                          ensure_ascii=False)
+                          ensure_ascii=False, default=json_default)
     if req.get('op') == 'shutdown':
         return json.dumps({'id': req.get('id'), 'ok': True, 'result': {'bye': True}},
-                          ensure_ascii=False)
-    return json.dumps(handle(req), ensure_ascii=False)
+                          ensure_ascii=False, default=json_default)
+    return json.dumps(handle(req), ensure_ascii=False, default=json_default)
