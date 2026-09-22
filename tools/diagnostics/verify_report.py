@@ -206,6 +206,10 @@ def main() -> int:
                 ('列出的目录都真实存在',
                  all(Path(r['directory']).is_dir() for r in document['runs']),
                  f"dirs={[r['directory'] for r in document['runs']]}"),
+                # 停止信息在**列表**这一层也要有（只做进单次报告是不够的：列表是前端的第一屏）
+                ('列表每行都带停止信息字段',
+                 all('stopped_early' in r and 'stop_reason' in r for r in document['runs']),
+                 f"runs={document['runs'][:1]}"),
             ]
         else:
             list_checks.append(('runs --json 落盘', False, '没有产出列表文件'))
