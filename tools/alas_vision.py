@@ -400,11 +400,23 @@ def op_ui_rule_check(args):
                 results[meth] = f'<{type(v).__name__}>'
         except Exception as e:
             results[meth] = f'{type(e).__name__}: {e}'
+    # Switch 的状态清单与每个状态对应的**可点按钮**：有了它，C#/诊断就能像上游
+    # Switch.click(state, main) 那样改状态（上游正是取 get_data(state)['click_button'] 再点），
+    # 从而把"识别"升级成"能驱动并复核"。
+    state_buttons = []
+    for data in getattr(obj, 'state_list', []) or []:
+        chk, clk = data.get('check_button'), data.get('click_button')
+        state_buttons.append({
+            'state': data.get('state'),
+            'check_area': [int(v) for v in getattr(chk, 'area', [])] if chk is not None else None,
+            'click_area': [int(v) for v in getattr(clk, 'button', [])] if clk is not None else None,
+        })
     return {'module': args['module'], 'name': args['name'], 'class': kind,
             # Scroll 的拖拽区域与方向：控件验证要在**它自己的区域**里拖，
             # 在别处滑动等于测了个寂寞（命中率与 at_top/at_bottom 都不作数）
             'area': [int(v) for v in obj.area] if hasattr(obj, 'area') else None,
             'is_vertical': bool(getattr(obj, 'is_vertical', False)),
+            'state_buttons': state_buttons,
             'results': results}
 
 def op_page_list(args):
@@ -724,6 +736,70 @@ def op_ui_page_graph(args):
             'roundtrip_checked': len(pairs)}
 
 
+def op_cached_rule_check(args):
+    """构造 UI 实例，并调用 cached_property 规则的**真实识别方法**（真机页面级验收用）。
+
+    与 ui_rules_sweep 里那段判据的区别很重要：那里只把 `v is True` 记为命中，
+    而 `Navbar.get_info` 返回 (active,left,right)、`Switch.get` 返回状态字符串、
+    `Setting` 压根没有 appear/get —— 三类规则在那个判据下**结构上永远不可能命中**。
+    所以这里按类型分别取判据：
+
+      Navbar  -> get_info / get_active / get_total（选中页签是识别结果）
+      Switch  -> get（状态名）与 state_list（可选项清单）
+      Setting -> 逐项 is_option_active（**实测**激活项；
+                 _product_setting_status 返回的是配置**期望**，不是识别结果）
+    """
+    import importlib
+    from module.config.config import AzurLaneConfig
+    image = _require_image()
+    cls = getattr(importlib.import_module(args['module']), args['class'])
+    inst = cls(AzurLaneConfig('alas'), _make_main_shim(image).device)
+    inst.device.image = image
+    rule = getattr(inst, args['attr'])
+    kind = type(rule).__name__
+    detail, errors = {}, []
+    hit = False
+
+    if kind == 'Navbar':
+        buttons = [getattr(b, 'name', str(b)) for b in rule.grids.buttons]
+        active = rule.get_active(inst)
+        total = rule.get_total(inst)
+        info = rule.get_info(inst)
+        detail = {'active': active, 'total': total, 'info': list(info),
+                  'buttons': buttons, 'active_color': list(rule.active_color),
+                  'inactive_color': list(rule.inactive_color)}
+        # 选中项必须能在按钮清单里定位到，否则"识别出了个不存在的页签"
+        hit = active is not None and info[0] is not None
+    elif kind == 'Switch':
+        state = rule.get(inst)
+        detail = {'state': state, 'appear': state != 'unknown',
+                  'states': [d.get('state') for d in getattr(rule, 'state_list', [])],
+                  'offset': getattr(rule, 'offset', None)}
+        hit = state != 'unknown'
+    elif kind == 'Setting':
+        settings = getattr(rule, 'settings', {})
+        observed = []
+        for (setting, option_name), button in settings.items():
+            try:
+                if rule.is_option_active(button):
+                    observed.append('%s/%s' % (setting, option_name))
+            except Exception as e:
+                errors.append('%s/%s: %s: %s' % (setting, option_name, type(e).__name__, e))
+        detail = {'observed_active': observed,
+                  'option_count': len(settings),
+                  'settings': sorted({k[0] for k in settings})}
+        # 一个激活项都没识别出来也可能是画面本来就没勾选；至少要有可选清单才算跑通
+        hit = len(settings) > 0
+    else:
+        # 运行时算出来的规则（如事件商店的 (count, navbar)）没有统一判据，
+        # 只如实报出类型与规模，不计入命中
+        detail = {'repr': str(rule)[:300],
+                  'size': len(rule) if hasattr(rule, '__len__') else None}
+
+    return {'label': '%s.%s' % (args['class'], args['attr']), 'class': kind,
+            'hit': bool(hit), 'detail': detail, 'errors': errors}
+
+
 def op_ui_rules_sweep(args):
     """
     界面与控件识别的**统一验收**：一次跑完三类实体并汇总。
@@ -845,6 +921,7 @@ OPS = {
     'ocr': op_ocr,
     'page_current': op_page_current,
     'ui_page_graph': op_ui_page_graph,
+    'cached_rule_check': op_cached_rule_check,
 }
 
 

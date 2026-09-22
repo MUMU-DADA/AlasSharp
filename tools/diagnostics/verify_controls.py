@@ -46,6 +46,20 @@ PLAN = [
                ('module.handler.strategy', 'SUBMARINE_HUNT'),
                ('module.handler.strategy', 'SUBMARINE_VIEW'),
                ('module.handler.fast_forward', 'FLEET_LOCK')]},
+    # cached_property 规则：必须构造 UI 实例才能拿到，判据也与模块级不同
+    {'page': 'page_shop',
+     'cached': [('module.shop.ui', 'ShopUI', '_shop_bottom_navbar'),
+                ('module.shop.ui', 'ShopUI', 'shop_nav_250814'),
+                ('module.shop.ui', 'ShopUI', 'shop_tab_250814')],
+     'rules': [('module.shop.shop_voucher', 'VOUCHER_SHOP_SCROLL')]},
+    {'page': 'page_storage',
+     'cached': [('module.storage.ui', 'StorageUI', 'storage_filter')]},
+    {'page': 'page_dock',
+     'cached': [('module.retire.dock', 'Dock', 'dock_filter')],
+     'switches': [('module.retire.dock', 'DOCK_SORTING'),
+                  ('module.retire.dock', 'DOCK_FAVOURITE')]},
+    {'page': 'page_game_room',
+     'rules': [('module.minigame.minigame', 'MINIGAME_SCROLL')]},
 ]
 
 
@@ -113,12 +127,59 @@ def judge(res):
     return bool(vals.get('appear')), str(vals)
 
 
+def drive_switch(module, name, restore=True):
+    """开关驱动：读状态 → 点另一状态的按钮 → 再读确认变化 → 复原。
+
+    这是"控制能力"里最容易被忽略的一环：识别出开关状态不难，难的是**改它并复核**。
+    上游 `Switch.click(state, main)` 就是取 `get_data(state)['click_button']` 再点，
+    这里走同一条路（按钮区域由上游规则给出，点击走真机 adb）。
+    最后**复原原状态**：验证不该留下痕迹。
+    """
+    info = op('ui_rule_check', module=module, name=name)
+    states, before = info.get('state_buttons') or [], info['results'].get('get')
+    if before in (None, 'unknown') or len(states) < 2:
+        return {'rule': name, 'verdict': 'miss',
+                'detail': '当前状态 %s，可选状态 %d 个，无法驱动'
+                          % (before, len(states))}
+    target = next((s for s in states if s['state'] != before and s.get('click_area')), None)
+    if target is None:
+        return {'rule': name, 'verdict': 'miss', 'detail': '没有其它可点状态'}
+    area = target['click_area']
+    x, y = (area[0] + area[2]) // 2, (area[1] + area[3]) // 2
+    swipe(x, y, x, y, 80)          # 等价于 tap（input swipe 同点短时）
+    time.sleep(1.5)
+    shot()
+    mid = op('ui_rule_check', module=module, name=name)['results'].get('get')
+    changed = mid == target['state']
+    restored = None
+    if restore:
+        back = next((s for s in states if s['state'] == before and s.get('click_area')), None)
+        if back:
+            b = back['click_area']
+            bx, by = (b[0] + b[2]) // 2, (b[1] + b[3]) // 2
+            swipe(bx, by, bx, by, 80)
+            time.sleep(1.5)
+            shot()
+            restored = op('ui_rule_check', module=module, name=name)['results'].get('get')
+    return {'rule': name, 'verdict': 'hit' if changed else 'miss',
+            'detail': '%s -> %s（点 %s @%s）%s' % (
+                before, mid, target['state'], (x, y),
+                '' if restored is None else '，复原 -> %s' % restored),
+            'states': [s['state'] for s in states]}
+
+
 report = []
+REPORT_ONLY = '--report-only' in sys.argv
+DATA = os.path.join(HERE, '..', 'data', 'controls_verify.json')
 print('=== 控件识别与滑动控制验证 ===')
-if not ensure_device():
+if REPORT_ONLY:
+    # 只重建 docs/controls.md：改文档措辞不该再跑一遍真机点击
+    report = json.load(open(DATA, encoding='utf-8'))
+    print('[模式 ] 仅重建报告（读 %s，不连设备）' % os.path.abspath(DATA))
+elif not ensure_device():
     print('adb 连接未就绪，退出（先确认模拟器已启动）')
     sys.exit(2)
-for step in PLAN:
+for step in ([] if REPORT_ONLY else PLAN):
     page = step['page']
     s = shot()
     if page not in s:
@@ -127,12 +188,41 @@ for step in PLAN:
         s = shot()
     if page not in s:
         print('[跳过 ] %s 不在屏幕上（当前 %s）' % (page, s))
-        for module, name in step['rules']:
+        for module, name in step.get('rules', []):
             report.append({'page': page, 'rule': name, 'verdict': 'blocked',
+                           'detail': '页面不可达', 'seen': s})
+        for module, cls, attr in step.get('cached', []):
+            report.append({'page': page, 'rule': '%s.%s' % (cls, attr), 'verdict': 'blocked',
                            'detail': '页面不可达', 'seen': s})
         continue
     print('[page ] %s（当前命中 %s）' % (page, s))
-    for module, name in step['rules']:
+    for module, cls, attr in step.get('cached', []):
+        try:
+            res = op('cached_rule_check', module=module, **{'class': cls, 'attr': attr})
+        except Exception as e:
+            print('   %-24s EXC  %s: %s' % ('%s.%s' % (cls, attr), type(e).__name__, e))
+            report.append({'page': page, 'rule': '%s.%s' % (cls, attr), 'class': '?',
+                           'verdict': 'miss', 'detail': 'EXC %s: %s' % (type(e).__name__, e),
+                           'module': module, 'seen': s})
+            continue
+        detail = json.dumps(res['detail'], ensure_ascii=False)
+        print('   %-24s %-8s %-4s %s' % (res['label'], res['class'],
+                                         'HIT' if res['hit'] else 'miss', detail[:160]))
+        report.append({'page': page, 'rule': res['label'], 'class': res['class'],
+                       'verdict': 'hit' if res['hit'] else 'miss', 'detail': detail,
+                       'module': module, 'seen': s})
+    for module, name in step.get('switches', []):
+        try:
+            r = drive_switch(module, name)
+        except Exception as e:
+            r = {'rule': name, 'verdict': 'miss',
+                 'detail': 'EXC %s: %s' % (type(e).__name__, e)}
+        print('   %-24s %-8s %-4s %s' % (r['rule'], 'Switch', 'HIT' if r['verdict'] == 'hit' else 'miss',
+                                         r['detail']))
+        report.append({'page': page, 'rule': r['rule'] + '#drive', 'class': 'Switch',
+                       'verdict': r['verdict'], 'detail': r['detail'],
+                       'module': module, 'seen': s})
+    for module, name in step.get('rules', []):
         res = op('ui_rule_check', module=module, name=name)
         hit, detail = judge(res)
         print('   %-22s %-8s %-4s %s' % (name, res['class'], 'HIT' if hit else 'miss', detail))
@@ -175,10 +265,11 @@ miss = sum(1 for r in report if r['verdict'] == 'miss')
 blocked = sum(1 for r in report if r['verdict'] == 'blocked')
 print()
 print('小计: hit %d / miss %d / blocked %d（共 %d 项）' % (hits, miss, blocked, len(report)))
-out = os.path.join(HERE, '..', 'data', 'controls_verify.json')
-with open(out, 'w', encoding='utf-8') as f:
-    json.dump(report, f, ensure_ascii=False, indent=2, default=str)
-print('明细: %s' % os.path.abspath(out))
+if not REPORT_ONLY:
+    out = DATA
+    with open(out, 'w', encoding='utf-8') as f:
+        json.dump(report, f, ensure_ascii=False, indent=2, default=str)
+    print('明细: %s' % os.path.abspath(out))
 
 # ---------------------------------------------------------------- 报告
 # 未在本批跑到的规则：人工判定它们属于哪一类（写进脚本，报告才可复现）
@@ -200,24 +291,45 @@ DEEPER_NOTE = {
     'SUBMARINE_HUNT': '潜艇面板（需先有潜艇）',
     'SUBMARINE_VIEW': '同上',
 }
+# 未命中里有一类不是"到不了"，而是**客户端 UI 版本不同**：规则本身跑通了、
+# 正确返回 unknown，因为屏幕上根本没有它要找的新版控件。
+MISS_STATUS = {
+    'ShopUI.shop_nav_250814': ('uiversion',
+        '本客户端是 250814 之前的老版商店 UI：可选状态是 NAV_GENERAL/NAV_MONTHLY，'
+        '实测 unknown（新版商店才有这两个导航项；老版走 _shop_bottom_navbar，已命中）'),
+    'ShopUI.shop_tab_250814': ('uiversion',
+        '同上（9 个新版页签 TAB_* 都不在屏上）'),
+}
 LABEL = {'hit': '✅ 已命中', 'deeper': '➡️ 需更深流程', 'blocked': '⛔ 游戏状态阻塞',
-         'pending': '🔵 待验'}
+         'pending': '🔵 待验', 'uiversion': '🕐 UI 版本差异'}
 
 
 def build_doc():
     rows = []
     for x in report:
         rule = x['rule']
+        if rule.endswith('#drive') or rule.endswith('#swipe'):
+            continue          # 动作行单独成节，不混进规则总账
         if x['verdict'] == 'hit':
             status = LABEL['hit']
             note = x['detail']
+        elif rule in MISS_STATUS:
+            kind, note = MISS_STATUS[rule]
+            status = LABEL[kind]
         else:
             status = LABEL['deeper']
             note = DEEPER_NOTE.get(rule, x['detail'])
         rows.append((rule, x.get('class', ''), status, note))
     for rule, (kind, note) in UNPLANNED.items():
+        # 已在本批跑到的规则不再重复列（VOUCHER/MINIGAME 现在都在计划里）
+        if any(r[0] == rule or r[0] == rule + '#drive' for r in rows):
+            continue
         rows.append((rule, '', LABEL[kind], note))
+    # 事件商店那条是运行时算出来的规则（(count, navbar)），没有统一判据，单列
+    rows.append(('EventShopUI.event_shop_tab_count_and_navbar', '运行时计算', LABEL['blocked'],
+                 '需进活动商店（本账号当前活动页可达，但商店入口需要活动开放对应玩法）'))
     rows.sort(key=lambda r: (r[2], r[0]))
+    actions = [x for x in report if x['rule'].endswith('#swipe') or x['rule'].endswith('#drive')]
 
     lines = [
         '# 控件识别与滑动控制验证记录',
@@ -239,12 +351,19 @@ def build_doc():
                      % (x['page'], x['rule'], x.get('class', ''), x['verdict'], x['detail']))
     lines += [
         '',
-        '## 滑动控制',
+        '## 滑动控制与开关驱动（动作，不是识别）',
         '',
-        '`MATERIAL_SCROLL` 的拖拽区域实测是**右侧滚动条** `[1257, 94, 1263, 585]`。',
-        '在它自己的区域里向上滑 3 次 → `at_top` 由 `True` 变 `False`；再向下滑 6 次回顶。',
-        '这一步同时验了两件事：`input swipe` 这条控制链路真的能驱动游戏，',
-        '且上游 Scroll 规则会随画面变化翻转判定（不是永远返回同一个值）。',
+        '| 页面 | 动作 | 结果 |',
+        '| --- | --- | --- |',
+    ]
+    for x in actions:
+        lines.append('| `%s` | `%s` | %s |' % (x['page'], x['rule'], x['detail']))
+    lines += [
+        '',
+        '`#swipe` = 在 Scroll 自己的区域里真滑，看 `at_top` 是否翻转；',
+        '`#drive` = 读出开关状态 → 点上游规则给出的另一个状态的按钮 → 再读确认变化',
+        '→ **复原原状态**（验证不该留下痕迹）。',
+        '开关驱动是控制能力的核心回路：识别出状态不难，难的是改它并复核。',
         '',
         '## 20 个控件规则的总账',
         '',
