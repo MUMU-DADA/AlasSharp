@@ -1455,3 +1455,27 @@ round=1 step=battle_0 skipped（前一步出错，停止）| [结果] elapsed=0.
 > **以后高难图：1 队使用舰队 3，2 队使用舰队 6** → `--fleet1 3 --fleet2 6`
 
 （此前我用的是 `--fleet1 3 --fleet2 0`，只用一支舰队；按新规则两个战斗舰队位都填 ✓）
+
+
+### ✅ 完整走一轮战斗（用户要求，舰队 1队=3 / 2队=6）
+
+```
+[批量    ] 1 关，同一进程内连续驱动
+[前置    ] 第 1 关前回战役页 尝试1 success=True     ← 导航重试逻辑生效（一次通过）
+Using fleet: [3, 6, 0]                             ← 新舰队规则生效
+[plan    ] 11-1 tier=C dry_run=False | [steps] battle_0 → battle_6
+step=ensure_chapter   156.7 ms ok
+step=abort_unfinished dialog=False
+step=get_entrance       0.0 ms ok
+step=enter_map       8708.4 ms ok                  ← 8.7s（主动盯防挡掉了 60s 超时）
+step=map_init         586.9 ms ok
+round=1 battle_0    42670.0 ms ok
+round=1 battle_6    60130.0 ms ok
+[结果] elapsed=112.6s stopped_early=False
+```
+
+**6/6 步全绿、两场战斗全胜**。三点同时被验证：
+① 导航重试（此前 0.4s 退出 ✗）；② 主动盯防（进入 8.7s vs 被动 68s）；
+③ 新舰队规则 `Using fleet: [3, 6, 0]` ✓
+
+（未清图是因为按"走一轮"的要求传了 `--max-rounds 1` ✓；清图需 `--repeat` + 更多轮次。）
