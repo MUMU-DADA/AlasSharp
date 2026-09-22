@@ -442,14 +442,15 @@ UNPLANNED = {
     'STRATEGIC_SEARCH_SCROLL': ('blocked', '同上'),
 }
 DEEPER_NOTE = {
-    'FLEET_LOCK': '舰队锁定开关。本机在战役地图（page_campaign，第2章 2-1~2-4 全 Clear）实测 '
-                  '`handler/FLEET_LOCKED` 0.22、`FLEET_UNLOCKED` 0.15，都不在屏上；'
-                  '`ui_white` 里也没有策略/阵型相关素材可替代 —— 本客户端不暴露该面板，'
-                  '不是实现缺口。未盲点关卡节点（有误触开战风险）',
-    'FORMATION': '阵型面板。同上：地图上 `handler/IN_MAP` 0.16、`STRATEGY_OPEN` 0.12、'
-                 '`STRATEGY_OPENED` 0.16 都不在屏上，上游那套「策略面板」入口在本客户端里不存在',
-    'SUBMARINE_HUNT': '潜艇面板。同上（还需先有潜艇）',
-    'SUBMARINE_VIEW': '同上',
+    'FLEET_LOCK': '舰队锁定开关。**本客户端不提供该面板**：换账号后在 page_fleet 上实测 '
+                  '`handler/FLEET_LOCKED` 0.34、`FLEET_UNLOCKED` 0.19；在战役地图上 '
+                  '`FLEET_LOCKED` 0.22、`FLEET_UNLOCKED` 0.15 —— 都不在屏上，且 `ui_white` '
+                  '无对应素材。未盲点关卡节点（有误触开战风险）',
+    'FORMATION': '阵型面板。同上：page_fleet 上 `FORMATION_1` 连阈值 0 都匹配不上'
+                 '（二分反解为负）、`FORMATION_2` 0.05、`FORMATION_3` 0.09；地图上 '
+                 '`IN_MAP` 0.07、`STRATEGY_OPEN` 也匹配不上。本客户端不暴露该入口',
+    'SUBMARINE_HUNT': '潜艇面板。同上（page_fleet 上两个状态素材 0.07/0.07）',
+    'SUBMARINE_VIEW': '同上（0.20/0.12）',
     'equipping_filter': '装备选择浮层里的筛选开关。已试过 3 条入口：角色详情页点 '
                         'EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、'
                         '以及**上游自己的几何** EQUIPMENT_GRID（origin=(696,170)、delta=(86.25,0)、'
