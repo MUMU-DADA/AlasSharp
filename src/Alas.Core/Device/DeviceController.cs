@@ -51,6 +51,30 @@ public sealed class DeviceController
 
     public string GetState() => _adb.Run(Args("get-state")).StdoutText.Trim();
 
+    /// <summary>
+    /// 确保 <see cref="Serial"/> 处于 device 状态：不在就 `adb connect` 一次。
+    ///
+    /// 为什么必须做：adb 的 **daemon 会被新起的客户端重启**，daemon 一换，
+    /// 之前的 TCP 连接就没了 —— 表现为 `adb devices` 里空空如也，紧接着截图报
+    /// `device '...' not found`。本机实测：沙箱在每次进程结束时连 daemon 一起回收，
+    /// 所以**跨进程调用之间必须重新 connect**。没有这一步，机器人会在"设备其实好好的"
+    /// 情况下直接失败（现场症状是"模拟器一点动作都没有"，很容易被误判成卡死）。
+    /// </summary>
+    public bool EnsureConnected(int attempts = 3)
+    {
+        if (string.IsNullOrEmpty(Serial)) return Devices().Count > 0;
+        for (int i = 0; i < attempts; i++)
+        {
+            if (Devices().Contains(Serial)) return true;
+            // 列表为空也要试着连：本机最常见的情形正是"新 daemon 起来了、列表是空的、
+            // 需要一次 connect 才能把 TCP 设备挂回来"。第一版在这里提前 return，
+            // 结果明明能自愈却直接报"设备不在线"。
+            _adb.Run(Args("connect", Serial));
+            Thread.Sleep(1500);
+        }
+        return Devices().Contains(Serial);
+    }
+
     /// <summary>屏幕物理分辨率（对应 `wm size`，输出形如 `Physical size: 1280x720`）。</summary>
     public (int Width, int Height)? ScreenSize()
     {

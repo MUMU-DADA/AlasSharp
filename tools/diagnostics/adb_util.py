@@ -18,10 +18,24 @@ ADB = os.environ.get('STUB_ADB')
 SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
 
 
-def _run(args, timeout=120, binary=False):
+def _run(args, timeout=25, binary=False):
+    """单次 adb 调用的超时**故意设短**（25s）：设备一丢，adb 会一直等，
+    长的超时会让整个脚本看起来"卡死"（实测过：screencap 设 180s，
+    设备掉线后干等 3 分钟没有任何输出）。短超时 + 重连重试才是对的组合。"""
     return subprocess.run([ADB] + list(args), capture_output=True, timeout=timeout,
                           text=not binary,
                           encoding=None if binary else 'utf-8', errors=None if binary else 'replace')
+
+
+def ready(serial=None):
+    """轻量就绪检查：设备在不在 device 状态。不 connect（快，用于操作前判断）。"""
+    serial = serial or SERIAL
+    try:
+        d = devices()
+    except Exception:
+        return False
+    return any(line.split('\t')[0].strip() == serial and 'device' in line
+               for line in d.splitlines())
 
 
 def devices():
@@ -58,12 +72,21 @@ def shell(*args, serial=None, attempts=3):
 
 
 def screencap(path, serial=None, attempts=4, min_bytes=1024):
-    """截图到 path。**按字节数判定成功**（0 字节 = 连接问题，不是图像问题），失败重连重试。"""
+    """截图到 path。**按字节数判定成功**（0 字节 = 连接问题，不是图像问题），失败重连重试。
+
+    每一次尝试都：先确认设备在（不在就 connect）→ 截图（25s 超时）→ 查字节数。
+    这样设备掉线时最多等 25s，而不是几分钟。
+    """
     serial = serial or SERIAL
     for i in range(attempts):
-        with open(path, 'wb') as f:
-            subprocess.run([ADB, '-s', serial, 'exec-out', 'screencap', '-p'],
-                           stdout=f, stderr=subprocess.DEVNULL, timeout=180)
+        if not ready(serial):
+            ensure(serial, verbose=(i == 0))
+        try:
+            with open(path, 'wb') as f:
+                subprocess.run([ADB, '-s', serial, 'exec-out', 'screencap', '-p'],
+                               stdout=f, stderr=subprocess.DEVNULL, timeout=25)
+        except subprocess.TimeoutExpired:
+            print('[adb  ] screencap 第 %d 次超时（25s），重连后重试' % (i + 1))
         size = os.path.getsize(path)
         if size >= min_bytes:
             return size

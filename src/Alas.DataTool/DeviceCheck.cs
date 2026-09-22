@@ -51,6 +51,16 @@ internal static class DeviceCheck
         using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(forkDir, toolsDir);
         var adb = new ProcessAdbTransport(adbPath);
         var device = new DeviceController(adb, vision, serial);
+        // 先确保设备在线再谈导航：adb daemon 会被新起的客户端重启，连接一丢
+        // screencap 就报 "device not found"，现场看起来像"卡住不动"。
+        bool online = device.EnsureConnected();
+        Console.WriteLine($"[device  ] serial={serial} online={online} " +
+                          $"devices=[{string.Join(", ", device.Devices())}]");
+        if (!online)
+        {
+            Console.WriteLine("[错误    ] 设备不在线（adb devices 里没有它），先确认模拟器已启动");
+            return 1;
+        }
         var graph = Alas.Navigation.PageGraph.Load(vision);
         Console.WriteLine($"[graph   ] nodes={graph.NodeCount} edges={graph.EdgeCount} " +
                           $"unmapped={graph.Unmapped.Count} roundtrip_bad={graph.RoundtripBad.Count}");
