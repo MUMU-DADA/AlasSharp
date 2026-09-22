@@ -1479,3 +1479,34 @@ round=1 battle_6    60130.0 ms ok
 ③ 新舰队规则 `Using fleet: [3, 6, 0]` ✓
 
 （未清图是因为按"走一轮"的要求传了 `--max-rounds 1` ✓；清图需 `--repeat` + 更多轮次。）
+
+
+### 🎯 "并没有完全打完"的根因：我调用错了入口（`battle_*` vs `execute_a_battle`）
+
+用户实测反馈"并没有完全打完" —— 属实。读上游 `CampaignBase.run()`（campaign_base.py:137-157）：
+
+```python
+# Run
+for _ in range(20):
+    try:
+        if not self.map_is_auto_search:
+            self.execute_a_battle()           # ★ 上游的"打一步"就是这一个方法
+        else:
+            self.auto_search_execute_a_battle()
+    except CampaignEnd:
+        logger.hr('Campaign end')
+        return True                           # ★ 清图信号
+# 20 次仍未打完
+logger.warning('Battle function exhausted.')  -> withdraw 或 ScriptError
+```
+
+**我的错误**：执行器调用的是 IR 里的 `battle_0` / `battle_6`（章节的具名步骤）✗，
+而**上游真正的调度入口是 `execute_a_battle()`** ✓ —— 它内部按地图当前状态决定打哪一步
+（清小怪 / 找 BOSS / 清路障…）。只调 `battle_0`+`battle_6` = 只做了上游逻辑的一小部分 → **清不完**。
+
+**修法（明确）**：执行器的循环改为调用 **`execute_a_battle()`**，
+**最多 20 次**（与上游一致）、收到 `CampaignEnd` 即停 —— 让"打完整"由上游自己判定 ✓
+这同时更符合 S3 的立项原则：**不重写上游逻辑**。
+
+**另记一个安全缺口**：`execute_a_battle` 不以 `battle` 开头，**没有被我现有的危险前缀拦到** ✗
+→ 需把 `execute` 加入 `_DANGER_PREFIX`（否则它会绕过 allow_actions 安全锁）。
