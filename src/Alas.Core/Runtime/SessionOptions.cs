@@ -12,6 +12,11 @@ public sealed class SessionOptions
     public string RepoDirectory { get; set; } = "";
     /// <summary>本项目的 tools 目录（宿主会加进 sys.path）。</summary>
     public string ToolsDirectory { get; set; } = "";
+    /// <summary>
+    /// 上游数据契约目录（`data/`）。离线任务（如活动章节清点）读它，
+    /// 不需要设备也不需要启动宿主 —— 但仍然**只读**，不做任何生成动作。
+    /// </summary>
+    public string DataDirectory { get; set; } = "";
     public string? AdbPath { get; set; }
     public string? Serial { get; set; }
     public string ScreenshotBackend { get; set; } = "scrcpy";

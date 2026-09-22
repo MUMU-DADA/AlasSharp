@@ -98,6 +98,7 @@ internal static class Program
                 var campOptions = flags.Options;
                 campOptions.RepoDirectory = repoDir;
                 campOptions.ToolsDirectory = toolsDir7;
+                campOptions.DataDirectory = dataDir;
                 using var campSession = Alas.Runtime.AlasSession.Start(campOptions);
                 var batch = new Alas.Runtime.CampaignBatchRunner(campSession)
                 {
@@ -130,6 +131,7 @@ internal static class Program
                 var queueOptions = queueFlags.Options;
                 queueOptions.RepoDirectory = repoDir;
                 queueOptions.ToolsDirectory = paths.ToolsDirectory;
+                queueOptions.DataDirectory = dataDir;
                 var requests = Alas.Tasks.TaskQueueFile.Parse(File.ReadAllText(queueFile));
                 Console.WriteLine($"[队列    ] {requests.Count} 个任务");
                 using var queueSession = Alas.Runtime.AlasSession.Start(queueOptions);
@@ -138,7 +140,8 @@ internal static class Program
                     StopOnFailure = !queueFlags.ContinueOnError,
                 }.Register(new Alas.Tasks.CampaignBatchTask())
                  .Register(new Alas.Tasks.AccountStateTask())
-                 .Register(new Alas.Tasks.OsStateTask());
+                 .Register(new Alas.Tasks.OsStateTask())
+                 .Register(new Alas.Tasks.EventStateTask());
                 if (queueFlags.Resume)
                 {
                     // `--resume <state.json>` 显式给路径；只写 `--resume` 则取工件根目录下
