@@ -35,6 +35,7 @@ except Exception:
 
 # (脚本, 说明, 需要真机, 超时秒)
 STEPS = [
+    ('verify_architecture.py', '整体架构边界（宿主/数据/路径/禁止地图特例）', False, 120),
     ('regress_pages.py', '页面识别全量回归（产品导航器）', True, 1800),
     ('retry_blocked_pages.py', '此前阻塞的页面定向重试', True, 1800),
     ('verify_controls.py', '控件规则 + 滑动/开关驱动', True, 2400),

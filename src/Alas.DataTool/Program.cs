@@ -15,13 +15,9 @@ internal static class Program
     private static int Main(string[] args)
     {
         Console.OutputEncoding = System.Text.Encoding.UTF8;
-        string dataDir = Environment.GetEnvironmentVariable("ALAS_DATA")
-                         ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                             "..", "..", "..", "..", "..", "data"));
-        string repoDir = Environment.GetEnvironmentVariable("ALAS_REPO")
-                         ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                             "..", "..", "..", "..", "..",
-                             ".runtime", "engine"));
+        ProjectPaths paths = ProjectPaths.Resolve();
+        string dataDir = paths.DataDirectory;
+        string repoDir = paths.RepoDirectory;
 
         string command = args.Length > 0 ? args[0] : "verify";
         string? fixture = null;
@@ -49,8 +45,7 @@ internal static class Program
             if (command == "run")
             {
                 // 常驻 runner 骨架（S3 的壳）：设备层只构造一次，之后按 tick 循环抓帧+判定
-                string toolsDir6 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                    "..", "..", "..", "..", "..", "tools"));
+                string toolsDir6 = paths.ToolsDirectory;
                 string? runAdb = null, runSerial = null;
                 string runShot = "scrcpy", runCtrl = "MaaTouch";
                 double runTick = 0.5, runSeconds = 20;
@@ -77,8 +72,7 @@ internal static class Program
             if (command == "campaign")
             {
                 // S3：上游 Campaign.run() 负责整次出击；C# 传配置并报告结果。
-                string toolsDir7 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                    "..", "..", "..", "..", "..", "tools"));
+                string toolsDir7 = paths.ToolsDirectory;
                 string? campChapter = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
                 string? campAdb = null, campSerial = null;
                 bool campRun = false, campAllow = false, campRepeat = true;
@@ -180,8 +174,7 @@ internal static class Program
             if (command == "capture")
             {
                 // 设备通道对比：C# 自截 vs 引擎截图（后端可切），见 CaptureCheck
-                string toolsDir5 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                    "..", "..", "..", "..", "..", "tools"));
+                string toolsDir5 = paths.ToolsDirectory;
                 string? capAdb = null, capSerial = null, capShot = "scrcpy", capCtrl = "MaaTouch";
                 int capRepeat = 3;
                 for (int i = 1; i < args.Length - 1; i++)
@@ -214,8 +207,7 @@ internal static class Program
             if (command == "map")
             {
                 // S2 地图识别的产品路径验收；无 --fixture 时可用 --adb/--serial 抓真机画面
-                string toolsDir4 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                    "..", "..", "..", "..", "..", "tools"));
+                string toolsDir4 = paths.ToolsDirectory;
                 string? mapAdb = null, mapSerial = null;
                 for (int i = 1; i < args.Length - 1; i++)
                 {
@@ -237,8 +229,7 @@ internal static class Program
             if (command == "device")
             {
                 fixture ??= Path.Combine(dataDir, "fixtures", "imaging.json");
-                string toolsDir2 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                    "..", "..", "..", "..", "..", "tools"));
+                string toolsDir2 = paths.ToolsDirectory;
                 string? realAdb = null, realSerial = null, server = null; string[]? assetCsv = null;
                 for (int i = 1; i < args.Length - 1; i++)
                 {
@@ -274,8 +265,7 @@ internal static class Program
                 if (realAdb2 is null || realSerial2 is null || targetPage is null)
                     return Fail("用法: goto <page_目标> --adb <adb.exe> --serial <serial> " +
                                 "[--capture-engine [--screenshot droidcast] [--control ADB]]");
-                string toolsDir3 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                    "..", "..", "..", "..", "..", "tools"));
+                string toolsDir3 = paths.ToolsDirectory;
                 return DeviceCheck.RunGoto(realAdb2, realSerial2, repoDir, toolsDir3, targetPage,
                     gotoEngineCapture, gotoScreen, gotoCtrl, gotoRounds);
             }
@@ -290,8 +280,7 @@ internal static class Program
                     if (args[i] == "--mode") mode = args[i + 1];
                 }
                 // bin/Release/net8.0 -> csharp/tools
-                string toolsDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                    "..", "..", "..", "..", "..", "tools"));
+                string toolsDir = paths.ToolsDirectory;
                 return VisionCheck.Run(fixture, repoDir, toolsDir, limit, mode);
             }
 

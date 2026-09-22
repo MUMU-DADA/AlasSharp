@@ -32,6 +32,7 @@ public sealed class AssetBinding
 
     public int[]? AreaFor(string server) => Lookup(Area, server);
     public int[]? ColorFor(string server) => Lookup(Color, server);
+    public int[]? ButtonFor(string server) => Lookup(Button, server);
     public string? FileFor(string server) => Lookup(File, server);
 
     private static T? Lookup<T>(Dictionary<string, T>? map, string server)
