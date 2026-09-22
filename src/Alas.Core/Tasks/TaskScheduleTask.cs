@@ -37,7 +37,13 @@ public sealed class TaskScheduleTask : ITaskRunner
         try
         {
             var schedule = context.Session.Vision.CallTyped<TaskScheduleResult>(
-                "task_schedule", new { only_enabled = onlyEnabled, limit });
+                "task_schedule", new
+                {
+                    only_enabled = onlyEnabled,
+                    limit,
+                    // 显式配置路径（多份账号配置 / 边界验收用假配置）；不给则用标准位置。
+                    config_path = request.Input?["config_path"]?.GetValue<string>(),
+                });
             if (schedule.Error is not null)
             {
                 result.Outcome = TaskOutcome.Failed;

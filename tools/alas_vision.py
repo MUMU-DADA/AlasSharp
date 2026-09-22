@@ -822,7 +822,11 @@ def op_task_schedule(args):
         return out
 
     config_path = None
-    for candidate in (os.path.join(FORK, 'config', 'alas.json'), './config/alas.json'):
+    # 允许显式指定配置路径：既支持多份账号配置，也让**边界验收**能用构造的假配置
+    # （全禁用 / 全启用 / 缺 Scheduler 段）去跑同一条代码路径，而不是只测真配置。
+    candidates = ([args['config_path']] if args.get('config_path')
+                  else [os.path.join(FORK, 'config', 'alas.json'), './config/alas.json'])
+    for candidate in candidates:
         if os.path.exists(candidate):
             config_path = candidate
             break

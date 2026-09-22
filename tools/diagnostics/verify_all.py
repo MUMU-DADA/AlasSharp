@@ -67,6 +67,7 @@ STEPS = [
     ('r3_hook_shapes.py', 'R3 钩子形态分类（重建 r3-hook-shapes.md）', False, 300),
     ('r3_map_data_init.py', 'R3 第一项上游轨迹（map_data_init 逐章形态）', False, 300),
     ('r3_candidates.py', 'R3 候选排序（原生钩子覆盖，重建 r3-candidates.md）', False, 300),
+    ('verify_task_schedule.py', 'R2 周期任务调度状态（独立对拍 + 四种边界 + 只读保证）', False, 600),
     ('verify_task_catalog.py', '周期任务域数据源（上游任务目录两个来源可读/差异如实标注）', False, 300),
     ('verify_event_state.py', 'R2 活动域清点（与独立数对拍 / only_complete / 空集口径）', False, 300),
     ('s3_plan_inventory.py', 'S3 计划词表清点（重建 s3-plan-vocabulary.md）', False, 300),
