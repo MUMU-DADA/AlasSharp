@@ -159,7 +159,37 @@ internal static class Program
                         Console.WriteLine($"[断点    ] 依据 {statePath} 跳过 {done.Count} 个已完成任务"
                                           + (done.Count == 0 ? "" : $": {string.Join(", ", done)}"));
                 }
-                var queueResult = queue.Run(requests);
+                // R4「停止任务」：运行时的取消语义是"在任务边界生效"，这里只补两件触发方式 ——
+                // Ctrl-C 与 --stop-file（自动化/前端不方便发信号时，写个文件即可请求停止）。
+                using var stop = new CancellationTokenSource();
+                Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
+                if (queueFlags.StopFile is not null)
+                {
+                    string stopFile = Path.GetFullPath(queueFlags.StopFile);
+                    // 先立刻查一次：停止文件在启动前就已经存在时，不该等到第一个计时周期才生效。
+                    if (File.Exists(stopFile))
+                    {
+                        Console.WriteLine($"[停止    ] 检测到 {stopFile}（启动前已存在），请求停止");
+                        stop.Cancel();
+                    }
+                    var watcher = new System.Threading.Timer(_ =>
+                    {
+                        if (!File.Exists(stopFile) || stop.IsCancellationRequested) return;
+                        Console.WriteLine($"[停止    ] 检测到 {stopFile}，请求在任务边界停止");
+                        stop.Cancel();
+                    }, null, 200, 200);
+                    try
+                    {
+                        var queueResultWatched = queue.Run(requests, stop.Token);
+                        PrintQueueReport(queueResultWatched, requests);
+                        return queueResultWatched.FailedCount == 0 ? 0 : 1;
+                    }
+                    finally
+                    {
+                        watcher.Dispose();      // 显式释放，别依赖 GC 或 using 的写法
+                    }
+                }
+                var queueResult = queue.Run(requests, stop.Token);
                 PrintQueueReport(queueResult, requests);
                 return queueResult.FailedCount == 0 ? 0 : 1;
             }
@@ -691,6 +721,8 @@ internal static class Program
         public string? File { get; set; }
         /// <summary>`--resume <state.json>` 显式指定的断点文件（可为空 = 自动找上一次）。</summary>
         public string? ResumeState { get; set; }
+        /// <summary>--stop-file <路径>：文件一出现就请求停止（在任务边界生效）。</summary>
+        public string? StopFile { get; set; }
     }
 
     private static CliRunFlags ParseRunFlags(string[] args, string positionalFlag)
@@ -715,6 +747,7 @@ internal static class Program
             string v = i + 1 < args.Length ? args[i + 1] : "";
             if (a == "--chapter" || a == positionalFlag) flags.Positional = v;
             else if (a == "--resume-state") flags.ResumeState = v;
+            else if (a == "--stop-file") flags.StopFile = v;
             else if (a == "--file") flags.File = v;
             else if (a == "--adb") flags.Options.AdbPath = v;
             else if (a == "--serial") flags.Options.Serial = v;
