@@ -88,8 +88,16 @@ public sealed class CampaignBatchTask : ITaskRunner
                 break;
             default:
                 result.Outcome = TaskOutcome.Failed;
-                result.ErrorKind = batch.ErrorKind != RuntimeErrorKind.None
-                    ? batch.ErrorKind : RuntimeErrorKind.UpstreamError;
+                // `error_kind` 要如实：**撤退/战败/没打完不是"上游报错"**。
+                // R4 的门槛要求前端能区分"成功与撤退"，如果把撤退也标成 upstream_error，
+                // 前端只能靠猜。只有真的报错才给 UpstreamError，限额给 Timeout，其余留 None
+                //（结论在 `evidence.batch_outcome` 里，语义由结果合同定义）。
+                result.ErrorKind = batch.Outcome switch
+                {
+                    "error" => RuntimeErrorKind.UpstreamError,
+                    "incomplete" => RuntimeErrorKind.Timeout,
+                    _ => RuntimeErrorKind.None,
+                };
                 result.Error = batch.Stages.FirstOrDefault(s => s.Failed)?.Error
                                ?? $"批次未通关: {batch.Outcome}";
                 break;

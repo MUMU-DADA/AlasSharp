@@ -41,6 +41,7 @@ CLEARED2 = 'campaign.campaign_main.campaign_1_2'
 CLEARED3 = 'campaign.campaign_main.campaign_1_3'
 BAD_CONTRACT = 'campaign.campaign_main.campaign_2_1'
 UPSTREAM_BOOM = 'campaign.campaign_main.campaign_2_2'
+WITHDRAWN_CHAPTER = 'campaign.campaign_main.campaign_1_4'
 
 
 def cleared_document(stage: str, rank: str = 'S', stage_label: str = '1-1') -> dict:
@@ -257,6 +258,30 @@ def build_cases() -> list[dict]:
     ]
 
 
+def withdrawn_document(stage: str) -> dict:
+    """一份**过合同**的撤退文档（R4 门槛：数据面要能区分"成功与撤退"）。"""
+    return {
+        'contract': CONTRACT,
+        'chapter': stage,
+        'stage': '1-4',
+        'dry_run': False,
+        'outcome': 'withdrawn',
+        'cleared': False,
+        'campaign_end': True,
+        'reason': 'ScriptError, No combat executed, Withdrawing',
+        'stop_reason': 'withdrawn',
+        'end_evidence': {
+            'battle_rank': None, 'rank_source': None, 'combat_status': False,
+            'stage_observed': False, 'expected_end': None, 'withdrawn': True,
+            'call_path': ['module.map.map_operation.withdraw'],
+        },
+        'steps': [{'step': 'execute_a_battle', 'round': 1, 'ms': 10.0},
+                  {'step': 'withdraw', 'ms': 5.0}],
+        'elapsed_s': 27.8,
+        'stopped_early': True,
+    }
+
+
 def build_queue_cases() -> list[dict]:
     """R2：任务队列。`tasks` 存在时自检走队列路径而不是单批路径。"""
     def campaign(task_id, chapters, **input_overrides):
@@ -394,6 +419,30 @@ def build_queue_cases() -> list[dict]:
                 ],
                 'artifacts': ['queue.json', 'state.json',
                               'task-clear-1-1.json', 'task-clear-1-2.json'],
+            },
+        },
+        {
+            # R4 门槛：数据面要能**区分成功与撤退** —— 撤退是"跑了但没通关"，
+            # 不能标成 upstream_error（那会让前端只能靠猜），所以 error_kind 留 none、
+            # 结论放 evidence.batch_outcome。
+            'name': 'queue_withdrawn_is_failed_without_error_kind',
+            'dry_run': False,
+            'allow_actions': True,
+            'serial': 'stub-1',
+            'artifacts': True,
+            'tasks': [
+                dict(campaign('withdraw-1-4', [WITHDRAWN_CHAPTER]),
+                     documents={WITHDRAWN_CHAPTER: withdrawn_document(WITHDRAWN_CHAPTER)}),
+            ],
+            'expect': {
+                'outcome': 'failed',
+                'host_start_count': 1,
+                'device_configure_count': 1,
+                'backend_calls': 3,      # 设备配置 1 + 边界快照 1 + s3_run_plan 1
+                'stopped_early': True,
+                'tasks': [{'id': 'withdraw-1-4', 'outcome': 'failed', 'error_kind': 'none'}],
+                'artifacts': ['queue.json', 'state.json',
+                              'task-withdraw-1-4.json', 'sortie-1-4.json'],
             },
         },
     ]
