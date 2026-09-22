@@ -1475,28 +1475,27 @@ def op_s3_run_plan(args):
     repeat = bool(args.get('repeat_until_cleared'))
     max_rounds = int(args.get('max_rounds') or 3)
 
-    def _enemies_left():
-        """图内还剩几个敌方/精英标志（用本地 S2 识别；失败则返回 None 表示未知）。"""
+    def _sortie_state():
+        """用**上游自己的状态**判断是否该继续（本地 `enemies_left` 已被两次证明不可靠）。
+
+        返回 (continue_needed, reason)：
+          - 已离开地图（`is_in_map()` 为假）→ 出击已结束，不需要再跑；
+          - `map_clear_percentage >= 100` → 图已清，不需要再跑；
+          - 否则继续（受 max_rounds / max_seconds 约束）。
+        这两个信号都来自上游运行时，比本地标志计数可靠得多。
+        """
         try:
-            q = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data',
-                             '_runc_%d.png' % int(_t.time()))
-            q = os.path.normpath(q)
-            inst.device.screenshot()
-            import cv2 as _cv2
-            _cv2.imwrite(q, inst.device.image)
-            prev = _state.get('image')
-            try:
-                from module.base.utils import load_image as _li
-                _state['image'] = _li(q)
-                d = op_map_detect({'mode': 'main'})
-            finally:
-                if prev is not None:
-                    _state['image'] = prev
-            fl = d.get('grid_flags') or {}
-            return sum(1 for v in fl.values()
-                       if any(n in v for n in ('is_enemy', 'is_boss', 'is_siren')))
+            if not inst.is_in_map():
+                return False, 'left_map'
         except Exception:
-            return None
+            pass
+        try:
+            pct = getattr(inst, 'map_clear_percentage', None)
+            if isinstance(pct, (int, float)) and float(pct) >= 100.0:
+                return False, 'map_clear_100'
+        except Exception:
+            pass
+        return True, 'still_in_map'
 
     _round = 0
     while True:
@@ -1520,9 +1519,10 @@ def op_s3_run_plan(args):
             # 本轮跑完：判断是否还需要再来一轮
             if not repeat or _round >= max_rounds or _t.time() - t_start > max_s:
                 break
-            left = _enemies_left()
-            steps.append({'round': _round, 'check': 'enemies_left', 'value': left})
-            if left == 0:
+            need, why = _sortie_state()
+            steps.append({'round': _round, 'check': 'sortie_state', 'value': why})
+            if not need:
+                out['stop_reason'] = why      # 上游语义给出的结束原因
                 break
             continue
         break
