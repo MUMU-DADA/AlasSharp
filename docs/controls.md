@@ -59,6 +59,7 @@
 | `EventShopUI.event_shop_tab_count_and_navbar` | 运行时计算 | ⛔ 游戏状态阻塞 | 需进活动商店（本账号当前活动页可达，但商店入口需要活动开放对应玩法） |
 | `ISLAND_DOCK_SORTING` |  | ⛔ 游戏状态阻塞 | 同上 |
 | `ISLAND_SEASON_TASK_SCROLL` |  | ⛔ 游戏状态阻塞 | 岛屿计划未解锁（见 page-verification.md） |
+| `RETIRE_CONFIRM_SCROLL` |  | ⛔ 游戏状态阻塞 | 退役确认弹窗的滚动条。用户已授权"只开弹窗、不点确认"，但**安全入口找不到**：在船坞点舰船卡片打开的是角色详情（`retire/DOCK_CHECK` 从命中掉到 0.43，已离开船坞），三个入口变体 `RETIRE_APPEAR_1/2/3` 实测 0.07/0.08/0.19 都不在屏上；再往下只能盲点船坞底部按钮，而错误代价是不可逆的退役 —— 停手，不验 |
 | `SCROLL_STORAGE` |  | ⛔ 游戏状态阻塞 | 大型作战未解锁 |
 | `STRATEGIC_SEARCH_SCROLL` |  | ⛔ 游戏状态阻塞 | 同上 |
 | `SWITCH_LOCK` |  | ⛔ 游戏状态阻塞 | 指挥喵未解锁 |
@@ -74,13 +75,12 @@
 | `ShopUI._shop_bottom_navbar` | Navbar | ✅ 已命中 | {"active": 0, "total": 5, "info": [0, 0, 4], "buttons": ["SHOP_BOTTOM_NAVBAR_0_0", "SHOP_BOTTOM_NAVBAR_1_0", "SHOP_BOTTOM_NAVBAR_2_0", "SHOP_BOTTOM_NAVBAR_3_0", "SHOP_BOTTOM_NAVBAR_4_0"], "active_color": [33, 195, 239], "inactive_color": [181, 178, 181]} |
 | `StorageUI.storage_filter` | Setting | ✅ 已命中 | {"observed_active": [], "option_count": 6, "settings": ["rarity"]} |
 | `VOUCHER_SHOP_SCROLL` | Scroll | ✅ 已命中 | at_top=True at_bottom=False |
-| `FLEET_LOCK` | Switch | ➡️ 需更深流程 | 舰队编辑浮层里的锁定开关。实测本机 page_fleet 上 `equipment/FLEET_DETAIL` 只有 0.17 分（不在屏上），要进出击/舰队编辑流程才能到达，而那条流程会消耗石油并影响账号 —— 需本人同意后再验 |
-| `FLEET_LOCK` | Switch | ➡️ 需更深流程 | 舰队编辑浮层里的锁定开关。实测本机 page_fleet 上 `equipment/FLEET_DETAIL` 只有 0.17 分（不在屏上），要进出击/舰队编辑流程才能到达，而那条流程会消耗石油并影响账号 —— 需本人同意后再验 |
-| `FORMATION` | Switch | ➡️ 需更深流程 | 出击前「阵型」面板，同上（需进出击流程） |
-| `FORMATION` | Switch | ➡️ 需更深流程 | 出击前「阵型」面板，同上（需进出击流程） |
-| `RETIRE_CONFIRM_SCROLL` |  | ➡️ 需更深流程 | 需进退役确认弹窗 |
-| `SUBMARINE_HUNT` | Switch | ➡️ 需更深流程 | 潜艇面板（还需先有潜艇） |
-| `SUBMARINE_HUNT` | Switch | ➡️ 需更深流程 | 潜艇面板（还需先有潜艇） |
+| `FLEET_LOCK` | Switch | ➡️ 需更深流程 | 舰队锁定开关。本机在战役地图（page_campaign，第2章 2-1~2-4 全 Clear）实测 `handler/FLEET_LOCKED` 0.22、`FLEET_UNLOCKED` 0.15，都不在屏上；`ui_white` 里也没有策略/阵型相关素材可替代 —— 本客户端不暴露该面板，不是实现缺口。未盲点关卡节点（有误触开战风险） |
+| `FLEET_LOCK` | Switch | ➡️ 需更深流程 | 舰队锁定开关。本机在战役地图（page_campaign，第2章 2-1~2-4 全 Clear）实测 `handler/FLEET_LOCKED` 0.22、`FLEET_UNLOCKED` 0.15，都不在屏上；`ui_white` 里也没有策略/阵型相关素材可替代 —— 本客户端不暴露该面板，不是实现缺口。未盲点关卡节点（有误触开战风险） |
+| `FORMATION` | Switch | ➡️ 需更深流程 | 阵型面板。同上：地图上 `handler/IN_MAP` 0.16、`STRATEGY_OPEN` 0.12、`STRATEGY_OPENED` 0.16 都不在屏上，上游那套「策略面板」入口在本客户端里不存在 |
+| `FORMATION` | Switch | ➡️ 需更深流程 | 阵型面板。同上：地图上 `handler/IN_MAP` 0.16、`STRATEGY_OPEN` 0.12、`STRATEGY_OPENED` 0.16 都不在屏上，上游那套「策略面板」入口在本客户端里不存在 |
+| `SUBMARINE_HUNT` | Switch | ➡️ 需更深流程 | 潜艇面板。同上（还需先有潜艇） |
+| `SUBMARINE_HUNT` | Switch | ➡️ 需更深流程 | 潜艇面板。同上（还需先有潜艇） |
 | `SUBMARINE_VIEW` | Switch | ➡️ 需更深流程 | 同上 |
 | `SUBMARINE_VIEW` | Switch | ➡️ 需更深流程 | 同上 |
 | `equipping_filter` | Switch | ➡️ 需更深流程 | 装备选择浮层里的筛选开关。已按上游入口试过两条路：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99，但点开后筛选开关仍不出现）、点装备槽位 (792,156) 也未打开选择器 |

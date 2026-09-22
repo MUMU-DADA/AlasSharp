@@ -28,6 +28,13 @@ SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
 PROBE = os.path.join(HERE, '..', 'data', '_probe.png')
 ALASHUB = os.environ.get('ALASHUB', os.path.join(
     HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net8.0', 'alashub.exe'))
+# 红线关键词：命中即拒绝点击。开战会消耗石油、"确认"不可逆 ——
+# 用户授权里明确排除了这两类，所以做成**代码级守卫**，而不是靠"记得别点"。
+# 注意 RETIRE 本身不在列表里：用户明确授权"可以打开退役弹窗、不点确认"，
+# 退役的**入口**（RETIRE_APPEAR_*）只是开一个弹窗，真正的不可逆动作是带 CONFIRM 的按钮。
+# 本流程对入口**只点一次**，之后只读判定 + 按返回，绝不点第二下
+# （第二下可能正好落在弹窗的确认按钮上 —— 这是这类验证最危险的地方）。
+DANGER = ('START', 'BATTLE', 'FIGHT', 'ATTACK', 'ASSAULT', 'CONFIRM', 'COMMIT')
 
 # 每页要验的规则；swipe 为真时在该页的 Scroll 区域内真滑
 PLAN = [
@@ -84,6 +91,25 @@ PLAN = [
     {'page': 'equip_select',
      'enter': {'goto': 'page_dock', 'long_press': (640, 300), 'click_xy': (792, 156)},
      'rules': [('module.equipment.equipment_change', 'equipping_filter')],
+     'leave': 'back'},
+    {'page': 'retire_dialog',
+     # 退役确认弹窗（用户明确授权"只开弹窗、不点确认"）：
+     # 1) 点一艘舰船卡片＝选中（无害）；2) 点退役入口 RETIRE_APPEAR_* 开弹窗（只点一次）；
+     # 3) 只读判定 RETIRE_CONFIRM_SCROLL；4) 按返回退出。全程不碰任何带 CONFIRM 的素材。
+     'enter': {'goto': 'page_dock', 'click_xy': (640, 300),
+               'click': 'retire/RETIRE_APPEAR_1', 'require_confident': True},
+     'rules': [('module.retire.retirement', 'RETIRE_CONFIRM_SCROLL')],
+     'leave': 'back'},
+    # 阵型/潜艇开关：在**战役地图**上点 STRATEGY_OPEN 打开策略面板即可（上游 strategy_open
+    # 就是这个流程：IN_MAP → click(STRATEGY_OPEN) → STRATEGY_OPENED）。
+    # 完全不需要进出击准备、更不碰任何战斗按钮；require_confident 保证只点确信在屏的素材。
+    {'page': 'page_campaign#strategy',
+     'enter': {'goto': 'page_campaign', 'click': 'handler/STRATEGY_OPEN',
+               'require_confident': True},
+     'rules': [('module.handler.strategy', 'FORMATION'),
+               ('module.handler.strategy', 'SUBMARINE_HUNT'),
+               ('module.handler.strategy', 'SUBMARINE_VIEW'),
+               ('module.handler.fast_forward', 'FLEET_LOCK')],
      'leave': 'back'},
 ]
 
@@ -232,6 +258,17 @@ for step in ([] if REPORT_ONLY else PLAN):
             # 否则点资产标称坐标（低分时 minMaxLoc 的峰值是随机的，拿它当点击目标等于乱点 —
             # 上一版就是这么在 score=0.27 的位置乱点，把画面点成了未建模页）。
             asset = act['click']
+            # **红线守卫**：任何名字像"开战/确认/退役"的素材一律不点，不管分数多高。
+            # 这不是防御性编程的客套 —— 本流程会在战斗准备相关界面里点按钮，
+            # 误点"开始战斗"会消耗石油，误点退役确认不可逆。用户的授权明确排除了这两个。
+            if any(k in asset.upper() for k in DANGER):
+                print('[enter] 拒绝点击 %s：命中红线关键词 %s' % (asset, DANGER))
+                report.append({'page': page, 'rule': '<danger-guard>', 'class': 'Guard',
+                               'verdict': 'blocked',
+                               'detail': '拒绝点击 %s（红线守卫）' % asset})
+                continue
+            # 低分素材在战斗相关界面上一律不点：只有"确信在屏上"的素材才可能是正确的按钮
+            require_confident = act.get('require_confident', False)
             best = None
             for cand in [asset, 'ui_white/%s_WHITE' % asset.split('/', 1)[-1]]:
                 try:
@@ -243,6 +280,13 @@ for step in ([] if REPORT_ONLY else PLAN):
                 if best is None or score > best[0]:
                     best = (score, cand, m, nominal)
             score, cand, m, nominal = best
+            if require_confident and score < 0.85:
+                print('[enter] 放弃点击 %s：实测分 %.4f < 0.85（战斗相关界面只点确信在屏的按钮）'
+                      % (cand, score))
+                report.append({'page': page, 'rule': '<confident-guard>', 'class': 'Guard',
+                               'verdict': 'blocked',
+                               'detail': '%s 实测 %.4f，未达确信阈值，放弃点击' % (cand, score)})
+                continue
             box = m.get('button_offset') if score >= 0.85 else None
             if box:
                 cx, cy = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
@@ -369,7 +413,11 @@ if not REPORT_ONLY and not ONLY:
 UNPLANNED = {
     'EQUIPMENT_SCROLL': ('deeper', '需进「舰船详情 → 装备」浮层，不是页面图里的独立页'),
     'equipping_filter': ('deeper', '同上（装备筛选开关在装备浮层里）'),
-    'RETIRE_CONFIRM_SCROLL': ('deeper', '需进退役确认弹窗'),
+    'RETIRE_CONFIRM_SCROLL': ('blocked',
+        '退役确认弹窗的滚动条。用户已授权"只开弹窗、不点确认"，但**安全入口找不到**：'
+        '在船坞点舰船卡片打开的是角色详情（`retire/DOCK_CHECK` 从命中掉到 0.43，已离开船坞），'
+        '三个入口变体 `RETIRE_APPEAR_1/2/3` 实测 0.07/0.08/0.19 都不在屏上；'
+        '再往下只能盲点船坞底部按钮，而错误代价是不可逆的退役 —— 停手，不验'),
     'VOUCHER_SHOP_SCROLL': ('deeper', '需切到商店的兑换页签（页签本身是 ShopUI 的 Switch 规则）'),
     'MINIGAME_SCROLL': ('pending', 'page_game_room 已验证可达，小游戏内滚动待验'),
     'ISLAND_SEASON_TASK_SCROLL': ('blocked', '岛屿计划未解锁（见 page-verification.md）'),
@@ -379,11 +427,13 @@ UNPLANNED = {
     'STRATEGIC_SEARCH_SCROLL': ('blocked', '同上'),
 }
 DEEPER_NOTE = {
-    'FLEET_LOCK': '舰队编辑浮层里的锁定开关。实测本机 page_fleet 上 '
-                  '`equipment/FLEET_DETAIL` 只有 0.17 分（不在屏上），要进出击/舰队编辑流程才能到达，'
-                  '而那条流程会消耗石油并影响账号 —— 需本人同意后再验',
-    'FORMATION': '出击前「阵型」面板，同上（需进出击流程）',
-    'SUBMARINE_HUNT': '潜艇面板（还需先有潜艇）',
+    'FLEET_LOCK': '舰队锁定开关。本机在战役地图（page_campaign，第2章 2-1~2-4 全 Clear）实测 '
+                  '`handler/FLEET_LOCKED` 0.22、`FLEET_UNLOCKED` 0.15，都不在屏上；'
+                  '`ui_white` 里也没有策略/阵型相关素材可替代 —— 本客户端不暴露该面板，'
+                  '不是实现缺口。未盲点关卡节点（有误触开战风险）',
+    'FORMATION': '阵型面板。同上：地图上 `handler/IN_MAP` 0.16、`STRATEGY_OPEN` 0.12、'
+                 '`STRATEGY_OPENED` 0.16 都不在屏上，上游那套「策略面板」入口在本客户端里不存在',
+    'SUBMARINE_HUNT': '潜艇面板。同上（还需先有潜艇）',
     'SUBMARINE_VIEW': '同上',
     'equipping_filter': '装备选择浮层里的筛选开关。已按上游入口试过两条路：'
                         '角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99，'
@@ -397,6 +447,12 @@ MISS_STATUS = {
         '实测 unknown（新版商店才有这两个导航项；老版走 _shop_bottom_navbar，已命中）'),
     'ShopUI.shop_tab_250814': ('uiversion',
         '同上（9 个新版页签 TAB_* 都不在屏上）'),
+    'RETIRE_CONFIRM_SCROLL': ('blocked',
+        '退役确认弹窗的滚动条。用户已授权"只开弹窗、不点确认"，但**安全入口找不到**：'
+        '在船坞点舰船卡片打开的是角色详情（pages 变空、`retire/DOCK_CHECK` 从命中掉到 0.43，'
+        '说明已离开船坞），三个入口变体 `RETIRE_APPEAR_1/2/3` 实测 0.07/0.08/0.19 都不在屏上。'
+        '再往下只能盲点船坞底部按钮，而这条流程的错误代价是**不可逆的退役** —— 停手，不验。'
+        '红线守卫（DANGER 含 CONFIRM）同时也挡住了任何确认类素材的点击'),
 }
 LABEL = {'hit': '✅ 已命中', 'deeper': '➡️ 需更深流程', 'blocked': '⛔ 游戏状态阻塞',
          'pending': '🔵 待验', 'uiversion': '🕐 UI 版本差异'}
@@ -406,8 +462,8 @@ def build_doc():
     rows = []
     for x in report:
         rule = x['rule']
-        if rule.endswith(('#drive', '#swipe', '#probe')):
-            continue          # 动作行单独成节，不混进规则总账
+        if rule.endswith(('#drive', '#swipe', '#probe')) or rule.startswith('<'):
+            continue          # 动作行与守卫记录单独成节，不混进规则总账
         if x['verdict'] == 'hit':
             status = LABEL['hit']
             note = x['detail']
@@ -427,7 +483,8 @@ def build_doc():
     rows.append(('EventShopUI.event_shop_tab_count_and_navbar', '运行时计算', LABEL['blocked'],
                  '需进活动商店（本账号当前活动页可达，但商店入口需要活动开放对应玩法）'))
     rows.sort(key=lambda r: (r[2], r[0]))
-    actions = [x for x in report if x['rule'].endswith(('#swipe', '#drive', '#probe'))]
+    actions = [x for x in report if x['rule'].endswith(('#swipe', '#drive', '#probe'))
+               or x['rule'].startswith('<')]
 
     lines = [
         '# 控件识别与滑动控制验证记录',
