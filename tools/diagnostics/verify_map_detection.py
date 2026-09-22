@@ -122,12 +122,24 @@ def main():
             exp = ir_expectation(info['chapter'])
             entry['ir'] = exp
             if exp and m.get('detected'):
-                entry['ir_match'] = (m.get('grid_count') == exp['grids']
-                                     and m.get('shape') == exp['shape'])
+                # 判定口径（实测校准过）：
+                #   shape 必须与 IR 声明**严格一致**（F4→[5,3]、I6→[8,5]）；
+                #   格数则允许**少于**声明值 —— 被左侧舰队栏/右侧 UI 遮住的格子本来就检不到，
+                #   实测 9x6 图上 48/54，缺的正是 (0,4)(0,5) 与 (8,2..5)。
+                #   所以"缺格"要连坐标一起记录，而不是当成检测错误。
+                keys = set(tuple(k) for k in (m.get('grid_keys') or []))
+                sh = m.get('shape') or [0, 0]
+                full = set((x, y) for x in range(sh[0] + 1) for y in range(sh[1] + 1))
+                missing = sorted(full - keys)
+                entry['ir_match'] = (sh == exp['shape'])
+                entry['grid_missing'] = [list(k) for k in missing]
+                entry['grid_missing_count'] = len(missing)
             else:
                 entry['ir_match'] = None
         results['map'].append(dict(m, fixture=f, ir=entry.get('ir'),
-                                   ir_match=entry.get('ir_match')))
+                                   ir_match=entry.get('ir_match'),
+                                   grid_missing=entry.get('grid_missing'),
+                                   grid_missing_count=entry.get('grid_missing_count')))
         print('%s: globe load=%s 往返误差=%s | map detected=%s %s'
               % (f, g.get('load'), ('%.2e' % rt) if rt is not None else 'n/a',
                  m.get('detected'), m.get('reason') or ''))

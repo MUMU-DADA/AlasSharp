@@ -1066,6 +1066,16 @@ def op_map_detect(args):
     grids = getattr(v, 'grids', None)
     if isinstance(grids, dict):
         out['grid_count'] = len(grids)
+        # 检出网格的坐标：用来回答"为什么格数比地图声明的少"——
+        # 左侧舰队栏 / 顶部信息条被遮罩盖住的那几格本来就不该检出。
+        try:
+            keys = sorted((int(k[0]), int(k[1])) for k in grids.keys())
+            out['grid_keys'] = [list(k) for k in keys]
+            if keys:
+                out['grid_bounds'] = [min(k[0] for k in keys), min(k[1] for k in keys),
+                                      max(k[0] for k in keys), max(k[1] for k in keys)]
+        except Exception as e:
+            out['grid_keys_error'] = f'{type(e).__name__}: {e}'
     out['detected'] = bool(out.get('grid_count'))
     grid = getattr(v, 'grids', None) or getattr(v, 'grid', None)
     if grid is not None:
