@@ -41,7 +41,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
     "globe_center: (np.float64(1423.0), np.float64(1690.0))",
-    "0.076s      similarity: 0.066",
+    "0.079s      similarity: 0.066",
     "Low similarity when matching OS globe"
   ],
   "similarity": 0.066,
@@ -438,6 +438,21 @@ homography 后端在两张真机图上都与关卡 IR 严格一致。
 所以"匹配度多高算认出海域"要**在真机海域画面上实测标定**，不能凭猜写死。
 这一步需要用户进入任意海域后抓一张图（免费、不耗油），
 预期 similarity 会显著高于上面 0.082–0.128 这一档。
+
+## 环球视图位置检测：**已验证**（S2 最后一块拼图）
+
+用户切到环球视图后实测，三次运行完全一致：
+
+```
+globe similarity=0.508   center_loca=[463.0, 904.0]
+```
+
+对比此前在错误画面（战役图 / 海域图）上的 0.066-0.128 —— **0.508 远高于上游
+`globe_detection.py:133` 的 `if similarity < 0.1` 警告线**，说明匹配可信；
+`center_loca` 给出的大世界坐标 (463, 904) 稳定可复现。
+
+也就是说：判定用的是**上游自己的判据**，不是我们拍的门槛。
+配套 fixture：`data/fixtures/os_globe_view.png`（不入库，可随时重抓）。
 
 ## 复现
 
