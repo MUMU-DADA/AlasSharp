@@ -32,8 +32,19 @@ internal static class DeviceCheck
     /// <summary>
     /// 真机/模拟器验收。**只截图与查询，不发点击** —— 避免干扰用户正在运行的模拟器。
     /// </summary>
-    public static int RunReal(string adbPath, string serial, string forkDir, string toolsDir)
+    private static readonly string[] DefaultPageIndicators =
     {
+        "ui/CAMPAIGN_CHECK", "ui/DORM_CHECK", "ui/ACADEMY_CHECK", "ui/GUILD_CHECK",
+        "ui/EVENT_CHECK", "ui/EXERCISE_CHECK", "ui/MISSION_CHECK", "ui/STORAGE_CHECK",
+        "ui/BUILD_CHECK", "ui/ISLAND_CHECK", "ui/BATTLE_PASS_CHECK", "ui/COMMISSION_CHECK",
+        "ui/DAILY_CHECK", "ui/FLEET_CHECK", "ui/CHANNEL_CHECK", "ui/IDLE",
+        "ui/BACK_ARROW", "ui/GOTO_MAIN",
+    };
+
+    public static int RunReal(string adbPath, string serial, string forkDir, string toolsDir,
+                              string server = "cn", string[]? assetsCsv = null)
+    {
+        string[] assetList = assetsCsv ?? Array.Empty<string>();
         var problems = new List<string>();
         using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(forkDir, toolsDir);
         var adb = new ProcessAdbTransport(adbPath);
@@ -63,16 +74,26 @@ internal static class DeviceCheck
         if (info.Shape.Count != 3 || info.Shape[2] != 3)
             problems.Add($"截图形状异常: {string.Join("x", info.Shape)}");
 
-        // 拿一个真实素材做判定，只为证明「真机截图 → 上游识图」跑得通
-        vision.SetServer("cn");
-        foreach (string asset in new[] { "ui/IDLE", "ui/BACK_ARROW", "ui/GOTO_MAIN" })
+        // 页面判定：对当前真实截图跑一批 ALAS 自己的页面指示按钮，看哪些出现。
+        // 这是 ALAS 判断"现在在哪个页面"的真实做法，结果应自洽（不该有一堆同时为真）。
+        vision.SetServer(server);
+        string[] assets = assetList.Length > 0 ? assetList : DefaultPageIndicators;
+        var sw2 = System.Diagnostics.Stopwatch.StartNew();
+        var batch = vision.AppearOnBatch(assets);
+        double batchMs = sw2.Elapsed.TotalMilliseconds;
+        var hits = batch.Results.Where(r => r.Appear).ToList();
+        Console.WriteLine($"[页面判定] 候选项 {assets.Length}，命中 {hits.Count}"
+                          + $"（宿主内 {batch.ElapsedMs:F2}ms，往返 {batchMs:F2}ms）");
+        foreach (var h in hits)
+            Console.WriteLine($"[命中    ] {h.Asset,-24} 容差={h.Tolerance?.ToString("F1") ?? "-"}");
+        if (hits.Count == 0)
         {
-            try
-            {
-                var r = vision.AppearOn(asset, detail: true);
-                Console.WriteLine($"[判定    ] {asset,-20} = {r.Appear,-5} 容差={r.Tolerance?.ToString("F1") ?? "-"}");
-            }
-            catch (Exception ex) { Console.WriteLine($"[判定    ] {asset}: {ex.Message}"); }
+            Console.WriteLine("[命中    ] 无 —— 当前画面不匹配任何页面指示按钮");
+            var closest = batch.Results.Where(r => r.Tolerance is not null)
+                .OrderBy(r => r.Tolerance).Take(5);
+            Console.WriteLine("           最接近的 5 个（容差越小越像）：");
+            foreach (var c2 in closest)
+                Console.WriteLine($"             {c2.Asset,-24} 容差={c2.Tolerance:F1}");
         }
 
         Console.WriteLine();

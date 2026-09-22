@@ -48,14 +48,17 @@ internal static class Program
                 fixture ??= Path.Combine(dataDir, "fixtures", "imaging.json");
                 string toolsDir2 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
                     "..", "..", "..", "..", "..", "tools"));
-                string? realAdb = null, realSerial = null;
+                string? realAdb = null, realSerial = null, server = null; string[]? assetCsv = null;
                 for (int i = 1; i < args.Length - 1; i++)
                 {
                     if (args[i] == "--adb") realAdb = args[i + 1];
                     if (args[i] == "--serial") realSerial = args[i + 1];
+                    if (args[i] == "--server") server = args[i + 1];
+                    if (args[i] == "--assets") assetCsv = args[i + 1].Split(',');
                 }
                 return realAdb is not null && realSerial is not null
-                    ? DeviceCheck.RunReal(realAdb, realSerial, repoDir, toolsDir2)
+                    ? DeviceCheck.RunReal(realAdb, realSerial, repoDir, toolsDir2,
+                        server ?? "cn", assetCsv)
                     : DeviceCheck.Run(fixture, repoDir, toolsDir2, dataDir);
             }
             if (command == "vision")
