@@ -970,6 +970,57 @@ def apply_numpy2_compat():
         pass
 
 
+# ---------------------------------------------------------------------------
+# 客户端垫片：OS（作业海域）画面上"找地图四角"这一步要用 OS 遮罩
+# ---------------------------------------------------------------------------
+# 上游 `Perspective.load_image` 里写死了战役遮罩：
+#     cv2.bitwise_and(image, ASSETS.ui_mask, dst=image)      # perspective.py:172
+# 而 homography.py:67-72 的 warp 后遮罩却按 Scheduler_Command 切 OS/战役 —— 两处不对称。
+#
+# 实测（真机海域画面 os_live_2.png，同一套上游代码）：
+#   用战役遮罩：MapDetectionError: Failed to find a free tile
+#   改用 OS 遮罩：OK grids=49 shape=[8,5]（9x6）
+# 原因：本客户端 OS 画面底部那条 UI 栏（第一舰队/储物舱/情报/作战总览）**不在战役遮罩的
+# UI 区域内**，其边界被当成地图下边（实测底部两角 y=701.6、x=13.6/1500.2，超出屏宽 1280），
+# 单应性因此算错。
+#
+# 只在 _OS_MASK_MODE 为真时改行为，战役路径一行不变。
+_OS_MASK_MODE = False
+_OS_MASK_COMPAT_DONE = False
+
+
+def apply_os_mask_compat():
+    """把 Perspective.load_image 包一层：OS 模式下换用 OS 遮罩（上游代码不改）。"""
+    global _OS_MASK_COMPAT_DONE
+    if _OS_MASK_COMPAT_DONE:
+        return
+    _OS_MASK_COMPAT_DONE = True
+    try:
+        from module.base.utils import rgb2gray, crop
+        from module.map_detection import perspective as _persp
+        from module.map_detection.utils_assets import Assets as _Assets
+        import cv2 as _cv2
+        _orig = _persp.Perspective.load_image
+
+        def _load_image(self, image):
+            if not _OS_MASK_MODE:
+                return _orig(self, image)
+            g = rgb2gray(crop(image, self.config.DETECTING_AREA, copy=False))
+            _cv2.bitwise_and(g, _Assets().ui_mask_os, dst=g)
+            _cv2.bitwise_not(g, dst=g)
+            return g
+
+        _persp.Perspective.load_image = _load_image
+    except Exception:
+        pass
+
+
+def set_os_mask_mode(on):
+    """由 op 在调用前后开关（默认关，避免影响战役路径）。"""
+    global _OS_MASK_MODE
+    _OS_MASK_MODE = bool(on)
+
+
 def _map_config():
     """S2 需要上游配置（`DETECTION_BACKEND` 等决定用 Homography 还是 Perspective 后端）。
     做法与 cached_rule_check 一致：用上游自己的 AzurLaneConfig，不自己造配置层。"""
@@ -1028,6 +1079,16 @@ def op_map_detect(args):
     out['mode'] = mode
     try:
         if mode == 'os':
+            # OS 模式需要两半，缺一不可：
+            #   1) Perspective.load_image 写死了战役遮罩 → 用垫片换成 ui_mask_os（找四角那步）
+            #   2) homography.py:67-72 的 warp 后遮罩按 Scheduler_Command 是否以 Opsi 开头切换
+            #      → 不设它的话，四角算对了、自由格搜索照样全败
+            apply_os_mask_compat()
+            set_os_mask_mode(True)
+            try:
+                cfg.Scheduler_Command = 'OpsiDaily'
+            except Exception:
+                pass
             grid_class = None
             try:
                 import module.map_detection.os_grid as os_grid_mod
@@ -1057,12 +1118,14 @@ def op_map_detect(args):
         v.load(image)
         out['load'] = 'ok'
     except MapDetectionError as e:
+        set_os_mask_mode(False)      # 异常路径也必须复位，否则泄漏到后续战役检测
         # 上游自己的负样本信号（找到瓦片但没有成形的网格）
         out['load'] = 'negative'
         out['detected'] = False
         out['reason'] = str(e)
         return out
     except Exception as e:
+        set_os_mask_mode(False)
         # 非地图画面上上游会在 np.stack 上抛 TypeError（它假定调用方已确认在地图上）。
         # 产品侧需要在任意画面上安全地"试一试"，所以这里也归为未检测到，
         # 但**保留原始异常文本**，免得把"接线的锅"当成"画面的锅"。
@@ -1070,6 +1133,7 @@ def op_map_detect(args):
         out['detected'] = False
         out['reason'] = f'{type(e).__name__}: {e}'
         return out
+    set_os_mask_mode(False)      # 用完即复位，不影响后续战役检测
     if hasattr(v, 'predict'):
         try:
             v.predict()
