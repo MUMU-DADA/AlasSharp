@@ -149,12 +149,31 @@ src/Alas.Core/          数据模型 + 读取器 + 识图客户端
   Imaging/                【参考实现，非产品路径】手工移植的 cv2 原语
 src/Alas.DataTool/      命令行工具 alashub
 tools/                  构建期脚本（需要 Python）
+  sync_all.py               **一键同步上游规则/素材**（检查/更新/复检/验收）
   export_upstream_data.py   上游 .py 产物 → JSON + Schema + 溯源清单
   sync_upstream_assets.py   上游静态资源快照同步/校验（写入 vendor/upstream）
   verify_export.py          数据契约校验（Python 侧）
   vision_worker.py          识图引擎 worker（调用上游模块）
   make_*_fixture.py         对拍基准生成
   diagnostics/              定位过程留下的诊断脚本
+
+上游更新分三类，`sync_all.py` 只负责需要动作的两类：
+
+| 类别 | 内容 | 要不要动作 |
+|---|---|---|
+| A | 上游 Python 代码：页面规则 / UI 素材 / 视觉模块 / OCR；页面图与控件清单 | **不用** —— 宿主直接 import fork 目录并 chdir，运行时即生效 |
+| B | 关卡 IR（`data/campaign/**`）+ assets/schema/manifest | 要：`sync_all.py`（内部调 `export_upstream_data.py`）|
+| C | `vendor/upstream/` 素材逐字节快照 | 要：`sync_all.py`（内部调 `sync_upstream_assets.py`）|
+
+```powershell
+python tools/sync_all.py                   # 检查 B/C 是否过期（非 0 退出，可当 CI 守卫）
+python tools/sync_all.py --strict-drift    # 上游已走在我们前面也算失败
+python tools/sync_all.py --update --verify # 重导 + 刷新快照 + 复检 + 跑免设备验收
+python tools/sync_all.py --fetch           # 先在 fork 里 git fetch upstream（只读）
+```
+
+**更新 ≠ 适配完成**：上游代码变更可能在 C# 侧静默失效（例如改了 asset id 而 C# 里硬编码了旧的，
+本项目早期就踩过）。所以更新后必须跑一致性验收 —— `--verify` 就是这一步。
 vendor/upstream/        上游静态资源的逐字节镜像（模板图/OCR 权重/设备端二进制）
                         来源 commit 与逐文件 sha256 见其中的 MANIFEST.json 与 README
 data/                   上游数据契约的导出产物（运行期生成，不入库）
