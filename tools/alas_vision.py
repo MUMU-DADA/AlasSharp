@@ -1402,6 +1402,143 @@ def op_map_detect_trace(args):
     return out
 
 
+# ---------------------------------------------------------------------------
+# 设备引擎（方案 A）：设备 I/O 也走宿主，换引擎＝改配置，C# 侧零改动
+# ---------------------------------------------------------------------------
+_DEVICE_OBJ = None
+_DEVICE_KEY = None
+_DEVICE_ARGS = {}
+
+
+def _device_engine():
+    """构造并缓存引擎的设备层（`module.device.device.Device`）。
+
+    引擎自带**多引擎设备层**（`module/device/method/`：adb / ascreencap / droidcast /
+    maatouch / minitouch / hermit / nemu_ipc / scrcpy / uiautomator_2 / wsa / ldopengl），
+    由 `Emulator_ScreenshotMethod`（截图后端）与 `Emulator_ControlMethod`（输入后端）选择。
+    在 C# 里为每个后端写实现等于重写上游方法层，所以统一走这里。
+    """
+    global _DEVICE_OBJ, _DEVICE_KEY
+    serial = str(_DEVICE_ARGS.get('serial') or '127.0.0.1:16384')
+    shot = str(_DEVICE_ARGS.get('screenshot') or 'adb')
+    ctrl = str(_DEVICE_ARGS.get('control') or 'ADB')
+    key = (serial, shot, ctrl)
+    if _DEVICE_OBJ is not None and _DEVICE_KEY == key:
+        return _DEVICE_OBJ
+    cfg = _map_config()
+    # 两个坑（实测踩过，缺一不可）：
+    #   1) 必须先导入 `module.device.pkg_resources` —— adbutils 会 import pkg_resources，
+    #      ALAS 靠这个桩顶替，而桩**只有先被导入才生效**（真实运行由 device.py 保证）；
+    #   2) 配置必须放进 `cfg.multi_set()` —— 否则 ALAS 的配置系统会回写覆盖，
+    #      Serial 变回 'auto'，设备探测失败，Device.__init__ 重试 4 次后抛
+    #      `RequestHumanTakeover`（消息还是空的，极具误导性）。
+    import module.device.pkg_resources
+    with cfg.multi_set():
+        cfg.Emulator_Serial = serial
+        cfg.Emulator_ScreenshotMethod = shot
+        cfg.Emulator_ControlMethod = ctrl
+    from module.device.device import Device
+    _DEVICE_OBJ = Device(cfg)
+    _DEVICE_KEY = key
+    return _DEVICE_OBJ
+
+
+def op_device_configure(args):
+    """选择设备引擎：`serial` / `screenshot` / `control`。只记录选择，首次用其它 device_* 时构造。"""
+    global _DEVICE_OBJ, _DEVICE_KEY
+    for k in ('serial', 'screenshot', 'control'):
+        if args.get(k):
+            _DEVICE_ARGS[k] = args[k]
+    _DEVICE_OBJ = None
+    _DEVICE_KEY = None
+    return {'configured': dict(_DEVICE_ARGS)}
+
+
+def op_device_info(args):
+    """当前设备引擎状态：串号、截图/输入后端、包名。"""
+    dev = _device_engine()
+    out = {'args': dict(_DEVICE_ARGS)}
+    try:
+        out['serial'] = str(getattr(dev, 'serial', None) or '')
+        out['screenshot_method'] = str(getattr(dev.config, 'Emulator_ScreenshotMethod', ''))
+        out['control_method'] = str(getattr(dev.config, 'Emulator_ControlMethod', ''))
+        out['package'] = str(getattr(dev.config, 'package', ''))
+    except Exception as e:
+        out['info_error'] = f'{type(e).__name__}: {e}'
+    return out
+
+
+def op_device_screencap(args):
+    """用引擎选定的后端截图到 `path`，返回耗时 —— 用于对比各后端（我们的瓶颈就在截图）。"""
+    import time as _time
+    dev = _device_engine()
+    path = args.get('path')
+    # raw=True 时直接调后端原始实现（`screenshot_<method>`），**绕开 ALAS 的截图间隔节流**
+    # （`screenshot()` 里有 `self._screenshot_interval.wait()`，实测 0.3s 会把各后端的
+    #  速度差异整个盖住：三个后端都量到 ~375ms，其中 ~300ms 是节流）。
+    raw = bool(args.get('raw'))
+    method = str(getattr(dev.config, 'Emulator_ScreenshotMethod', 'adb'))
+    t0 = _time.time()
+    if raw:
+        fn = getattr(dev, f'screenshot_{method}', None)
+        if fn is None:
+            return {'error': f'后端 {method} 没有 screenshot_{method} 原始实现'}
+        img = fn()
+    else:
+        img = dev.screenshot()
+    ms = (_time.time() - t0) * 1000
+    out = {'ms': round(ms, 1), 'raw': raw,
+           'screenshot_method': method}
+    if path:
+        # ALAS 的 `Device.screenshot()` 返回 **numpy 数组**（BGR），不是 PIL Image ——
+        # 直接 `.save()` 会报 `'numpy.ndarray' object has no attribute 'save'`（实测踩过）。
+        if hasattr(img, 'save'):
+            img.save(path)
+        else:
+            import cv2 as _cv2
+            _cv2.imwrite(path, img)
+        try:
+            out['bytes'] = os.path.getsize(path)
+        except Exception:
+            pass
+        out['path'] = path
+    # 尺寸：numpy 用 shape（BGR 的 .size 是元素总数，是个 int，`list(int)` 会炸 —— 实测踩过）
+    try:
+        if hasattr(img, 'shape'):
+            out['size'] = [int(v) for v in img.shape[:2]]
+        elif hasattr(img, 'size'):
+            out['size'] = [int(v) for v in img.size]
+    except Exception:
+        pass
+    return out
+
+
+def op_device_click(args):
+    import time as _time
+    dev = _device_engine()
+    t0 = _time.time()
+    dev.click(args['x'], args['y'])
+    return {'ms': round((_time.time() - t0) * 1000, 1)}
+
+
+def op_device_swipe(args):
+    import time as _time
+    dev = _device_engine()
+    t0 = _time.time()
+    dev.swipe(args['x1'], args['y1'], args['x2'], args['y2'],
+              duration=args.get('duration', 0.2))
+    return {'ms': round((_time.time() - t0) * 1000, 1)}
+
+
+def op_device_back(args):
+    dev = _device_engine()
+    try:
+        dev.back()
+        return {'ok': True}
+    except Exception as e:
+        return {'ok': False, 'error': f'{type(e).__name__}: {e}'}
+
+
 def op_ui_rules_sweep(args):
     """
     界面与控件识别的**统一验收**：一次跑完三类实体并汇总。
@@ -1527,6 +1664,12 @@ OPS = {
     'page_positive_control': op_page_positive_control,
     'rule_positive_control': op_rule_positive_control,
     'map_detection_assets': op_map_detection_assets,
+    'device_configure': op_device_configure,
+    'device_info': op_device_info,
+    'device_screencap': op_device_screencap,
+    'device_click': op_device_click,
+    'device_swipe': op_device_swipe,
+    'device_back': op_device_back,
     'map_detect': op_map_detect,
     'map_detect_trace': op_map_detect_trace,
     'globe_detect': op_globe_detect,
