@@ -1242,6 +1242,25 @@ def op_map_detect(args):
         out['grid_shape'] = [int(x) for x in getattr(grid, 'shape', [])] \
             or str(type(grid).__name__)
     out['detected'] = bool(getattr(v, '_detected', False)) or 'grid_shape' in out
+
+    # ---- 战场判据：**地图上必定有船**
+    # 实测（docs/device-engine.md "误报"一节）：战役章节选择页会把章节预览图误判成地图
+    # （10 帧里 6 帧误报），而那些误报帧的逐格标志**全为 0**；四张真地图的船标志都 ≥3。
+    # 道理直白：在战斗中画面上不可能没有己方舰队。所以"检出网格 + 至少一个船标志"
+    # 才算真的在地图上；`detected_raw` 保留原判，便于诊断时看到底层检出。
+    SHIP_FLAGS = ('is_enemy', 'is_boss', 'is_siren', 'is_fleet',
+                  'is_current_fleet', 'is_submarine')
+    ships = {}
+    for key, names in (out.get('grid_flags') or {}).items():
+        if any(n in names for n in SHIP_FLAGS):
+            ships[key] = names
+    out['detected_raw'] = out['detected']
+    out['ships'] = len(ships)
+    out['ship_tiles'] = ships
+    if bool(args.get('require_ships', True)) and not ships and out['detected']:
+        out['detected'] = False
+        out['reason'] = ('检出网格但**没有任何船标志**（%s 格），判为非战场画面'
+                         % out.get('grid_count'))
     return out
 
 
