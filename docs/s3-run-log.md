@@ -27,6 +27,7 @@ alashub campaign <章模块> --run --allow-actions --clear-all --fleet1 3 --flee
 | 12-1 | 6 | A | ✅ | 312.2s | H5 | 同上 | `%TEMP%\batch_a.log` |
 | 12-1 | 6 | B（`--clear-all`） | ✅ | 356.9s | H5 | 同上；`Enemy remain` 一路收到 `[]` 才 `Brute clear BOSS` | `%TEMP%\batch_b.log` |
 | 10-1 | 6 | A | ✅ | 355.3s | G3 | 同上 | `%TEMP%\batch_a.log` |
+| 10-1 | 6 | B（`--clear-all`） | ✅ | **391.0s**（9 轮） | G4 | `Enemy remain: []` → `Brute clear BOSS`；8 只小怪全清 | `%TEMP%\batch_101b.log` |
 | 14-1 | 7 | A | ✅ | 530.6s | A7 | 同上；该图有自己的 `battle_5` 钩子（`campaign_14_1.py:84`），流程是 `battle_0 → battle_5 → battle_6` | `%TEMP%\batch_a.log` |
 
 **跨关连续**：上面三关是**同一个进程**里连续驱动的（`campaign A,B,C`），两处"复位回战役页"
