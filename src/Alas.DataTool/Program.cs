@@ -65,8 +65,9 @@ internal static class Program
                 "verify" => Verify(catalog, repoDir),
                 "list" => List(catalog, target),
                 "show" => Show(catalog, target),
+                "campaign" => CampaignCheck.Run(catalog, target),
                 _ => Fail($"未知命令: {command}"
-                          + "（可用: verify / list / show / imaging / matching / vision）"),
+                          + "（可用: verify / list / show / imaging / matching / vision / campaign）"),
             };
         }
         catch (Exception ex)

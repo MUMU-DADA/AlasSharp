@@ -253,22 +253,39 @@ def export_assets(root: str, out_dir: str, manifest: dict):
 
 
 # --------------------------------------------------------------------- 关卡
+def _is_bare_return_true(body) -> bool:
+    """判断分支体是否只是 `return True`（上游生成器模板的唯一条件体形态）。"""
+    stmts = [s for s in body
+             if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant))]
+    if len(stmts) != 1:
+        return False
+    s = stmts[0]
+    return (isinstance(s, ast.Return) and isinstance(s.value, ast.Constant)
+            and s.value.value is True)
+
+
 def derive_plan(body: list, where: str):
     """
     把 battle_N 方法体归一成步骤序列。
 
-    能识别的语句形态（覆盖上游生成器模板 + 一部分手写写法）：
-        if self.X(args): return ...           → conditional
-        if not self.X(args): ...              → conditional_negated
-        return self.X(args)                   → terminal
-        self.X(args)                          → call
-        var = self.X(args)                    → assign（记下变量名）
+    只归一**能完整表示**的语句形态：
+        if self.X(args) and <body 仅为 return True>    → conditional
+        if not self.X(args) and <body 仅为 return True> → conditional_negated
+        return self.X(args)                            → terminal
+        self.X(args)                                   → call
+        var = self.X(args)                             → assign
 
-    识别不了的（for/while/赋值运算/对变量取条件/多分支…）会记进 `unparsed`。
-    **只要出现 unparsed，plan_complete 即为 false，steps 一律作废**（返回空列表），
-    避免下游把残缺计划当成完整计划使用 —— 这是本导出器的硬约束。
+    任何**表示不了**的（赋值运算、对变量取条件、分支体内还有别的语句、循环…）都记进 `unparsed`，
+    此时 plan_complete=false 且 steps 作废。
+
+    ⚠️ 这一条是**保真红线**，有真实教训：早期版本把
+        `if not self.X(): return self.Y()`
+    也当成 conditional_negated，结果把分支体里的 `self.Y()` **静默丢掉**——
+    计划看起来完整，实际少调用一次，而当时的校验只查「计划里的算子在源码中出现」，
+    查不出这种**丢步**。是 S3 解释器对拍（执行序列 vs 计划序列）才把它暴露出来（26 个关卡）。
     """
-    steps, unparsed = [], []
+    steps, unparsed, dead = [], [], []
+    terminated = False
 
     def self_call_step(node, kind, **extra):
         s = {'op': call_name(node), 'args': call_args(node), 'kind': kind}
@@ -276,23 +293,38 @@ def derive_plan(body: list, where: str):
         return s
 
     for stmt in body:
+        if terminated:
+            # Python 语义：`return` 之后的语句**不可达**。
+            # 上游确实存在这种手滑留下的死代码，实测 campaign/event_20211028_tw/c3.py：
+            #     return self.battle_default()
+            #     return self.battle_default()      ← 永不执行
+            # 记进 dead 以便追溯，但绝不能当成步骤 —— 否则解释器会执行一次永不发生的调用
+            # （实测会让解释器执行序列与计划序列对不上，2 个关卡）。
+            dead.append(type(stmt).__name__)
+            continue
+
         if isinstance(stmt, ast.If):
             t = stmt.test
-            if is_self_call(t):
-                steps.append(self_call_step(t, 'conditional'))
-                continue
-            if isinstance(t, ast.UnaryOp) and isinstance(t.op, ast.Not) and is_self_call(t.operand):
-                steps.append(self_call_step(t.operand, 'conditional_negated'))
-                continue
-            unparsed.append(type(t).__name__)
+            if not stmt.orelse and _is_bare_return_true(stmt.body):
+                if is_self_call(t):
+                    steps.append(self_call_step(t, 'conditional'))
+                    continue
+                if isinstance(t, ast.UnaryOp) and isinstance(t.op, ast.Not) \
+                        and is_self_call(t.operand):
+                    steps.append(self_call_step(t.operand, 'conditional_negated'))
+                    continue
+            # 分支体不是单纯的 return True（例如分支里还有调用/返回别的值）：
+            # 表示不了就如实标为未解析，绝不给出一份少几步的"完整"计划。
+            unparsed.append('If(nested)')
         elif isinstance(stmt, ast.Return):
             if stmt.value is not None and is_self_call(stmt.value):
                 steps.append(self_call_step(stmt.value, 'terminal'))
+                terminated = True
             elif is_super_delegate(stmt.value):
                 # `return super().X(...)`：纯委托，本类没有新增逻辑，只是覆写钩子。
-                # 不能据此把整关判成「需原生实现」（实测 campaign_1_1 就被误判过）。
                 steps.append({'op': super_call_name(stmt.value), 'args': call_args(stmt.value),
                               'kind': 'super_delegate'})
+                terminated = True
             else:
                 unparsed.append('Return(expr)')
         elif isinstance(stmt, ast.Expr):
@@ -315,7 +347,7 @@ def derive_plan(body: list, where: str):
     plan_complete = not unparsed
     if not plan_complete:
         steps = []
-    return steps, plan_complete, unparsed
+    return steps, plan_complete, unparsed, dead
 
 
 def export_campaign(root: str, out_dir: str, manifest: dict):
@@ -389,7 +421,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
                             and node.name == 'Campaign':
                         body = [x for x in sub.body if not (isinstance(x, ast.Expr)
                                 and isinstance(x.value, ast.Constant))]
-                        steps, plan_complete, unparsed = derive_plan(body, sub.name)
+                        steps, plan_complete, unparsed, dead = derive_plan(body, sub.name)
                         calls = []
                         for x in ast.walk(sub):
                             if is_self_call(x):
@@ -397,6 +429,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
                         ir['campaign']['battles'].append({
                             'method': sub.name, 'calls': calls, 'steps': steps,
                             'plan_complete': plan_complete, 'unparsed': unparsed,
+                            'dead_code': dead,
                             'stmt_count': len(body),
                         })
                 if node.name == 'Config':
