@@ -1,0 +1,15 @@
+# 构建产物
+bin/
+obj/
+
+# 上游数据契约的导出产物（由 tools/export_upstream_data.py 生成，不入库）
+# 理由见 README：数据必须始终可追溯到某个上游 commit，不入库就不会出现「不知道哪来的 JSON」
+data/
+
+# 本机 NuGet 配置（离线源）。模板见 NuGet.config.example
+NuGet.config
+
+# IDE
+.vs/
+.idea/
+*.user

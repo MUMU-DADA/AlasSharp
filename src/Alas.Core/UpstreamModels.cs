@@ -1,0 +1,146 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Alas.Core;
+
+/// <summary>
+/// 上游素材绑定（由 csharp/tools/export_upstream_data.py 从 module/**/assets.py 导出）。
+/// 对应上游的 <c>Button(area=..., color=..., button=..., file=...)</c>，字段按服务器分列。
+/// </summary>
+public sealed class AssetBinding
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("module")] public string Module { get; set; } = "";
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "";
+
+    /// <summary>服务器 -> [x0, y0, x1, y1]</summary>
+    [JsonPropertyName("area")] public Dictionary<string, int[]>? Area { get; set; }
+
+    /// <summary>服务器 -> [r, g, b]</summary>
+    [JsonPropertyName("color")] public Dictionary<string, int[]>? Color { get; set; }
+
+    /// <summary>服务器 -> [x0, y0, x1, y1]（点击区域）</summary>
+    [JsonPropertyName("button")] public Dictionary<string, int[]>? Button { get; set; }
+
+    /// <summary>服务器 -> 相对仓库根的图片路径</summary>
+    [JsonPropertyName("file")] public Dictionary<string, string>? File { get; set; }
+
+    [JsonPropertyName("servers")] public List<string> Servers { get; set; } = new();
+    [JsonPropertyName("all_servers")] public bool AllServers { get; set; }
+    [JsonPropertyName("source")] public string Source { get; set; } = "";
+
+    public int[]? AreaFor(string server) => Lookup(Area, server);
+    public int[]? ColorFor(string server) => Lookup(Color, server);
+    public string? FileFor(string server) => Lookup(File, server);
+
+    private static T? Lookup<T>(Dictionary<string, T>? map, string server)
+    {
+        if (map is null || map.Count == 0) return default;
+        if (map.TryGetValue(server, out var v)) return v;
+        // 上游同一绑定的各服字段通常齐全；缺该服时回退到 cn，与上游 parse_property 的默认一致
+        return map.TryGetValue("cn", out var cn) ? cn : default;
+    }
+}
+
+public sealed class AssetCatalog
+{
+    [JsonPropertyName("version")] public string Version { get; set; } = "";
+    [JsonPropertyName("servers")] public List<string> Servers { get; set; } = new();
+    [JsonPropertyName("assets")] public Dictionary<string, AssetBinding> Assets { get; set; } = new();
+}
+
+/// <summary>战斗步骤。plan_complete=false 时 steps 恒为空，不允许当作完整计划使用。</summary>
+public sealed class CampaignStep
+{
+    [JsonPropertyName("op")] public string Op { get; set; } = "";
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "";
+    [JsonPropertyName("args")] public JsonElement? Args { get; set; }
+    [JsonPropertyName("target")] public string? Target { get; set; }
+}
+
+public sealed class CampaignBattle
+{
+    [JsonPropertyName("method")] public string Method { get; set; } = "";
+    [JsonPropertyName("calls")] public List<string> Calls { get; set; } = new();
+    [JsonPropertyName("steps")] public List<CampaignStep> Steps { get; set; } = new();
+    [JsonPropertyName("plan_complete")] public bool PlanComplete { get; set; }
+    [JsonPropertyName("unparsed")] public List<string> Unparsed { get; set; } = new();
+    [JsonPropertyName("stmt_count")] public int StmtCount { get; set; }
+}
+
+public sealed class CampaignPlan
+{
+    [JsonPropertyName("class")] public string? Class { get; set; }
+    [JsonPropertyName("bases")] public List<string> Bases { get; set; } = new();
+    [JsonPropertyName("boss_battle")] public int? BossBattle { get; set; }
+    [JsonPropertyName("plan_complete")] public bool PlanComplete { get; set; }
+    [JsonPropertyName("template_only")] public bool TemplateOnly { get; set; }
+
+    /// <summary>A = JSON 规则表即可；B = 计划完整但用到词表外算子；C = 需插件或原生实现。</summary>
+    [JsonPropertyName("tier")] public string Tier { get; set; } = "";
+    [JsonPropertyName("has_siren")] public bool HasSiren { get; set; }
+    [JsonPropertyName("battles")] public List<CampaignBattle> Battles { get; set; } = new();
+
+    /// <summary>非 battle_* 的覆写钩子且含真实逻辑 —— C# 引擎必须实现这些。</summary>
+    [JsonPropertyName("native_overrides")] public List<string> NativeOverrides { get; set; } = new();
+
+    /// <summary>纯 return super().X() 的覆写 —— 只需虚方法分派，无新增逻辑。</summary>
+    [JsonPropertyName("super_delegates")] public List<string> SuperDelegates { get; set; } = new();
+}
+
+/// <summary>单个关卡的中间表示（IR），对应上游 campaign/**/campaign_*.py。</summary>
+public sealed class CampaignIr
+{
+    [JsonPropertyName("source")] public string Source { get; set; } = "";
+    [JsonPropertyName("name")] public string? Name { get; set; }
+
+    /// <summary>CampaignMap = 上游权威名字；path = 从文件名兜底派生。</summary>
+    [JsonPropertyName("name_source")] public string? NameSource { get; set; }
+
+    [JsonPropertyName("map")] public Dictionary<string, JsonElement> Map { get; set; } = new();
+    [JsonPropertyName("config")] public Dictionary<string, JsonElement> Config { get; set; } = new();
+    [JsonPropertyName("campaign")] public CampaignPlan Campaign { get; set; } = new();
+    [JsonPropertyName("unresolved")] public List<string> Unresolved { get; set; } = new();
+
+    public string? Shape => Map.TryGetValue("shape", out var v) && v.ValueKind == JsonValueKind.String
+        ? v.GetString() : null;
+
+    public string? MapData => Map.TryGetValue("map_data", out var v) && v.ValueKind == JsonValueKind.String
+        ? v.GetString() : null;
+
+    /// <summary>解析 "E3" / "h5" 形式的 shape；上游存在小写写法，这里统一按大写算列。</summary>
+    public static (int Columns, int Rows)? ParseShape(string? shape)
+    {
+        if (string.IsNullOrWhiteSpace(shape) || shape.Length < 2) return null;
+        char letter = char.ToUpperInvariant(shape[0]);
+        if (letter < 'A' || letter > 'Z') return null;
+        if (!int.TryParse(shape.AsSpan(1), out int rows)) return null;
+        return (letter - 'A' + 1, rows);
+    }
+}
+
+public sealed class CampaignIndexEntry
+{
+    [JsonPropertyName("source")] public string Source { get; set; } = "";
+    [JsonPropertyName("json")] public string Json { get; set; } = "";
+    [JsonPropertyName("name")] public string? Name { get; set; }
+    [JsonPropertyName("name_source")] public string? NameSource { get; set; }
+    [JsonPropertyName("tier")] public string Tier { get; set; } = "";
+    [JsonPropertyName("plan_complete")] public bool PlanComplete { get; set; }
+    [JsonPropertyName("template_only")] public bool TemplateOnly { get; set; }
+    [JsonPropertyName("boss_battle")] public int? BossBattle { get; set; }
+    [JsonPropertyName("has_siren")] public bool HasSiren { get; set; }
+    [JsonPropertyName("battle_methods")] public List<string> BattleMethods { get; set; } = new();
+    [JsonPropertyName("native_overrides")] public List<string> NativeOverrides { get; set; } = new();
+    [JsonPropertyName("super_delegates")] public List<string> SuperDelegates { get; set; } = new();
+    [JsonPropertyName("config_keys")] public List<string> ConfigKeys { get; set; } = new();
+    [JsonPropertyName("map_keys")] public List<string> MapKeys { get; set; } = new();
+    [JsonPropertyName("needs_review")] public bool NeedsReview { get; set; }
+}
+
+public sealed class CampaignIndex
+{
+    [JsonPropertyName("version")] public string Version { get; set; } = "";
+    [JsonPropertyName("chapters")] public List<CampaignIndexEntry> Chapters { get; set; } = new();
+}

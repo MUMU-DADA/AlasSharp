@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <!--
+      图像解码。选 ImageSharp 2.1.8 而不是 SkiaSharp 的理由：
+        1) 2.x 是 Apache-2.0（3.x 才改成 Split License），许可干净；
+        2) 纯托管，解码结果确定，适合当「正确性基准」；
+        3) netstandard2.0 目标可在 net8.0 上直接用。
+      性能敏感的运行时路径以后可以换成 SkiaSharp/OpenCvSharp，届时用本层的对拍基准验收。
+    -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="2.1.8" />
+  </ItemGroup>
+</Project>
