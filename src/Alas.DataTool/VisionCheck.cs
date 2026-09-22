@@ -21,6 +21,7 @@ internal static class VisionCheck
         [JsonPropertyName("id")] public string Id { get; set; } = "";
         [JsonPropertyName("server")] public string Server { get; set; } = "";
         [JsonPropertyName("file")] public string File { get; set; } = "";
+        [JsonPropertyName("mode")] public string Mode { get; set; } = "";
         [JsonPropertyName("stored_color")] public List<double>? StoredColor { get; set; }
         [JsonPropertyName("appear_default")] public bool? AppearDefault { get; set; }
     }
@@ -138,6 +139,44 @@ internal static class VisionCheck
                           + $"（宿主内部 {batch.ElapsedMs:F3} ms，调度开销 "
                           + $"{batchMs - batch.ElapsedMs:F2} ms）");
 
+        // 设备路径预演：真实设备给的是**截图字节流**（adb screencap），不是文件路径。
+        // 用同一批素材的 PNG 字节走 SetScreenshot，判定结果必须与走文件的完全一致 ——
+        // 这样在拿到模拟器之前就能把设备路径的解码环节验掉。
+        int byteMismatch = 0, byteSkipped = 0;
+        var byteSamples = new List<string>();
+        foreach (var c in cases)
+        {
+            // 灰度素材（PIL mode L）两条解码路径本就不同，不是 bug：
+            //   文件路径走上游 load_image（PIL）→ 二维数组，get_color 返回 (mean,0,0)
+            //   字节路径走 cv2.imdecode(IMREAD_COLOR) → 强制三通道 → (mean,mean,mean)
+            // 真机截图永远是三通道 PNG，所以**字节路径才贴近生产**；
+            // 基准里灰度素材的真值反而是"拿素材图当截图"的产物。显式跳过并计数。
+            if (c.Mode == "L") { byteSkipped++; continue; }
+            string path = Path.Combine(forkDir, c.File.Replace("./", "")
+                .Replace('/', Path.DirectorySeparatorChar));
+            try
+            {
+                engine.SetScreenshot(File.ReadAllBytes(path), c.File);
+                var r = engine.AppearOn(c.Id);
+                if (r.Appear != c.AppearDefault!.Value)
+                {
+                    byteMismatch++;
+                    if (byteSamples.Count < 5)
+                        byteSamples.Add($"{c.Id}: 字节路径={r.Appear} 真值={c.AppearDefault}");
+                }
+            }
+            catch (Exception ex)
+            {
+                byteMismatch++;
+                if (byteSamples.Count < 5) byteSamples.Add($"{c.Id}: {ex.Message}");
+            }
+        }
+        Console.WriteLine($"[字节路径] 截图以字节流送入（模拟 adb screencap）→ 与真值不一致 {byteMismatch}"
+                          + $"（跳过灰度素材 {byteSkipped} 例）");
+        if (byteMismatch > 0)
+            Console.WriteLine("       ⚠ 未查清：文件路径(PIL) 与 字节路径(cv2.imdecode) 的判定差异。"
+                              + " 接入设备层之前必须查清——真实设备走的就是字节路径。");
+        foreach (var s in byteSamples) Console.WriteLine($"   {s}");
         // 判别实验：ping 在 Python 侧几乎不干活，它的往返耗时就是「协议栈固有开销」。
         // 用它把「宿主内计算」与「跨边界成本」彻底分开。
         const int pingCount = 200;
@@ -170,6 +209,8 @@ internal static class VisionCheck
                               + "（这才是每帧真正的成本）");
         }
 
+        // ⚠️ byteMismatch 暂**不计入**验收判据：字节路径与文件路径的判定差异尚未查清，
+        //    在查清之前不能让它污染"验收通过"的结论，也不能假装它通过了。
         int total = verdictMismatch + colorMismatch + errors;
         Console.WriteLine();
         Console.WriteLine(total == 0 ? "结果: OK" : $"结果: FAIL（{total} 处）");

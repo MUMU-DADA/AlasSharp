@@ -114,6 +114,33 @@ def op_screenshot_load(args):
     return {'shape': list(_state['image'].shape), 'path': path}
 
 
+def op_screenshot_set(args):
+    """
+    用**字节流**设置当前截图（真实设备路径：adb 回来的就是 PNG 字节）。
+
+    这里刻意逐行复现上游 module/device/method/adb.py 的 screenshot_adb 解码序列：
+        image = np.frombuffer(screenshot, np.uint8)
+        image = cv2.imdecode(image, cv2.IMREAD_COLOR)
+        cv2.cvtColor(image, cv2.COLOR_BGR2RGB, dst=image)      # BGR → RGB，ALAS 内部约定是 RGB
+
+    架构含义：**像素不跨语言边界**。C# 只传字节，识图始终在 Python 侧，
+    这样上游那套（含 OpenCV 的算法路径切换、定点精度等）就是唯一真值来源。
+    """
+    import base64
+    import cv2
+    import numpy as np
+    raw = base64.b64decode(args['png_base64'])
+    buf = np.frombuffer(raw, np.uint8)
+    image = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError('cv2.imdecode 返回空（字节流不是有效图片？）')
+    cv2.cvtColor(image, cv2.COLOR_BGR2RGB, dst=image)
+    _state['image'] = image
+    _state['image_path'] = args.get('label')
+    return {'shape': list(image.shape), 'bytes': len(raw),
+            'label': args.get('label')}
+
+
 def op_asset_info(args):
     obj = _resolve(args['asset'])
     info = {
@@ -241,6 +268,7 @@ OPS = {
     'ping': op_ping,
     'set_server': op_set_server,
     'screenshot_load': op_screenshot_load,
+    'screenshot_set': op_screenshot_set,
     'asset_info': op_asset_info,
     'appear_on': op_appear_on,
     'appear_on_batch': op_appear_on_batch,
