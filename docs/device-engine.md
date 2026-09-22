@@ -134,3 +134,28 @@ alashub capture --adb <adb> --serial 127.0.0.1:16384 --screenshot droidcast --co
 
 意义：**换截图/输入后端不改 C# 代码**（只改 --screenshot / --control），
 这正是"设备 I/O 走宿主"（方案 A）要的效果。
+
+## 导航流程的接入与一次"反直觉"的测量（重要，别误读）
+
+重构：`INavigationDevice` 的 `byte[] Screenshot()` 改为语义化的 **`void Capture()`**
+（"让宿主拿到当前帧"），`DeviceController.CaptureForHost()` 负责选路：
+`UseEngineCapture=true` → 引擎抓图直入宿主；否则沿用 `adb 取字节 → SetScreenshot`。
+`goto` 新增 `--capture-engine [--screenshot droidcast] [--control ADB]`。
+
+实测（每跳约 2.5s settle，两次都先回 page_main 再量）：
+
+| 变体 | 导航耗时 | 结果 |
+| --- | --- | --- |
+| A 传统 C# adb 路径 | **7914 ms** | success=True |
+| B 引擎通道（droidcast） | **8845 ms** | success=True（**慢约 930 ms**） |
+
+**为什么反而慢**：`alashub` 是"一次调用一个进程"，B 每次都把**设备层初始化**
+（DroidCast 推 APK + adb forward + uiautomator2 检查 + `Device` 构造）算进了被测时间。
+所以：
+
+- **抓图级（长驻进程稳态）确实更快**：339 ms vs 625 ms（−46%，见上一节 `alashub capture`）；
+- **命令行单次导航反而更慢**：一次性的设备层初始化吃掉了收益。
+
+结论：这条通道的收益要在**长驻进程**里兑现（正式运行时 `Device` 只构造一次），
+命令行的一次性调用不是它的使用场景。下一步若要给导航侧也拿到收益，
+应当在长驻进程里预热设备层（或让 `goto` 支持"进程内导航两次"以量稳态）。

@@ -5,8 +5,8 @@ namespace Alas.Navigation;
 /// <summary>导航需要的设备能力（截图、点击、返回键，便于用假设备做离线测试）。</summary>
 public interface INavigationDevice
 {
-    /// <summary>取一帧 PNG 字节（像素不跨语言边界，见 DeviceController）。</summary>
-    byte[] Screenshot();
+    /// <summary>让宿主拿到当前帧。像素是否跨语言边界由实现决定（见 DeviceController.CaptureForHost）。</summary>
+    void Capture();
     void Click(int x, int y);
     /// <summary>返回键（KEYCODE_BACK = 4）：未建模画面的自救手段。</summary>
     void Back();
@@ -19,7 +19,7 @@ public sealed class DeviceNavigationAdapter : INavigationDevice
 
     public DeviceNavigationAdapter(Device.DeviceController device) => _device = device;
 
-    public byte[] Screenshot() => _device.ScreenshotBytes();
+    public void Capture() => _device.CaptureForHost();
 
     public void Click(int x, int y) => _device.Click(x, y);
 
@@ -202,8 +202,7 @@ public sealed class PageNavigator
     /// <summary>取一帧并交给识图宿主，返回当前命中的页面集合。</summary>
     public PageCurrentResult Perceive()
     {
-        byte[] frame = _device.Screenshot();
-        _vision.SetScreenshot(frame, "navigation");
+        _device.Capture();
         return _vision.PageCurrent();
     }
 

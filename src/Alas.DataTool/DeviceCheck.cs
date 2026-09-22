@@ -46,7 +46,8 @@ internal static class DeviceCheck
     /// 规则，点击走真实 adb，图的边由上游 `Page.links` 在运行时给出。
     /// </summary>
     public static int RunGoto(string adbPath, string serial, string forkDir, string toolsDir,
-                              string targetPage)
+                              string targetPage, bool engineCapture = false,
+                              string screenshot = "adb", string control = "ADB")
     {
         using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(forkDir, toolsDir);
         var adb = new ProcessAdbTransport(adbPath);
@@ -73,6 +74,13 @@ internal static class DeviceCheck
             return 1;
         }
 
+        // 引擎截图开关：开启后导航的每一帧都走引擎设备层（后端可换、像素不跨语言边界）
+        device.UseEngineCapture = engineCapture;
+        if (engineCapture)
+        {
+            device.ConfigureEngineDevice(screenshot, control);
+            Console.WriteLine($"[capture ] 引擎通道 screenshot={screenshot} control={control}");
+        }
         var navigator = new Alas.Navigation.PageNavigator(
             vision, new Alas.Navigation.DeviceNavigationAdapter(device), graph);
         var result = navigator.Goto(targetPage);

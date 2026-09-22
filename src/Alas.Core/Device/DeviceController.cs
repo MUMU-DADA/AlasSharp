@@ -105,6 +105,27 @@ public sealed class DeviceController
         return r.StdoutBytes;
     }
 
+    /// <summary>
+    /// true 时，<see cref="CaptureForHost"/> 走引擎的设备层（后端可换、且像素不跨语言边界）。
+    /// 默认 false：保留原 adb 路径，便于对比与回退。
+    /// </summary>
+    public bool UseEngineCapture { get; set; }
+
+    /// <summary>
+    /// 让**宿主**拿到当前帧，像素是否跨语言边界由实现决定：
+    /// 引擎通道下直接由引擎抓图并置入宿主（无字节）；否则 C# 取字节再交给宿主。
+    /// 调用方（如页面导航）只关心"宿主现在有最新一帧"，不该关心像素走哪条路。
+    /// </summary>
+    public void CaptureForHost()
+    {
+        if (UseEngineCapture)
+        {
+            CaptureViaEngine(raw: true);
+            return;
+        }
+        _vision.SetScreenshot(ScreenshotBytes(), "navigation");
+    }
+
     public ScreenshotInfo Screenshot()
     {
         var r = _adb.Run(Args("exec-out", "screencap", "-p"));

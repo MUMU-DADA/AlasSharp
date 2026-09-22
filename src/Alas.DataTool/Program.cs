@@ -123,18 +123,25 @@ internal static class Program
             {
                 // 沿上游页面图真机导航：goto <page_target> [--adb .. --serial .. --server cn]
                 string? realAdb2 = null, realSerial2 = null, targetPage = null;
+                bool gotoEngineCapture = false;
+                string gotoScreen = "droidcast", gotoCtrl = "ADB";
                 for (int i = 1; i < args.Length - 1; i++)
                 {
                     if (args[i] == "--adb") realAdb2 = args[i + 1];
                     if (args[i] == "--serial") realSerial2 = args[i + 1];
                     if (args[i] == "--to") targetPage = args[i + 1];
+                    if (args[i] == "--capture-engine") gotoEngineCapture = true;
+                    if (args[i] == "--screenshot") gotoScreen = args[i + 1];
+                    if (args[i] == "--control") gotoCtrl = args[i + 1];
                 }
                 targetPage ??= args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
                 if (realAdb2 is null || realSerial2 is null || targetPage is null)
-                    return Fail("用法: goto <page_目标> --adb <adb.exe> --serial <serial>");
+                    return Fail("用法: goto <page_目标> --adb <adb.exe> --serial <serial> " +
+                                "[--capture-engine [--screenshot droidcast] [--control ADB]]");
                 string toolsDir3 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
                     "..", "..", "..", "..", "..", "tools"));
-                return DeviceCheck.RunGoto(realAdb2, realSerial2, repoDir, toolsDir3, targetPage);
+                return DeviceCheck.RunGoto(realAdb2, realSerial2, repoDir, toolsDir3, targetPage,
+                    gotoEngineCapture, gotoScreen, gotoCtrl);
             }
             if (command == "vision")
             {
