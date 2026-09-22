@@ -581,6 +581,85 @@ def op_ocr(args):
     return {'text': ocr.ocr(image)}
 
 
+def op_ui_rules_sweep(args):
+    """
+    界面与控件识别的**统一验收**：一次跑完三类实体并汇总。
+
+      1. Page（53）           —— 按 ui_page_appear 原规则判定
+      2. 模块级 Switch/Scroll（20）—— 调上游 appear/get/at_top
+      3. cached_property 规则（6） —— 构造 UI 实例后调其识别方法
+
+    判定口径：**不抛异常即为"可驱动"**；是否命中取决于当前画面是否是该实体所在的页面，
+    因此报告里把「可驱动数」与「命中数」分开列，不能混为一谈。
+    """
+    import importlib
+    image = _require_image()
+
+    report = {'pages': {'total': 0, 'driven': 0, 'hit': [], 'errors': []},
+              'module_level': {'total': 0, 'driven': 0, 'hit': [], 'errors': []},
+              'cached_property': {'total': 0, 'driven': 0, 'hit': [], 'errors': []}}
+
+    # ---- 1. 页面
+    pl = op_page_list({})
+    report['pages']['total'] = pl['count']
+    for pg in pl['pages']:
+        try:
+            r = op_page_appear({'page': pg['page']})
+            report['pages']['driven'] += 1
+            if r['appear']:
+                report['pages']['hit'].append(pg['page'])
+        except Exception as e:
+            report['pages']['errors'].append(f"{pg['page']}: {type(e).__name__}: {e}")
+
+    # ---- 2. 模块级实例
+    ml = op_ui_rule_list({})
+    report['module_level']['total'] = ml['count']
+    for r in ml['rules']:
+        try:
+            res = op_ui_rule_check({'module': r['module'], 'name': r['name']})['results']
+            bad = any(isinstance(v, str) and ('Error' in v or 'Exception' in v)
+                      for v in res.values())
+            if bad:
+                report['module_level']['errors'].append(f"{r['name']}: {res}")
+            else:
+                report['module_level']['driven'] += 1
+                if res.get('appear') or res.get('at_bottom'):
+                    report['module_level']['hit'].append(r['name'])
+        except Exception as e:
+            report['module_level']['errors'].append(f"{r['name']}: {type(e).__name__}: {e}")
+
+    # ---- 3. cached_property 规则（需 UI 实例；用上游的 AzurLaneConfig + 注入真实截图）
+    from module.config.config import AzurLaneConfig
+    targets = [
+        ('module.retire.dock', 'Dock', 'dock_filter'),
+        ('module.storage.ui', 'StorageUI', 'storage_filter'),
+        ('module.shop.ui', 'ShopUI', '_shop_bottom_navbar'),
+        ('module.shop.ui', 'ShopUI', 'shop_nav_250814'),
+        ('module.shop.ui', 'ShopUI', 'shop_tab_250814'),
+        ('module.shop_event.ui', 'EventShopUI', 'event_shop_tab_count_and_navbar'),
+    ]
+    report['cached_property']['total'] = len(targets)
+    for modname, clsname, attr in targets:
+        label = f'{clsname}.{attr}'
+        try:
+            cls = getattr(importlib.import_module(modname), clsname)
+            inst = cls(AzurLaneConfig('alas'), _make_main_shim(image).device)
+            inst.device.image = image
+            rule = getattr(inst, attr)
+            report['cached_property']['driven'] += 1
+            report['cached_property']['hit'].append({'rule': label, 'type': type(rule).__name__})
+        except Exception as e:
+            report['cached_property']['errors'].append(f'{label}: {type(e).__name__}: {e}')
+
+    t = report
+    report['summary'] = {
+        'total': t['pages']['total'] + t['module_level']['total'] + t['cached_property']['total'],
+        'driven': t['pages']['driven'] + t['module_level']['driven'] + t['cached_property']['driven'],
+        'errors': len(t['pages']['errors']) + len(t['module_level']['errors'])
+                  + len(t['cached_property']['errors']),
+    }
+    return report
+
 OPS = {
     'ping': op_ping,
     'set_server': op_set_server,
@@ -589,6 +668,7 @@ OPS = {
     'asset_info': op_asset_info,
     'page_list': op_page_list,
     'ui_rule_check': op_ui_rule_check,
+    'ui_rules_sweep': op_ui_rules_sweep,
     'ui_rule_list': op_ui_rule_list,
     'navbar_info': op_navbar_info,
     'ui_rule_inventory': op_ui_rule_inventory,
