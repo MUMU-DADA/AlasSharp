@@ -43,6 +43,7 @@ STEPS = [
     ('verify_positive_control.py', '合成正对照（页面 + Switch）', False, 600),
     ('verify_map_detection.py', 'S2 地图识别（素材链/单应性/负样本）', False, 600),
     ('verify_product_map.py', 'S2 产品路径（alashub map + 关卡 IR 交叉校验）', False, 900),
+    ('verify_map_alignment.py', 'S2 偏移对齐（窗口 vs 地图，含活动图 9x8）', False, 600),
     ('analyze_specificity.py', '识别特异性矩阵', False, 300),
     ('report_pages.py', '重建 page-verification.md', False, 300),
     ('status.py', '重建 status.md', False, 300),
