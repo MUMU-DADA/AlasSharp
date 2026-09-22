@@ -1413,3 +1413,21 @@ Combat end + GET_SHIP       ← 两战两胜，且有掉落
 
 => 印证用户指示"高难度关卡尽量用舰队 3/4/5"；**命令行用法**：
 `--fleet1 3 --fleet2 0`（ALAS 的三个键：`Fleet_Fleet1` / `Fleet_Fleet2` / `Submarine_Fleet`）
+
+
+### 舰队 3 循环清图实测（11-1，3 轮 6 战）
+
+```
+[前置] 导航 success=True
+step=enter_map  6592.7 ms     ← 主动盯防再次生效（6.6 秒，比被动自愈的 ~68s 快 10 倍）
+step=map_init   3312.8 ms ok
+round=1 battle_0 48187.8 ok | battle_6 45652.7 ok | check=still_in_map
+round=2 battle_0 47973.1 ok | battle_6 43440.6 ok | check=still_in_map
+round=3 battle_0 38548.0 ok | battle_6 38736.3 ok
+[结果] elapsed=272.9s stopped_early=False  campaign_end=（空，因 --max-rounds 3 上限）
+```
+
+**结论**：
+- **舰队 3：6 战 6 胜、零覆没** ✓（对照舰队 1 的"全军覆没"）→ 高难图用舰队 3 的指示被实测印证；
+- **11-1 是 48 格大图**，3 轮 6 战仍未清完 → 要清完需**更多轮次**（受前台 10 分钟工具上限约束，
+  应改用**后台作业**跑 `--max-rounds 8` 以上）。

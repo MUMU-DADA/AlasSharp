@@ -64,7 +64,8 @@ public interface IVisionEngine : IDisposable
     /// </summary>
     CampaignPlanResult RunCampaignPlan(string chapter, bool dryRun = true,
                                        bool allowActions = false, double maxSeconds = 300,
-                                       int maxRounds = 1, bool repeatUntilCleared = false);
+                                       int maxRounds = 1, bool repeatUntilCleared = false,
+                                       int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0);
 }
 
 /// <summary>`s3_run_plan` 的返回：计划步骤与逐步结果。</summary>
@@ -173,7 +174,8 @@ public abstract class VisionEngineBase : IVisionEngine
 
     public CampaignPlanResult RunCampaignPlan(string chapter, bool dryRun = true,
                                               bool allowActions = false, double maxSeconds = 300,
-                                              int maxRounds = 1, bool repeatUntilCleared = false)
+                                              int maxRounds = 1, bool repeatUntilCleared = false,
+                                              int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0)
         => CallTyped<CampaignPlanResult>("s3_run_plan", new
         {
             chapter,
@@ -182,6 +184,9 @@ public abstract class VisionEngineBase : IVisionEngine
             max_seconds = maxSeconds,
             max_rounds = maxRounds,
             repeat_until_cleared = repeatUntilCleared,
+            fleet1,
+            fleet2,
+            submarine_fleet = submarineFleet,
         });
 
     protected int NextId() => Interlocked.Increment(ref _nextId);

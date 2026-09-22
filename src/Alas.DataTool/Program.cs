@@ -83,6 +83,7 @@ internal static class Program
                 string? campAdb = null, campSerial = null;
                 bool campRun = false, campAllow = false, campRepeat = false;
                 double campMax = 300; int campRounds = 1;
+                int campFleet1 = 1, campFleet2 = 0, campSub = 0;
                 for (int i = 1; i < args.Length - 1; i++)
                 {
                     if (args[i] == "--chapter") campChapter = args[i + 1];
@@ -93,6 +94,9 @@ internal static class Program
                     if (args[i] == "--repeat") campRepeat = true;
                     if (args[i] == "--max-seconds" && double.TryParse(args[i + 1], out double ms2)) campMax = ms2;
                     if (args[i] == "--max-rounds" && int.TryParse(args[i + 1], out int mr)) campRounds = mr;
+                    if (args[i] == "--fleet1" && int.TryParse(args[i + 1], out int f1)) campFleet1 = f1;
+                    if (args[i] == "--fleet2" && int.TryParse(args[i + 1], out int f2)) campFleet2 = f2;
+                    if (args[i] == "--submarine" && int.TryParse(args[i + 1], out int fs)) campSub = fs;
                 }
                 if (campChapter is null)
                 {
@@ -132,7 +136,9 @@ internal static class Program
                     campIdx++;
                     var r = vision.RunCampaignPlan(one, dryRun: !campRun, allowActions: campAllow,
                                                    maxSeconds: campMax, maxRounds: campRounds,
-                                                   repeatUntilCleared: campRepeat);
+                                                   repeatUntilCleared: campRepeat,
+                                                   fleet1: campFleet1, fleet2: campFleet2,
+                                                   submarineFleet: campSub);
                     Console.WriteLine($"[plan    ] {r.Chapter} stage={r.Stage} tier={r.Tier} dry_run={r.DryRun}");
                     Console.WriteLine($"[steps   ] {string.Join(" → ", r.PlanSteps ?? new())}");
                     Console.WriteLine($"[语义轨迹] {string.Join(", ", r.SemanticTrace ?? new())}");
