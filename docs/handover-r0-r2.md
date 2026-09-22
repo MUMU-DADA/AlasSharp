@@ -129,3 +129,18 @@ python tools\diagnostics\verify_all.py --docs-only     # 判据：总耗时行�
   已归一；同类问题先想"这条 diff 是不是噪声"。
 - **守卫自己也会判错**：任务域注册守卫第一版按 `Kind` 字面量查（而注册用的是类名），
   把两个已注册的域误报成未注册 —— 报错信息里给出具体修法，才能一眼看出是守卫错了。
+
+## 七、真机冒烟（修 IN_MAP 之后）整条通过
+
+`python tools\diagnostics\device_smoke.py --allow-actions` → **exit 0**：
+
+| 项 | 结果 |
+| --- | --- |
+| 当场抓帧（`account_state capture=true`） | `succeeded`：`pages=[page_main, page_main_white]`、`in_map=false`、相似度 94.88 |
+| 有界战役冒烟（走新运行时） | **`succeeded`**：`outcome=cleared`、关卡 1/1 通关 |
+| 运行报告 | `dry_run=False`、工件 7、宿主启动 **1**、设备配置 **1**、错误 0、findings 无、证据完整 |
+| 工件落盘 | `data/device_runs/<时间戳>/`（持久，不再随进程消失） |
+
+同一条命令在修 `IN_MAP` **之前是失败的**（`GameStuckError: Wait too long`，见
+[真机卡点](device-stall-in-map.md)）。也就是说这一条命令同时验收了：
+常驻会话 / 任务队列 / 批量战役 / 工件与报告 / 账号状态抓帧 / `IN_MAP` 垫片 / 持久工件修正。
