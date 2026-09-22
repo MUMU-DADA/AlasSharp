@@ -1318,6 +1318,14 @@ def op_map_detect(args):
     """
     import module.map_detection.view as view_mod
     image = _require_image()
+    # 几何放大：**单行/扁格子**的小地图（例：进图后的 1-1，7 格一行）竖直分隔线太短，
+    # 默认阈值与降阈值都检不出（实测 trace: inner_v.lines=0）。等比放大能把短竖线拉长到
+    # 检测阈值以上；格索引与逐格标志都是尺度无关的，所以不影响返回语义。
+    _scale = int(args.get('upscale') or 1)
+    if _scale > 1:
+        import cv2 as _cv2
+        image = _cv2.resize(image, None, fx=_scale, fy=_scale,
+                            interpolation=_cv2.INTER_CUBIC)
     apply_numpy2_compat()
     apply_points_empty_compat()
     cfg = _map_config()
@@ -1516,6 +1524,24 @@ def op_map_detect(args):
         out['detected'] = False
         out['reason'] = ('检出网格但**没有任何船标志**（%s 格），判为非战场画面'
                          % out.get('grid_count'))
+
+    # 几何放大重试（自动升档）：默认与降阈值都没检出时，把图放大再试 —— 见函数开头说明。
+    # 只对战役模式、且不是"已经在放大档里"时触发，避免递归失控。
+    # 注意：**默认不做**自动升档 —— 实测放大对本项目的单行小地图无效
+    # （放大同时也放大了掩膜与线段参数，比例不变），却会让每个负样本多花 2-3 倍时间。
+    # 需要时显式传 auto_upscale=true。
+    if (_scale == 1 and mode == 'main' and not out.get('grid_count')
+            and args.get('auto_upscale') and not args.get('no_upscale_retry')):
+        for _s in (2, 3):
+            _retry = dict(args)
+            _retry['upscale'] = _s
+            _retry['no_upscale_retry'] = True
+            _r2 = op_map_detect(_retry)
+            if _r2.get('grid_count'):
+                _r2['upscale_used'] = _s
+                _r2['upscale_note'] = '默认阈值与降阈值均未检出，放大 %dx 后检出' % _s
+                return _r2
+        out['upscale_tried'] = [2, 3]
     return out
 
 
