@@ -1,0 +1,88 @@
+# S3 上游整体流程适配（2026-09-23）
+
+适配原则：完整消费上游解析出的地图规则和原生执行流程，不在宿主增加逐地图阈值、坐标、寻敌或战斗分支。
+
+## 根因
+
+原宿主直接构造 `module.Campaign(cfg, device)`，遗漏上游
+`CampaignRun.load_campaign()` 的 `deepcopy(config).merge(module.Config())`。
+因此继承的识别阈值、边界颜色、地图能力等配置全部没有生效。
+例如 1-4 导入 1-1 的 Config；不合并时失败帧报消失点退化，合并后同帧准确识别 21 格。
+7-1 的现场帧也恢复舰队识别。问题不是要给各地图重新配参数。
+
+原宿主还用手写入口、初始化及战斗循环替代上游 `run()`，容易漏掉
+`ENTRANCE.area`、心情检查、自律分支和章节覆写的运行钩子。
+
+## 当前生产链
+
+1. 按完整模块名读 IR 并核对 `source`；不同活动的同名 `a1` 不混用。
+2. 绑定上游 `Campaign_Name`、`Campaign_Event`，直接调用 `CampaignRun.load_campaign()`。
+3. 按上游每次出击的顺序清设备记录、处理上一局仍在地图内的状态。
+4. 调用该 Campaign 的 `ensure_campaign_ui()`，由其设置入口与难度。
+5. 调用该实例的原生 `run()`；宿主只记录现有操作和结束来源。
+
+移除了全局 scipy `brute(finish=None)`、检测阈值阶梯、放大重试、手写地图初始化恢复和
+每轮额外 BOSS 扫描。既有 numpy/客户端 UI 兼容仍在；它们不包含按地图分派的规则。
+
+首次相机纠偏还暴露一个上游通用空值缺陷：快速截图进入 0.35 秒等待窗口时，
+`Camera.update` 会用未设置的 `prev_center_offset` 参与减法。
+适配只在上游函数该比较前增加 `is not None` 短路；原等待时间、居中检查、滑动及重试逻辑不变。
+未复制相机实现，也不依据地图名或尺寸分支。上游自带修复时跳过，源码结构发生不兼容变化时明确报错。
+
+真跑的完整地图规则来自上游生成的 Python `MAP` / `Config` / `Campaign`。
+IR JSON 是身份、计划摘要和校验信息，**当前不是独立 JSON 战斗解释器**。
+导出器无法完整表达的嵌套方法仍由上游原生方法执行，不能把摘要逐条重放。
+
+## 结果语义
+
+`CampaignEnd` 仅表示出击结束。上游 `withdraw()` 也可能经 `handle_in_stage()`
+抛出文本为 `In stage.` 的同一种异常，不能靠异常名或文本认定胜利。
+
+`cleared=true` 需要观测到上游战斗结算成功，并从战斗结算链返回章节页；
+撤退、失败战果、未知退出、操作限额、运行错误均不记为通关，CLI 返回非零。
+威胁排除百分比是跨出击累积状态，不能证明本局成功。
+
+运行错误会保存设备已有的原始 RGB 帧到 `data/s3_failures`，不额外截图覆盖现场。
+
+## 验证
+
+离线验证覆盖规则身份、继承配置、配置隔离、真实失败帧、原生 run 的执行顺序与覆写、
+自律分支、撤退/战果/未知退出、入口失败中止、参数转发及 CLI dry-run。
+测试调用上游真实方法；设备 I/O 使用替身。地图产品路径五张既有夹具全部通过。
+
+实机记录（只记本次统一实现的结果）：
+
+| 关卡 | 模式 | 结果 | 证据 |
+| --- | --- | --- | --- |
+| 1-4 | 默认章节规则 | 4 场战斗，218.2 秒，击败 BOSS 后回章节页，无撤退 | `data/s3_native_1_4.log`、`data/s3_after_native_1_4.png` |
+| 2-1 | 先清小怪 | 清完 6 支小怪才进 BOSS，7 场、506.2 秒，`cleared=true` | `data/s3_native_2_1_clearall.log`；入口曾撤出上一局失败的 1-1，此次 2-1 没有撤退 |
+| 1-1 | 默认章节规则 | 上游相机纠偏成功，2 场、84.3 秒，`cleared=true` | `data/s3_native_final_batch.log` |
+| 1-4（最终复测） | 默认章节规则 | 同一进程接续 1-1，4 场、208.1 秒，`cleared=true`，整批退出码 0 | `data/s3_native_final_batch.log`、`data/s3_final_stage.png` |
+
+最终构建 0 警告、0 错误。六组定向验收全部通过，汇总见 `data/s3_final_verification.log`。
+1-1 → 1-4 连续运行全程没有人工操作和撤退；两次 1-4 均使用上游配置和原生运行流程。
+
+新账号刚解锁第二章时出现第二舰队教学，已按界面引导完成。
+这次一次性现场操作未加入地图执行逻辑。未实测的地图不据尺寸或 IR 分级判断支持与否。
+
+## 使用
+
+```powershell
+# 仅查看本章的上游导出规则，不连接设备
+.\src\Alas.DataTool\bin\Release\net8.0\alashub.exe campaign campaign.campaign_main.campaign_1_4
+
+# 原生上游完整出击，默认最多 20 场战斗
+.\src\Alas.DataTool\bin\Release\net8.0\alashub.exe campaign campaign.campaign_main.campaign_1_4 --run --allow-actions
+
+# 上游全清分支：清完小怪再打 BOSS
+.\src\Alas.DataTool\bin\Release\net8.0\alashub.exe campaign campaign.campaign_main.campaign_2_1 --run --allow-actions --clear-all
+```
+
+`--max-seconds` 默认 1500 秒，在上游操作边界检查，不强制打断正在执行的战斗。
+`--max-rounds` 默认 20；显式限轮停止不算通关。
+舰队由 `--fleet1` / `--fleet2` / `--submarine` 配置，默认 1 / 0 / 0。
+
+```powershell
+dotnet build src/Alas.DataTool/Alas.DataTool.csproj -c Release
+.\.runtime\venv314\Scripts\python.exe tools/diagnostics/verify_all.py --only verify_s3_plan.py,verify_s3_upstream_loading.py,verify_s3_camera_compat.py,verify_s3_outcome.py,verify_dryrun_purity.py,verify_product_map.py
+```

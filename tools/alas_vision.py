@@ -1303,45 +1303,6 @@ def apply_clear_all_override(enabled=True):
         cls._alas_clear_all_compat = True
 
 
-def apply_brute_finish_none_compat():
-    """**小图卡点的真凶**：上游用 `scipy.optimize.brute` 搜消失点/远点，而 scipy 的 brute
-    **默认 `finish=fmin`** —— 网格搜完之后再用**无约束**的 Nelder-Mead 精修一次，
-    精修结果**可以跑出给定区间**。实测（1-4 失败帧，把 brute 拦下来看参数与返回值）：
-
-        BRUTE _vanish_point_value   ranges=((540,740), (-3000,-1000))  -> [636.18, -1682.27]
-        BRUTE _distant_point_value  ranges=((-3200,-1600),)            -> [636.18]   ← 越界！
-
-    远点的 x 漂到了消失点的 x 上 ⇒ 两点距离 0 < 10 ⇒
-    `MapDetectionError: Vanish point and distant point too close` ⇒ **整张图判定失败**
-    （`perspective.py:123-128`）。这也是 1-1 / 1-4 / 7-1 / 8-1 这些"小图不能跑"的共同原因；
-    同时解释了为什么"放宽搜索区间"完全无效（区间不被精修尊重）。
-
-    垫片：强制 `finish=None`（纯网格搜索，结果必在区间内），并用 `np.atleast_1d` 包一层 ——
-    因为 `finish=None` 时 1 维 brute 返回的是**标量**，而上游代码是 `brute(...)[0]` 取数组元素，
-    不包就会 `IndexError: invalid index to scalar variable`（实测踩过 ✗）。
-
-    离线回归（`data/` 下两帧）：
-        失败帧 `_map_init_fail_campaign_1_4_att1.png`：原来直接抛错 → 现在能检出（28 格 / [7,4]）
-        好帧   `_14_entrypos.png`：仍是 21 格 / [7,3]（与 1-4 的 G3 一致）✓ **无回归**
-    """
-    try:
-        import numpy as _np
-        import module.map_detection.perspective as _p
-        from scipy import optimize as _opt
-        if getattr(_p, '_alas_brute_compat', False):
-            return
-        _orig = _opt.brute
-
-        def _brute_no_finish(func, ranges, *a, **kw):
-            kw['finish'] = None
-            return _np.atleast_1d(_orig(func, ranges, *a, **kw))
-
-        _p.optimize.brute = _brute_no_finish
-        _p._alas_brute_compat = True
-    except Exception:
-        pass
-
-
 def op_s3_campaign_init(args):
     """实例化上游章节的 `Campaign`（**不执行任何游戏动作**）。
 
@@ -1352,11 +1313,11 @@ def op_s3_campaign_init(args):
     chapter = str(args.get('chapter') or 'campaign.campaign_main.campaign_2_1')
     apply_numpy2_compat()
     apply_points_empty_compat()
+    from s3_camera_compat import apply_camera_previous_view_compat
+    apply_camera_previous_view_compat()
     apply_fleet_bar_compat()
     apply_auto_search_skip_compat()
     apply_boss_icon_color_compat()
-    # 小图卡点的真凶（scipy brute 的 finish=fmin 越界）—— 见函数注释
-    apply_brute_finish_none_compat()
     # 两个战斗场景的选择：默认（False）= BOSS 一刷出来就打 BOSS；
     # clear_all=True = 先清光小怪再打 BOSS。按次开关，每次 init 都要显式设回来。
     apply_clear_all_override(bool(args.get('clear_all', False)))
@@ -1414,9 +1375,16 @@ def op_s3_campaign_init(args):
     except Exception as e:
         return {'error': f'配置章节绑定失败: {type(e).__name__}: {e}', 'stage': stage}
     try:
-        import importlib
-        mod = importlib.import_module(chapter)
-        inst = mod.Campaign(cfg, dev)
+        from module.campaign.run import CampaignRun
+        package, folder, name = chapter.split('.')
+        if package != 'campaign':
+            raise ValueError('章节必须是 campaign.<folder>.<module>')
+        # 复用上游加载器：它先 deepcopy 账号配置，再合并该模块的 Config
+        # （包括继承的 Config），最后构造 Campaign。直接构造会丢失地图规则。
+        cfg.override(Campaign_Name=name, Campaign_Event=folder)
+        loader = CampaignRun(config=cfg, device=dev)
+        loader.load_campaign(name, folder=folder)
+        inst = loader.campaign
     except Exception as e:
         return {'error': f'实例化失败: {type(e).__name__}: {e}', 'chapter': chapter}
     # **种一帧**：ALAS 的方法假定 `device.image` 已存在，而它只在 screenshot() 之后才有。
@@ -1426,12 +1394,15 @@ def op_s3_campaign_init(args):
     try:
         import time as _t
         t0 = _t.time()
+        from s3_campaign_entry import clear_campaign_device_records
+        clear_campaign_device_records(inst)
         dev.screenshot()
         seeded = round((_t.time() - t0) * 1000, 1)
     except Exception as e:
-        seeded = f'失败: {type(e).__name__}: {e}'
+        return {'error': f'初始化截图失败: {type(e).__name__}: {e}', 'chapter': chapter}
     _CAMPAIGN['obj'] = inst
     _CAMPAIGN['chapter'] = chapter
+    _CAMPAIGN['loader'] = loader
     return {'chapter': chapter, 'instantiated': True, 'frame_seeded_ms': seeded,
             'mro': [c.__name__ for c in type(inst).__mro__[:8]]}
 
@@ -1531,19 +1502,22 @@ def op_s3_campaign_call(args):
         else:
             call_args.append(a)
     t0 = time.time()
+    from s3_campaign_outcome import observe_battle_result, classify_campaign_end
     try:
-        value = fn(*call_args)
+        with observe_battle_result(inst) as _result_evidence:
+            value = fn(*call_args)
     except Exception as e:
-        # **`CampaignEnd` 是上游的"关卡已完成"信号，不是错误**（实测：_plan 跑到第三轮时抛出，
-        # 而当时关卡确实已清）。此前把它当 error 报出来是语义错误 —— 这里改判为 completed。
+        # CampaignEnd also comes from withdraw() -> handle_in_stage(). Preserve
+        # its execution source; returning to the stage page alone is not a win.
         try:
             from module.exception import CampaignEnd as _CE
             _is_end = isinstance(e, _CE)
         except Exception:
             _is_end = type(e).__name__ == 'CampaignEnd'
         if _is_end:
-            return {'name': name, 'ms': round((time.time() - t0) * 1000, 1),
-                    'completed': True, 'reason': str(e) or 'CampaignEnd'}
+            end = classify_campaign_end(e, _result_evidence)
+            inst._s3_last_end = end
+            return {'name': name, 'ms': round((time.time() - t0) * 1000, 1), **end}
         # **带上调用栈尾部**：上游内部抛错时，只回 `类型: 消息` 会丢掉定位信息
         # （实测 `execute_a_battle` 报 KeyError: () 时，栈是唯一线索 ✗）。
         return {'name': name, 'ms': round((time.time() - t0) * 1000, 1),
@@ -1666,17 +1640,17 @@ def op_s3_abort_unfinished(args):
 
 
 def op_s3_run_plan(args):
-    """按关卡 IR 的**计划顺序**执行多个上游调用（S3 的实质机制）。
+    """按完整模块名读取规则元数据，并用上游 Campaign 调度战斗。
 
-    为什么要它：单次 `battle_default` 清不掉图（实测 4 步后仍剩敌人）——
-    上游 2-1 的计划是 `['battle_default','check_accessibility','clear_all_mystery',
-    'fleet_boss.clear_boss']`，**多调用组合**才是完整流程。
+    IR 的 calls 是 AST 语义轨迹，不是可重放的调用序列。真实运行复用
+    Campaign.MAP、Config、继承的钩子和 execute_a_battle 的计数分派。
+    plan_complete=false 仅表示 JSON 导出不完整，原生 Campaign 仍可执行。
 
     安全设计：
-      - `dry_run` **默认 true**：只回planned_calls（离线可校验机制，不碰游戏）；
+      - `dry_run` **默认 true**：只读本章 IR，不初始化 Campaign/设备；
       - 真跑必须 `allow_actions=true`（与 s3_campaign_call 同一把锁）；
-      - `max_seconds` 硬上限；任一步报错立即停（不硬撑）；
-      - 只执行 IR 里 `battle_*` 方法的 calls，按方法序号排序，与上游 `BattlePlanRunner` 同序。
+      - `max_seconds` 在上游操作边界检查；任一步报错立即停；
+      - 缺少本章 IR 或来源不匹配时，在初始化设备前报错；不按同名章节兜底。
 
     注意：必须在**同一个进程**里完成 init → enter_map → map_init → 各调用，
     否则 `self.map` 等状态会丢（实测：换进程调用报 `'Campaign' object has no attribute 'map'`）。
@@ -1687,6 +1661,21 @@ def op_s3_run_plan(args):
     if not dry and not args.get('allow_actions'):
         return {'refused': True,
                 'reason': '真跑需要 allow_actions=true（dry_run 默认可离线校验）'}
+    from campaign_rules import CampaignRuleError, load_campaign_rules
+    try:
+        out = load_campaign_rules(chapter)
+    except CampaignRuleError as exc:
+        return {'chapter': chapter, 'dry_run': dry, 'stage': 'rules',
+                'error': str(exc), 'error_code': exc.code}
+    stage = out['stage']
+    out['dry_run'] = dry
+    if dry:
+        out['note'] = ('dry_run：只读取规则，未初始化 Campaign 或设备。'
+                       'plan_steps 是已导出的战斗方法，calls 是语义轨迹；'
+                       '真跑由上游 execute_a_battle 结合战斗计数和 MAP 规则分派，'
+                       '不重放 JSON，IR 不完整不代表原生 Campaign 不可执行。')
+        return out
+
     # 舰队选择也要能由调用方指定（不同账号/关卡要用不同舰队；此前只走 init 的默认值）。
     init = op_s3_campaign_init({'chapter': chapter,
                                 'serial': args.get('serial'),
@@ -1701,333 +1690,104 @@ def op_s3_run_plan(args):
                                 # 心情模式（低心情强制出击弹窗的开关，默认 calculate_ignore）
                                 'emotion_mode': args.get('emotion_mode')})
     if init.get('error'):
-        return {'error': init['error'], 'stage': 'init'}
-    inst = _CAMPAIGN.get('obj')
-
-    # 从 IR 取该章节的计划（与 C# BattlePlanRunner 同序：按 battle_* 方法序号）
-    import glob as _glob, os as _os, json as _json, re as _re
-    stem = chapter.split('.')[-1]
-    ir_path = None
-    for pth in _glob.glob(_os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                        '..', 'data', 'campaign', '**', stem + '.json'),
-                          recursive=True):
-        ir_path = pth
-        break
-    if not ir_path:
-        return {'error': '找不到 IR: %s' % stem}
-    with open(ir_path, encoding='utf-8') as f:
-        ir = _json.load(f)
-    battles = [b for b in ((ir.get('campaign') or {}).get('battles') or [])
-               if str(b.get('method', '')).startswith('battle_')]
-
-    def _idx(name):
-        m = _re.search(r'(\d+)', name)
-        return int(m.group(1)) if m else 9999
-    battles.sort(key=lambda b: _idx(b['method']))
-    planned = []
-    for b in battles:
-        planned.append({'method': b['method'], 'calls': list(b.get('calls') or []),
-                        'plan_complete': bool(b.get('plan_complete'))})
-    import re as _re2
-    _m = _re2.search(r'campaign_(\d+)_(\d+)$', chapter)
-    stage = '%s-%s' % (_m.group(1), _m.group(2)) if _m else ''
-    out = {'chapter': chapter, 'stage': stage,
-           'tier': (ir.get('campaign') or {}).get('tier'),
-           'planned_methods': planned, 'dry_run': dry,
-           # `calls` 是**语义轨迹**（从 battle_* 方法体 AST 抽出来的，**同时包含顶层步骤与
-           # 嵌套辅助调用**，例如 check_accessibility(grid) 是上游内部辅助方法、需要参数）。
-           # 所以它**不是可逐条重放的清单** —— 真正的计划步骤是 `planned_methods` 里的
-           # `battle_*` 方法本身（它们内部会去做清神秘/BOSS/可达性检查）。
-           'semantic_trace': [c for b in planned for c in b['calls']],
-           'plan_steps': [b['method'] for b in planned]}
-    if dry:
-        out['note'] = ('dry_run：未触碰游戏。真跑需 allow_actions=true，'
-                       '并会在同一进程内完成 init→enter_map→map_init→各调用')
+        out.update({'error': init['error'], 'stage': 'init'})
         return out
+    inst = _CAMPAIGN.get('obj')
+    stage = _CAMPAIGN['loader'].stage
+    out['stage'] = stage
 
     # ---- 真跑 ----
     t_start = _t.time()
-    max_s = float(args.get('max_seconds') or 600)
+    max_s = float(args.get('max_seconds') or 1500)
     steps = []
-    # **顺序要求**（见 docs/s3-entry-sequence.md）：ensure_chapter 必须在 get_entrance 之前，
-    # 否则入口坐标取不到（空 Button）。这个坑我自己踩过一次，这里必须显式做。
-    if stage:
-        r = op_s3_campaign_call({'name': 'campaign_ensure_chapter',
-                                 'args': [int(stage.split('-')[0])], 'allow_actions': True})
-        steps.append({'step': 'ensure_chapter', 'ms': r.get('ms'), 'error': r.get('error')})
+    from s3_campaign_entry import clear_campaign_device_records, prepare_campaign_navigation
+    from s3_campaign_outcome import finalize_sortie_result
+
+    def preparation_failed(name, error):
+        steps.append({'step': name, 'error': f'{type(error).__name__}: {error}',
+                      'traceback_tail': traceback.format_exc().strip().splitlines()[-8:]})
+        out['steps'] = steps
+        out['elapsed_s'] = round(_t.time() - t_start, 1)
+        return finalize_sortie_result(out, steps)
+
+    # CampaignRun.run() resets the reused device before navigation, and leaves
+    # any previous map first. A withdrawal's CampaignEnd is cleanup, not victory.
+    try:
+        prepared = prepare_campaign_navigation(inst)
+        steps.append({'step': 'prepare_campaign_navigation', **prepared})
+    except Exception as error:
+        return preparation_failed('prepare_campaign_navigation', error)
     # 进图前先清掉"未完成出击"（客户端弹窗，上游不识别；否则本关必卡 60s）
     try:
         _ab = op_s3_abort_unfinished({'dry': False})
         steps.append({'step': 'abort_unfinished', 'dialog': _ab.get('unfinished_dialog')})
     except Exception:
         pass
-    r = (op_s3_campaign_call({'name': 'campaign_get_entrance', 'args': [stage],
-                              'store': 'ENTRANCE', 'allow_actions': True})
-         if not (steps and steps[-1].get('error')) else {'error': 'skipped'})
-    steps.append({'step': 'get_entrance', 'ms': r.get('ms'), 'error': r.get('error')})
-    if not r.get('error'):
-        # **主动盯防**（用户实测反馈：被动自愈要等 60s 才处理，太久）：
-        # 进图期间后台线程每 1.5s 查一次"正在攻略中"弹窗，一出现就点掉。
-        import threading as _th
-        _stop_ev = _th.Event()
-        _watcher = _th.Thread(target=_proactive_abort_worker, args=(_stop_ev,), daemon=True)
-        _watcher.start()
-        try:
-            r = op_s3_campaign_call({'name': 'enter_map', 'args': ['@ENTRANCE', 'normal'],
-                                     'allow_actions': True})
-            steps.append({'step': 'enter_map', 'ms': r.get('ms'), 'error': r.get('error')})
-        finally:
-            _stop_ev.set()
-            _watcher.join(timeout=5)
-        # **自愈**：进图失败且像"卡住"时，多半是那个客户端弹窗挡着
-        # （「关卡 xxx 正在攻略中…[撤退][立即前往]」）——它出现在 **enter_map 过程当中**，
-        # 所以进图前那次检测抓不到（实测曾连续两轮各卡 60s，还被误判成"那关有问题"）。
-        if r.get('error') and 'Stuck' in str(r.get('error')):
-            ab = op_s3_abort_unfinished({'dry': False})
-            steps.append({'step': 'enter_map_abort',
-                          'dialog': ab.get('unfinished_dialog'),
-                          'red_frac': ab.get('red_frac')})
-            r2 = op_s3_campaign_call({'name': 'enter_map',
-                                     'args': ['@ENTRANCE', 'normal'],
-                                     'allow_actions': True})
-            steps.append({'step': 'enter_map_retry', 'ms': r2.get('ms'),
-                          'error': r2.get('error')})
-    if not steps[-1].get('error'):
-        # **上游 run() 的顺序是 handle_map_fleet_lock() 再 map_init()** ——
-        # 之前只调 map_init，导致 execute_a_battle() 抛 KeyError: ()（实测：20 轮里只有 1 轮真打了）✗
-        if not steps or not steps[-1].get('error'):
-            _fl = op_s3_campaign_call({'name': 'handle_map_fleet_lock', 'allow_actions': True})
-            steps.append({'step': 'handle_map_fleet_lock', 'ms': _fl.get('ms'),
-                          'error': _fl.get('error')})
-        # `map_init` 里第一次 `update()` 就可能因**退化机位**失败：
-        # 实测 7-1（8x3 三行图）同一张图里，一次成功、一次报
-        # `MapDetectionError: Vanish point and distant point too close`
-        # （日志里 `vanish_point == distant_point == (654, -1425)`）——
-        # 三行图的网格线在透视里近乎平行，机位不巧时消失点算到无穷远，几何退化。
-        # 这不是"图不支持"，所以**换个机位重试**。
-        #
-        # **但"没抛异常"不等于"结果可用"**（实测 1-4 踩到）：1-4 的 `map_init` 全程无异常，
-        # 可视图的**格距被判错**（检出 9 行 / 该图只有 3 行，同帧 `tile_center: 0.636 bad match`）
-        # → 敌人落到 `map_data` 里不是 `ME` 的格子上 → `grid_info.update()` 把 `is_enemy` 丢掉
-        # → 上游地图里一个敌人都没有 → `battle_0` 报 `No battle executed` → 十次无战果 → 撤退。
-        # 所以这里加一道**只读一致性校验**：视图认出了敌人/BOSS，而地图侧一个都没有 ⇒ 判为失败重试。
-        def _map_init_health():
-            h = {}
-            try:
-                v = inst.view
-                h['view_cells'] = len(getattr(v, 'grids', {}) or {})
-                h['view_enemies'] = len(v.select(is_enemy=True))
-                h['view_boss'] = len(v.select(is_boss=True))
-            except Exception as e:
-                h['view_error'] = f'{type(e).__name__}: {e}'
-            try:
-                h['map_enemies'] = len(inst.map.select(is_enemy=True))
-                h['map_boss'] = len(inst.map.select(is_boss=True))
-                h['camera'] = [int(x) for x in inst.camera]
-                h['camera_in_bounds'] = bool(
-                    0 <= h['camera'][0] <= int(inst.map.shape[0])
-                    and 0 <= h['camera'][1] <= int(inst.map.shape[1]))
-            except Exception as e:
-                h['map_error'] = f'{type(e).__name__}: {e}'
-            view_ships = (h.get('view_enemies') or 0) + (h.get('view_boss') or 0)
-            map_ships = (h.get('map_enemies') or 0) + (h.get('map_boss') or 0)
-            h['consistent'] = not (view_ships > 0 and map_ships == 0)
-            return h
-
-        # 三种纠正手段，逐个试：
-        #   ① 先直接重试一次（有时只是抓帧时机问题）；
-        #   ② 上游自己的 `ensure_edge_insight()` —— 它靠边界线把相机重新锚到角上，
-        #      是上游 `full_scan` 在 `map.update` 判失败时用的**原生恢复手段**；
-        #   ③ 设备级滑动换机位（不依赖任何识别结果，前面已证明 `map_swipe`/`_map_swipe` 用不了）。
-        _recover = [
-            ('retry', None),
-            ('ensure_edge_insight', {'name': 'ensure_edge_insight', 'args': [False],
-                                     'allow_actions': True}),
-            ('device_swipe', None),
-        ]
-        _init_attempts = []
-        for _att, (_label, _call) in enumerate(_recover):
-            r = op_s3_campaign_call({'name': 'map_init', 'args': ['@MAP'],
-                                     'allow_actions': True})
-            _entry = {'attempt': _att + 1, 'recover': _label, 'ms': r.get('ms'),
-                      'error': r.get('error')}
-            if not r.get('error'):
-                _entry['health'] = _map_init_health()
-            _init_attempts.append(_entry)
-            if not r.get('error') and (_entry.get('health') or {}).get('consistent'):
-                break
-            # **把失败这一刻的现场帧存下来**：离线复现是定位这类问题的唯一可靠手段，
-            # 而"失败帧"必须在这一刻抓 —— 事后再截图，相机早被重试挪走了（实测踩过：
-            # 事后抓到的帧检测完全正常，21/21 格，反而把结论带偏 ✗）。
-            try:
-                import cv2 as _cv2
-                _img = getattr(inst.device, 'image', None)
-                if _img is not None:
-                    _fp = os.path.normpath(os.path.join(
-                        os.path.dirname(os.path.abspath(__file__)), '..', 'data',
-                        '_map_init_fail_%s_att%d.png' % (
-                            _CAMPAIGN.get('chapter', 'x').split('.')[-1], _att + 1)))
-                    _cv2.imwrite(_fp, _cv2.cvtColor(_img, _cv2.COLOR_RGB2BGR))
-                    _entry['saved_frame'] = _fp
-            except Exception as _e:
-                _entry['save_frame_error'] = f'{type(_e).__name__}: {_e}'
-            if r.get('error') and 'Vanish point' not in str(r.get('error')) \
-                    and 'No vertical line' not in str(r.get('error')) \
-                    and 'GameTooManyClickError' not in str(r.get('error')):
-                # `GameTooManyClickError` 也要继续试：它表示 `ensure_edge_insight` 在这个机位上
-                # 反复滑动找边界直到撞上点击上限（实测 1-4 第二次：内部水平线只有 2 条 ⇒ 建不出网格
-                # ⇒ 一直滑）。把它当"该机位不可用"，换机位再试，而不是让整轮就此失败。
-                break                      # 别的错误不靠挪机位解决
-            if _att + 1 >= len(_recover):
-                break
-            _next = _recover[_att + 1][0]
-            try:
-                if _next == 'ensure_edge_insight':
-                    _rc = op_s3_campaign_call({'name': 'ensure_edge_insight',
-                                               'args': [False], 'allow_actions': True})
-                    _entry['recover_error'] = _rc.get('error')
-                elif _next == 'device_swipe':
-                    _mv = op_device_swipe({'x1': 760, 'y1': 394,
-                                           'x2': 960 if _att % 2 == 0 else 560,
-                                           'y2': 394, 'duration': 0.4})
-                    _entry['recover_error'] = _mv.get('error')
-            except Exception as _e:
-                _entry['recover_error'] = f'{type(_e).__name__}: {_e}'
-        steps.append({'step': 'map_init', 'ms': _init_attempts[-1].get('ms'),
-                      'error': _init_attempts[-1].get('error'),
-                      'attempts': _init_attempts})
-    # **从半途状态接着打**：`map_init` 会把 `battle_count` 清 0（map_data_init），而 `battle_count`
-    # 决定 `battle_function()` 选哪个 `battle_N`（campaign_base.py:79-92）。所以"进图时小怪已经
-    # 清完、只剩 BOSS"这种状态下，清 0 只会让上游去跑 battle_0（清路障）→ 十次无战果 → 撤退。
-    # 传 `battle_count` 就能显式复位到正确的回合（上游自己的语义，不是我另造的逻辑）。
-    if args.get('battle_count') is not None:
-        try:
-            _want = int(args['battle_count'])
-            _had = getattr(inst, 'battle_count', None)
-            inst.battle_count = _want
-            steps.append({'step': 'set_battle_count', 'from': _had, 'to': _want})
-        except Exception as e:
-            steps.append({'step': 'set_battle_count',
-                          'error': f'{type(e).__name__}: {e}'})
-    # 执行**计划步骤本身**（battle_* 方法），而不是逐条重放语义轨迹 —— 见上面说明。
-    # `repeat_until_cleared`：对齐上游 `CampaignBase.run()` 的**循环**语义
-    # （一轮计划 ≠ 清图；上游是循环调用直到满足结束条件）。默认关闭，开启时按 max_rounds 上限。
-    repeat = bool(args.get('repeat_until_cleared'))
-    max_rounds = int(args.get('max_rounds') or 3)
-
-    # **诊断出口**：`stop_after='map_init'` 时，进图 + 图内初始化做完就停，**不打任何一场**。
-    # 用途：把"进图/识别"这一段单独拿出来量（视图检出多少格、信息条在不在、相机对不对），
-    # 而不用为了看一眼状态先打一场（此前只能靠完整跑一遍再从日志里反推 ✗）。
-    if str(args.get('stop_after') or '') == 'map_init':
-        out['stopped_after'] = 'map_init'
+    # 上游负责主线/困难/活动的页面、章节和模式选择，并设置 ENTRANCE。
+    # 手工拆 ensure_chapter/get_entrance 会绕过活动基类的导航钩子。
+    r = op_s3_campaign_call({'name': 'ensure_campaign_ui',
+                             'args': [stage, inst.config.Campaign_Mode],
+                             'allow_actions': True})
+    steps.append({'step': 'ensure_campaign_ui', 'ms': r.get('ms'), 'error': r.get('error')})
+    if r.get('error'):
         out['steps'] = steps
-        return out
+        out['elapsed_s'] = round(_t.time() - t_start, 1)
+        return finalize_sortie_result(out, steps)
 
-    def _sortie_state():
-        """用**上游自己的状态**判断是否该继续（本地 `enemies_left` 已被两次证明不可靠）。
-
-        返回 (continue_needed, reason)：
-          - 已离开地图（`is_in_map()` 为假）→ 出击已结束，不需要再跑；
-          - `map_clear_percentage >= 100` → 图已清，不需要再跑；
-          - 否则继续（受 max_rounds / max_seconds 约束）。
-        这两个信号都来自上游运行时，比本地标志计数可靠得多。
-        """
-        try:
-            if not inst.is_in_map():
-                return False, 'left_map'
-        except Exception:
-            pass
-        try:
-            pct = getattr(inst, 'map_clear_percentage', None)
-            if isinstance(pct, (int, float)) and float(pct) >= 100.0:
-                return False, 'map_clear_100'
-        except Exception:
-            pass
-        return True, 'still_in_map'
-
-    _round = 0
-    while True:
-        _round += 1
-        # **改用上游自己的调度入口**：`campaign_base.run()` 的循环体就是
-        #   `for _ in range(20): execute_a_battle()`（收到 CampaignEnd 即停）
-        # 只调 IR 里的 `battle_0`/`battle_6` 等于只做了上游逻辑的一小部分 → **清不完**
-        # （用户实测反馈"并没有完全打完"，根因即此）。轮数由 max_rounds 控制，
-        # 上游默认 20 —— 建议调用方传 `--max-rounds 20`。
-        # **先触发上游的 BOSS 扫描确认**：本客户端 BOSS 图标识别失败（实测 3 个标志里
-        # 没有 is_boss ✗），导致 `battle_6` 的 `if boss:` 分支被跳过 -> 十次无战果 ->
-        # 上游自己撤退（用户实测："全清完小怪后只剩boss就主动撤退" ✓）。
-        # `full_scan_find_boss()`（camera.py:530）正是用候选出生点扫描确认 BOSS 的上游能力；
-        # 正常流程会在只剩 BOSS 时走它，而我的执行器此前从未触发 ✗。
-        for _step_name in ('full_scan_find_boss', 'execute_a_battle'):
-            if _t.time() - t_start > max_s:
-                steps.append({'round': _round, 'step': _step_name, 'skipped': '超过 max_seconds'})
-                break
-            if steps and steps[-1].get('error'):
-                steps.append({'round': _round, 'step': _step_name, 'skipped': '前一步出错，停止'})
-                break
-            r = op_s3_campaign_call({'name': _step_name, 'allow_actions': True})
-            # **客观进度**：上游的 map_clear_percentage（属性是 0..1）与弹药数 ——
-            # 此前我用 campaign_end=True 当"清图"判据，被用户当场否证（那其实是 withdraw 路径）。
-            _pct = None
-            _ammo = None
-            try:
-                _pct = round(float(getattr(inst, 'map_clear_percentage', -1)) * 100, 1)
-            except Exception:
-                pass
-            try:
-                _ammo = getattr(inst, 'ammo_count', None)
-            except Exception:
-                pass
-            # **直接测量**（不再靠读代码推断）：battle_count 决定 `battle_function` 选哪个
-            # `battle_N`；若它一直不递增，就会永远停在 battle_0（清路障）而打不到 BOSS ✗
-            _bc = None
-            _cfgkeys = {}
-            try:
-                _bc = getattr(inst, 'battle_count', None)
-            except Exception:
-                pass
-            for _k in ('MAP_CLEAR_ALL_THIS_TIME', 'POOR_MAP_DATA',
-                       'MAP_HAS_MOVABLE_NORMAL_ENEMY', 'Error_HandleError'):
-                try:
-                    _cfgkeys[_k] = getattr(getattr(inst, 'config', None), _k, None)
-                except Exception:
-                    pass
-            steps.append({'round': _round, 'step': _step_name, 'ms': r.get('ms'),
-                          'error': r.get('error'), 'completed': r.get('completed'),
-                          'map_clear_pct': _pct, 'ammo': _ammo,
-                          'battle_count': _bc, 'cfg': _cfgkeys})
-            if r.get('completed'):
-                # 上游宣布关卡完成 —— 这是**正常收尾**，不需要再跑下一轮
-                out['campaign_end'] = True
-                out['campaign_end_step'] = _step_name
-                break
-        else:
-            # 本轮跑完：判断是否还需要再来一轮
-            if not repeat or _round >= max_rounds or _t.time() - t_start > max_s:
-                break
-            need, why = _sortie_state()
-            steps.append({'round': _round, 'check': 'sortie_state', 'value': why})
-            if not need:
-                out['stop_reason'] = why      # 上游语义给出的结束原因
-                break
-            continue
-        break
-    out['steps'] = steps
+    # Match the second reset immediately before CampaignRun calls campaign.run.
     try:
-        out['map_clear_pct_final'] = round(float(getattr(inst, 'map_clear_percentage', -1)) * 100, 1)
-        out['cleared'] = bool(out['map_clear_pct_final'] >= 100)
-    except Exception:
-        out['cleared'] = None
+        clear_campaign_device_records(inst)
+        steps.append({'step': 'prepare_campaign_run'})
+    except Exception as error:
+        return preparation_failed('prepare_campaign_run', error)
+
+    # 入口弹层属于客户端差异；只在上游 enter_map 调用期间观察。
+    # 关卡的 run / map_init / 战斗循环 / 特殊钩子全部由上游执行。
+    import threading
+    from s3_campaign_execution import run_native_campaign
+    original_enter = inst.enter_map
+    owned_enter = 'enter_map' in vars(inst)
+    own_enter = vars(inst).get('enter_map')
+
+    def enter_with_dialog_handler(*entry_args, **entry_kwargs):
+        stop = threading.Event()
+        watcher = threading.Thread(target=_proactive_abort_worker, args=(stop,), daemon=True)
+        watcher.start()
+        try:
+            return original_enter(*entry_args, **entry_kwargs)
+        finally:
+            stop.set()
+            watcher.join(timeout=5)
+
+    inst.enter_map = enter_with_dialog_handler
+    try:
+        result = run_native_campaign(
+            inst, max_rounds=int(args.get('max_rounds') or 20)
+            if args.get('repeat_until_cleared', True) else 1,
+            max_seconds=max_s, stop_after=args.get('stop_after'),
+            battle_count=args.get('battle_count'))
+    finally:
+        if owned_enter:
+            inst.enter_map = own_enter
+        else:
+            del inst.enter_map
+    out.update(result)
+    out['steps'] = steps + result['steps']
     out['elapsed_s'] = round(_t.time() - t_start, 1)
-    out['stopped_early'] = bool(steps and steps[-1].get('error'))
     return out
 
 
-def _map_config():
+
+def _map_config(chapter=None):
     """S2 需要上游配置（`DETECTION_BACKEND` 等决定用 Homography 还是 Perspective 后端）。
     做法与 cached_rule_check 一致：用上游自己的 AzurLaneConfig，不自己造配置层。"""
     from module.config.config import AzurLaneConfig
-    return AzurLaneConfig('alas')
+    cfg = AzurLaneConfig('alas')
+    if chapter:
+        import copy
+        module = importlib.import_module(chapter)
+        cfg = copy.deepcopy(cfg).merge(module.Config())
+    return cfg
 
 
 def op_map_detection_assets(args):
@@ -2067,17 +1827,9 @@ def op_map_detect(args):
     """
     import module.map_detection.view as view_mod
     image = _require_image()
-    # 几何放大：**单行/扁格子**的小地图（例：进图后的 1-1，7 格一行）竖直分隔线太短，
-    # 默认阈值与降阈值都检不出（实测 trace: inner_v.lines=0）。等比放大能把短竖线拉长到
-    # 检测阈值以上；格索引与逐格标志都是尺度无关的，所以不影响返回语义。
-    _scale = int(args.get('upscale') or 1)
-    if _scale > 1:
-        import cv2 as _cv2
-        image = _cv2.resize(image, None, fx=_scale, fy=_scale,
-                            interpolation=_cv2.INTER_CUBIC)
     apply_numpy2_compat()
     apply_points_empty_compat()
-    cfg = _map_config()
+    cfg = _map_config(args.get('chapter'))
     # 上游有两个检测后端（Homography / Perspective），由 config.DETECTION_BACKEND 选。
     # 允许显式指定：真机上出现过 homography 后端"找不到水平线/垂直线"而画面明明有网格，
     # 这时要能立刻对比另一个后端，而不是猜。
@@ -2126,122 +1878,17 @@ def op_map_detect(args):
     import module.map_detection.utils as md_utils
     from module.map_detection.view import MapDetectionError
 
-    def _rebuild_view(threshold, peaks=None):
-        """按给定 Hough 阈值重建 cfg + View（阈值改了必须重建，配置是构造期读入的）。
-
-        `peaks` 可覆盖 `INTERNAL_LINES_FIND_PEAKS_PARAMETERS`（scipy.find_peaks 参数）。
-        为什么需要它：现场帧（进图后的 1-1，7 格单行）报 `No vertical line detected`，
-        而 trace 显示 `inner_v.peaks_raw=784 / lines=0` —— **峰找得到，卡在"峰→线"**；
-        降 Hough 阈值（50/40）与放大都无效（已证），所以这一档要动**峰参数本身**。
-        """
-        nonlocal cfg, v
-        cfg = _map_config()
-        if args.get('backend'):
-            cfg.DETECTION_BACKEND = args['backend']
-        try:
-            cfg.INTERNAL_LINES_HOUGHLINES_THRESHOLD = threshold
-        except Exception:
-            pass
-        if peaks:
-            try:
-                merged = dict(getattr(cfg, 'INTERNAL_LINES_FIND_PEAKS_PARAMETERS', {}) or {})
-                merged.update(peaks)
-                cfg.INTERNAL_LINES_FIND_PEAKS_PARAMETERS = merged
-                # 边线只跟着降 prominence；不动它的 height（那是"亮线"区间，
-                # 改了会把边线与内部线混为一谈）。
-                if 'prominence' in peaks:
-                    em = dict(getattr(cfg, 'EDGE_LINES_FIND_PEAKS_PARAMETERS', {}) or {})
-                    em['prominence'] = peaks['prominence']
-                    cfg.EDGE_LINES_FIND_PEAKS_PARAMETERS = em
-            except Exception:
-                pass
-        if mode == 'os':
-            cfg.Scheduler_Command = 'OpsiDaily'
-            v = view_mod.View(cfg, mode='os', grid_class=grid_class) if grid_class \
-                else view_mod.View(cfg, mode='os')
-        else:
-            v = view_mod.View(cfg)
-
-    # 失败后**降阈值重试**：困难图的竖线在倾斜 3D 平面上票数摊开，
-    # 默认阈值 75 一条都拟合不出 → 消失点几何退化（Vanish point ... too close）。
-    # 实测：2-1 / 10-4 用默认即可，困难 1-4 需要 50；但**不能全局降** ——
-    # 降到 40 时 2-1 会多检出一整圈（39 格 / shape [7,4] 而非 24 / [5,3]）。
-    # 所以按"默认优先、失败才降"的顺序试，与上游自己的
-    # search_tile_center → corner → rectangle 多策略同思路。
-    _last_reason = None
-    # 档位 = (Hough 阈值, 峰参数覆盖)。
-    #   前 3 档：**峰参数**（现场 1-1 报 No vertical line detected 而 peaks_raw=784，
-    #           说明卡在"峰→线"，所以先降 find_peaks 的门槛：height 下限 150→130→110、
-    #           prominence 10→7）。注意 height 上界 (255-33=222) 不动：那是"内部线/边线"的
-    #           分界，动了会把两者混起来。
-    #   后 2 档：原有的**降 Hough 阈值**（困难图需要 50；40 是兜底）。
-    # 顺序仍是"默认优先、失败才降"，与上游多策略同思路；且实测 2-1 用默认即可，
-    # 所以正常画面不会走到后面这些档（也就不会引入额外的假阳性或耗时）。
-    _TIERS = (
-        (None, None),
-        (None, {'height': (130, 222), 'prominence': 7}),
-        (None, {'height': (110, 222), 'prominence': 5}),
-        (50, None),
-        (40, None),
-    )
-    for _thr, _peaks in _TIERS:
-        if _thr is not None or _peaks is not None:
-            try:
-                _rebuild_view(_thr if _thr is not None else 75, _peaks)
-            except Exception as e:
-                _last_reason = f'{type(e).__name__}: {e}'
-                break
-        try:
-            v.load(image)
-            out['load'] = 'ok'
-            out['threshold_used'] = int(getattr(cfg, 'INTERNAL_LINES_HOUGHLINES_THRESHOLD', 0))
-            if _peaks:
-                out['peaks_used'] = {k: (list(v) if isinstance(v, tuple) else v)
-                                     for k, v in _peaks.items()}
-            out['tier'] = f'thr={_thr} peaks={_peaks}'
-            _last_reason = None
-            break
-        except MapDetectionError as e:
-            # 上游自己的负样本信号；先记住，换下一档再试
-            _last_reason = str(e)
-            continue
-        except Exception as e:
-            set_os_mask_mode(False)
-            # 非地图画面上上游会在 np.stack 上抛 TypeError（它假定调用方已确认在地图上）。
-            # 产品侧需要在任意画面上安全地"试一试"，所以这里也归为未检测到，
-            # 但**保留原始异常文本**，免得把"接线的锅"当成"画面的锅"。
-            out['load'] = 'negative'
-            out['detected'] = False
-            out['reason'] = f'{type(e).__name__}: {e}'
-            return out
-    if _last_reason is not None:
-        set_os_mask_mode(False)
+    try:
+        v.load(image)
+        out['load'] = 'ok'
+        out['threshold_used'] = int(cfg.INTERNAL_LINES_HOUGHLINES_THRESHOLD)
+    except Exception as e:
         out['load'] = 'negative'
         out['detected'] = False
-        out['reason'] = _last_reason
-        out['thresholds_tried'] = [t for t in (None, 50, 40)]
+        out['reason'] = f'{type(e).__name__}: {e}'
         return out
-    set_os_mask_mode(False)      # 用完即复位，不影响后续战役检测
-    # 回退结果的**几何合理性闸门**：降阈值会把非地图画面也"检出"成一片网格
-    # （实测战役菜单 os_map.png 在 thr=50 下报 59 格 / shape [7,7]），
-    # 而真地图在回退阈值下是**干净矩形**（困难 1-4 → 21 格 = 7x3）。
-    # 判据：回退生效时，格数必须等于 (sx+1)*(sy+1)；给不出干净矩形就当没检出。
-    # 只在回退路径上卡这一道 —— 默认阈值下的正常结果不适用（10-4 本来就缺 6 格是 UI 遮挡）。
-    if _thr is not None:
-        _shape = getattr(v, 'shape', None)
-        _grids = getattr(v, 'grids', None)
-        if _shape is None or not isinstance(_grids, dict):
-            out['load'] = 'negative'
-            out['detected'] = False
-            out['reason'] = 'fallback 未给出网格'
-            return out
-        _sx, _sy = int(_shape[0]), int(_shape[1])
-        if len(_grids) != (_sx + 1) * (_sy + 1):
-            out['load'] = 'negative'
-            out['detected'] = False
-            out['reason'] = ('fallback 网格不干净（%d 格 vs %dx%d=%d），判为非地图画面'
-                             % (len(_grids), _sx + 1, _sy + 1, (_sx + 1) * (_sy + 1)))
-            return out
+    finally:
+        set_os_mask_mode(False)
     if hasattr(v, 'predict'):
         try:
             v.predict()
@@ -2312,23 +1959,6 @@ def op_map_detect(args):
         out['reason'] = ('检出网格但**没有任何船标志**（%s 格），判为非战场画面'
                          % out.get('grid_count'))
 
-    # 几何放大重试（自动升档）：默认与降阈值都没检出时，把图放大再试 —— 见函数开头说明。
-    # 只对战役模式、且不是"已经在放大档里"时触发，避免递归失控。
-    # 注意：**默认不做**自动升档 —— 实测放大对本项目的单行小地图无效
-    # （放大同时也放大了掩膜与线段参数，比例不变），却会让每个负样本多花 2-3 倍时间。
-    # 需要时显式传 auto_upscale=true。
-    if (_scale == 1 and mode == 'main' and not out.get('grid_count')
-            and args.get('auto_upscale') and not args.get('no_upscale_retry')):
-        for _s in (2, 3):
-            _retry = dict(args)
-            _retry['upscale'] = _s
-            _retry['no_upscale_retry'] = True
-            _r2 = op_map_detect(_retry)
-            if _r2.get('grid_count'):
-                _r2['upscale_used'] = _s
-                _r2['upscale_note'] = '默认阈值与降阈值均未检出，放大 %dx 后检出' % _s
-                return _r2
-        out['upscale_tried'] = [2, 3]
     return out
 
 
@@ -2435,7 +2065,7 @@ def op_map_detect_trace(args):
 
     image = _require_image()
     apply_numpy2_compat()
-    cfg = _map_config()
+    cfg = _map_config(args.get('chapter'))
     p = persp.Perspective(config=cfg)
     out = {}
     try:
@@ -2571,9 +2201,7 @@ def op_map_grids(args):
     # 报告**生产行为**：带上 BOSS 眼睛颜色垫片，所以 `is_boss` 这一列就是修好之后的结果；
     # 逐色的 score_* 则保留原样，用来判断阈值余量。
     apply_boss_icon_color_compat()
-    # 小图卡点的真凶（scipy brute 的 finish=fmin 越界）—— 见函数注释
-    apply_brute_finish_none_compat()
-    cfg = _map_config()
+    cfg = _map_config(args.get('chapter'))
     v = view_mod.View(cfg)
     v.load(image)
     v.predict()
@@ -3085,4 +2713,3 @@ def handle_line(request_json: str) -> str:
         return json.dumps({'id': req.get('id'), 'ok': True, 'result': {'bye': True}},
                           ensure_ascii=False, default=json_default)
     return json.dumps(handle(req), ensure_ascii=False, default=json_default)
-

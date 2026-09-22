@@ -76,27 +76,33 @@ internal static class Program
             }
             if (command == "campaign")
             {
-                // S3：按关卡 IR 的计划驱动上游（dry-run 默认；--run 才真打，需 --allow-actions）
+                // S3：上游 Campaign.run() 负责整次出击；C# 传配置并报告结果。
                 string toolsDir7 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
                     "..", "..", "..", "..", "..", "tools"));
                 string? campChapter = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
                 string? campAdb = null, campSerial = null;
-                bool campRun = false, campAllow = false, campRepeat = false;
-                double campMax = 300; int campRounds = 1;
+                bool campRun = false, campAllow = false, campRepeat = true;
+                double campMax = 1500; int campRounds = 20;
                 int campFleet1 = 1, campFleet2 = 0, campSub = 0;
                 // 两套战斗流程二选一（上游 `MAP_CLEAR_ALL_THIS_TIME`）：
                 //   不加 --clear-all：BOSS 一刷出来就打 BOSS（battle_{battle_count}）
                 //   加 --clear-all  ：先清光小怪，清完才打 BOSS
                 bool campClearAll = false;
-                for (int i = 1; i < args.Length - 1; i++)
+                for (int i = 1; i < args.Length; i++)
                 {
+                    if (args[i] is "--run" or "--allow-actions" or "--repeat" or "--clear-all")
+                    {
+                        if (args[i] == "--run") campRun = true;
+                        if (args[i] == "--allow-actions") campAllow = true;
+                        if (args[i] == "--repeat") campRepeat = true;
+                        if (args[i] == "--clear-all") campClearAll = true;
+                        continue;
+                    }
+                    if (args[i].StartsWith("--") && i + 1 >= args.Length)
+                        throw new ArgumentException($"{args[i]} 缺少参数值");
                     if (args[i] == "--chapter") campChapter = args[i + 1];
                     if (args[i] == "--adb") campAdb = args[i + 1];
                     if (args[i] == "--serial") campSerial = args[i + 1];
-                    if (args[i] == "--run") campRun = true;
-                    if (args[i] == "--allow-actions") campAllow = true;
-                    if (args[i] == "--repeat") campRepeat = true;
-                    if (args[i] == "--clear-all") campClearAll = true;
                     if (args[i] == "--max-seconds" && double.TryParse(args[i + 1], out double ms2)) campMax = ms2;
                     if (args[i] == "--max-rounds" && int.TryParse(args[i + 1], out int mr)) campRounds = mr;
                     if (args[i] == "--fleet1" && int.TryParse(args[i + 1], out int f1)) campFleet1 = f1;
@@ -106,62 +112,43 @@ internal static class Program
                 if (campChapter is null)
                 {
                     Console.WriteLine("用法: campaign <章模块[,章模块...]> [--run --allow-actions] " +
-                                      "[--repeat] [--clear-all] [--max-seconds 300] [--max-rounds 1]");
+                                      "[--serial <设备>] [--clear-all] [--max-seconds 1500] [--max-rounds 20]");
                     return 2;
                 }
-                // `--stages a,b,c`：**在同一个进程内**连续驱动多关（"常驻"的实质 —— 状态不跨进程丢）
+                if (campRun && !campAllow)
+                {
+                    Console.WriteLine("[拒绝    ] 真跑需要 --allow-actions");
+                    return 2;
+                }
+                if (campMax <= 0 || campRounds <= 0 || campFleet1 <= 0 || campFleet2 < 0 || campSub < 0)
+                    throw new ArgumentException("时间和轮次必须为正数；第一舰队必须大于 0，其他舰队不能小于 0");
+                // 在同一个宿主内连续运行；各关入口由上游 ensure_campaign_ui 导航。
                 var stageList = campChapter.Contains(',')
                     ? campChapter.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0).ToArray()
                     : new[] { campChapter };
                 Console.WriteLine($"[批量    ] {stageList.Length} 关，同一进程内连续驱动");
                 using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(repoDir, toolsDir7);
-                // **跨关状态复位**：实测 2-1 跑完后游戏已不在战役页，下一关的 ensure_chapter
-                // 会在错误画面上执行 -> CampaignNameError（见 docs/s3-entry-sequence.md）。
-                // 所以每关（除首关）开始前，先确保回到 page_campaign。
-                Device.DeviceController? campDev = null;
-                Alas.Navigation.PageNavigator? campNav = null;
-                if (campAdb is not null && campSerial is not null)
+                if (campRun && campAllow)
                 {
-                    campDev = new Device.DeviceController(new ProcessAdbTransport(campAdb), vision, campSerial);
-                    campNav = new Alas.Navigation.PageNavigator(vision,
-                        new Alas.Navigation.DeviceNavigationAdapter(campDev),
-                        Alas.Navigation.PageGraph.Load(vision));
+                    if (campAdb is not null)
+                        Console.WriteLine("[兼容    ] campaign 使用上游配置的 ADB；--adb 保留兼容，不覆盖宿主配置");
+                    if (campSerial is not null)
+                        vision.ConfigureDevice(campSerial, screenshot: "scrcpy", control: "MaaTouch");
                 }
-                int campIdx = 0;
+                bool campFailed = false;
                 foreach (var one in stageList)
                 {
-                    // 首关前也导航（此前要人工先跑 goto page_campaign）；**只在真跑时做** ——
-                    // dry-run 不应有任何游戏副作用。
-                    if (campNav is not null && campRun)
-                        {
-                            // **导航失败要重试**：实测游戏若停在"战斗中/未完成出击"，一次 Goto 会 success=False，
-                            // 而此前直接放弃导致整个作业 0.4s 就退出（用户实测报告）。这里重试 3 次。
-                            bool navOk = false;
-                            for (int attempt = 1; attempt <= 3 && !navOk; attempt++)
-                            {
-                                var nav = campNav.Goto("page_campaign");
-                                navOk = nav.Success;
-                                Console.WriteLine($"[{(campIdx == 0 ? "前置" : "复位")}    ] " +
-                                                  $"第 {campIdx + 1} 关前回战役页 尝试{attempt} success={nav.Success}");
-                                if (!navOk) System.Threading.Thread.Sleep(4000);
-                            }
-                            if (!navOk)
-                            {
-                                Console.WriteLine($"[前置    ] 第 {campIdx + 1} 关导航失败 3 次 -> 跳过本关" +
-                                                  "（游戏可能停在战斗中/未完成出击，需先手动处理）");
-                                continue;
-                            }
-                        }
-                    campIdx++;
                     var r = vision.RunCampaignPlan(one, dryRun: !campRun, allowActions: campAllow,
                                                    maxSeconds: campMax, maxRounds: campRounds,
                                                    repeatUntilCleared: campRepeat,
                                                    fleet1: campFleet1, fleet2: campFleet2,
-                                                   submarineFleet: campSub, clearAll: campClearAll);
+                                                   submarineFleet: campSub, clearAll: campClearAll,
+                                                   serial: campSerial);
                     Console.WriteLine($"[plan    ] {r.Chapter} stage={r.Stage} tier={r.Tier} dry_run={r.DryRun}");
                     Console.WriteLine($"[steps   ] {string.Join(" → ", r.PlanSteps ?? new())}");
                     Console.WriteLine($"[语义轨迹] {string.Join(", ", r.SemanticTrace ?? new())}");
-                    if (r.Refused == true) Console.WriteLine($"[拒绝    ] {r.Error}");
+                    if (r.Refused == true) Console.WriteLine($"[拒绝    ] {r.Reason ?? r.Error}");
+                    if (r.Error is not null) Console.WriteLine($"[错误    ] {r.Error}");
                     if (r.Steps is not null)
                         foreach (var step in r.Steps)
                         {
@@ -177,24 +164,11 @@ internal static class Program
                         }
                     if (r.ElapsedSeconds is not null)
                         Console.WriteLine($"[结果    ] elapsed={r.ElapsedSeconds}s stopped_early={r.StoppedEarly} " +
-                                          $"stop_reason={r.StopReason} campaign_end={r.CampaignEnd}");
+                                          $"stop_reason={r.StopReason} outcome={r.Outcome} cleared={r.Cleared} " +
+                                          $"campaign_end={r.CampaignEnd} end_reason={r.EndReason}");
+                    campFailed |= r.Refused == true || r.Error is not null || (campRun && r.Cleared != true);
                 }
-                return 0;
-                /*
-                var r = vision.RunCampaignPlan(campChapter, dryRun: !campRun, allowActions: campAllow,
-                                               maxSeconds: campMax, maxRounds: campRounds,
-                                               repeatUntilCleared: campRepeat);
-                Console.WriteLine($"[plan    ] {r.Chapter} stage={r.Stage} tier={r.Tier} dry_run={r.DryRun}");
-                Console.WriteLine($"[steps   ] {string.Join(" → ", r.PlanSteps ?? new())}");
-                Console.WriteLine($"[语义轨迹] {string.Join(", ", r.SemanticTrace ?? new())}");
-                if (r.Refused == true) Console.WriteLine($"[拒绝    ] {r.Error}");
-                if (r.Steps is not null)
-                    foreach (var step in r.Steps)
-                        Console.WriteLine("  " + string.Join(" ", step.Select(kv => $"{kv.Key}={kv.Value}")));
-                if (r.ElapsedSeconds is not null)
-                    Console.WriteLine($"[结果    ] elapsed={r.ElapsedSeconds}s stopped_early={r.StoppedEarly} " +
-                                      $"stop_reason={r.StopReason} campaign_end={r.CampaignEnd}");
-                */
+                return campFailed ? 1 : 0;
             }
             if (command == "capture")
             {

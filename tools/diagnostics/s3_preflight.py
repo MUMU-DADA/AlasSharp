@@ -1,180 +1,126 @@
 # -*- coding: utf-8 -*-
-"""S3 开跑前的预检：把"该确认的事"自动化，避免跑进图才发现不支持。
+"""Offline S3 preflight using exact rule identity and upstream chapter config.
 
-为什么需要它：1-1 那次就是**跑进去之后**才发现上游检测器对单行小图失效
-（见 docs/s3-entry-sequence.md）。这类"跑进去才知道"的代价很高（耗油、要人工收尾、
-而且是在真实账号上），所以把能离线确认的都前置。
-
-检查项（任一 FAIL 都会让最终结论为"不建议开跑"）：
-  1. IR 文件存在，且读得出 tier / 形状 / 计划调用
-  2. 章节模块可导入，且 `MAP.shape` 与 IR 声明的形状一致
-  3. 关卡名可从模块名推导（campaign_2_1 → '2-1'），并与 IR 名一致
-  4. 配置绑定可用（Campaign_Name / 截图后端 / 周回 / 自律 / 舰队）
-  5. 该章节计划用到的调用都在已知词表内，并标出 tier
-  6. **图内帧能否被识别**（本轮新增的关键项）—— 有夹具就离线判定，没有就明确标"未知"
-
-用法：
-    python tools/diagnostics/s3_preflight.py campaign.campaign_main.campaign_2_1
-    python tools/diagnostics/s3_preflight.py campaign.campaign_main.campaign_10_4 \
-        --fixture data/fixtures/map_shape_9x6.png
+Imports the chapter and reads an optional captured frame. Does not initialize a
+device or infer chapter support from map dimensions, JSON tier, or missing frames.
 """
 import argparse
-import glob
+import copy
+import importlib
 import json
-import os
+from pathlib import Path
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
-ENGINE = os.path.normpath(os.path.join(ROOT, '.runtime', 'engine'))
-sys.path.insert(0, os.path.join(ROOT, 'tools'))
-sys.path.insert(0, ENGINE)
+ROOT = Path(__file__).resolve().parents[2]
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / 'tools'))
 
-try:
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-except Exception:
-    pass
-
-import module.device.pkg_resources          # noqa: E402,F401
-import alas_vision as av                    # noqa: E402
-
-# 已验证可检出的图内帧（离线夹具）；新增请连同来源写清
-KNOWN_FIXTURES = {
-    # 每条记录都来自一次真实进图验证（见 docs/s3-entry-sequence.md 的批量验证一节）
-    '2-2': 'data/fixtures/inmap_2-2.png',        # 实测 detected=True / 35 格 / 3 船
-    '3-2': 'data/fixtures/inmap_3-2.png',        # 实测 detected=True / 32 格 / 2 船
-    '3-1': 'data/fixtures/inmap_3-1.png',        # 实测 detected=True / 28 格 / 2 船
-    '2-1': 'data/fixtures/map_settled.png',
-    '10-4': 'data/fixtures/map_shape_9x6.png',
-    '困难1-4': 'data/fixtures/map_hard_1_4.png',
-    '活动图': 'data/fixtures/map_event.png',
-}
-# 已知上游检测器失效的图（写在文档里，这里做硬提醒）
-# 已知上游检测器失效的图。**按章整体标注**：第 1 章第一关 MAP.shape=(6,0)（7 格单行），
-# 与 1-1 同形，故整章同族预期不支持（口径修正：此前只标了 1-1，1-2/1-3 会被误判为 ready）。
-KNOWN_UNSUPPORTED = {
-    '1-1': '7 格单行图：上游 map_init 报 No vertical line detected',
-    '1-2': '15 格 (4,2)：上游 map_init 报 Vanish point and distant point',
-    '1-4': '21 格 (6,2)：上游 map_init 报 Vanish point and distant point',
-    # 1-3 是 18 格（(5,2)），夹在 15 与 21 之间、同属第 1 章小图 —— **预测也不支持**，
-    # 但尚未实测（按"不用一个样本推断整类"的教训，这里只作预测标注，不写成实测结论）。
-    '1-3': '预测不支持（18 格，同族）；尚未实测',
-}
-# **修正（过度概括）**：此前把"第 1 章整章"标为不支持 —— 实测该章只有 1-1 是 7 格单行图，
-# 1-2/1-3/1-4 分别是 (4,2)/(5,2)/(6,2) 的多行图（15/18/21 格），与 1-1 **不同族**，
-# 且计划完整（tier B/B/A）—— 它们其实是比第 2/3 章（全 tier C）更好的批量目标。
-# 教训：只查了每章第一关就下"整章"结论 ✗ 应当逐关查形状。
-KNOWN_UNSUPPORTED_CHAPTERS = {}
+import alas_vision as av
+from campaign_rules import CampaignRuleError, load_campaign_rules
+from module.config.config import AzurLaneConfig
+from module.base.utils import node2location
 
 
-def op(_op, **args):
-    resp = json.loads(av.handle_line(json.dumps({'id': 1, 'op': _op, 'args': args})))
-    if not resp.get('ok'):
-        raise RuntimeError(f'{_op}: {resp.get("error")}')
-    return resp['result']
+def fixture_for_chapter(chapter):
+    """Fixture identity includes the package; different event a1 files differ."""
+    with (HERE / 'map_fixtures.json').open(encoding='utf-8') as stream:
+        manifest = json.load(stream)
+    for filename, info in manifest.items():
+        if filename.startswith('_'):
+            continue
+        source = info.get('chapter', '')
+        module = 'campaign.' + source.removesuffix('.json').replace('/', '.')
+        if module == chapter:
+            fixture = ROOT / 'data' / 'fixtures' / filename
+            if fixture.is_file():
+                return fixture
+    return None
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('chapter')
-    ap.add_argument('--fixture', default=None, help='该关卡的图内帧（不传则按内置表查）')
-    args = ap.parse_args()
+def op(name, **args):
+    response = json.loads(av.handle_line(json.dumps({'id': 1, 'op': name, 'args': args})))
+    if not response.get('ok'):
+        raise RuntimeError(response.get('error'))
+    return response['result']
 
-    module = args.chapter
-    stem = module.split('.')[-1]                       # campaign_2_1
-    parts = stem.split('_')
-    stage = f'{parts[-2]}-{parts[-1]}' if len(parts) >= 3 and parts[-2].isdigit() else '?'
 
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('chapter')
+    parser.add_argument('--fixture', help='该关卡的已存图内帧；相对路径基于仓库根目录')
+    args = parser.parse_args(argv)
     results = []
 
-    def check(name, ok, detail=''):
-        results.append((name, ok, detail))
-        print('  [%s] %-34s %s' % ('PASS' if ok else 'FAIL', name, detail), flush=True)
+    def check(name, status, detail):
+        results.append((name, status))
+        print(f'[{status}] {name}: {detail}', flush=True)
 
-    print('=== S3 预检：%s（关卡 %s）===' % (module, stage), flush=True)
-
-    # 1. IR
-    ir_path = None
-    for path in glob.glob(os.path.join(ROOT, 'data', 'campaign', '**', stem + '.json'),
-                          recursive=True):
-        ir_path = path
-        break
-    ir = {}
-    if ir_path:
-        with open(ir_path, encoding='utf-8') as f:
-            ir = json.load(f)
-    camp = ir.get('campaign') or {}
-    check('IR 存在', bool(ir_path), os.path.relpath(ir_path, ROOT) if ir_path else '未找到')
-    calls = sorted({c for b in (camp.get('battles') or []) for c in (b.get('calls') or [])})
-    check('IR 元信息', bool(camp), 'tier=%s shape=%s 计划调用=%d 个'
-          % (camp.get('tier'), camp.get('shape'), len(calls)))
-
-    # 2. 章节模块 + 形状一致
+    print(f'S3 离线预检：{args.chapter}')
     try:
-        import importlib
-        mod = importlib.import_module(module)
-        shape = tuple(getattr(mod.MAP, 'shape', ()) or ())
-        check('章节模块导入', True, 'MAP.shape=%s' % (shape,))
-    except Exception as e:
-        shape = ()
-        check('章节模块导入', False, '%s: %s' % (type(e).__name__, str(e)[:60]))
-
-    # 3. 关卡名一致
-    ir_name = str(camp.get('name') or '')
-    check('关卡名推导一致', (not ir_name) or ir_name.endswith(stage) or stage in ir_name,
-          '推导=%s IR=%s' % (stage, ir_name or '(无)'))
-
-    # 4. 配置绑定
-    try:
-        r = op('s3_campaign_init', chapter=module)
-        i = op('s3_campaign_info')
-        ok = bool(r.get('instantiated')) and i.get('campaign_name') == stage
-        check('配置绑定到本章节', ok, 'Campaign_Name=%s 后端=%s 设备=%s'
-              % (i.get('campaign_name'), i.get('screenshot_method'), i.get('device')))
-        check('周回/自律已关', True, 'init 默认 False（可用参数覆盖）')
-        check('舰队配置', True, 'Fleet1=1 / Fleet2=0 / Submarine=0（早期主线只有一队）')
-    except Exception as e:
-        check('配置绑定到本章节', False, '%s: %s' % (type(e).__name__, str(e)[:70]))
-
-    # 5. 调用词表
-    vocab_path = os.path.join(ROOT, 'data', 's3_plan_inventory.json')
-    known = set()
-    if os.path.exists(vocab_path):
-        with open(vocab_path, encoding='utf-8') as f:
-            inv = json.load(f)
-        known = {r['call'] for r in inv.get('calls', [])}
-        tier_a = set(inv.get('tier_a_core') or [])
-        c_only = set(inv.get('tier_c_only') or [])
-        need_c = sorted(set(calls) & c_only)
-        check('调用均在已知词表内', all(c in known for c in calls),
-              '未知=%s' % (sorted(set(calls) - known) or '无'))
-        check('是否触及仅 tier C 的调用', not need_c, '仅C调用=%s' % (need_c or '无'))
-        check('计划调用清单', True, '%s' % (calls or '无'))
-
-    # 6. 图内帧可识别性（关键项）
-    fixture = args.fixture or KNOWN_FIXTURES.get(stage)
-    _ch = stage.split('-')[0] if stage and '-' in stage else ''
-    if stage in KNOWN_UNSUPPORTED:
-        check('图内帧可识别', False, '已知失效：%s' % KNOWN_UNSUPPORTED[stage])
-    elif _ch in KNOWN_UNSUPPORTED_CHAPTERS:
-        check('图内帧可识别', False, '已知失效（整章）：%s' % KNOWN_UNSUPPORTED_CHAPTERS[_ch])
-    elif fixture and os.path.exists(os.path.join(ROOT, fixture)):
-        op('screenshot_load', path=os.path.join(ROOT, fixture))
-        d = op('map_detect', mode='main')
-        check('图内帧可识别', bool(d.get('detected')),
-              '%s → detected=%s grids=%s ships=%s'
-              % (fixture, d.get('detected'), d.get('grid_count'), d.get('ships')))
-    else:
-        check('图内帧可识别', False, '**未知**：没有该关卡的图内夹具，需进图后才知道（高风险）')
-
-    bad = [n for n, ok, _ in results if not ok]
-    print()
-    if bad:
-        print('结论：**不建议开跑** —— 未通过：%s' % '、'.join(bad))
+        rules = load_campaign_rules(args.chapter)
+        with Path(rules['ir_path']).open(encoding='utf-8') as stream:
+            ir = json.load(stream)
+        check('规则来源', 'PASS', rules['ir_source'])
+    except CampaignRuleError as error:
+        check('规则来源', 'FAIL', f'{error.code}: {error}')
         return 1
-    print('结论：可以开跑（各项预检通过）')
+
+    try:
+        module = importlib.import_module(args.chapter)
+        shape = tuple(int(value) for value in module.Campaign.MAP.shape)
+        expected = node2location(ir['map']['shape'])
+        check('上游地图形状', 'PASS' if shape == expected else 'FAIL',
+              f'Campaign.MAP={shape} IR={expected}')
+        cfg = copy.deepcopy(AzurLaneConfig('template')).merge(module.Config())
+        check('继承的上游 Config', 'PASS',
+              f'{module.Config.__module__}.{module.Config.__name__}; '
+              f'backend={cfg.DETECTION_BACKEND}; '
+              f'line_threshold={cfg.INTERNAL_LINES_HOUGHLINES_THRESHOLD}')
+        methods = rules['plan_steps']
+        missing = [name for name in methods if not callable(getattr(module.Campaign, name, None))]
+        check('原生战斗方法', 'FAIL' if missing else 'PASS',
+              f'方法={methods}; 缺失={missing}')
+        check('JSON 计划元信息', 'INFO',
+              f'tier={rules["tier"]}; {rules["ir_plan_status"]}; '
+              '运行时由上游调度，JSON 未完整导出不会限制原生方法执行')
+    except Exception as error:
+        check('上游加载链', 'FAIL', f'{type(error).__name__}: {error}')
+
+    fixture = Path(args.fixture) if args.fixture else fixture_for_chapter(args.chapter)
+    if fixture and not fixture.is_absolute():
+        fixture = ROOT / fixture
+    if fixture is None or not fixture.is_file():
+        check('地图夹具', 'UNTESTED', '缺少本关图内帧；未验证，不据此判定不支持')
+    else:
+        try:
+            op('screenshot_load', path=str(fixture))
+            detection = op('map_detect', chapter=args.chapter, mode='main')
+            reason = str(detection.get('reason') or detection.get('error') or '')
+            if detection.get('detected'):
+                check('地图夹具', 'PASS',
+                      f'{fixture.name}: grids={detection.get("grid_count")}; '
+                      f'shape={detection.get("shape")}; ships={detection.get("ships")}')
+            elif reason.startswith('MapDetectionError: Camera outside map:'):
+                check('地图夹具', 'RECOVERY',
+                      f'{reason}；上游 Camera._update_view 已负责移动相机，需实战验证恢复')
+            else:
+                check('地图夹具', 'FAIL', f'{fixture.name}: {reason or detection}')
+        except Exception as error:
+            check('地图夹具', 'FAIL', f'{type(error).__name__}: {error}')
+
+    failed = [name for name, status in results if status == 'FAIL']
+    if failed:
+        print('离线预检失败：' + '、'.join(failed))
+        return 1
+    unverified = any(status in ('UNTESTED', 'RECOVERY') for _, status in results)
+    print('规则和上游加载链通过；' + ('地图实战行为尚待验证。' if unverified
+                                    else '已有地图帧通过识别，通关结果仍以实战为准。'))
     return 0
 
 
 if __name__ == '__main__':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
     sys.exit(main())

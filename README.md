@@ -3,7 +3,7 @@
 把 [AzurLaneAutoScript](https://github.com/LmeSzinc/AzurLaneAutoScript)（ALAS，碧蓝航线自动化脚本）
 重写为统一 C# 应用的工程。
 
-> 状态：**早期**。数据契约与识图桥接已跑通并验收，业务引擎尚未开始。
+> 状态：**早期**。数据契约、识图桥接与导航已验收；S3 已接入上游原生关卡流程并完成实机通关验证。
 > 本仓库只是重写工程本身，不包含上游代码。
 
 ---
@@ -208,34 +208,21 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 `device` / `goto`（真机导航，见 `docs/navigation.md`）/ `map`（S2 地图识别，见 `docs/map-detection.md`）/
 `map-ir`（关卡 IR 校验）/ `capture`（设备通道对比，见 `docs/device-engine.md`）。
 
-**S3（驱动上游关卡计划，见 `docs/s3-entry-sequence.md`）**：宿主把上游的
-`Campaign` 实例化后，按关卡 IR 的计划顺序调用它自己的 `battle_*` 方法
-（**战斗逻辑不重写**，C#/宿主只做编排）。入口：
+**S3（上游规则驱动，见 [适配说明](docs/s3-upstream-adaptation.md)）**：
+生产路径直接调用上游 `CampaignRun.load_campaign()`，完整合并章节 `Config`，
+再由 `ensure_campaign_ui()` 导航并调用该章节自己的 `Campaign.run()`。
+地图、刷新规则、相机恢复、战斗调度及继承钩子都由上游处理；宿主不添加逐地图适配。
 
-- `tools/diagnostics/s3_preflight.py <章模块>` —— 开跑前检查 6 项
-  （IR / 模块与形状 / 关卡名 / 配置绑定 / 调用词表 / **图内帧可识别性**）；
-- `tools/diagnostics/s3_plan_coverage.py` —— 全量统计"哪些章节现在就能跑"（1374 章中 88.1% 计划完整）；
-- 协议 op `s3_run_plan`（dry-run 默认 true；真跑需 `allow_actions=true`，
-  带 `max_seconds` / `repeat_until_cleared` / 上游完成信号）；
-- **C# 产品侧入口**：`IVisionEngine.RunCampaignPlan(...)` 与
-  `alashub campaign <章模块[,章模块...]>`（dry-run 默认；`--run --allow-actions` 才真打）。
-  传多关（逗号分隔）时**在同一个进程内连续驱动** —— 即实现常驻所需的「状态不跨进程丢」。
-- **两套战斗流程**（上游本来就有，区别只在 `MAP_CLEAR_ALL_THIS_TIME`，见
-  `docs/s3-entry-sequence.md` 末章）：
-  - 默认：`battle_{battle_count}` —— **BOSS 一刷出来就打 BOSS**（小怪可能还剩）；
-  - `--clear-all`：先算 `remain = enemies+sirens+fortresses-bosses`，**清光小怪才打 BOSS**
-    （上游只在"还缺星 + 停止条件为三星/威胁排除"时自动开这个分支，本机配置下恒为 False，
-    所以给了显式开关）。
-- **舰队**：`--fleet1` / `--fleet2` / `--submarine`（0 = 不用）。本机账号的**高难图用
-  `--fleet1 3 --fleet2 6`**（用户规则）；不传时是上游默认 1/0。
-- **清图判据**：`tools/diagnostics/stage_progress.py` 读**游戏自己写的**「威胁排除 %」与三颗星
-  （`campaign_end` 与自数的敌人数量都被实测证伪过）。
+- `alashub campaign <完整章模块>`：离线读取该章 IR，不连接设备。
+- `alashub campaign <完整章模块> --run --allow-actions`：正常通关，默认最多 20 轮、1500 秒；
+  时间上限在上游操作边界检查，不会强制打断正在执行的战斗。
+- `--clear-all` 使用上游的先清小怪再打 BOSS 分支；默认按章节自己的战斗规则推进。
+- `--fleet1` / `--fleet2` / `--submarine` 传账号的舰队槽位；默认 1 / 0 / 0。
+- 结果只有本次战斗成功结算并返回章节页才记为 `cleared=true`；撤退、错误、限轮都返回非零。
 
-实测（本账号，2026-09-22 夜）：**11-1 两套流程各跑通**（均 `exit 0`、无 `WITHDRAW`、
-BOSS 击杀后回到章节页；两局 BOSS 分别刷在 `F3` 与 `A2`），2-1 全清验证 `Clear! ★★★`。
-已知不支持：**≤3 行的图**（1-1 / 1-2 / 1-4 / 7-1 / 8-1，上游检测器拟合不出内部线）。
-客户端适配 7 项（numpy2 / OS 遮罩 / `Points` 空集 / `bar_opened` 亮度 /
-`auto_search` 跳过 / "正在攻略中"弹窗像素判定 / `MAP_CLEAR_ALL_THIS_TIME` 显式开关）。
+IR JSON 目前用于规则元数据和校验；完整执行读取的是上游生成的 Python `MAP` / `Config` / `Campaign`。
+不完整的 AST 摘要不会被当作可重放计划，也不代表上游关卡不可执行。
+之前“少行地图不支持”的判断来自**漏合并章节 Config**，已撤销；无夹具的地图标为未实测。
 
 **设备引擎（多后端可切换，见 `docs/device-engine.md`）**：设备 I/O 走宿主，换后端不改 C# 代码。
 本机实测最优（已设为默认）：**`--screenshot scrcpy`（抓图 128 ms，比 adb 快 2.5 倍）
@@ -276,7 +263,7 @@ BOSS 击杀后回到章节页；两局 BOSS 分别刷在 `F3` 与 `A2`），2-1 
 | S-设备层 | ADB 截图/点击/滑动；真机与桩 adb 都已验通 | ✅ |
 | S-页面导航 | 运行时向上游要页面图 + 变体择优导航（`alashub goto`） | ✅ 真机 3 跳验收 |
 | S2 地图识别 | 单应性变换 + 网格判定 | ✅ 真机验收（战役 6x4/9x6/困难 7x3、活动图 9x8 窗口、海域 9x6、环球位置检测；与关卡 IR 严格交叉校验）|
-| S3 关卡引擎 | 规则解释器已完成；引擎实现（120 方法 + 17 钩子）待开始 | 🔵 地基完成 |
+| S3 关卡引擎 | 完整复用上游加载器、Config、MAP 和 Campaign.run；独立 C# 引擎尚未实现 | ✅ 原生流程实机验证，见适配说明 |
 | S4 任务域 | 大世界 / 岛屿 / 科研 / 活动… | 待开始 |
 | S5 前端 | 读上游 `args.json` 渲染配置 | 待开始 |
 

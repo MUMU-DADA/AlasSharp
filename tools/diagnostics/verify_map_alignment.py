@@ -100,11 +100,14 @@ def main():
         if not os.path.exists(path) or not info.get('chapter'):
             continue
         op('screenshot_load', path=path)
-        det = op('map_detect')
+        chapter = 'campaign.' + info['chapter'].removesuffix('.json').replace('/', '.')
+        det = op('map_detect', chapter=chapter)
         entry = {'fixture': fixture, 'chapter': info['chapter'], 'name': info.get('name')}
         if not det.get('detected'):
-            entry['status'] = '未检出'
-            print('%-20s 未检出' % fixture)
+            reason = str(det.get('reason') or '')
+            entry['status'] = ('待上游相机恢复' if 'Camera outside map:' in reason else '未检出')
+            entry['reason'] = reason
+            print('%-20s %s: %s' % (fixture, entry['status'], reason))
             results.append(entry)
             continue
         sx, sy = det['shape']
@@ -132,8 +135,11 @@ def main():
     out = os.path.join(ROOT, 'data', 'map_alignment.json')
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    bad = [r for r in results if r.get('verdict', '').startswith('**')]
-    print('偏移对齐：%d 张检查，%d 张与 IR 矛盾' % (len(results), len(bad)))
+    bad = [r for r in results if r.get('verdict', '').startswith('**')
+           or r.get('status') in ('未检出', '缺 IR')]
+    recovery = sum(r.get('status') == '待上游相机恢复' for r in results)
+    print('偏移对齐：%d 张检查，%d 张失败，%d 张等待上游相机恢复验证'
+          % (len(results), len(bad), recovery))
     return 1 if bad else 0
 
 

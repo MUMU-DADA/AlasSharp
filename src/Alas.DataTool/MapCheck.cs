@@ -82,7 +82,10 @@ internal static class MapCheck
         }
 
         // 3) 战役地图：未检测到属于正常结果
-        var map = client.DetectMap(mode);
+        // 识图和 IR 校验必须使用同一章节；章节 Config 包含上游生成的识别规则。
+        string? module = string.IsNullOrEmpty(chapter) ? null
+            : "campaign." + Path.ChangeExtension(chapter, null).Replace('/', '.').Replace('\\', '.');
+        var map = client.DetectMap(mode, module);
         Console.WriteLine($"[mode   ] {mode}");
         Console.WriteLine($"[map    ] backend={map.Backend} detected={map.Detected} " +
                           $"grids={map.GridCount?.ToString() ?? "-"} " +

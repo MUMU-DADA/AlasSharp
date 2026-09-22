@@ -1,33 +1,8 @@
 # S3 入口序列：实测记录与卡点诊断
 
-> ## 速览（先看这里，细节在下面）
->
-> **目标**：宿主驱动上游的关卡实现（**战斗逻辑不重写**，C#/宿主只做编排）。
->
-> | 项 | 状态 |
-> | --- | --- |
-> | 计划侧 | 1374 章中 **88.1%（1211 章）** 计划完整（`tools/diagnostics/s3_plan_coverage.py`）|
-> | 执行器 | op `s3_run_plan`：dry-run 默认 / 安全锁 `allow_actions` / `max_seconds` / `repeat_until_cleared` / `CampaignEnd` 完成语义 / **上游完成信号** |
-> | 实战 | **3 个关卡**端到端跑通（2-1 清图 / 2-2 / 3-1），**13 次真实战斗全部 `err=None`** |
-> | 已验图 | 2-1(24 格) / 2-2(35) / 3-1(28) / 3-2(32) —— 登记在 `s3_preflight.py` 的 `KNOWN_FIXTURES` |
-> | 账号可达 | **第 1–3 章**（不可达章 `ensure_chapter` 会耗时 15–21s 后失败，可作判别器）|
-> | 已知不支持 | **第 1 章**（7 格单行图，上游检测器自身也失效）|
-> | 客户端适配 6 项 | numpy2 `np.vstack` / OS 遮罩不对称 / `Points` 空集 / `bar_opened` 亮度阈值 / `auto_search` 跳过 / "正在攻略中"弹窗**像素判定** |
->
-> **批量跑一关的流程（已固化，可重复）**：
-> ① `s3_preflight.py <章模块>` 预检 → ② 导航到 `page_campaign` →
-> ③ `s3_run_plan(dry_run=False, allow_actions=True, repeat_until_cleared=True)` →
-> ④ 确认**出击真正结束**（跑完计划会自动结束；否则走弹窗「撤退」）→ ⑤ 归位 `page_main`。
->
-> **三条最容易踩的坑**：① 每次出击必须**真正结束**，否则下一关必卡 60s（易误判成"那关有问题"）；
-> ② 调用的**顺序要求**：`init(同章) → ensure_chapter → get_entrance` 三者一致，且先导航到战役页；
-> ③ IR 的 `calls` 是**语义轨迹**（含嵌套辅助调用），不是可逐条重放的清单 —— 执行的是 `battle_*` 方法。
->
-> **方法论（本线反复验证有效）**：就地观测（复刻步骤不等价）/ 先看画面再下结论 /
-> 换判据优于死磕原判据 / 能离线预检的绝不进游戏试。
-
-> 目标：让 C# 通过**宿主协议**驱动上游的战役实现（tier A 的 9 个调用），而不是用 C# 重写战斗逻辑。
-> 复现脚本：`tools/diagnostics/s3_probe_campaign.py`；相关 op：`s3_campaign_init` / `s3_campaign_info` / `s3_campaign_call`。
+> 本文保留早期调查历史。当前实现和验收以 [上游整体适配](s3-upstream-adaptation.md) 为准。
+> 已纠正：漏合并章节 Config；手写分段流程替代了上游 run；CampaignEnd 被误当通关。
+> “第 1 章不支持”“≤3 行不支持”和阈值回退方案均已作废。
 
 ## 已打通的链路（每步都是上游实现，C# 只发指令）
 

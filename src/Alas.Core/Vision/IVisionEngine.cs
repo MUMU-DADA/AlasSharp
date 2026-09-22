@@ -57,8 +57,8 @@ public interface IVisionEngine : IDisposable
     DeviceCaptureResult CaptureViaEngine(bool raw = true);
 
     /// <summary>
-    /// 按关卡 IR 的计划顺序驱动**上游自己的** `battle_*` 方法（S3 主入口）。
-    /// **战斗逻辑不重写** —— C# 只做编排，动作用上游实现。
+    /// 执行上游 Campaign.run() 的完整出击流程；IR 用于展示关卡规则。
+    /// C# 传递运行配置并报告上游执行结果。
     /// `dryRun` 默认 true：只回计划内容，不碰游戏；真跑必须 `allowActions = true`
     /// （宿主侧还有一道硬性安全联锁）。详见 docs/s3-entry-sequence.md。
     /// `clearAll` 选的是上游两套战斗流程里的哪一套：
@@ -66,10 +66,10 @@ public interface IVisionEngine : IDisposable
     ///   true         = `MAP_CLEAR_ALL_THIS_TIME` 分支：先清光小怪，清完才打 BOSS。
     /// </summary>
     CampaignPlanResult RunCampaignPlan(string chapter, bool dryRun = true,
-                                       bool allowActions = false, double maxSeconds = 300,
-                                       int maxRounds = 1, bool repeatUntilCleared = false,
+                                       bool allowActions = false, double maxSeconds = 1500,
+                                       int maxRounds = 20, bool repeatUntilCleared = true,
                                        int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0,
-                                       bool clearAll = false);
+                                       bool clearAll = false, string? serial = null);
 }
 
 /// <summary>`s3_run_plan` 的返回：计划步骤与逐步结果。</summary>
@@ -86,7 +86,11 @@ public sealed class CampaignPlanResult
     [JsonPropertyName("stopped_early")] public bool? StoppedEarly { get; set; }
     [JsonPropertyName("stop_reason")] public string? StopReason { get; set; }
     [JsonPropertyName("campaign_end")] public bool? CampaignEnd { get; set; }
+    [JsonPropertyName("cleared")] public bool? Cleared { get; set; }
+    [JsonPropertyName("outcome")] public string? Outcome { get; set; }
+    [JsonPropertyName("end_reason")] public string? EndReason { get; set; }
     [JsonPropertyName("refused")] public bool? Refused { get; set; }
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
     [JsonPropertyName("error")] public string? Error { get; set; }
 }
 
@@ -177,10 +181,10 @@ public abstract class VisionEngineBase : IVisionEngine
         => CallTyped<DeviceCaptureResult>("device_capture_set", new { raw });
 
     public CampaignPlanResult RunCampaignPlan(string chapter, bool dryRun = true,
-                                              bool allowActions = false, double maxSeconds = 300,
-                                              int maxRounds = 1, bool repeatUntilCleared = false,
+                                              bool allowActions = false, double maxSeconds = 1500,
+                                              int maxRounds = 20, bool repeatUntilCleared = true,
                                               int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0,
-                                              bool clearAll = false)
+                                              bool clearAll = false, string? serial = null)
         => CallTyped<CampaignPlanResult>("s3_run_plan", new
         {
             chapter,
@@ -193,6 +197,7 @@ public abstract class VisionEngineBase : IVisionEngine
             fleet2,
             submarine_fleet = submarineFleet,
             clear_all = clearAll,
+            serial,
         });
 
     protected int NextId() => Interlocked.Increment(ref _nextId);

@@ -1,5 +1,25 @@
 {
   "_comment": "真机地图 fixture → 关卡 IR 的对照表，供 verify_map_detection.py 做『检测结果 vs 声明式地图数据』交叉校验。fixture 图片本身在 data/fixtures/（不入库，可随时重抓），这张表入库。",
+  "subchapter_1_1.png": {
+    "chapter": "campaign_main/campaign_1_1.json",
+    "name": "1-1",
+    "note": "单行图真帧。加载继承 Config 后可定位 7 格、A1 舰队、F1 敌人；屏幕中心在地图外时由上游 Camera._update_view 执行相机恢复。"
+  },
+  "inmap_2-2.png": {
+    "chapter": "campaign_main/campaign_2_2.json",
+    "name": "2-2",
+    "note": "真图内帧；使用 campaign_2_2 的完整 Config。"
+  },
+  "inmap_3-1.png": {
+    "chapter": "campaign_main/campaign_3_1.json",
+    "name": "3-1",
+    "note": "真图内帧；使用 campaign_3_1 的完整 Config。"
+  },
+  "inmap_3-2.png": {
+    "chapter": "campaign_main/campaign_3_2.json",
+    "name": "3-2",
+    "note": "真图内帧；使用 campaign_3_2 的完整 Config。"
+  },
   "map_settled.png": {
     "chapter": "campaign_main/campaign_2_1.json",
     "name": "2-1",
@@ -13,7 +33,7 @@
   "map_hard_1_4.png": {
     "chapter": "campaign_main/campaign_1_4.json",
     "name": "1-4（困难）",
-    "note": "困难图复用同章节地图数据（campaign_hard 下只有 12_4/14_4/campaign_hard），故取普通 1-4：G3 = 7x3 = 21 格。检出 21 格 shape[6,2]，走 Hough 阈值回退（75→50）后成功；画面最左列 A 被舰队栏挡住属相机窗口"
+    "note": "困难图复用同章节地图数据，取普通 1-4：G3 = 7x3 = 21 格。检测加载上游从 campaign_1_1 继承的 Config，不再使用宿主阈值回退。"
   },
   "map_event.png": {
     "chapter": "event_20260908_cn/a1.json",
