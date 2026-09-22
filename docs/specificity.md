@@ -11,16 +11,18 @@
 
 | 类别 | 数量 | 含义 |
 | --- | --- | --- |
-| 精确命中 | 28 | 只在自己的页面上命中（最理想） |
-| 共命中 | 5 | 同一屏多条规则同时命中（见下） |
-| 从未命中 | 1 | 29 个可达页面上一次都没命中 |
+| 精确命中 | 22 | 只在自己的页面上命中（最理想） |
+| 共命中 | 7 | 同一屏多条规则同时命中（见下） |
+| 从未命中 | 5 | 29 个可达页面上一次都没命中 |
 
 ## 共命中（要确知是上游设计，不是误判）
 
 | 规则 | 同时命中的页面 |
 | --- | --- |
-| `page_main` | `page_event_list`, `page_main`, `page_main_white` |
-| `page_main_white` | `page_event_list`, `page_main`, `page_main_white` |
+| `page_campaign_menu` | `page_campaign_menu`, `page_os` |
+| `page_dormmenu` | `page_dormmenu`, `page_private_quarters` |
+| `page_main` | `page_event_list`, `page_main`, `page_main_white`, `page_meowfficer` |
+| `page_main_white` | `page_event_list`, `page_main`, `page_main_white`, `page_meowfficer` |
 | `page_munitions` | `page_munitions`, `page_shop`, `page_supply_pack` |
 | `page_shop` | `page_munitions`, `page_shop`, `page_supply_pack` |
 | `page_supply_pack` | `page_munitions`, `page_shop`, `page_supply_pack` |
@@ -35,6 +37,8 @@
 
 | 规则 | 意外命中的页面 |
 | --- | --- |
+| `page_campaign_menu` | `page_os` |
+| `page_dormmenu` | `page_private_quarters` |
 | `page_munitions` | `page_shop`, `page_supply_pack` |
 | `page_shop` | `page_munitions`, `page_supply_pack` |
 | `page_supply_pack` | `page_munitions`, `page_shop` |
@@ -47,6 +51,6 @@
 
 未在回归里命中、且属于"已验证页面"的规则（即漏检嫌疑）：
 
-- `page_event_list`
+- `page_event_list`, `page_guild`, `page_meowfficer`, `page_os`, `page_private_quarters`
 
 其余未命中的规则（本就不可达，属正常）：`page_channel`, `page_coalition`, `page_event_list`, `page_hospital`, `page_island`, `page_raid`, `page_rpg_stage`, `page_rpg_story`, `page_sp`, `page_unknown`
