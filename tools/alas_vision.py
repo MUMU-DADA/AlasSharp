@@ -1094,6 +1094,23 @@ def op_s3_campaign_init(args):
         cfg.bind('Campaign')
     except Exception as e:
         return {'error': f'配置绑定 Campaign 失败: {type(e).__name__}: {e}'}
+    # **配置必须跟着章节走**，否则 Campaign 会按错误关卡取参数（实测踩过：
+    # 实例化 2-1，而 config.Campaign_Name 还是上一次跑过的 '12-4'）。
+    # 同时把截图/输入后端显式设回我们的默认 —— bind('Campaign') 会把它们重置成引擎默认
+    # （'auto' 会去跑性能基准）。
+    import re as _re
+    stage = ''
+    m = _re.search(r'campaign_(\d+)_(\d+)$', chapter)
+    if m:
+        stage = '%s-%s' % (m.group(1), m.group(2))
+    try:
+        with cfg.multi_set():
+            if stage:
+                cfg.Campaign_Name = stage
+            cfg.Emulator_ScreenshotMethod = str(_DEVICE_ARGS.get('screenshot') or 'scrcpy')
+            cfg.Emulator_ControlMethod = str(_DEVICE_ARGS.get('control') or 'MaaTouch')
+    except Exception as e:
+        return {'error': f'配置章节绑定失败: {type(e).__name__}: {e}', 'stage': stage}
     try:
         import importlib
         mod = importlib.import_module(chapter)
