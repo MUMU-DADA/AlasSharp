@@ -1187,3 +1187,11 @@ S3 累计：**6 个关卡**端到端驱动（2-1/2-2/2-3/2-4/3-1/3-2），真实
 
 => **S3 至此形成闭环**：单关可跑（6 关实测）、多关可连跑（本轮实测）、有安全锁与 dry-run、
 有账号边界表、有 6 项客户端适配、有完整文档与 C# 产品侧入口。
+
+
+### 三关连跑实测（同进程 + 跨关复位）
+
+本关实测：[plan    ] campaign.campaign_main.campaign_2_1 stage=2-1 tier=C dry_run=False | [结果    ] elapsed=122.2s stopped_early=False stop_reason= campaign_end= | [复位    ] 第 2 关前回战役页 success=True | [plan    ] campaign.campaign_main.campaign_2_2 stage=2-2 tier=C dry_run=False | [结果    ] elapsed=113.7s stopped_early=False stop_reason= campaign_end= | [复位    ] 第 3 关前回战役页 success=True | [plan    ] campaign.campaign_main.campaign_2_3 stage=2-3 tier=C dry_run=False | [结果    ] elapsed=123s stopped_early=False stop_reason= campaign_end=
+归位 page_main ✓
+
+意义：多关连跑从 2 关扩到 3 关仍一次通过 => **常驻驱动（同进程 + 每关前复位）在规模上稳定**。
