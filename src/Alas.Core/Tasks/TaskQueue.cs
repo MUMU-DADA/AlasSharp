@@ -153,12 +153,21 @@ public sealed class TaskQueue
                          CancellationToken token)
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        // 跨任务复位边界：任务自己要在这里把游戏状态带到可开始的样子（并留证据）。
+        var context = new TaskContext(_session);
+        // 跨任务复位边界：先**看一眼现在是什么画面**（只读），再让任务自己去把状态带到
+        // 可开始的样子。快照是证据：没有它，"复位了没有"只能靠嘴说。
+        result.BoundaryState = SnapshotBoundary(context);
         _session.Log.Info("queue", "任务开始（跨任务复位边界）",
-                          new Dictionary<string, object?> { ["task"] = request.Id, ["kind"] = request.Kind });
+                          new Dictionary<string, object?>
+                          {
+                              ["task"] = request.Id,
+                              ["kind"] = request.Kind,
+                              ["pages"] = result.BoundaryState?["pages"]?.ToJsonString(),
+                              ["in_map"] = result.BoundaryState?["in_map"]?.ToJsonString(),
+                          });
         try
         {
-            var outcome = runner.Run(request, new TaskContext(_session), token);
+            var outcome = runner.Run(request, context, token);
             result.Outcome = outcome.Outcome;
             result.ErrorKind = outcome.ErrorKind;
             result.Error = outcome.Error;
@@ -180,6 +189,31 @@ public sealed class TaskQueue
         }
         watch.Stop();
         result.ElapsedSeconds = Math.Round(watch.Elapsed.TotalSeconds, 1);
+    }
+
+    /// <summary>
+    /// 任务边界的只读状态快照。**拿不到画面不算失败**：dry-run 下宿主本来就可能还没有帧，
+    /// 这时如实记 `available=false`；宿主报错也照记，不让它把任务本身带崩。
+    /// </summary>
+    private static JsonObject SnapshotBoundary(TaskContext context)
+    {
+        var snapshot = new JsonObject { ["available"] = false };
+        try
+        {
+            var state = context.Session.Vision.AccountState();
+            snapshot["available"] = state.Frame?.Available == true;
+            snapshot["server"] = state.Server;
+            snapshot["pages"] = state.Pages is null
+                ? null
+                : new JsonArray(state.Pages.Select(p => (JsonNode)JsonValue.Create(p)!).ToArray());
+            snapshot["in_map"] = state.InMap;
+            if (state.Error is not null) snapshot["note"] = state.Error;
+        }
+        catch (Exception error)
+        {
+            snapshot["note"] = $"边界快照取不到: {error.GetType().Name}: {error.Message}";
+        }
+        return snapshot;
     }
 
     private string? Validate(TaskRequest request)
@@ -277,6 +311,7 @@ public sealed class TaskQueue
             ["error"] = result.Error,
             ["stop_reason"] = result.StopReason,
             ["elapsed_s"] = result.ElapsedSeconds,
+            ["boundary_state"] = result.BoundaryState?.DeepClone(),
             ["unmet_preconditions"] = new JsonArray(
                 result.UnmetPreconditions.Select(p => (JsonNode)JsonValue.Create(p)!).ToArray()),
             ["evidence"] = result.Evidence?.DeepClone(),
