@@ -34,6 +34,38 @@ def _csharp_array(text: str, declaration: str) -> str:
     return match.group(1) if match else ""
 
 
+def task_domain_registration() -> list[str]:
+    """每个任务域都必须在 CLI 里注册（否则队列只会报"没有注册运行器"然后失败）。
+
+    这类漏挂在静态上就能查出来，不必等到某次队列跑起来才发现：
+    扫 `Tasks/*Task.cs` 里实现 `ITaskRunner` 的类，要求 `Program.cs` 里有对应的
+    `new …<类名>()` 注册语句（注册用的是类，不是 `Kind` 字面量）。
+    """
+    problems: list[str] = []
+    program = ROOT / "src/Alas.DataTool/Program.cs"
+    tasks = ROOT / "src/Alas.Core/Tasks"
+    if not program.is_file() or not tasks.is_dir():
+        return problems
+    text = program.read_text(encoding="utf-8")
+    registered = 0
+    for path in sorted(tasks.glob("*Task.cs")):
+        source = path.read_text(encoding="utf-8")
+        if "ITaskRunner" not in source:
+            continue
+        match = re.search(r"class\s+(\w+)\s*:\s*ITaskRunner", source)
+        if not match:
+            problems.append(f"{path.name} 里找不到 `class X : ITaskRunner`")
+            continue
+        name = match.group(1)
+        if f"{name}()" not in text:
+            problems.append(f"任务域 {name}（{path.name}）没有在 Program.cs 里注册")
+        else:
+            registered += 1
+    if registered == 0 and not problems:
+        problems.append("任务域扫描不到任何 ITaskRunner 实现（检查 Tasks/ 目录）")
+    return problems
+
+
 def contract_consistency() -> list[str]:
     """结果合同的两份实现必须说同一套词。
 
@@ -128,6 +160,7 @@ def main() -> int:
             problems.append(f"架构入口缺失: {label}")
 
     problems.extend(contract_consistency())
+    problems.extend(task_domain_registration())
 
     roadmap = read("docs/architecture-roadmap.md")
     for phase in ("R0：", "R1：", "R2：", "R3：", "R4：", "R5："):

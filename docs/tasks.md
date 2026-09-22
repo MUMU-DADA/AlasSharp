@@ -145,7 +145,9 @@ alashub queue --file queue.json [--run --allow-actions] [--serial <设备>] `
 并把 `IN_MAP` 相似度写入 `data/account_state_probe.json`。本地没有归档帧时显式跳过。
 
 另有 `verify_architecture.py` 静态保证：任务模型是接口、CLI 只解析队列文件、
-`campaign` 与 `queue` 共用同一份参数解析（不复制两套）。
+`campaign` 与 `queue` 共用同一份参数解析（不复制两套），
+并且**每个 `ITaskRunner` 实现都必须在 `Program.cs` 里注册**
+（漏挂的话队列只会报"没有注册运行器"然后失败 —— 这种漏挂在静态上就该被查出来）。
 
 ## 七、下一步（本域的缺口，不阻塞下一个域）
 
