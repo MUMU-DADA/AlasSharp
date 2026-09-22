@@ -1305,8 +1305,12 @@ def op_s3_campaign_call(args):
         if _is_end:
             return {'name': name, 'ms': round((time.time() - t0) * 1000, 1),
                     'completed': True, 'reason': str(e) or 'CampaignEnd'}
+        # **带上调用栈尾部**：上游内部抛错时，只回 `类型: 消息` 会丢掉定位信息
+        # （实测 `execute_a_battle` 报 KeyError: () 时，栈是唯一线索 ✗）。
         return {'name': name, 'ms': round((time.time() - t0) * 1000, 1),
-                'error': f'{type(e).__name__}: {e}'}
+                'error': f'{type(e).__name__}: {e}',
+                'traceback_tail': [ln.strip()[:110] for ln in
+                                   traceback.format_exc().strip().splitlines()[-8:]]}
     out = {'name': name, 'ms': round((time.time() - t0) * 1000, 1)}
     # `store='ATTR'`：把返回值写回实例属性。上游很多方法**靠返回值**传递对象
     # （例如 `campaign_get_entrance('1-1')` 返回的 Button 要赋给 `self.ENTRANCE`，
