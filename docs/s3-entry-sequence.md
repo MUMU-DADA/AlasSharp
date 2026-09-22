@@ -1040,3 +1040,12 @@ S3 累计：**6 个关卡**端到端驱动（2-1/2-2/2-3/2-4/3-1/3-2），真实
 
 **教训（本会话第三次同类）**：**不要用一个样本推断整类** —— 我查了每章第一关的形状，
 就写了"第 1 章整章不支持"，而实际只有 1-1 如此。
+
+
+### 1-2 实测（首个 tier B 关卡）
+
+本关实测：PLAN stage=1-2 tier=B elapsed=15.1s stopped_early=False ; ensure_chapter         ms=1914.2    ok ; abort_unfinished       ms=None      dialog=False ; get_entrance           ms=0.0       ok ; enter_map              ms=7596.5    ok ; map_init               ms=5238.0    err=MapDetectionError: Vanish point and distant ; battle_0               ms=None      ok ; AFTER pages=['page_campaign']
+
+意义：此前驱动成功的 6 关（2-1…2-4 / 3-1 / 3-2）**全是 tier C**；
+1-2 是**计划完整（tier B）**的关卡里第一个被实测的 —— 若通过，说明
+"计划完整 + 多行图"这一批（1-2/1-3/1-4 等）是更顺的批量目标。
