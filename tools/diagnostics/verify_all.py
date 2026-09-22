@@ -48,6 +48,7 @@ STEPS = [
     ('report_pages.py', '重建 page-verification.md', False, 300),
     ('../sync_all.py', '上游同步一致性（--verify：导出数据/素材与上游对齐）', False, 600),
     ('verify_device_engine.py', '设备引擎回归（后端可切换/抓图/点击，需设备在线）', True, 600),
+    ('verify_dryrun_purity.py', 'dry-run 纯度（不带 --run 绝不碰游戏）', False, 600),
     ('verify_s3_plan.py', 'S3 计划读取回归（协议 plan_steps == IR battle_* + 安全锁）', False, 300),
     ('s3_plan_inventory.py', 'S3 计划词表清点（重建 s3-plan-vocabulary.md）', False, 300),
     ('status.py', '重建 status.md', False, 300),
