@@ -160,13 +160,48 @@ def main() -> int:
         if not ok3:
             failures.append(f'不存在的运行目录应报 run_not_found 且非 0，实为 {missing.returncode}')
 
+        # ---- runs 列表（R4 数据面）：条数要等于实际运行数，且**同一秒内连跑两次不能互相覆盖**
+        print()
+        print('=== runs 列表（含同秒两次运行）===')
+        list_root = tmpdir / 'list-artifacts'
+        for _ in range(2):      # 连跑两次：时间戳同秒时要能各自落盘
+            run([str(EXE), 'queue', '--file', str(queue_file), '--artifacts', str(list_root)])
+        run_dirs = sorted(p.name for p in list_root.glob('*') if p.is_dir())
+        listing = tmpdir / 'runs.json'
+        listed = run([str(EXE), 'runs', '--artifacts', str(list_root), '--json', str(listing)])
+        list_checks: list[tuple[str, bool, str]] = [
+            ('runs 退出码 0', listed.returncode == 0, f'退出码={listed.returncode}'),
+            ('两次运行各自落盘（同秒不覆盖）', len(run_dirs) == 2, f'实际目录={run_dirs}'),
+        ]
+        if listing.is_file():
+            document = json.loads(listing.read_text(encoding='utf-8'))
+            stamps = [r['stamp'] for r in document['runs']]
+            list_checks += [
+                ('列表条数 = 运行目录数',
+                 document['returned'] == len(run_dirs) == len(stamps),
+                 f"returned={document['returned']} 目录={len(run_dirs)}"),
+                ('每条都有结论与证据完整性',
+                 all('queue_outcome' in r and 'evidence_complete' in r for r in document['runs']),
+                 f'runs={document["runs"][:1]}'),
+                ('列出的目录都真实存在',
+                 all(Path(r['directory']).is_dir() for r in document['runs']),
+                 f"dirs={[r['directory'] for r in document['runs']]}"),
+            ]
+        else:
+            list_checks.append(('runs --json 落盘', False, '没有产出列表文件'))
+        for name, ok, detail in list_checks:
+            print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+            if not ok:
+                failures.append(f'{name}: {detail}')
+
     print()
     if failures:
         print(f'结果: FAIL（{len(failures)} 项）')
         for item in failures:
             print(f'  - {item}')
         return 1
-    print('结果: OK（报告读得出事实，缺工件/缺日志/目录不存在都能被指出来）')
+    print('结果: OK（报告读得出事实；缺工件/缺日志/目录不存在都会被指出；'
+          'runs 列表含同秒两次运行的落盘与条数）')
     return 0
 
 
