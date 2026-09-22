@@ -41,7 +41,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
     "globe_center: (np.float64(1423.0), np.float64(1690.0))",
-    "0.088s      similarity: 0.066",
+    "0.074s      similarity: 0.066",
     "Low similarity when matching OS globe"
   ],
   "similarity": 0.066,
@@ -343,6 +343,30 @@ warp 后海域的边缘密度(10.48%)反而高于战役(6.63%)，也符合"拟�
 下一步（离线）：查 Homography.detect 用的遮罩 ui_mask_homo_stroke 是否随 mode=os 切换
 （View.load_image 是按 mode 选的 ui_mask_os_in_map）；若 homography 这条路用的是
 战役遮罩，海域画面上就会遮错区域、让 UI 边界参与拟合。
+
+#### 遮罩这条线查清了：接线没错，问题在客户端一侧
+
+上游 OS 任务的真实用法（module/os/camera.py:25）就是：
+View(config, mode="os", grid_class=OSGrid)，并且真机上 Scheduler_Command 以 Opsi 开头
+—— 与我们的调用方式**完全一致**，所以接线不是问题。
+
+遮罩规则也查清了（两处、不对称）：
+
+| 位置 | 用哪个遮罩 | 是否随 OS 切换 |
+| --- | --- | --- |
+| perspective.py:172（找地图四角/边线） | ASSETS.ui_mask | **否，永远用战役遮罩** |
+| homography.py:67-72（warp 之后的边缘过滤） | ui_mask_os / ui_mask | 是，按 Scheduler_Command 是否以 Opsi 开头
+
+也就是说：**找四角这一步在 OS 画面上跑的是战役遮罩**。我们客户端 OS 画面底部那条 UI 栏
+（第一舰队 / 储物舱 / 情报 / 作战总览）落在战役遮罩的"可见区"里，它的边界被当成地图下边
+—— 这与实测吻合：检出的底部两角 y=701.6（贴近屏幕底 720）、x=13.6/1500.2（超出屏宽）。
+单应性因此算错，三种自由格模板全败。
+
+上游用户没这个问题，最可能的解释是本客户端的 UI 缩放/布局与上游素材（绝对像素遮罩，
+1157x665）对不齐 —— 这与本项目此前在其它界面反复遇到的"新 UI 素材对不上"是同一类原因。
+
+下一步（离线）：把 ui_mask_os 与 ui_mask 叠加到 os_live_2.png 上，量出
+"遮罩认为的 UI 区域"与"实际 UI 区域"的差，确认是否底部栏未被覆盖、差多少像素。
 
 ### 后端选择：homography 与 IR 一致，perspective 在 2-1 上会多判一行（实测）
 
