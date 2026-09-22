@@ -32,8 +32,11 @@
 | `page_dock` | `DOCK_FAVOURITE#drive` | Switch | hit | off -> on（点 on @(735, 26)），复原 -> off |
 | `page_game_room` | `MINIGAME_SCROLL` | Scroll | hit | at_top=False at_bottom=True |
 | `ship_detail` | `EQUIPMENT_SCROLL` | Scroll | hit | at_top=True at_bottom=False |
-| `ship_detail` | `equipping_filter` | Switch | miss | appear=False |
-| `ship_detail` | `equipping_filter#probe` | Switch | miss | appear=False |
+| `equip_change` | `equipping_filter` | Switch | miss | appear=False |
+| `fleet_detail` | `FLEET_LOCK` | Switch | miss | appear=False |
+| `fleet_detail` | `FORMATION` | Switch | miss | appear=False |
+| `fleet_detail` | `SUBMARINE_HUNT` | Switch | miss | appear=False |
+| `fleet_detail` | `SUBMARINE_VIEW` | Switch | miss | appear=False |
 
 ## 滑动控制与开关驱动（动作，不是识别）
 
@@ -42,7 +45,6 @@
 | `page_storage` | `MATERIAL_SCROLL#swipe` | at_top True -> False -> False |
 | `page_dock` | `DOCK_SORTING#drive` | Descending -> Ascending（点 Ascending @(1050, 28)），复原 -> Descending |
 | `page_dock` | `DOCK_FAVOURITE#drive` | off -> on（点 on @(735, 26)），复原 -> off |
-| `ship_detail` | `equipping_filter#probe` | appear=False |
 
 `#swipe` = 在 Scroll 自己的区域里真滑，看 `at_top` 是否翻转；
 `#drive` = 读出开关状态 → 点上游规则给出的另一个状态的按钮 → 再读确认变化
@@ -72,12 +74,16 @@
 | `ShopUI._shop_bottom_navbar` | Navbar | ✅ 已命中 | {"active": 0, "total": 5, "info": [0, 0, 4], "buttons": ["SHOP_BOTTOM_NAVBAR_0_0", "SHOP_BOTTOM_NAVBAR_1_0", "SHOP_BOTTOM_NAVBAR_2_0", "SHOP_BOTTOM_NAVBAR_3_0", "SHOP_BOTTOM_NAVBAR_4_0"], "active_color": [33, 195, 239], "inactive_color": [181, 178, 181]} |
 | `StorageUI.storage_filter` | Setting | ✅ 已命中 | {"observed_active": [], "option_count": 6, "settings": ["rarity"]} |
 | `VOUCHER_SHOP_SCROLL` | Scroll | ✅ 已命中 | at_top=True at_bottom=False |
-| `FLEET_LOCK` | Switch | ➡️ 需更深流程 | 舰队编辑浮层里的锁定开关（不是 page_fleet 本身） |
-| `FORMATION` | Switch | ➡️ 需更深流程 | 出击前「阵型」面板 |
+| `FLEET_LOCK` | Switch | ➡️ 需更深流程 | 舰队编辑浮层里的锁定开关。实测本机 page_fleet 上 `equipment/FLEET_DETAIL` 只有 0.17 分（不在屏上），要进出击/舰队编辑流程才能到达，而那条流程会消耗石油并影响账号 —— 需本人同意后再验 |
+| `FLEET_LOCK` | Switch | ➡️ 需更深流程 | 舰队编辑浮层里的锁定开关。实测本机 page_fleet 上 `equipment/FLEET_DETAIL` 只有 0.17 分（不在屏上），要进出击/舰队编辑流程才能到达，而那条流程会消耗石油并影响账号 —— 需本人同意后再验 |
+| `FORMATION` | Switch | ➡️ 需更深流程 | 出击前「阵型」面板，同上（需进出击流程） |
+| `FORMATION` | Switch | ➡️ 需更深流程 | 出击前「阵型」面板，同上（需进出击流程） |
 | `RETIRE_CONFIRM_SCROLL` |  | ➡️ 需更深流程 | 需进退役确认弹窗 |
-| `SUBMARINE_HUNT` | Switch | ➡️ 需更深流程 | 潜艇面板（需先有潜艇） |
+| `SUBMARINE_HUNT` | Switch | ➡️ 需更深流程 | 潜艇面板（还需先有潜艇） |
+| `SUBMARINE_HUNT` | Switch | ➡️ 需更深流程 | 潜艇面板（还需先有潜艇） |
 | `SUBMARINE_VIEW` | Switch | ➡️ 需更深流程 | 同上 |
-| `equipping_filter` | Switch | ➡️ 需更深流程 | appear=False |
+| `SUBMARINE_VIEW` | Switch | ➡️ 需更深流程 | 同上 |
+| `equipping_filter` | Switch | ➡️ 需更深流程 | 装备选择浮层里的筛选开关。已按上游入口试过两条路：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99，但点开后筛选开关仍不出现）、点装备槽位 (792,156) 也未打开选择器 |
 | `ShopUI.shop_nav_250814` | Switch | 🕐 UI 版本差异 | 本客户端是 250814 之前的老版商店 UI：可选状态是 NAV_GENERAL/NAV_MONTHLY，实测 unknown（新版商店才有这两个导航项；老版走 _shop_bottom_navbar，已命中） |
 | `ShopUI.shop_tab_250814` | Switch | 🕐 UI 版本差异 | 同上（9 个新版页签 TAB_* 都不在屏上） |
 

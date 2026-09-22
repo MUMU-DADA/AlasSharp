@@ -61,13 +61,29 @@ PLAN = [
     {'page': 'page_game_room',
      'rules': [('module.minigame.minigame', 'MINIGAME_SCROLL')]},
     # 未建模但可达：船坞长按舰船卡片进「角色详情」（上游 ship_info_enter 的入口），
-    # 装备类规则在这里才命中。这一步不靠 goto（图里没有这个页），靠长按进。
-    {'page': 'ship_detail', 'enter': {'long_press': (640, 300)},
-     'rules': [('module.equipment.equipment_change', 'EQUIPMENT_SCROLL'),
-               ('module.equipment.equipment_change', 'equipping_filter')],
-     # 装备筛选开关在「装备选择」浮层里：点一个装备槽只会打开选择器，不改动任何装备
-     'probe': {'clicks': [(720, 156)], 'rules': [('module.equipment.equipment_change',
-                                                  'equipping_filter')]},
+    # 装备类规则在这里才命中。**必须先进 page_dock**：长按点在船坞的舰船卡片上，
+    # 上一版没写 goto，结果在游戏房里长按，白做一轮。
+    {'page': 'ship_detail', 'enter': {'goto': 'page_dock', 'long_press': (640, 300)},
+     'rules': [('module.equipment.equipment_change', 'EQUIPMENT_SCROLL')],
+     'leave': 'back'},
+    # 角色详情页上再点上游自己的 EQUIPMENT_OPEN（该页实测 score 0.9922）进装备选择浮层
+    {'page': 'equip_change',
+     'enter': {'goto': 'page_dock', 'long_press': (640, 300),
+               'click': 'equipment/EQUIPMENT_OPEN'},
+     'rules': [('module.equipment.equipment_change', 'equipping_filter')],
+     'leave': 'back'},
+    # 舰队详情/出击准备：FLEET_LOCK 与阵型、潜艇面板都在这一层
+    {'page': 'fleet_detail',
+     'enter': {'goto': 'page_fleet', 'click': 'equipment/FLEET_DETAIL'},
+     'rules': [('module.handler.fast_forward', 'FLEET_LOCK'),
+               ('module.handler.strategy', 'FORMATION'),
+               ('module.handler.strategy', 'SUBMARINE_HUNT'),
+               ('module.handler.strategy', 'SUBMARINE_VIEW')],
+     'leave': 'back'},
+    # 装备选择浮层：角色详情页的装备面板里点一个槽位（只打开选择器，不改动装备）
+    {'page': 'equip_select',
+     'enter': {'goto': 'page_dock', 'long_press': (640, 300), 'click_xy': (792, 156)},
+     'rules': [('module.equipment.equipment_change', 'equipping_filter')],
      'leave': 'back'},
 ]
 
@@ -179,6 +195,7 @@ def drive_switch(module, name, restore=True):
 
 report = []
 REPORT_ONLY = '--report-only' in sys.argv
+ONLY = os.environ.get('ONLY')          # 只跑某一步（定向重跑，见 PLAN 的 page 名）
 DATA = os.path.join(HERE, '..', 'data', 'controls_verify.json')
 print('=== 控件识别与滑动控制验证 ===')
 if REPORT_ONLY:
@@ -190,15 +207,51 @@ elif not ensure_device():
     sys.exit(2)
 for step in ([] if REPORT_ONLY else PLAN):
     page = step['page']
+    if ONLY and page != ONLY:
+        continue          # ONLY=<页名> 时只跑那一步：定向调试不必每次跑全套
     s = shot()
     if step.get('enter'):
-        # 图里没有这个"页"，但可以靠一个动作进去（如长按舰船卡片进角色详情）
+        # 图里没有这个"页"，但可以靠动作进去：长按进详情 / 从某页点某个上游素材
         act = step['enter']
+        if 'goto' in act:
+            ok, info = goto(act['goto'])
+            print('[enter] goto %s %s (%s)' % (act['goto'], 'OK' if ok else 'NG', info))
         if 'long_press' in act:
             x, y = act['long_press']
             swipe(x, y, x, y, 1100)
             time.sleep(2.0)
             print('[enter] %s：长按 (%d,%d) 1100ms' % (page, x, y))
+        if 'click_xy' in act:
+            # 没有对应素材、但位置确定的点击（如角色详情页的装备槽位）
+            cx, cy = act['click_xy']
+            print('[enter] 点坐标 (%d,%d)' % (cx, cy))
+            swipe(cx, cy, cx, cy, 80)
+            time.sleep(2.5)
+        if 'click' in act:
+            # 和导航器同一套规矩：候选资产按实测分择优；分数够高才点匹配点，
+            # 否则点资产标称坐标（低分时 minMaxLoc 的峰值是随机的，拿它当点击目标等于乱点 —
+            # 上一版就是这么在 score=0.27 的位置乱点，把画面点成了未建模页）。
+            asset = act['click']
+            best = None
+            for cand in [asset, 'ui_white/%s_WHITE' % asset.split('/', 1)[-1]]:
+                try:
+                    m = op('button_match', asset=cand, probe_score=True)
+                    nominal = op('asset_button_center', asset=cand)['center']
+                except Exception:
+                    continue
+                score = m['score'] if m['score'] is not None else -1
+                if best is None or score > best[0]:
+                    best = (score, cand, m, nominal)
+            score, cand, m, nominal = best
+            box = m.get('button_offset') if score >= 0.85 else None
+            if box:
+                cx, cy = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
+            else:
+                cx, cy = nominal
+            print('[enter] 点 %s（score=%.4f，%s）@(%d,%d)'
+                  % (cand, score, '匹配点' if box else '标称坐标', cx, cy))
+            swipe(cx, cy, cx, cy, 80)
+            time.sleep(2.5)
         s = shot()
     elif page not in s:
         ok, info = goto(page)
@@ -304,7 +357,8 @@ miss = sum(1 for r in report if r['verdict'] == 'miss')
 blocked = sum(1 for r in report if r['verdict'] == 'blocked')
 print()
 print('小计: hit %d / miss %d / blocked %d（共 %d 项）' % (hits, miss, blocked, len(report)))
-if not REPORT_ONLY:
+if not REPORT_ONLY and not ONLY:
+    # ONLY 模式**不覆盖**完整证据文件：定向重跑只看到一步，写进去会把历史证据抹掉
     out = DATA
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(report, f, ensure_ascii=False, indent=2, default=str)
@@ -325,10 +379,15 @@ UNPLANNED = {
     'STRATEGIC_SEARCH_SCROLL': ('blocked', '同上'),
 }
 DEEPER_NOTE = {
-    'FLEET_LOCK': '舰队编辑浮层里的锁定开关（不是 page_fleet 本身）',
-    'FORMATION': '出击前「阵型」面板',
-    'SUBMARINE_HUNT': '潜艇面板（需先有潜艇）',
+    'FLEET_LOCK': '舰队编辑浮层里的锁定开关。实测本机 page_fleet 上 '
+                  '`equipment/FLEET_DETAIL` 只有 0.17 分（不在屏上），要进出击/舰队编辑流程才能到达，'
+                  '而那条流程会消耗石油并影响账号 —— 需本人同意后再验',
+    'FORMATION': '出击前「阵型」面板，同上（需进出击流程）',
+    'SUBMARINE_HUNT': '潜艇面板（还需先有潜艇）',
     'SUBMARINE_VIEW': '同上',
+    'equipping_filter': '装备选择浮层里的筛选开关。已按上游入口试过两条路：'
+                        '角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99，'
+                        '但点开后筛选开关仍不出现）、点装备槽位 (792,156) 也未打开选择器',
 }
 # 未命中里有一类不是"到不了"，而是**客户端 UI 版本不同**：规则本身跑通了、
 # 正确返回 unknown，因为屏幕上根本没有它要找的新版控件。
