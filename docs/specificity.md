@@ -19,8 +19,8 @@
 
 | 规则 | 同时命中的页面 |
 | --- | --- |
-| `page_main` | `page_main`, `page_main_white` |
-| `page_main_white` | `page_main`, `page_main_white` |
+| `page_main` | `page_event_list`, `page_main`, `page_main_white` |
+| `page_main_white` | `page_event_list`, `page_main`, `page_main_white` |
 | `page_munitions` | `page_munitions`, `page_shop`, `page_supply_pack` |
 | `page_shop` | `page_munitions`, `page_shop`, `page_supply_pack` |
 | `page_supply_pack` | `page_munitions`, `page_shop`, `page_supply_pack` |
@@ -49,4 +49,4 @@
 
 - `page_event_list`
 
-其余未命中的规则（本就不可达，属正常）：`page_channel`, `page_coalition`, `page_hospital`, `page_island`, `page_raid`, `page_rpg_stage`, `page_rpg_story`, `page_sp`, `page_unknown`
+其余未命中的规则（本就不可达，属正常）：`page_channel`, `page_coalition`, `page_event_list`, `page_hospital`, `page_island`, `page_raid`, `page_rpg_stage`, `page_rpg_story`, `page_sp`, `page_unknown`

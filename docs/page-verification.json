@@ -1,6 +1,7 @@
 {
   "blocked": {
     "page_coalition": "定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed）",
+    "page_event_list": "定向重试仍未到达：落在 ['page_main', 'page_main_white']（goto-failed）",
     "page_hospital": "定向重试仍未到达：落在 ['page_event']（goto-failed）",
     "page_island": "游戏状态阻塞（点击岛屿计划入口 0.9999 分，菜单关闭退回主界面＝功能未解锁）",
     "page_raid": "定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed）",

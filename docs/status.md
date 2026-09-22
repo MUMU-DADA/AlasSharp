@@ -9,13 +9,13 @@
 
 | 范围 | 总数 | 已通过 | 未通过/阻塞 | 明细 |
 | --- | --- | --- | --- | --- |
-| 页面规则（Page） | 53 | **34** | 7 受游戏状态阻塞 + 12 原因已定位 | `page-verification.md` |
+| 页面规则（Page） | 53 | **34** | 8 受游戏状态阻塞 + 11 原因已定位 | `page-verification.md` |
 | 控件规则（模块级 Switch/Scroll） | 20 | 11 | 9 | `controls.md` |
 | cached_property 规则 | 6 | 3 | 3 | `controls.md` |
 | 控制动作（滑动/开关驱动/探测） | 3 | 3 | 0 | `controls.md` |
 | 控制原语（返回键/长按/滑动） | 4 | **4** | 0 | `primitives.md` |
 | 文本输入（装备码流程） | 3 | **3** | 0 | `text-input.md` |
-| 全量回归（产品路径导航） | 33 | **33** | 0 | `regression.md` |
+| 全量回归（产品路径导航） | 34 | **33** | 1 | `regression.md` |
 | 页面规则合成正对照 | 53 | 52 | 1 跳过（`page_unknown` 无素材） | `positive-control.md` |
 | 控件 Switch 合成正对照 | 20 | 10 | 10 跳过（Scroll 判定依赖颜色掩码） | `positive-control.md` |
 
@@ -32,6 +32,7 @@
 | 页面 | 原因与证据 |
 | --- | --- |
 | `page_coalition` | 定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed） |
+| `page_event_list` | 定向重试仍未到达：落在 ['page_main', 'page_main_white']（goto-failed） |
 | `page_hospital` | 定向重试仍未到达：落在 ['page_event']（goto-failed） |
 | `page_island` | 游戏状态阻塞（点击岛屿计划入口 0.9999 分，菜单关闭退回主界面＝功能未解锁） |
 | `page_raid` | 定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed） |
@@ -39,7 +40,7 @@
 | `page_rpg_story` | 定向重试仍未到达：落在 ['page_event']（goto-failed） |
 | `page_sp` | 定向重试仍未到达：落在 ['page_campaign']（goto-failed） |
 
-## 原因已定位但未验证的 12 个页面
+## 原因已定位但未验证的 11 个页面
 
 分三类（逐条原因见 `page-verification.md`）：
 

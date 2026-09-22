@@ -26,7 +26,7 @@
 | `page_shop` | `ShopUI.shop_nav_250814` | Switch | miss | {"state": "unknown", "appear": false, "states": ["NAV_GENERAL", "NAV_MONTHLY"], "offset": [20, 20]} |
 | `page_shop` | `ShopUI.shop_tab_250814` | Switch | miss | {"state": "unknown", "appear": false, "states": ["TAB_GENERAL", "TAB_MERIT", "TAB_GUILD", "TAB_META", "TAB_PRIZE", "TAB_CORE_LIMITED", "TAB_CORE_MONTHLY", "TAB_MEDAL", "TAB_PROTOTYPE"], "offset": [20, 20]} |
 | `page_shop` | `VOUCHER_SHOP_SCROLL` | Scroll | hit | at_top=True at_bottom=False |
-| `page_storage` | `StorageUI.storage_filter` | Setting | hit | {"observed_active": ["rarity/super_rare", "rarity/ultra_rare"], "option_count": 6, "settings": ["rarity"]} |
+| `page_storage` | `StorageUI.storage_filter` | Setting | hit | {"observed_active": [], "option_count": 6, "settings": ["rarity"]} |
 | `page_dock` | `Dock.dock_filter` | Setting | hit | {"observed_active": [], "option_count": 52, "settings": ["extra", "faction", "index", "rarity", "sort"]} |
 | `page_dock` | `DOCK_SORTING#drive` | Switch | hit | Descending -> Ascending（点 Ascending @(1050, 28)），复原 -> Descending |
 | `page_dock` | `DOCK_FAVOURITE#drive` | Switch | hit | off -> on（点 on @(735, 26)），复原 -> off |
@@ -41,8 +41,9 @@
 | `page_os` | `SCROLL_STORAGE` | Scroll | hit | at_top=True at_bottom=False |
 | `page_os` | `STRATEGIC_SEARCH_SCROLL` | Scroll | hit | at_top=True at_bottom=False |
 | `equip_select2` | `equipping_filter` | Switch | miss | appear=False |
-| `retire_dialog` | `<confident-guard>` | Guard | blocked | retire/RETIRE_APPEAR_1 实测 0.1968，未达确信阈值，放弃点击 |
-| `page_campaign#strategy` | `<confident-guard>` | Guard | blocked | handler/STRATEGY_OPEN 实测 0.2107，未达确信阈值，放弃点击 |
+| `equip_select3` | `equipping_filter` | Switch | miss | appear=False |
+| `retire_dialog` | `<confident-guard>` | Guard | blocked | retire/RETIRE_APPEAR_1 实测 0.1062，未达确信阈值，放弃点击 |
+| `page_campaign#strategy` | `<confident-guard>` | Guard | blocked | handler/STRATEGY_OPEN 实测 0.1795，未达确信阈值，放弃点击 |
 
 ## 滑动控制与开关驱动（动作，不是识别）
 
@@ -51,8 +52,8 @@
 | `page_storage` | `MATERIAL_SCROLL#swipe` | at_top True -> False -> False |
 | `page_dock` | `DOCK_SORTING#drive` | Descending -> Ascending（点 Ascending @(1050, 28)），复原 -> Descending |
 | `page_dock` | `DOCK_FAVOURITE#drive` | off -> on（点 on @(735, 26)），复原 -> off |
-| `retire_dialog` | `<confident-guard>` | retire/RETIRE_APPEAR_1 实测 0.1968，未达确信阈值，放弃点击 |
-| `page_campaign#strategy` | `<confident-guard>` | handler/STRATEGY_OPEN 实测 0.2107，未达确信阈值，放弃点击 |
+| `retire_dialog` | `<confident-guard>` | retire/RETIRE_APPEAR_1 实测 0.1062，未达确信阈值，放弃点击 |
+| `page_campaign#strategy` | `<confident-guard>` | handler/STRATEGY_OPEN 实测 0.1795，未达确信阈值，放弃点击 |
 
 `#swipe` = 在 Scroll 自己的区域里真滑，看 `at_top` 是否翻转；
 `#drive` = 读出开关状态 → 点上游规则给出的另一个状态的按钮 → 再读确认变化
@@ -80,7 +81,7 @@
 | `SCROLL_STORAGE` | Scroll | ✅ 已命中 | at_top=True at_bottom=False |
 | `STRATEGIC_SEARCH_SCROLL` | Scroll | ✅ 已命中 | at_top=True at_bottom=False |
 | `ShopUI._shop_bottom_navbar` | Navbar | ✅ 已命中 | {"active": 0, "total": 5, "info": [0, 0, 4], "buttons": ["SHOP_BOTTOM_NAVBAR_0_0", "SHOP_BOTTOM_NAVBAR_1_0", "SHOP_BOTTOM_NAVBAR_2_0", "SHOP_BOTTOM_NAVBAR_3_0", "SHOP_BOTTOM_NAVBAR_4_0"], "active_color": [33, 195, 239], "inactive_color": [181, 178, 181]} |
-| `StorageUI.storage_filter` | Setting | ✅ 已命中 | {"observed_active": ["rarity/super_rare", "rarity/ultra_rare"], "option_count": 6, "settings": ["rarity"]} |
+| `StorageUI.storage_filter` | Setting | ✅ 已命中 | {"observed_active": [], "option_count": 6, "settings": ["rarity"]} |
 | `VOUCHER_SHOP_SCROLL` | Scroll | ✅ 已命中 | at_top=True at_bottom=False |
 | `FLEET_LOCK` | Switch | ➡️ 需更深流程 | 舰队锁定开关。**本客户端不提供该面板**：换账号后在 page_fleet 上实测 `handler/FLEET_LOCKED` 0.34、`FLEET_UNLOCKED` 0.19；在战役地图上 `FLEET_LOCKED` 0.22、`FLEET_UNLOCKED` 0.15 —— 都不在屏上，且 `ui_white` 无对应素材。未盲点关卡节点（有误触开战风险） |
 | `FLEET_LOCK` | Switch | ➡️ 需更深流程 | 舰队锁定开关。**本客户端不提供该面板**：换账号后在 page_fleet 上实测 `handler/FLEET_LOCKED` 0.34、`FLEET_UNLOCKED` 0.19；在战役地图上 `FLEET_LOCKED` 0.22、`FLEET_UNLOCKED` 0.15 —— 都不在屏上，且 `ui_white` 无对应素材。未盲点关卡节点（有误触开战风险） |
@@ -91,6 +92,7 @@
 | `SUBMARINE_VIEW` | Switch | ➡️ 需更深流程 | 同上（0.20/0.12） |
 | `SUBMARINE_VIEW` | Switch | ➡️ 需更深流程 | 同上（0.20/0.12） |
 | `SWITCH_LOCK` | Switch | ➡️ 需更深流程 | appear=False |
+| `equipping_filter` | Switch | ➡️ 需更深流程 | 装备筛选开关（`EQUIPPING_ON/OFF`）。已试过 4 条入口：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、上游自己的 EQUIPMENT_GRID 几何（槽位中心 (712,186)）、以及上游更准确的点击目标 EQUIP_INFO_BAR（73x73，origin=(695,127)）。点击都能打开某个浮层，但开关始终不出现。**最直接的证据**：`EQUIPPING_ON/OFF` 的标称区域在屏幕**左边缘** (24,510)-(61,589)，在船坞进的角色详情页上实测 offset=0 时 0.21/0.03、offset=40 时 0.28/0.19 —— 本客户端的装备界面布局与上游那套不同，素材根本不在屏上。另注：该 Switch 创建时**没设 offset**，`get()` 的匹配窗口只有 ±3 像素，布局一偏就必然判 unknown |
 | `equipping_filter` | Switch | ➡️ 需更深流程 | 装备筛选开关（`EQUIPPING_ON/OFF`）。已试过 4 条入口：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、上游自己的 EQUIPMENT_GRID 几何（槽位中心 (712,186)）、以及上游更准确的点击目标 EQUIP_INFO_BAR（73x73，origin=(695,127)）。点击都能打开某个浮层，但开关始终不出现。**最直接的证据**：`EQUIPPING_ON/OFF` 的标称区域在屏幕**左边缘** (24,510)-(61,589)，在船坞进的角色详情页上实测 offset=0 时 0.21/0.03、offset=40 时 0.28/0.19 —— 本客户端的装备界面布局与上游那套不同，素材根本不在屏上。另注：该 Switch 创建时**没设 offset**，`get()` 的匹配窗口只有 ±3 像素，布局一偏就必然判 unknown |
 | `equipping_filter` | Switch | ➡️ 需更深流程 | 装备筛选开关（`EQUIPPING_ON/OFF`）。已试过 4 条入口：角色详情页点 EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、上游自己的 EQUIPMENT_GRID 几何（槽位中心 (712,186)）、以及上游更准确的点击目标 EQUIP_INFO_BAR（73x73，origin=(695,127)）。点击都能打开某个浮层，但开关始终不出现。**最直接的证据**：`EQUIPPING_ON/OFF` 的标称区域在屏幕**左边缘** (24,510)-(61,589)，在船坞进的角色详情页上实测 offset=0 时 0.21/0.03、offset=40 时 0.28/0.19 —— 本客户端的装备界面布局与上游那套不同，素材根本不在屏上。另注：该 Switch 创建时**没设 offset**，`get()` 的匹配窗口只有 ±3 像素，布局一偏就必然判 unknown |
 | `ShopUI.shop_nav_250814` | Switch | 🕐 UI 版本差异 | 本客户端是 250814 之前的老版商店 UI：可选状态是 NAV_GENERAL/NAV_MONTHLY，实测 unknown（新版商店才有这两个导航项；老版走 _shop_bottom_navbar，已命中） |

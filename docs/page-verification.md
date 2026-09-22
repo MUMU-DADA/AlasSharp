@@ -13,7 +13,7 @@
 | 类别 | 数量 | 含义 |
 | --- | --- | --- |
 | 已验证命中 | 34 | 在该页上规则返回真，且离开该页后不再命中 |
-| 受游戏状态阻塞 | 7 | 页面可达性被账号/活动状态挡住，非识别缺陷 |
+| 受游戏状态阻塞 | 8 | 页面可达性被账号/活动状态挡住，非识别缺陷 |
 | 未验证（原因已定位） | 12 | 依赖阻塞页或上游没有入边 |
 | 未分类 | 0 | 需要继续排查 |
 | 合计 | 53 | 上游 `page.py` 的全部 Page |
@@ -62,6 +62,7 @@
 | 页面 | 原因与证据 |
 | --- | --- |
 | `page_coalition` | 定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed） |
+| `page_event_list` | 定向重试仍未到达：落在 ['page_main', 'page_main_white']（goto-failed） |
 | `page_hospital` | 定向重试仍未到达：落在 ['page_event']（goto-failed） |
 | `page_island` | 游戏状态阻塞（点击岛屿计划入口 0.9999 分，菜单关闭退回主界面＝功能未解锁） |
 | `page_raid` | 定向重试仍未到达：落在 ['page_campaign_menu']（goto-failed） |
