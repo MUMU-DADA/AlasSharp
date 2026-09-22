@@ -113,4 +113,24 @@ ALAS 的 `Control.click/swipe` 收的是 **Button 对象**（内部取 `button.b
 代价小（一个 95 KB 的 APK + adb forward），可作为生产候选；输入侧 `minitouch`/`ADB` 都在 ~65 ms 量级。
 下一步：把 droidcast 稳态再压一压（分辨率/编码参数），以及预热后重测 MaaTouch。
 
+## C# 产品路径已接入（lashub capture，实测收益）
 
+IVisionEngine 新增 ConfigureDevice(serial, screenshot, control) 与 CaptureViaEngine(raw)；
+DeviceController 暴露 CaptureViaEngine() / ConfigureEngineDevice()；
+新增 lashub capture 做两路对比（同一进程、同一设备）：
+
+| --screenshot | A：C# 自己 adb 截图 | **B：引擎截图+置入宿主** | 提升 |
+| --- | --- | --- | --- |
+| db | 615 ms | **392 ms** | **−36.1%**（省 222 ms） |
+| droidcast | 625 ms | **339 ms** | **−45.8%**（省 286 ms） |
+
+两路的页面判定都是 page_main,page_main_white —— 说明 B 路拿到的是**可用帧**，不是"快但错"。
+
+用法：
+
+`powershell
+alashub capture --adb <adb> --serial 127.0.0.1:16384 --screenshot droidcast --control ADB --repeat 3
+`
+
+意义：**换截图/输入后端不改 C# 代码**（只改 --screenshot / --control），
+这正是"设备 I/O 走宿主"（方案 A）要的效果。

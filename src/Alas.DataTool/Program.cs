@@ -44,6 +44,29 @@ internal static class Program
                 fixture ??= Path.Combine(dataDir, "fixtures", "matching.json");
                 return MatchingCheck.Run(fixture, repoDir);
             }
+            if (command == "capture")
+            {
+                // 设备通道对比：C# 自截 vs 引擎截图（后端可切），见 CaptureCheck
+                string toolsDir5 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                    "..", "..", "..", "..", "..", "tools"));
+                string? capAdb = null, capSerial = null, capShot = "adb", capCtrl = "ADB";
+                int capRepeat = 3;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--adb") capAdb = args[i + 1];
+                    if (args[i] == "--serial") capSerial = args[i + 1];
+                    if (args[i] == "--screenshot") capShot = args[i + 1];
+                    if (args[i] == "--control") capCtrl = args[i + 1];
+                    if (args[i] == "--repeat" && int.TryParse(args[i + 1], out int n)) capRepeat = n;
+                }
+                if (capAdb is null || capSerial is null)
+                {
+                    Console.WriteLine("用法: capture --adb <adb> --serial <serial> " +
+                        "[--screenshot adb|droidcast|...] [--control ADB|MaaTouch|...] [--repeat N]");
+                    return 2;
+                }
+                return CaptureCheck.Run(capAdb, capSerial, repoDir, toolsDir5, capShot, capCtrl, capRepeat);
+            }
             if (command == "map-ir")
             {
                 string? mirFile = null, mirDir = null;

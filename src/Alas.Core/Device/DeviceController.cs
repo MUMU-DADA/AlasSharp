@@ -115,6 +115,16 @@ public sealed class DeviceController
         return _vision.SetScreenshot(r.StdoutBytes, "adb://screencap");
     }
 
+    /// <summary>
+    /// 走**引擎的设备层**截图（后端可换，如 droidcast），并直接置入宿主。
+    /// C# 不持有像素，也不需要字节；需要字节的场合（存档截图）仍用 <see cref="ScreenshotBytes"/>。
+    /// </summary>
+    public DeviceCaptureResult CaptureViaEngine(bool raw = true) => _vision.CaptureViaEngine(raw);
+
+    /// <summary>把设备后端选择交给引擎（截图/输入）。换后端＝改这里。</summary>
+    public DeviceConfigResult ConfigureEngineDevice(string screenshot = "adb", string control = "ADB")
+        => _vision.ConfigureDevice(Serial ?? "127.0.0.1:16384", screenshot, control);
+
     public void Click(int x, int y)
         => _adb.Run(Args("shell", "input", "tap", x.ToString(), y.ToString()));
 

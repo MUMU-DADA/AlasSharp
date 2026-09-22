@@ -42,6 +42,35 @@ public interface IVisionEngine : IDisposable
     string Ocr(double[] area, string lang = "azur_lane", string? letter = null);
     /// <summary>通用 op 调用（结果反序列化为 T）：S2 地图识别等尚未定型的 op 用它。</summary>
     T CallTyped<T>(string op, object? args = null);
+
+    /// <summary>
+    /// 选择**引擎的设备后端**（截图后端 / 输入后端）。引擎自带多后端
+    /// （adb、droidcast、maatouch、minitouch、scrcpy、hermit、nemu_ipc…），
+    /// 换后端只改这里，产品代码零改动 —— 这是"设备 I/O 走宿主"的入口。
+    /// </summary>
+    DeviceConfigResult ConfigureDevice(string serial, string screenshot = "adb", string control = "ADB");
+
+    /// <summary>
+    /// 用引擎的设备层截图并**直接置入宿主的当前截图**（像素不跨语言边界）。
+    /// 比 `Screenshot()` 的 `adb → C# → 宿主` 少一次跨语言传输与落盘/读盘。
+    /// </summary>
+    DeviceCaptureResult CaptureViaEngine(bool raw = true);
+}
+
+/// <summary>`device_configure` 的返回：当前选择的设备后端。</summary>
+public sealed class DeviceConfigResult
+{
+    [JsonPropertyName("configured")] public Dictionary<string, string>? Configured { get; set; }
+}
+
+/// <summary>`device_capture_set` 的返回：抓图耗时、后端与方法。</summary>
+public sealed class DeviceCaptureResult
+{
+    [JsonPropertyName("capture_ms")] public double CaptureMs { get; set; }
+    [JsonPropertyName("method")] public string? Method { get; set; }
+    [JsonPropertyName("raw")] public bool Raw { get; set; }
+    [JsonPropertyName("shape")] public List<int>? Shape { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
 }
 
 /// <summary>协议编解码：请求 {"id","op","args"}，响应 {"id","ok","result"|"error"}。</summary>
@@ -105,6 +134,14 @@ public abstract class VisionEngineBase : IVisionEngine
     /// <see cref="IVisionEngine"/> 上开专用方法（否则接口会退化成一长串协议清单）。
     /// </summary>
     public T CallTyped<T>(string op, object? args = null) => Call<T>(op, args);
+
+    public DeviceConfigResult ConfigureDevice(string serial, string screenshot = "adb",
+                                              string control = "ADB")
+        => CallTyped<DeviceConfigResult>("device_configure",
+            new { serial, screenshot, control });
+
+    public DeviceCaptureResult CaptureViaEngine(bool raw = true)
+        => CallTyped<DeviceCaptureResult>("device_capture_set", new { raw });
 
     protected int NextId() => Interlocked.Increment(ref _nextId);
 
