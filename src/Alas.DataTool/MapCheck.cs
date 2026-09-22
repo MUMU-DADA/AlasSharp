@@ -19,7 +19,7 @@ internal static class MapCheck
 {
     public static int Run(string? fixture, string forkDir, string toolsDir,
                           string? adbPath, string? serial, string? chapter = null,
-                          string? dataDir = null)
+                          string? dataDir = null, string mode = "main")
     {
         using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(forkDir, toolsDir);
         var client = new MapDetectionClient(vision);
@@ -82,7 +82,8 @@ internal static class MapCheck
         }
 
         // 3) 战役地图：未检测到属于正常结果
-        var map = client.DetectMap();
+        var map = client.DetectMap(mode);
+        Console.WriteLine($"[mode   ] {mode}");
         Console.WriteLine($"[map    ] backend={map.Backend} detected={map.Detected} " +
                           $"grids={map.GridCount?.ToString() ?? "-"} " +
                           $"reason={(map.Reason ?? "-")}");

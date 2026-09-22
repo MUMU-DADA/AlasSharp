@@ -82,7 +82,12 @@ public sealed class MapDetectionClient
         => _vision.CallTyped<MapDetectionAssets>("map_detection_assets");
 
     /// <summary>战役地图识别（当前画面）。未检测到属于正常结果，看 <see cref="MapDetectResult.Reason"/>。</summary>
-    public MapDetectResult DetectMap() => _vision.CallTyped<MapDetectResult>("map_detect");
+    /// <param name="mode">`main`=战役地图（默认）；`os`=作业海域内的地图。
+    /// OS 模式在宿主侧会同时换两处遮罩（Perspective 的找四角 + warp 后过滤），
+    /// 缺一处就会报 `Failed to find a free tile`。</param>
+    public MapDetectResult DetectMap(string mode = "main")
+        => _vision.CallTyped<MapDetectResult>("map_detect",
+            mode == "main" ? null : new JsonObject { ["mode"] = mode });
 
     /// <summary>大世界地图识别（当前画面），返回单应性与坐标往返。</summary>
     public GlobeDetectResult DetectGlobe(IEnumerable<(int X, int Y)>? points = null)
