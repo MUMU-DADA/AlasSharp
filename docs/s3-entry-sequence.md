@@ -659,3 +659,25 @@ AFTER_WITHDRAW page_campaign → 归位 page_main ✓
 | 2-2…2-4 | 待验 | 待验 | 入口应可达（同章）|
 | 3-1 | ✓ | ⛔ 卡在 `AUTO_SEA` | 需先修该开关的 UI 判定 |
 | 4+ | ❌ | — | 账号未解锁 |
+
+### `AUTO_SEA` 的离线诊断（三个已确认事实 + 一个推断）
+
+| # | 事实 | 证据 |
+| --- | --- | --- |
+| 1 | `handle_auto_search_setting()` 在 `map_is_auto_search` 为假时**直接 return、不点击** | `module/handler/fast_forward.py:321` 起 |
+| 2 | **我的配置读回是对的**：`Campaign_UseAutoSearch=False`、`Campaign_UseClearMode=False` | 实例读回实测 |
+| 3 | `map_is_auto_search` **尚未赋值（null）**，它是**懒设置**的 | `fast_forward.py:221/239/241/247` 多处赋值 |
+| 4 | `AUTO_SEA` 在 campaign/handler/combat 三个模块里**字面不存在** | 精确 grep 无命中 |
+
+**推断**：报错里的按钮名是**被截断/派生的**（ALAS 部分按钮的 `__str__` 会截尾，
+例如 `FleetOperator.__str__` 就是 `str(self._choose)[:-7]`），
+真实按钮大概率是 **`AUTO_SEARCH_MAP_OPTION_*`**（出现在 `gems_farming.py` 与自动寻敌流程里）。
+
+=> 所以点击者很可能在**自动寻敌处理路径**上，即运行时 `map_is_auto_search` **最终变成了 True**
+（尽管配置是 False）—— 而它由 `handle_clear_mode_config_cover()`（`fast_forward.py:210-250`）
+**按多个条件计算**，未必只看 `Campaign_UseAutoSearch`。
+
+**下一步（明确、小）**：读 `fast_forward.py:210-250` 的条件分支，确认哪些条件会把
+`map_is_auto_search` 置真；然后二选一：
+(a) 设那个条件的配置键；或 (b) 打垫片 —— 在我们的运行里**强制** `map_is_auto_search=False`
+（我们的配置本就要求关闭它，强制是安全的），再进图验证 3-1。
