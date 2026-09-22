@@ -1348,6 +1348,19 @@ def op_s3_campaign_init(args):
             # 比点 UI 可靠得多（本项目曾因误开自律把一场战斗打完）。要开就显式传 True。
             cfg.Campaign_UseClearMode = bool(args.get('clear_mode', False))
             cfg.Campaign_UseAutoSearch = bool(args.get('auto_search', False))
+            # **心情模式**：这是"低心情强制出击弹窗"的唯一开关（上游自己的配置）。
+            #
+            # 实测（2026-09-22 深夜，7-1）：连打多场后客户端弹
+            #   「信息：第N舰队中「…」处于低心情状态，强制出击将降低好感且获得经验减半」[取消][确定]
+            # 上游**有**这个弹窗的处理器 `handle_combat_low_emotion()`（info_handler.py:187），
+            # 但它第一行就是 `if not self.emotion.is_ignore: return False`
+            # （`is_ignore` = `'ignore' in config.Emotion_Mode`，默认是 'calculate' ✗）。
+            # 结果是 `combat_preparation()` 一直等战斗 UI，180s 后 `GameStuckError: Wait too long`，
+            # 出击被中断（日志：`Wait too long / Waiting for {GAME_TIPS4, PAUSE, ...}`）。
+            # 所以真跑必须把它设成含 ignore 的档位：'calculate_ignore' = 照常计算心情 + 忽略弹窗。
+            # 代价要讲清楚：强制出击确实会扣（实测战果页三艘船 `EXP -588`），
+            # 因此这里只改"别卡死"，心情本身由上游的 Emotion_FleetXControl 继续管。
+            cfg.Emotion_Mode = str(args.get('emotion_mode') or 'calculate_ignore')
             # **舰队选择也是配置项**（不是从地图推出来的）：
             #   map_fleet_preparation.fleet_preparation() 读
             #   [Fleet_Fleet1, Fleet_Fleet2, Submarine_Fleet]，0 表示"不用"。
@@ -1643,7 +1656,9 @@ def op_s3_run_plan(args):
                                 'submarine_fleet': args.get('submarine_fleet', 0),
                                 # 战斗流程二选一：False=BOSS 一刷出来就打（默认）；
                                 # True=先清光小怪再打 BOSS（上游 MAP_CLEAR_ALL_THIS_TIME 分支）
-                                'clear_all': args.get('clear_all', False)})
+                                'clear_all': args.get('clear_all', False),
+                                # 心情模式（低心情强制出击弹窗的开关，默认 calculate_ignore）
+                                'emotion_mode': args.get('emotion_mode')})
     if init.get('error'):
         return {'error': init['error'], 'stage': 'init'}
     inst = _CAMPAIGN.get('obj')
@@ -1743,8 +1758,39 @@ def op_s3_run_plan(args):
             _fl = op_s3_campaign_call({'name': 'handle_map_fleet_lock', 'allow_actions': True})
             steps.append({'step': 'handle_map_fleet_lock', 'ms': _fl.get('ms'),
                           'error': _fl.get('error')})
-        r = op_s3_campaign_call({'name': 'map_init', 'args': ['@MAP'], 'allow_actions': True})
-        steps.append({'step': 'map_init', 'ms': r.get('ms'), 'error': r.get('error')})
+        # `map_init` 里第一次 `update()` 就可能因**退化机位**失败：
+        # 实测 7-1（8x3 三行图）同一张图里，一次成功、一次报
+        # `MapDetectionError: Vanish point and distant point too close`
+        # （日志里 `vanish_point == distant_point == (654, -1425)`）——
+        # 三行图的网格线在透视里近乎平行，机位不巧时消失点算到无穷远，几何退化。
+        # 这不是"图不支持"，所以**换个机位重试**：小幅度平移相机（上游自己的 `map_swipe`），
+        # 再跑一次 map_init。上限 3 次，失败就如实报错，不硬撑。
+        _init_attempts = []
+        for _att in range(3):
+            r = op_s3_campaign_call({'name': 'map_init', 'args': ['@MAP'],
+                                     'allow_actions': True})
+            _init_attempts.append({'attempt': _att + 1, 'ms': r.get('ms'),
+                                   'error': r.get('error')})
+            if not r.get('error'):
+                break
+            if 'Vanish point' not in str(r.get('error')) and \
+                    'No vertical line' not in str(r.get('error')):
+                break                      # 别的错误不靠挪机位解决
+            # 挪机位只能用**设备级滑动**：`map_swipe` / `_map_swipe` 都读视图对象的属性
+            # （`view.center_offset` / `view.swipe_base`），而 `View.load()` 失败时这两个属性
+            # 根本不存在 —— 实测两次都栽在这里（`AttributeError`，相机一步没动，三次重试一模一样 ✗）。
+            # 直接对地图区域下发一次横向滑动：不依赖任何识别结果，只为换个机位。
+            # 用 try 包住：挪机位失败不应该把整轮 s3_run_plan 带崩（实测踩过一次 ✗）。
+            try:
+                _mv = op_device_swipe({'x1': 760, 'y1': 394,
+                                       'x2': 960 if _att % 2 == 0 else 560,
+                                       'y2': 394, 'duration': 0.4})
+                _init_attempts[-1]['swipe_error'] = _mv.get('error')
+            except Exception as _e:
+                _init_attempts[-1]['swipe_error'] = f'{type(_e).__name__}: {_e}'
+        steps.append({'step': 'map_init', 'ms': _init_attempts[-1].get('ms'),
+                      'error': _init_attempts[-1].get('error'),
+                      'attempts': _init_attempts})
     # **从半途状态接着打**：`map_init` 会把 `battle_count` 清 0（map_data_init），而 `battle_count`
     # 决定 `battle_function()` 选哪个 `battle_N`（campaign_base.py:79-92）。所以"进图时小怪已经
     # 清完、只剩 BOSS"这种状态下，清 0 只会让上游去跑 battle_0（清路障）→ 十次无战果 → 撤退。
@@ -2606,11 +2652,22 @@ def op_device_click(args):
 
 
 def op_device_swipe(args):
+    """滑动。**注意上游签名是 `swipe(p1, p2, duration=...)`** —— 两个点各是一个元组，
+    不是四个坐标。此前这里按 `dev.swipe(x1, y1, x2, y2, duration=...)` 调用，
+    第四个位置参数正好落在 `duration` 上，报
+    `TypeError: Control.swipe() got multiple values for argument 'duration'`（实测踩过 ✗）。
+    """
     import time as _time
     dev = _device_engine()
     t0 = _time.time()
-    dev.swipe(args['x1'], args['y1'], args['x2'], args['y2'],
-              duration=args.get('duration', 0.2))
+    dur = args.get('duration', 0.2)
+    # 上游允许 duration 是 float 或 (min, max) 区间
+    if isinstance(dur, (list, tuple)) and len(dur) == 2:
+        dur = (float(dur[0]), float(dur[1]))
+    else:
+        dur = float(dur)
+    dev.swipe((int(args['x1']), int(args['y1'])), (int(args['x2']), int(args['y2'])),
+              duration=dur)
     return {'ms': round((_time.time() - t0) * 1000, 1)}
 
 
