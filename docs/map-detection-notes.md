@@ -293,3 +293,10 @@ if not self.emotion.is_ignore:      # is_ignore = 'ignore' in config.Emotion_Mod
 下轮第一步：`grep -n "distant_point" module/map_detection/*.py`，确认失败到底发生在哪一处的几何里 ——
 **这仍然是纯读代码 + 离线复现，不需要出击**。
 
+
+**round 138 续**：`grep distant_point module/map_detection/*.py` 的答案是 —— 它**只出现在
+`perspective.py`**（`homography.py` 里一处都没有），所以那两行日志确实来自 `perspective.py:125-126`。
+于是"654 落在区间外"这个矛盾**仍未解释**（`distance_point_x` 由 `brute` 在 `(-3200,-1600)` 上取样，
+不可能得到 654）。**下轮用最直接的办法解它**：离线跑失败帧并在 `perspective.py:127` 前把
+`self.vanish_point` / `distance_point_x` 的真实数值打出来（临时在 `load()` 外接一层 try + 复算，
+或直接把该行前的局部变量 dump 出来）——一跑就知道打印与取值哪里对不上。
