@@ -1183,6 +1183,59 @@ def apply_fleet_bar_compat():
         pass
 
 
+def apply_boss_icon_color_compat():
+    """客户端适配：BOSS 图标的**眼睛颜色**（垫片，不改上游文件）。
+
+    上游怎么认 BOSS（`module/map_detection/grid_predictor.py:226-242` `predict_boss()`）：
+
+        image = self.relative_crop((-0.55, -0.2, 0.45, 0.2), shape=(50, 20))
+        image = color_similarity_2d(image, color=(255, 77, 82))     # ← 先转成"与红色有多像"
+        if TEMPLATE_ENEMY_BOSS.match(image, similarity=0.75):        # ← 再匹配眼睛形状
+            return True
+
+    `TEMPLATE_ENEMY_BOSS`（assets/cn/template/TEMPLATE_ENEMY_BOSS.png，41x17）的形状就是
+    BOSS 图标那对发光眼睛。**关键在第一步**：先把画面映射成"与红色 (255,77,82) 的相似度"，
+    所以眼睛不是红色时，形状再对也认不出来。
+
+    本客户端（11-1，清完 6 只小怪、BOSS 刚刷出的一帧，离线可复现：
+    `python tools/diagnostics/oneoff/probe_boss_icon.py data/_map_now3.png`）：
+
+        BOSS 所在格  红判据 -0.382 ✗  蓝判据 **0.982** ✓
+        其余 29 格   蓝判据最高 0.452
+
+    眼睛 RGB 实测 ≈ (59, 67, 250)，恰好是上游红色常量的**通道互换**，所以这里补一条
+    `(82, 77, 255)`（=`(255,77,82)` 交换 R/B）的判据，阈值沿用上游的 0.75。
+
+    不改上游的后果（用户实测现象）：`Full scan find boss.` → `No boss found.`
+    （`camera.py:541-548`）→ `battle_6` 里 `if boss:` 分支被跳过 → `execute_a_battle`
+    十次打不出战果 → `withdraw()`（"全清完小怪、只剩 BOSS 就主动撤退"）。
+    """
+    try:
+        import module.map_detection.grid_predictor as _gp
+        from module.base.utils import color_similarity_2d as _sim
+        if getattr(_gp.GridPredictor, '_alas_boss_color_compat', False):
+            return
+        _orig = _gp.GridPredictor.predict_boss
+
+        def _predict_boss(self, __orig=_orig):
+            # 上游判据（红色 + 小图标红色 hue）先跑，命中就直接返回 —— 保持上游行为优先
+            if __orig(self):
+                return True
+            try:
+                if self.enemy_genre == 'Siren_Siren':
+                    return False
+                image = self.relative_crop((-0.55, -0.2, 0.45, 0.2), shape=(50, 20))
+                image = _sim(image, color=(82, 77, 255))
+                return bool(_gp.TEMPLATE_ENEMY_BOSS.match(image, similarity=0.75))
+            except Exception:
+                return False
+
+        _gp.GridPredictor.predict_boss = _predict_boss
+        _gp.GridPredictor._alas_boss_color_compat = True
+    except Exception:
+        pass
+
+
 def op_s3_campaign_init(args):
     """实例化上游章节的 `Campaign`（**不执行任何游戏动作**）。
 
@@ -1195,6 +1248,7 @@ def op_s3_campaign_init(args):
     apply_points_empty_compat()
     apply_fleet_bar_compat()
     apply_auto_search_skip_compat()
+    apply_boss_icon_color_compat()
     apply_withdraw_trace_compat()
     for k in ('serial', 'screenshot', 'control'):
         if args.get(k):
@@ -1590,6 +1644,19 @@ def op_s3_run_plan(args):
                           'error': _fl.get('error')})
         r = op_s3_campaign_call({'name': 'map_init', 'args': ['@MAP'], 'allow_actions': True})
         steps.append({'step': 'map_init', 'ms': r.get('ms'), 'error': r.get('error')})
+    # **从半途状态接着打**：`map_init` 会把 `battle_count` 清 0（map_data_init），而 `battle_count`
+    # 决定 `battle_function()` 选哪个 `battle_N`（campaign_base.py:79-92）。所以"进图时小怪已经
+    # 清完、只剩 BOSS"这种状态下，清 0 只会让上游去跑 battle_0（清路障）→ 十次无战果 → 撤退。
+    # 传 `battle_count` 就能显式复位到正确的回合（上游自己的语义，不是我另造的逻辑）。
+    if args.get('battle_count') is not None:
+        try:
+            _want = int(args['battle_count'])
+            _had = getattr(inst, 'battle_count', None)
+            inst.battle_count = _want
+            steps.append({'step': 'set_battle_count', 'from': _had, 'to': _want})
+        except Exception as e:
+            steps.append({'step': 'set_battle_count',
+                          'error': f'{type(e).__name__}: {e}'})
     # 执行**计划步骤本身**（battle_* 方法），而不是逐条重放语义轨迹 —— 见上面说明。
     # `repeat_until_cleared`：对齐上游 `CampaignBase.run()` 的**循环**语义
     # （一轮计划 ≠ 清图；上游是循环调用直到满足结束条件）。默认关闭，开启时按 max_rounds 上限。
@@ -2162,6 +2229,127 @@ def op_map_detect_trace(args):
     return out
 
 
+def op_map_grids(args):
+    """逐格 dump 当前画面的**预测标志**与「BOSS 图标判据」的分数。
+
+    为什么需要：上游认 BOSS 的形状模板 `TEMPLATE_ENEMY_BOSS` 其实就是**BOSS 图标那对
+    发光眼睛**的形状，但 `grid_predictor.predict_boss()` 是
+    `color_similarity_2d(crop, (255,77,82))` **先转成"与红色有多像"再匹配形状**
+    （grid_predictor.py:231-232）—— 也就是说：眼睛不是红色时，形状再对也认不出来，
+    而失败表现恰好是用户看到的"全清完小怪、只剩 BOSS，上游却找不到 BOSS 就撤退"
+    （`Full scan find boss.` → `No boss found.`）。
+
+    本 op 用**同一帧**对每格同时算多种判据的相似度，从而判定：
+      - 是颜色不对（换成实际颜色就能分开 BOSS 与普通格），还是形状/位置也不对；
+      - 阈值该定在哪（BOSS 格分数 vs 其余格最高分之间的间隔）。
+
+    args:
+        colors: [[名字, r, g, b], ...] 候选颜色，默认含上游的红色与几种蓝色；
+        icons:  True 时把每格的裁剪块与相似度图拼成一张图存盘（便于肉眼看）。
+    """
+    import cv2
+    import numpy as np
+    import module.map_detection.view as view_mod
+    import module.map_detection.grid_predictor as gp_mod
+    from module.base.utils import color_similarity_2d, rgb2luma
+
+    image = _require_image()
+    apply_numpy2_compat()
+    apply_points_empty_compat()
+    # 报告**生产行为**：带上 BOSS 眼睛颜色垫片，所以 `is_boss` 这一列就是修好之后的结果；
+    # 逐色的 score_* 则保留原样，用来判断阈值余量。
+    apply_boss_icon_color_compat()
+    cfg = _map_config()
+    v = view_mod.View(cfg)
+    v.load(image)
+    v.predict()
+
+    # 上游的 BOSS 判据作用在这个区域上（相对格子坐标，格心为 0，格边为 ±1）。
+    area = tuple(args.get('area') or (-0.55, -0.2, 0.45, 0.2))
+    shape = tuple(args.get('shape') or (50, 20))
+    tpl = gp_mod.TEMPLATE_ENEMY_BOSS
+    tpl_img = tpl.image
+    if getattr(tpl, 'is_gif', False):
+        tpl_img = tpl_img[0]
+    tpl_gray = cv2.cvtColor(tpl_img, cv2.COLOR_RGB2GRAY) if tpl_img.ndim == 3 else tpl_img
+
+    def _score(sim):
+        if sim.ndim == 3:
+            sim = cv2.cvtColor(sim, cv2.COLOR_RGB2GRAY)
+        res = cv2.matchTemplate(sim.astype(np.uint8), tpl_gray, cv2.TM_CCOEFF_NORMED)
+        return float(cv2.minMaxLoc(res)[1])
+
+    colors = args.get('colors') or [
+        ['upstream_red', 255, 77, 82],
+        ['blue_rbswap', 82, 77, 255],
+        ['blue_6080ff', 96, 128, 255],
+    ]
+
+    out = {'shape': [int(x) + 1 for x in v.shape], 'grid_count': len(v.grids),
+           'tpl_shape': list(tpl_img.shape), 'area': list(area), 'shape_crop': list(shape),
+           'grids': []}
+    grid_out = {}
+    for loca, g in v.grids.items():
+        item = {'loca': [int(x) for x in loca], 'str': str(g.str),
+                'is_enemy': bool(g.is_enemy), 'is_boss': bool(g.is_boss),
+                'is_siren': bool(g.is_siren), 'is_fleet': bool(g.is_fleet),
+                'enemy_scale': int(g.enemy_scale), 'enemy_genre': str(g.enemy_genre)}
+        try:
+            crop = g.relative_crop(area, shape=shape)
+        except Exception as e:
+            item['crop_error'] = f'{type(e).__name__}: {e}'
+            out['grids'].append(item)
+            continue
+        try:
+            item['rgb_mean'] = [round(float(x), 1) for x in
+                                np.array(crop).reshape(-1, 3).mean(axis=0)]
+        except Exception:
+            pass
+        for name, r, gg, b in colors:
+            sim = color_similarity_2d(crop, color=(int(r), int(gg), int(b)))
+            item['score_' + str(name)] = round(_score(sim), 4)
+        luma = rgb2luma(crop)
+        item['score_luma'] = round(_score(luma), 4)
+        out['grids'].append(item)
+        grid_out[tuple(int(x) for x in loca)] = (item, crop)
+
+    if args.get('icons'):
+        out_dir = str(args.get('out_dir') or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), '..', 'data'))
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+            tiles = []
+            for loca in sorted(grid_out):
+                item, crop = grid_out[loca]
+                tile = cv2.resize(np.array(crop), (150, 60), interpolation=cv2.INTER_NEAREST)
+                tile = cv2.copyMakeBorder(tile, 18, 2, 2, 2, cv2.BORDER_CONSTANT,
+                                          value=(0, 0, 0))
+                cv2.putText(tile, f'{loca} {item.get("str")}', (3, 13),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                tiles.append(tile)
+            cols = int(args.get('cols') or 6)
+            rows = []
+            for i in range(0, len(tiles), cols):
+                chunk = tiles[i:i + cols]
+                while len(chunk) < cols:
+                    chunk.append(np.zeros_like(tiles[0]))
+                rows.append(np.hstack(chunk))
+            montage = np.vstack(rows) if rows else np.zeros((10, 10, 3), np.uint8)
+            path = os.path.join(out_dir, str(args.get('icons_name') or '_grids_boss.png'))
+            out['icons_ok'] = bool(cv2.imwrite(path, montage))
+            out['icons_path'] = path
+        except Exception as e:
+            out['icons_error'] = f'{type(e).__name__}: {e}'
+
+    # 直接给结论用的排序：按上游红色判据与 luma 判据各排一次
+    for key in ('score_upstream_red', 'score_blue_rbswap', 'score_luma'):
+        ranked = sorted([g for g in out['grids'] if key in g],
+                        key=lambda x: -x[key])[:3]
+        out['top_' + key] = [[g['loca'], g[key], g['str']] for g in ranked]
+    out['boss_grids'] = [[g['loca'], g['str']] for g in out['grids'] if g.get('is_boss')]
+    return out
+
+
 # ---------------------------------------------------------------------------
 # 设备引擎（方案 A）：设备 I/O 也走宿主，换引擎＝改配置，C# 侧零改动
 # ---------------------------------------------------------------------------
@@ -2498,6 +2686,7 @@ OPS = {
     'device_back': op_device_back,
     'map_detect': op_map_detect,
     'map_detect_trace': op_map_detect_trace,
+    'map_grids': op_map_grids,
     'globe_detect': op_globe_detect,
 }
 
