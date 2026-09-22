@@ -1274,6 +1274,108 @@ def op_s3_campaign_call(args):
     return out
 
 
+
+def op_s3_run_plan(args):
+    """按关卡 IR 的**计划顺序**执行多个上游调用（S3 的实质机制）。
+
+    为什么要它：单次 `battle_default` 清不掉图（实测 4 步后仍剩敌人）——
+    上游 2-1 的计划是 `['battle_default','check_accessibility','clear_all_mystery',
+    'fleet_boss.clear_boss']`，**多调用组合**才是完整流程。
+
+    安全设计：
+      - `dry_run` **默认 true**：只回planned_calls（离线可校验机制，不碰游戏）；
+      - 真跑必须 `allow_actions=true`（与 s3_campaign_call 同一把锁）；
+      - `max_seconds` 硬上限；任一步报错立即停（不硬撑）；
+      - 只执行 IR 里 `battle_*` 方法的 calls，按方法序号排序，与上游 `BattlePlanRunner` 同序。
+
+    注意：必须在**同一个进程**里完成 init → enter_map → map_init → 各调用，
+    否则 `self.map` 等状态会丢（实测：换进程调用报 `'Campaign' object has no attribute 'map'`）。
+    """
+    import time as _t
+    chapter = str(args.get('chapter') or 'campaign.campaign_main.campaign_2_1')
+    dry = bool(args.get('dry_run', True))
+    if not dry and not args.get('allow_actions'):
+        return {'refused': True,
+                'reason': '真跑需要 allow_actions=true（dry_run 默认可离线校验）'}
+    init = op_s3_campaign_init({'chapter': chapter,
+                                'serial': args.get('serial'),
+                                'screenshot': args.get('screenshot'),
+                                'control': args.get('control')})
+    if init.get('error'):
+        return {'error': init['error'], 'stage': 'init'}
+    inst = _CAMPAIGN.get('obj')
+
+    # 从 IR 取该章节的计划（与 C# BattlePlanRunner 同序：按 battle_* 方法序号）
+    import glob as _glob, os as _os, json as _json, re as _re
+    stem = chapter.split('.')[-1]
+    ir_path = None
+    for pth in _glob.glob(_os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                        '..', 'data', 'campaign', '**', stem + '.json'),
+                          recursive=True):
+        ir_path = pth
+        break
+    if not ir_path:
+        return {'error': '找不到 IR: %s' % stem}
+    with open(ir_path, encoding='utf-8') as f:
+        ir = _json.load(f)
+    battles = [b for b in ((ir.get('campaign') or {}).get('battles') or [])
+               if str(b.get('method', '')).startswith('battle_')]
+
+    def _idx(name):
+        m = _re.search(r'(\d+)', name)
+        return int(m.group(1)) if m else 9999
+    battles.sort(key=lambda b: _idx(b['method']))
+    planned = []
+    for b in battles:
+        planned.append({'method': b['method'], 'calls': list(b.get('calls') or []),
+                        'plan_complete': bool(b.get('plan_complete'))})
+    import re as _re2
+    _m = _re2.search(r'campaign_(\d+)_(\d+)$', chapter)
+    stage = '%s-%s' % (_m.group(1), _m.group(2)) if _m else ''
+    out = {'chapter': chapter, 'stage': stage,
+           'tier': (ir.get('campaign') or {}).get('tier'),
+           'planned_methods': planned, 'dry_run': dry,
+           'calls_in_order': [c for b in planned for c in b['calls']]}
+    if dry:
+        out['note'] = ('dry_run：未触碰游戏。真跑需 allow_actions=true，'
+                       '并会在同一进程内完成 init→enter_map→map_init→各调用')
+        return out
+
+    # ---- 真跑 ----
+    t_start = _t.time()
+    max_s = float(args.get('max_seconds') or 600)
+    steps = []
+    # **顺序要求**（见 docs/s3-entry-sequence.md）：ensure_chapter 必须在 get_entrance 之前，
+    # 否则入口坐标取不到（空 Button）。这个坑我自己踩过一次，这里必须显式做。
+    if stage:
+        r = op_s3_campaign_call({'name': 'campaign_ensure_chapter',
+                                 'args': [int(stage.split('-')[0])], 'allow_actions': True})
+        steps.append({'step': 'ensure_chapter', 'ms': r.get('ms'), 'error': r.get('error')})
+    r = (op_s3_campaign_call({'name': 'campaign_get_entrance', 'args': [stage],
+                              'store': 'ENTRANCE', 'allow_actions': True})
+         if not (steps and steps[-1].get('error')) else {'error': 'skipped'})
+    steps.append({'step': 'get_entrance', 'ms': r.get('ms'), 'error': r.get('error')})
+    if not r.get('error'):
+        r = op_s3_campaign_call({'name': 'enter_map', 'args': ['@ENTRANCE', 'normal'],
+                                 'allow_actions': True})
+        steps.append({'step': 'enter_map', 'ms': r.get('ms'), 'error': r.get('error')})
+    if not steps[-1].get('error'):
+        r = op_s3_campaign_call({'name': 'map_init', 'args': ['@MAP'], 'allow_actions': True})
+        steps.append({'step': 'map_init', 'ms': r.get('ms'), 'error': r.get('error')})
+    for call in out['calls_in_order']:
+        if _t.time() - t_start > max_s:
+            steps.append({'step': call, 'skipped': '超过 max_seconds'})
+            break
+        r = op_s3_campaign_call({'name': call, 'allow_actions': True})
+        steps.append({'step': call, 'ms': r.get('ms'), 'error': r.get('error')})
+        if r.get('error'):
+            break
+    out['steps'] = steps
+    out['elapsed_s'] = round(_t.time() - t_start, 1)
+    out['stopped_early'] = bool(steps and steps[-1].get('error'))
+    return out
+
+
 def _map_config():
     """S2 需要上游配置（`DETECTION_BACKEND` 等决定用 Homography 还是 Perspective 后端）。
     做法与 cached_rule_check 一致：用上游自己的 AzurLaneConfig，不自己造配置层。"""
@@ -2062,6 +2164,7 @@ OPS = {
     'page_positive_control': op_page_positive_control,
     'rule_positive_control': op_rule_positive_control,
     'map_detection_assets': op_map_detection_assets,
+    's3_run_plan': op_s3_run_plan,
     's3_campaign_init': op_s3_campaign_init,
     's3_campaign_info': op_s3_campaign_info,
     's3_campaign_call': op_s3_campaign_call,

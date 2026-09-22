@@ -395,3 +395,53 @@ BATTLE       battle_default                      43827.2 ms   err=None
 点「撤退」→ 确认 → `page_campaign`，`is_in_map=False` ✓。
 整夜执行**全程在真实账号上**：耗油仅"进入 2-1 一次"（约 10 点，油量 24831 → 无战斗内额外消耗），
 周回/自律全程关闭（上游配置键设定并读回确认），无失控循环。
+
+## ✅✅ 计划执行器跑通：2-1 完整计划 8/9 步成功（含两场真实战斗 + BOSS）
+
+新增 op `s3_run_plan`：按关卡 IR 的**计划顺序**执行多个上游调用（`dry_run` 默认 true 可离线校验；
+真跑需 `allow_actions=true`；`max_seconds` 硬上限；任一步报错立即停）。
+
+2-1 的 IR 计划（dry-run 读出，与 C# `BattlePlanRunner` 同序）：
+
+```
+battle_0  complete=True   ['clear_all_mystery', 'battle_default']
+battle_2  complete=False  ['clear_all_mystery', 'fleet_boss.clear_boss',
+                           'check_accessibility', 'battle_default']
+```
+
+真跑实测（`max_seconds=420`）：
+
+| 步骤 | 耗时 | 结果 |
+| --- | --- | --- |
+| `ensure_chapter` | 154.7 ms | ✅ |
+| `get_entrance` | 0.0 ms | ✅ |
+| `enter_map` | 7191.3 ms | ✅ 进图 |
+| `map_init` | 2103.3 ms | ✅ 图内初始化 |
+| `clear_all_mystery` | 5118.6 ms | ✅ |
+| **`battle_default`** | **35500.0 ms** | ✅ **真实战斗** |
+| `clear_all_mystery` | 0.0 ms | ✅ |
+| **`fleet_boss.clear_boss`** | **4304.4 ms** | ✅ **BOSS 战** |
+| `check_accessibility` | 0.0 ms | ❌ 见下 |
+
+**总耗时 54.4 s，9 步中 8 步成功**；收尾撤退 → `page_campaign` ✓。
+
+### 新发现（S3 的下一步工作项）
+
+**计划调用需要参数**：IR 只导出了**调用名**（`calls: ['check_accessibility', ...]`），
+而 `Fleet.check_accessibility()` 需要一个位置参数 → 报
+`TypeError: missing 1 required positional argument`。
+
+=> 所以 S3 的"计划解释器"还缺一块：**调用的参数/元数据**。
+候选做法：① 导出器补采实参（若源码里是常量可静态求值）；② 为少数需要参数的调用写适配元数据
+（`check_accessibility(grid)` 之类）；③ 这类调用干脆回落到"由上游自己的 `run()` 负责"。
+
+### 整夜的执行清单（自主，用户授权"自行择优"）
+
+1. 撤出不可用的 1-1（上游检测器不支持单行小图）；
+2. 新增 `s3_preflight.py`：开跑前自动检查 6 项，含**图内帧可识别性**（真跑前就拦住了 1-1）；
+3. 2-1 上跑通"进图 → 图内初始化 → 真实战斗"（5 次 `battle_default`，全无错）；
+4. 新增 `s3_run_plan` 并跑通 2-1 的完整计划（8/9 步，含 BOSS 战）；
+5. 收尾回干净状态。
+
+**账号影响**：进入 2-1 两次（每次约 10 油，油量 24831 量级）；周回/自律全程关闭
+（上游配置键设定并读回确认）；无失控循环（每步有上限、出错即停）；两次都以撤退收尾。
