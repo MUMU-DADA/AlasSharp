@@ -1543,3 +1543,37 @@ WARNING ScriptError, No combat executed, Withdrawing    ← 地图打完 → 自
 | 补充 | 漏调 `handle_map_fleet_lock`（上游 `run()` 里有）| 已补（`KeyError: ()` 与它无关，但顺序对齐了）|
 
 **舰队**：`Using fleet: [3, 6, 0]`（1 队=舰队 3、2 队=舰队 6，按用户规则）
+
+
+## ❌ 重大更正：上一节"完整清图走通 campaign_end=True"是**误读**（用户当场否证）
+
+**用户实测反馈**："狗屁 根本没有打完"、"打一半自己点撤退了" —— **完全正确**，我错了。
+
+**代码铁证**（`campaign_base.py:94-117`）：
+
+```python
+def execute_a_battle(self):
+    for _ in range(10):
+        result = self.battle_function()      # 章节战斗函数
+        ...
+    if not result:
+        logger.warning('ScriptError, No combat executed, Withdrawing')
+        self.withdraw()                      # ★ 10 次都没打出结果 -> **自己撤退**
+    return result
+```
+
+**所以那次运行的真相**：`execute_a_battle` 连续 10 次没能执行到战斗 ✗
+→ **上游自己点了撤退** ✗ → 而 `withdraw()` **抛的正是 `CampaignEnd`** ✗
+→ 我看到的 `campaign_end=True` **是"撤退"，不是"清完"** ✗✗
+
+**我的两处错误**：
+1. 把 `CampaignEnd` 当作唯一含义的"清图信号" ✗ —— 它至少有三种来源：
+   `enemy_searching.py:39`（"In stage."= 已在关卡中）、`withdraw()`（放弃退出）、
+   以及 `auto_search_combat` / `gems_farming` 等多处 ✗
+2. **我把"Withdrawing"这条日志解释成"自然收尾"** ✗ —— 证据就在眼前，我读反了 ✗
+
+**结论**：`campaign_end=True` **不能**作为"清图"的判据 ✗
+**正确的判据应为**：循环结束后读上游的 `map_clear_percentage`（需 == 100）✓，
+或区分 `CampaignEnd` 的具体来源（`In stage.` / withdraw / 真正的清图路径）✗
+
+**待办**：实现"清图 vs 撤退"的判别，并在结果里返回 `map_clear_percentage` 与结束原因 ✓
