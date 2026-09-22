@@ -867,6 +867,65 @@ def op_task_schedule(args):
     return out
 
 
+def op_periodic_plan(args):
+    """周期任务的**执行前勘察**（只读）：上游接到任务名后会去跑哪个类。
+
+    为什么先做这个（`docs/tasks.md` 第九节之后的动作半边）：周期任务的动作要真机，而且
+    科研/建造/委托这类会**消耗账号资源**，不能无人值守乱跑。但"跑 X 会发生什么"是可查的 ——
+    上游把任务名到执行者的映射写在 `alas.py` 的同名方法里：
+
+        def commission(self):
+            from module.commission.commission import Commission
+            Commission(config=self.config, device=self.device).run()
+
+    本 op 用 **AST 读那一段**（不 import、不实例化、不碰设备），把"哪个模块、哪个类、
+    构造时传什么"如实报出来。这样在决定要不要真跑之前，先能看清它是谁。
+
+    **只读纪律**：不 import 目标模块、不构造对象、不调用 run —— 真正的执行属于另一个 op，
+    且必须带显式授权。
+    """
+    task = str(args.get('task') or '').strip()
+    if not task:
+        return {'error': '缺少 task（上游任务名，如 commission / research）'}
+    alas_py = os.path.join(FORK, 'alas.py')
+    if not os.path.exists(alas_py):
+        return {'error': f'找不到上游 alas.py: {alas_py}'}
+    import ast
+    with open(alas_py, encoding='utf-8') as stream:
+        tree = ast.parse(stream.read())
+    method = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == task:
+            method = node
+            break
+    if method is None:
+        return {'task': task, 'found': False,
+                'error': f'alas.py 里没有名为 {task} 的方法（任务名是否正确？）'}
+    imports, constructed = [], []
+    for node in ast.walk(method):
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ''
+            for alias in node.names:
+                imports.append(f'from {module} import {alias.name}')
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id[:1].isupper():
+                constructed.append(func.id)
+            elif isinstance(func, ast.Attribute):
+                constructed.append(func.attr)
+    return {
+        'task': task,
+        'found': True,
+        'source': alas_py,
+        'lineno': method.lineno,
+        'imports': imports,
+        'calls': sorted(set(constructed)),
+        'calls_run': any(isinstance(n, ast.Attribute) and n.attr == 'run'
+                         for n in ast.walk(method)),
+        'note': '只报"会去跑什么"，不 import、不实例化、不执行；真跑属于另一个需要显式授权的 op',
+    }
+
+
 def _asset_id_map():
     """id(Button 对象) -> '子模块/资产名'，实时扫描已导入的 module.*.assets。
 
@@ -2930,6 +2989,7 @@ OPS = {
     'account_state': op_account_state,
     'task_catalog': op_task_catalog,
     'task_schedule': op_task_schedule,
+    'periodic_plan': op_periodic_plan,
     'ui_page_graph': op_ui_page_graph,
     'cached_rule_check': op_cached_rule_check,
     'page_positive_control': op_page_positive_control,
