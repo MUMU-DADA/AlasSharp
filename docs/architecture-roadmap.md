@@ -141,6 +141,19 @@
 
 阶段门槛：前端可查看任务状态和证据、停止任务、区分成功与撤退，并能在没有设备时运行 dry-run；UI 变更不改变底层上游调用链。
 
+**状态：数据面完成（四条门槛都有对应证据），界面未开始。**
+
+| 门槛 | 落地 | 验收 |
+| --- | --- | --- |
+| 查看任务状态与证据 | `alashub report --run/--artifacts`（单次运行事实 + 证据完整性 findings）、`alashub runs`（多次运行列表） | `verify_report.py`（含 3 个反例 + 同秒两次运行） |
+| 停止任务 | `queue` 支持 Ctrl-C 与 `--stop-file`；在**任务边界**生效，剩余任务如实记 `skipped`（不算失败，退出码仍 0） | `verify_stop.py` 7 项（含"无停止文件时全部跑完"的对照） |
+| **区分成功与撤退** | 任务结论 + `error_kind` 如实分类：撤退/战败/说不清 → `error_kind=none`（"跑了但没通关"），只有真的报错才 `upstream_error` | `verify_runtime.py` 的 `queue_withdrawn_is_failed_without_error_kind` |
+| 无设备 dry-run | 全套离线验收不需要设备；`device_smoke.py` 在没有设备时显式跳过 | `verify_all.py --docs-only`（1.7 分钟，0 步异常） |
+
+**界面本身还没做**：路线的意思是"前端读取结构化运行时模型"，而模型（`report --json`、`queue.json`、
+`state.json`、生成式文档）已经就绪；选型与实现在 R1/R2 稳定、且能真机演示之后再谈 —— 现在没有设备，
+做出来也无法验收。
+
 ### R5：宿主替换评估
 
 只有在 R0-R4 稳定后，才评估把某些识图或设备能力替换成 C#。替换必须以逐项对拍、性能基准、真实产品路径和可回退开关为前提；未达到全部证据时继续使用上游宿主，不为了“纯 C#”提前重写。
