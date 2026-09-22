@@ -1102,3 +1102,10 @@ S3 累计：**6 个关卡**端到端驱动（2-1/2-2/2-3/2-4/3-1/3-2），真实
 | 第 1 章（1-1…1-4）| ❌ 小图，上游检测器失效（1-1/1-2/1-4 实测，1-3 预测）|
 | 第 2 章（2-1…2-4）| ✅ **4/4 端到端跑通** |
 | 第 3 章（3-1…3-5）| 3-1 ✅ / 3-2 ✅；3-3/3-4/3-5 待验（3-5 为 tier A ready）|
+
+
+### 3-3 实测（复测，此前取入口失败过一次）
+
+本关实测：PLAN stage=3-3 tier=C elapsed=2.5s stopped_early=False ; ensure_chapter         ms=2148.6    ok ; abort_unfinished       ms=None      ok ; get_entrance           ms=1.1       err=CampaignNameError: ; battle_0               ms=None      ok ; AFTER pages=['page_campaign']
+
+意义：第 3 章剩余关卡（3-3/3-4/3-5）的第一个数据点。
