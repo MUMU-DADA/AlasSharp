@@ -22,7 +22,7 @@ sys.path.insert(0, HERE)
 DATA = os.path.join(ROOT, 'data')
 DOCS = os.path.join(ROOT, 'docs')
 FORK = os.environ.get('ALAS_FORK') or os.path.normpath(os.path.join(
-    ROOT, '..', 'my fork project', 'AzurLaneAutoScript'))
+    ROOT, '.runtime', 'engine'))
 
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')

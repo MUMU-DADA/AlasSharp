@@ -28,7 +28,7 @@ from collections import Counter
 
 FORK_DEFAULT = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), '..', '..',
-    'my fork project', 'AzurLaneAutoScript'))
+    'source project', 'AzurLaneAutoScript'))
 
 sys.path.insert(0, FORK_DEFAULT)
 os.chdir(FORK_DEFAULT)

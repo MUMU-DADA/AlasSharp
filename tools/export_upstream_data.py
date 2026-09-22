@@ -741,7 +741,7 @@ def git_rev(repo: str):
 def main():
     ap = argparse.ArgumentParser(description='导出上游数据契约为 JSON')
     default_repo = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                '..', '..', 'my fork project', 'AzurLaneAutoScript')
+                                '..', '.runtime', 'engine')
     ap.add_argument('--repo', default=os.path.normpath(default_repo))
     ap.add_argument('--out', default=os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')))

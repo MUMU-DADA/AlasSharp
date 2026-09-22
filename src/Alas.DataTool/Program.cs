@@ -18,8 +18,8 @@ internal static class Program
                              "..", "..", "..", "..", "..", "data"));
         string repoDir = Environment.GetEnvironmentVariable("ALAS_REPO")
                          ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                             "..", "..", "..", "..", "..", "..",
-                             "my fork project", "AzurLaneAutoScript"));
+                             "..", "..", "..", "..", "..",
+                             ".runtime", "engine"));
 
         string command = args.Length > 0 ? args[0] : "verify";
         string? fixture = null;

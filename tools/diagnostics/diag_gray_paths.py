@@ -7,7 +7,7 @@ import sys
 import cv2
 import numpy as np
 
-FORK = r"<developer-home>\source\ALAS fork project\my fork project\AzurLaneAutoScript"
+FORK = r"<developer-home>\source\ALAS fork project\csharp\.runtime\engine"
 os.chdir(FORK)
 sys.path.insert(0, FORK)
 import module.device.pkg_resources  # noqa: F401

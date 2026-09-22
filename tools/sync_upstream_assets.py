@@ -216,7 +216,7 @@ def check(source, dest, strict_drift=False):
 def main():
     ap = argparse.ArgumentParser(description='上游静态资源快照同步/校验')
     ap.add_argument('--source', default=os.path.normpath(os.path.join(
-        CSHARP_ROOT, '..', 'my fork project', 'AzurLaneAutoScript')))
+        CSHARP_ROOT, '.runtime', 'engine')))
     ap.add_argument('--dest', default=os.path.join(CSHARP_ROOT, 'vendor', 'upstream'))
     ap.add_argument('--check', action='store_true', help='只校验，不写文件')
     ap.add_argument('--no-prune', action='store_true', help='不清理上游已删除的文件')

@@ -12,7 +12,7 @@ from collections import Counter
 
 from PIL import Image
 
-FORK = r"<developer-home>\source\ALAS fork project\my fork project\AzurLaneAutoScript"
+FORK = r"<developer-home>\source\ALAS fork project\csharp\.runtime\engine"
 assets = json.load(open(r"<developer-home>\source\ALAS fork project\csharp\data\assets.json",
                         encoding='utf-8'))['assets']
 

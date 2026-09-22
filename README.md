@@ -185,7 +185,7 @@ docs/                   验收记录（如 page-verification.md：页面识别�
 需要：.NET 8 SDK、一份 ALAS 仓库（含 Python 环境）。
 
 ```powershell
-$alas = "..\my fork project\AzurLaneAutoScript"   # 你的 ALAS 仓库路径
+$alas = "..\source project\AzurLaneAutoScript"   # 你的 ALAS 仓库路径
 $py   = "$alas\.venv\Scripts\python.exe"
 
 # 1) 导出上游数据契约

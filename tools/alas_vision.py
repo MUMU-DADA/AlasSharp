@@ -29,7 +29,7 @@ import time
 import traceback
 
 FORK = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                     '..', '..', 'my fork project', 'AzurLaneAutoScript'))
+                                     '..', '.runtime', 'engine'))
 if FORK not in sys.path:
     sys.path.insert(0, FORK)
 os.chdir(FORK)
@@ -631,7 +631,9 @@ def op_ocr(args):
     from module.ocr.ocr import Ocr
     a = args['area']
     btn = Button(area=tuple(a), color=(), button=tuple(a), name=args.get('name', 'probe'))
-    ocr = Ocr(btn, lang=args.get('lang', 'azur_lane'), letter=args.get('letter'))
+    # letter 必须是**可迭代对象**：上游 Ocr 会按字母表过滤，传 None 会在遍历时抛
+    # `TypeError: 'NoneType' object is not iterable`（实测踩过，且不报"参数错"而报遍历错，很误导）。
+    ocr = Ocr(btn, lang=args.get('lang', 'azur_lane'), letter=args.get('letter') or ())
     return {'text': ocr.ocr(image)}
 
 

@@ -511,7 +511,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `war_archives_20230803_cn/sp3.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D4,D6,F2,F4,F6|spawnpts=D2,F2|spawn=6|battles=6` |
 | `event_20201029_cn/sp5.json` | ✅ 匹配 | ✅ | `8,9|9x10|rows=10|tokens=90|weight=4500|camera=D3,D6,E6|spawnpts=D7|spawn=7|battles=7` |
 | `event_20220414_cn/c2.json` | ✅ 匹配 | ✅ | `9,5|10x6|rows=6|tokens=60|weight=3000|camera=D2,D4,G2,G4|spawnpts=D2,D4|spawn=5|battles=5` |
-| `event_20200227_cn/d3.json` | ⏭️ ImportError: cannot import name 'D3' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\my fork project\AzurLaneAutoScript\module\campaign\assets.py) | — | `7,6|8x7|rows=7|tokens=56|weight=560|camera=D3,D5,E5|spawnpts=|spawn=7|battles=7` |
+| `event_20200227_cn/d3.json` | ⏭️ ImportError: cannot import name 'D3' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\source project\AzurLaneAutoScript\module\campaign\assets.py) | — | `7,6|8x7|rows=7|tokens=56|weight=560|camera=D3,D5,E5|spawnpts=|spawn=7|battles=7` |
 | `war_archives_20210422_cn/a1.json` | ✅ 匹配 | ✅ | `8,6|9x7|rows=7|tokens=63|weight=3150|camera=D3,D5,F3,F5|spawnpts=D5|spawn=5|battles=5` |
 | `event_20230525_cn/ht2.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D3,D6,G3,G6|spawnpts=D6|spawn=5|battles=5` |
 | `war_archives_20230525_cn/ht3.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D2,D6,G2,G6|spawnpts=D6,G6|spawn=6|battles=6` |
@@ -1144,7 +1144,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20200917_cn/t5.json` | ✅ 匹配 | ✅ | `8,8|9x9|rows=9|tokens=81|weight=4050|camera=D3,D5,D7,F3,F5,F7|spawnpts=D3,F7|spawn=6|battles=6` |
 | `event_20250814_cn/ht2.json` | ✅ 匹配 | ✅ | `6,9|7x10|rows=10|tokens=70|weight=3500|camera=C5,C8|spawnpts=C2|spawn=5|battles=5` |
 | `event_20210225_tw/c2.json` | ✅ 匹配 | ✅ | `6,6|7x7|rows=7|tokens=49|weight=2450|camera=D2,D5|spawnpts=D2,D5|spawn=5|battles=5` |
-| `event_20200227_cn/c2.json` | ⏭️ ImportError: cannot import name 'C2' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\my fork project\AzurLaneAutoScript\module\campaign\assets.py) | — | `6,6|7x7|rows=7|tokens=49|weight=490|camera=C3,D5|spawnpts=|spawn=5|battles=5` |
+| `event_20200227_cn/c2.json` | ⏭️ ImportError: cannot import name 'C2' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\source project\AzurLaneAutoScript\module\campaign\assets.py) | — | `6,6|7x7|rows=7|tokens=49|weight=490|camera=C3,D5|spawnpts=|spawn=5|battles=5` |
 | `event_20200723_cn/c3.json` | ✅ 匹配 | ✅ | `7,7|8x8|rows=8|tokens=64|weight=640|camera=D2,D6,E2,E6|spawnpts=D6|spawn=6|battles=6` |
 | `campaign_main/campaign_4_4.json` | ✅ 匹配 | ✅ | `7,5|8x6|rows=6|tokens=48|weight=1900|camera=D2,D4|spawnpts=E2,E4|spawn=5|battles=5` |
 | `event_20250724_cn/t1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D6|spawn=5|battles=5` |
@@ -1237,7 +1237,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 | `event_20200507_cn/sp2.json` | ✅ 匹配 | ✅ | `10,5|11x6|rows=6|tokens=66|weight=0|camera=D2,D4,H2,H4|spawnpts=|spawn=5|battles=5` |
 | `war_archives_20230803_cn/sp1.json` | ✅ 匹配 | ✅ | `8,5|9x6|rows=6|tokens=54|weight=2700|camera=F2,F4|spawnpts=D2,D4|spawn=5|battles=5` |
 | `war_archives_20211229_cn/b3.json` | ✅ 匹配 | ✅ | `11,5|12x6|rows=6|tokens=72|weight=3600|camera=E3,G4,I3|spawnpts=D4|spawn=6|battles=6` |
-| `event_20200312_cn/sp3.json` | ⏭️ ImportError: cannot import name 'EVENT_20200312CN_SP3' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\my fork project\AzurLaneAutoScript\module\campaign\assets.py) | — | `8,5|9x6|rows=6|tokens=54|weight=540|camera=D2,D4,F2,F4|spawnpts=|spawn=6|battles=6` |
+| `event_20200312_cn/sp3.json` | ⏭️ ImportError: cannot import name 'EVENT_20200312CN_SP3' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\source project\AzurLaneAutoScript\module\campaign\assets.py) | — | `8,5|9x6|rows=6|tokens=54|weight=540|camera=D2,D4,F2,F4|spawnpts=|spawn=6|battles=6` |
 | `event_20241219_cn/a1.json` | ✅ 匹配 | ✅ | `8,7|9x8|rows=8|tokens=72|weight=3600|camera=D2,D6,F2,F6|spawnpts=D6|spawn=5|battles=5` |
 | `war_archives_20230223_cn/b2.json` | ✅ 匹配 | ✅ | `9,7|10x8|rows=8|tokens=80|weight=4000|camera=D2,D6|spawnpts=F3|spawn=6|battles=6` |
 | `event_20210429_tw/b1.json` | ✅ 匹配 | ✅ | `9,6|10x7|rows=7|tokens=70|weight=3500|camera=E2,E5,G2,G5|spawnpts=G5|spawn=6|battles=6` |
@@ -1483,7 +1483,7 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 - `event_20221124_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
 - `campaign_main/campaign_16_base_submarine.json`：AttributeError: module 'campaign.campaign_main.campaign_16_base_submarine' has no attribute 'MAP'
 - `war_archives_20230525_cn/config_base.json`：基类模块（无 MAP 对象），按设计跳过
-- `event_20200227_cn/d3.json`：ImportError: cannot import name 'D3' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\my fork project\AzurLaneAutoScript\module\campaign\assets.py)
+- `event_20200227_cn/d3.json`：ImportError: cannot import name 'D3' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\source project\AzurLaneAutoScript\module\campaign\assets.py)
 - `campaign_hard/campaign_hard.json`：AttributeError: module 'campaign.campaign_hard.campaign_hard' has no attribute 'MAP'
 - `war_archives_20200917_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
 - `war_archives_20190911_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
@@ -1515,13 +1515,13 @@ IR 文件 1437 个，其中 `*_base.json` **基类模块 63 个（不是章节�
 - `event_20240521_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
 - `campaign_main/campaign_2_base.json`：基类模块（无 MAP 对象），按设计跳过
 - `war_archives_20220224_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
-- `event_20200227_cn/c2.json`：ImportError: cannot import name 'C2' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\my fork project\AzurLaneAutoScript\module\campaign\assets.py)
+- `event_20200227_cn/c2.json`：ImportError: cannot import name 'C2' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\source project\AzurLaneAutoScript\module\campaign\assets.py)
 - `campaign_sos/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
 - `event_20230817_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
 - `war_archives_20230803_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
 - `event_20250724_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
 - `event_20220428_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
-- `event_20200312_cn/sp3.json`：ImportError: cannot import name 'EVENT_20200312CN_SP3' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\my fork project\AzurLaneAutoScript\module\campaign\assets.py)
+- `event_20200312_cn/sp3.json`：ImportError: cannot import name 'EVENT_20200312CN_SP3' from 'module.campaign.assets' (<developer-home>\source\ALAS fork project\source project\AzurLaneAutoScript\module\campaign\assets.py)
 - `event_20231026_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
 - `war_archives_20210325_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过
 - `event_20210325_cn/campaign_base.json`：基类模块（无 MAP 对象），按设计跳过

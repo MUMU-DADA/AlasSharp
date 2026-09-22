@@ -33,7 +33,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..'))
-FORK = os.path.normpath(os.path.join(ROOT, '..', 'my fork project', 'AzurLaneAutoScript'))
+FORK = os.path.normpath(os.path.join(ROOT, '.runtime', 'engine'))
 EXPORT = os.path.join(HERE, 'export_upstream_data.py')
 ASSETS = os.path.join(HERE, 'sync_upstream_assets.py')
 DIAG = os.path.join(HERE, 'diagnostics')

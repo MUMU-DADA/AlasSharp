@@ -130,7 +130,7 @@ def main():
     ap = argparse.ArgumentParser()
     here = os.path.dirname(os.path.abspath(__file__))
     ap.add_argument('--repo', default=os.path.normpath(
-        os.path.join(here, '..', '..', 'my fork project', 'AzurLaneAutoScript')))
+        os.path.join(here, '..', '.runtime', 'engine')))
     ap.add_argument('--data', default=os.path.normpath(os.path.join(here, '..', 'data')))
     args = ap.parse_args()
     r = check(args.repo, args.data)

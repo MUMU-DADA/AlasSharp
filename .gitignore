@@ -20,3 +20,6 @@ __pycache__/
 .vs/
 .idea/
 *.user
+
+# 固定在本仓库内的运行时（Python 3.14 环境 / OCR 模型 / 测试配置），不进版本库
+.runtime/
