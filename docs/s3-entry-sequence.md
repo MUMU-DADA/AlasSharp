@@ -1109,3 +1109,29 @@ S3 累计：**6 个关卡**端到端驱动（2-1/2-2/2-3/2-4/3-1/3-2），真实
 本关实测：PLAN stage=3-3 tier=C elapsed=2.5s stopped_early=False ; ensure_chapter         ms=2148.6    ok ; abort_unfinished       ms=None      ok ; get_entrance           ms=1.1       err=CampaignNameError: ; battle_0               ms=None      ok ; AFTER pages=['page_campaign']
 
 意义：第 3 章剩余关卡（3-3/3-4/3-5）的第一个数据点。
+
+**3-3 的结论**：`campaign_get_entrance('3-3')` 抛 **`CampaignNameError`（消息为空）** ——
+上游在**当前章节的关卡表**里找不到 3-3。注意这与前面几种失败**都不同**：
+
+| 现象 | 含义 |
+| --- | --- |
+| 入口为空 Button `()` | 该关节点未识别（或章节未切换到位）|
+| `CampaignNameError` | **该章节的关卡表里没有这个名字** —— 本账号进不去 |
+| `GameStuckError` | 卡在某个界面（如"正在攻略中"弹窗）|
+
+=> **3-3/3-4/3-5 在本账号上不可进入**（IR 里有它们，但游戏侧没有对应节点）。
+
+### 📋 批量范围最终表（本账号，全部有实测依据）
+
+| 范围 | 结果 | 依据 |
+| --- | --- | --- |
+| 1-1 / 1-2 / 1-4 | ❌ 图内检测失败 | `map_init` 实测（`No vertical line` / `Vanish point`）|
+| 1-3 | ⚠️ 预测不支持（未实测）| 18 格，同族 |
+| **2-1 / 2-2 / 2-3 / 2-4** | ✅ **端到端跑通** | `s3_run_plan` 实测，战斗全 `err=None` |
+| **3-1 / 3-2** | ✅ **端到端跑通** | 同上 |
+| 3-3 | ❌ 不可进入 | `CampaignNameError` 实测 |
+| 3-4 / 3-5 | ❌ 推测同 3-3 | 同章、名字不在关卡表内（未逐个实测）|
+
+**即：本账号可用且已验证的关卡 = 第 2 章全 4 关 + 3-1 / 3-2，共 6 关，全部已端到端跑通。**
+这既解释了"为什么只剩这几关可做"，也给"换账号/推进主线后再扩"留了明确的重跑路径：
+`tools/diagnostics/s3_plan_coverage.py` + `s3_preflight.py` 一句话就能重新出一份清单。
