@@ -1324,6 +1324,46 @@ def apply_fleet_bar_compat():
         pass
 
 
+#: `IN_MAP`（地图内判据）在本客户端实测需要的相似度上限。
+#: 上游默认 10，而本客户端真实地图帧的相似度落在 3.33 ~ 10.33（跨过 10），
+#: 非地图帧最近也在 83 以上 —— 判别间隔极大，放宽到 20 仍离非地图帧很远。
+_IN_MAP_THRESHOLD = 20.0
+
+
+def apply_in_map_threshold_compat():
+    """只放宽 `IN_MAP` 这一个素材的判据阈值 —— 本客户端「撤退」按钮的颜色落在上游阈值外侧。
+
+    **证据（2026-09-23 真机窗口，根因实测）**：
+
+      * 真机 1-1 卡死时存下的现场帧 `data/_live_enter_map_stall.png` 里，游戏**已经在地图内**
+        （舰队已就位、右下角「撤退」按钮在屏），但 `IN_MAP` 颜色比对相似度 = **10.19**，
+        上游 `appear(button, threshold=10)` 要求 < 10 → 判"不在图内"。
+      * 上游 `enter_map()` 的等待集里就含 `IN_MAP`，于是它一直等到 `stuck_record_check`
+        抛 `GameStuckError: Wait too long`（实测 62s，见 `docs/device-stall-in-map.md`）。
+      * 同一客户端的地图帧上，该按钮相似度分布为 3.33 / 10.06 / 10.19 / 10.33；
+        非地图帧最近的在 83 以上（本批 92.07，另一批 83.11）。**阈值 10 恰好卡在真实取值带里。**
+      * 为什么不改颜色常量：另一个真实取值 (210,124,124)（相似度 3.33 那类帧）换个常量后
+        会反过来失败 —— 只有放宽阈值能同时覆盖两类真实帧。
+
+    只动这一个素材的 `appear_on` 阈值，**不改全局 `appear` 语义**，也不放宽其它按钮。
+    复现：`python tools/diagnostics/verify_account_state.py`（含逐帧相似度留证）。
+    """
+    if _state.get('in_map_compat'):
+        return
+    try:
+        button = _resolve('handler/IN_MAP')
+    except Exception:
+        return
+    original = button.appear_on
+
+    def appear_on(image, threshold=10):
+        # 只放宽、不收紧：调用方传了更大的阈值时用调用方的。
+        return original(image, threshold=max(float(threshold), _IN_MAP_THRESHOLD))
+
+    button.appear_on = appear_on
+    _state['in_map_compat'] = True
+
+
 def apply_boss_icon_color_compat(enabled=False):
     """**可选兜底**：给 BOSS 判据补一条"蓝色眼睛"判据。**默认关闭**。
 
@@ -1459,6 +1499,7 @@ def op_s3_campaign_init(args):
     apply_fleet_bar_compat()
     apply_auto_search_skip_compat()
     apply_boss_icon_color_compat()
+    apply_in_map_threshold_compat()
     # 两个战斗场景的选择：默认（False）= BOSS 一刷出来就打 BOSS；
     # clear_all=True = 先清光小怪再打 BOSS。按次开关，每次 init 都要显式设回来。
     apply_clear_all_override(bool(args.get('clear_all', False)))
@@ -2371,6 +2412,7 @@ def op_map_grids(args):
     # 报告**生产行为**：带上 BOSS 眼睛颜色垫片，所以 `is_boss` 这一列就是修好之后的结果；
     # 逐色的 score_* 则保留原样，用来判断阈值余量。
     apply_boss_icon_color_compat()
+    apply_in_map_threshold_compat()
     cfg = _map_config(args.get('chapter'))
     v = view_mod.View(cfg)
     v.load(image)
