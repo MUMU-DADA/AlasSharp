@@ -81,6 +81,25 @@ if self.appear(page.check_button, offset=offset, interval=5):
 （`ui/X` 与上游声明的 `ui_white/X_WHITE`，按可解析性过滤），**按实测分择优**。
 这一条是刻意的偏离，理由是真机证据。
 
+## 未建模画面的自救（按返回键）
+
+上游页面图只覆盖 53 个 Page，而游戏里到处是**不在图里的浮层**：角色详情、个人信息、
+舰队编辑……实测在船坞长按舰船卡片就会进「角色详情」，此时没有任何页面规则命中。
+
+导航器一开始只会报错退出 —— 卡死。现在多一条最小可靠的自救：**按一次返回键**
+（`UnmodeledRecoveryBudget`，默认 2 次，不占跳数预算）。
+
+实测（正是上面那个场景）：停在角色详情页时
+
+```
+[path    ] page_dock: page_main -> page_dock
+[hop 0   ] on= click <BACK 自救> score=0.0000(低置信) at (0,0) -> page_dock
+[result  ] success=True final=page_dock
+```
+
+`[hop 0]` 那一行标记为低置信、分数 0，就是为了让人一眼看出"这一步不是点击，是自救"，
+而不是把它混进正常的跳数里假装成功。
+
 ## 复现
 
 ```powershell

@@ -94,9 +94,38 @@ public sealed class DeviceController
     public void Click(int x, int y)
         => _adb.Run(Args("shell", "input", "tap", x.ToString(), y.ToString()));
 
+    /// <summary>
+    /// 长按。对应上游 <c>Device.long_click(button, duration=(1, 1.2))</c>：adb 后端的实现就是
+    /// `swipe_adb((x,y), (x,y), duration)` —— **同点滑动**，时长 1~1.2 秒随机。
+    /// 注意上游对长按**不**做下面那个 ×2.5 的加长（只有 <see cref="SwipeUpstream"/> 才有）。
+    /// </summary>
+    public void LongClick(int x, int y, int durationMs = 1100)
+        => _adb.Run(Args("shell", "input", "swipe", x.ToString(), y.ToString(),
+                         x.ToString(), y.ToString(), durationMs.ToString()));
+
+    /// <summary>
+    /// 按键事件。上游用它发返回键：`adb_shell(['input', 'keyevent', '4'])`
+    /// （见 module/equipment/equipment_code.py）；KEYCODE_BACK 的编号就是 4。
+    /// </summary>
+    public void Keyevent(string key)
+        => _adb.Run(Args("shell", "input", "keyevent", key));
+
+    /// <summary>返回键（KEYCODE_BACK = 4）。</summary>
+    public void Back() => Keyevent("4");
+
+    /// <summary>线级滑动：durationMs 直接就是这个 adb 命令收到的毫秒数。</summary>
     public void Swipe(int x1, int y1, int x2, int y2, int durationMs = 100)
         => _adb.Run(Args("shell", "input", "swipe", x1.ToString(), y1.ToString(),
                          x2.ToString(), y2.ToString(), durationMs.ToString()));
+
+    /// <summary>
+    /// 与上游 <c>Device.swipe(p1, p2, duration=(0.1, 0.2))</c> 对齐的滑动：入参是**秒**，
+    /// 且 adb 后端会把时长 **×2.5**。上游注释原话是 "ADB needs to be slow, or swipe
+    /// doesn't work" —— 照抄这个系数，否则同样的滑动在真机上会滑不到位，
+    /// 表现为"识别正常但翻页翻不动"这类难查的问题。
+    /// </summary>
+    public void SwipeUpstream(int x1, int y1, int x2, int y2, double durationSeconds = 0.15)
+        => Swipe(x1, y1, x2, y2, (int)(durationSeconds * 2.5 * 1000));
 
     public AdbResult Shell(params string[] command)
         => _adb.Run(Args(new[] { "shell" }.Concat(command).ToArray()));

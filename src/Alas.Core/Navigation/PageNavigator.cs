@@ -2,12 +2,14 @@ using Alas.Vision;
 
 namespace Alas.Navigation;
 
-/// <summary>导航需要的设备能力（只用截图与点击，便于用假设备做离线测试）。</summary>
+/// <summary>导航需要的设备能力（截图、点击、返回键，便于用假设备做离线测试）。</summary>
 public interface INavigationDevice
 {
     /// <summary>取一帧 PNG 字节（像素不跨语言边界，见 DeviceController）。</summary>
     byte[] Screenshot();
     void Click(int x, int y);
+    /// <summary>返回键（KEYCODE_BACK = 4）：未建模画面的自救手段。</summary>
+    void Back();
 }
 
 /// <summary>把真实设备接到导航器上。</summary>
@@ -20,6 +22,8 @@ public sealed class DeviceNavigationAdapter : INavigationDevice
     public byte[] Screenshot() => _device.ScreenshotBytes();
 
     public void Click(int x, int y) => _device.Click(x, y);
+
+    public void Back() => _device.Back();
 }
 
 /// <summary>
@@ -185,6 +189,16 @@ public sealed class PageNavigator
 
     public int MaxHops { get; init; } = 8;
 
+    /// <summary>
+    /// 一次导航里允许几次"未建模画面自救"（按返回键退出浮层）。
+    ///
+    /// 为什么必须有：上游的页面图只覆盖 53 个 Page，而游戏里到处是**不在图里的浮层**
+    /// （角色详情、个人信息、舰队编辑…）。实测：在船坞长按舰船卡片会进角色详情页，
+    /// 此时没有任何页面规则命中，导航器若只会"报错退出"就卡死了 —— 上游靠
+    /// `ui_ensure`/`ui_additional` 那套兜底，我们这里用最朴素也最可靠的一招：按返回。
+    /// </summary>
+    public int UnmodeledRecoveryBudget { get; init; } = 2;
+
     /// <summary>取一帧并交给识图宿主，返回当前命中的页面集合。</summary>
     public PageCurrentResult Perceive()
     {
@@ -203,16 +217,38 @@ public sealed class PageNavigator
         // 当前画面若全都不在 distance 里，就是真的走不到（而不是距离 0）。
 
         var hops = new List<NavigationHop>();
+        int recoveries = 0, attempts = 0;
         PageCurrentResult current = Perceive();
-        for (int hop = 1; hop <= MaxHops; hop++)
+        // 用 while 而不是 for：自救（按返回）不消耗跳数预算，但要单独限次，
+        // 否则一个"退回又被弹回"的浮层能把预算烧光。
+        while (true)
         {
+            if (++attempts > MaxHops + UnmodeledRecoveryBudget)
+                return new NavigationResult(false, target, current.Hit, hops,
+                    $"尝试次数超过上限（{MaxHops} 跳 + {UnmodeledRecoveryBudget} 次自救）");
             if (current.Hit.Contains(target))
                 return new NavigationResult(true, target, current.Hit, hops, null);
+            if (hops.Count >= MaxHops)
+                return new NavigationResult(false, target, current.Hit, hops,
+                    $"超过最大跳数 {MaxHops} 仍未到达");
 
             var reachable = current.Hit.Where(distance.ContainsKey).ToList();
             if (reachable.Count == 0)
+            {
+                if (recoveries < UnmodeledRecoveryBudget)
+                {
+                    recoveries++;
+                    _device.Back();
+                    Thread.Sleep(SettleMs);
+                    current = Perceive();
+                    hops.Add(new NavigationHop(0, Array.Empty<string>(), target,
+                                               "<BACK 自救>", 0, 0, 0, current.Hit, true));
+                    continue;
+                }
                 return new NavigationResult(false, target, current.Hit, hops,
-                    $"当前画面没有任何已建模页面（hit={string.Join(",", current.Hit)}）");
+                    $"当前画面没有任何已建模页面（hit={string.Join(",", current.Hit)}），"
+                    + $"且自救 {recoveries} 次仍无效");
+            }
             int here = reachable.Min(p => distance[p]);
 
             // 候选边：从当前所有命中页出发、且严格缩短到目标距离的边。
@@ -264,11 +300,9 @@ public sealed class PageNavigator
             _device.Click(point.Value.X, point.Value.Y);
             Thread.Sleep(SettleMs);
             current = Perceive();
-            hops.Add(new NavigationHop(hop, new[] { bestFrom! }, target, bestButton,
+            hops.Add(new NavigationHop(hops.Count + 1, new[] { bestFrom! }, target, bestButton,
                                        bestScore, point.Value.X, point.Value.Y,
                                        current.Hit, lowConfidence));
         }
-        return new NavigationResult(false, target, current.Hit, hops,
-            $"超过最大跳数 {MaxHops} 仍未到达");
     }
 }
