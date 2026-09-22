@@ -47,9 +47,16 @@ internal static class Program
             {
                 fixture ??= Path.Combine(dataDir, "fixtures", "imaging.json");
                 int limit = 200;
+                string mode = Environment.GetEnvironmentVariable("ALAS_VISION_MODE") ?? "worker";
                 for (int i = 1; i < args.Length - 1; i++)
+                {
                     if (args[i] == "--limit" && int.TryParse(args[i + 1], out int n)) limit = n;
-                return VisionCheck.Run(fixture, repoDir, limit);
+                    if (args[i] == "--mode") mode = args[i + 1];
+                }
+                // bin/Release/net8.0 -> csharp/tools
+                string toolsDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                    "..", "..", "..", "..", "..", "tools"));
+                return VisionCheck.Run(fixture, repoDir, toolsDir, limit, mode);
             }
 
             var catalog = UpstreamData.Catalog.Open(dataDir);

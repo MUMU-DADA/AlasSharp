@@ -77,20 +77,30 @@
 
 ### S1 · 识图桥接
 
-C# 驱动 worker 调用上游 Python 识图代码，与独立算出的真值比对：
+C# 驱动宿主调用上游 Python 识图代码，与独立算出的真值比对。
+**两种宿主（进程内 CPython / 进程外 worker）跑同一份 `alas_vision.handle_line()`，都通过验收**：
 
-| 项目 | 结果 |
-|---|---|
-| appear 判定 | 80 例**零不一致** |
-| 期望色解析（分服） | 零不一致 |
-| 调用异常 | 0 |
-| worker 冷启动 | 460 ms（Python + numpy + cv2） |
-| 截图加载 | 4.60 ms/次（含 PNG 解码） |
-| 单次 `appear_on` 往返 | 6.83 ms（**其中进程间通信 4.4 ms**） |
-| 批量 64 条一次往返 | 5.31 ms（worker 内部 0.93 ms） |
+| 项目 | 进程内 CPython | 进程外 worker |
+|---|---|---|
+| appear 判定（80 例） | **零不一致** | **零不一致** |
+| 期望色解析（分服） | 零不一致 | 零不一致 |
+| 调用异常 | 0 | 0 |
+| 冷启动 | 440 ms | 460 ms |
+| **协议栈单次往返** | **0.030 ms** | **0.099 ms** |
+| 宿主内实际计算 | 0.030 ms | 0.035 ms |
+| 截图加载（含 PNG 解码） | 5.5 ms | 5.5 ms |
 
-> 「进程间通信 4.4 ms」这一项就是**改用进程内 CPython 的收益**：worker 内部真正算一次
-> `appear_on` 只要 0.014 ms（0.93 ms / 64），而每帧要跑几十次判定，往返开销会成为主导。
+**关于性能的一处更正**：早期只测了「批量 64 条的总耗时」（5.3 ms），就推断
+「其中 4.4 ms 是进程间通信」。补了 ping 判别实验后发现**这个推断是错的** ——
+ping 在 Python 侧几乎不干活，它的往返耗时才是协议栈的真实成本：
+进程外 0.099 ms、进程内 0.030 ms。也就是说进程间通信只占 **0.07 ms**，不是 4.4 ms。
+
+进程内依然更快（3.3×），但收益在「每次调用的固定成本」上，不在「省掉 IPC」上。
+量级虽小，对每帧几十次判定仍有意义 —— 只是不能说成 4.4 ms。
+
+> 待查：单次 `appear_on` 在测试循环里实测 7~14 ms（波动），而其中的宿主内计算只有 0.03 ms。
+> 同一批素材走批量接口只要 0.12 ms/条。差异疑似来自测试循环每次都重新 `LoadScreenshot`
+> （冷数组首次访问），尚未定位。这关系到每帧预算，下一轮要查清。
 
 ### S1 参考实现（仅作证据）
 
@@ -148,7 +158,7 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | S0 数据契约 | 素材 + 关卡 IR → JSON，双向校验 | ✅ |
-| S1 识图桥接 | 进程内 CPython 调上游识图模块 | 🔵 进程外 worker 已验证；进程内待 Python.NET |
+| S1 识图桥接 | 识图不重写：进程内 CPython / 进程外 worker 直调上游模块 | ✅ 两种宿主双双验收 |
 | S2 地图识别 | 单应性变换 + 网格判定 | 待开始 |
 | S3 关卡引擎 | 120 方法契约 + 17 个引擎钩子 | 待开始 |
 | S4 任务域 | 大世界 / 岛屿 / 科研 / 活动… | 待开始 |
@@ -160,8 +170,10 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 
 - **NuGet / PyPI 均不通**（`SSL connection could not be established`）。离线还原见
   `NuGet.config.example`；离线包缓存里**没有 Python.NET**。
-- 因此 **S1 的进程内 CPython 尚未实现，也未验证**：`Python.Runtime.dll` 在本机完全不存在。
-  当前可运行的是进程外 worker 实现；两者共用同一套操作语义，换传输不影响上层。
+- 因此进程内嵌入**没有用 Python.NET**，而是直接 P/Invoke CPython 的 C API
+  （`python314.dll` 本机自带，用到的 8 个函数全部导出）。这条路的可行性已实测：
+  `alashub vision --mode inproc` 通过全部 80 例。
+- 若将来能装 Python.NET，可以只替换 `PythonHost` 的实现，`IVisionEngine` 之上的代码不动。
 - `dotnet build Alas.sln` 在受限沙箱内会失败（解决方案级 `Restore` 静默失败，0 错误 0 警告）。
   已验证可用的入口是**项目级**构建：`dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release`。
 - 本机 PowerShell 直接 `Invoke-WebRequest` 访问 GitHub / NuGet / PyPI 均 SSL 失败，

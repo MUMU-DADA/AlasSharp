@@ -71,27 +71,23 @@ public sealed class ScreenshotInfo
 }
 
 /// <summary>
-/// 识图引擎客户端：C# 侧**不实现任何图像算法**，只按 JSON 协议把请求发给
+/// 识图引擎客户端（**进程外**宿主）：C# 侧不实现任何图像算法，只按 JSON 协议把请求发给
 /// 运行上游 Python 代码的 worker（见 tools/vision_worker.py）。
 ///
-/// 为什么不让 C# 自己算：手工移植 cv2 已被实测证伪 —— OpenCV 会按模板/搜索区的尺寸比
-/// 切换相关算法，同一块内容在不同搜索区尺寸下得分不同（实测同位置 0.7487 vs 1.0000）。
-/// 逐位一致无法做到，也没有必要：上游代码本来就能跑。
+/// 与进程内宿主 <see cref="InProcessVisionEngine"/> 调的是同一份
+/// <c>alas_vision.handle_line()</c>，类型化接口由 <see cref="VisionEngineBase"/> 统一实现，
+/// 因此换宿主不影响上层。
+///
+/// 什么时候用哪个：进程内省掉每帧几十次的进程间往返（实测单次 6.83ms 里 4.38ms 是通信），
+/// 是目标形态；进程外则在拿不到 CPython C API 的场景下仍能跑。
 /// </summary>
-public sealed class VisionWorker : IDisposable
+public sealed class VisionWorker : VisionEngineBase
 {
     private readonly Process _process;
     private readonly StreamWriter _stdin;
     private readonly StreamReader _stdout;
     private readonly TimeSpan _timeout;
-    private int _nextId;
     private bool _disposed;
-
-    private static readonly JsonSerializerOptions Json = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
 
     private VisionWorker(Process process, StreamWriter stdin, StreamReader stdout, TimeSpan timeout)
     {
@@ -147,15 +143,11 @@ public sealed class VisionWorker : IDisposable
                                              "tools", "vision_worker.py"));
     }
 
-    private JsonNode CallRaw(string op, object? args = null)
+    protected override JsonNode CallRaw(string op, object? args)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(VisionWorker));
-        int id = Interlocked.Increment(ref _nextId);
-        var request = new JsonObject { ["id"] = id, ["op"] = op };
-        if (args is not null)
-            request["args"] = JsonSerializer.SerializeToNode(args, Json);
 
-        _stdin.Write(request.ToJsonString());
+        _stdin.Write(VisionProtocol.BuildRequest(NextId(), op, args));
         _stdin.Write('\n');
         _stdin.Flush();
 
@@ -166,51 +158,16 @@ public sealed class VisionWorker : IDisposable
             throw new InvalidOperationException(
                 $"识图 worker 已退出（op={op}）。stderr:\n{stderr}");
         }
-
-        var response = JsonNode.Parse(line)
-                       ?? throw new InvalidDataException($"响应不是合法 JSON: {line}");
-        if (response["ok"]?.GetValue<bool>() != true)
-        {
-            string error = response["error"]?.GetValue<string>() ?? "未知错误";
-            throw new VisionWorkerException(op, error, line);
-        }
-        return response["result"] ?? new JsonObject();
+        return VisionProtocol.ParseResponse(line, op);
     }
 
-    private T Call<T>(string op, object? args = null)
-        => CallRaw(op, args).Deserialize<T>(Json)
-           ?? throw new InvalidDataException($"{op} 的响应无法反序列化为 {typeof(T).Name}");
-
-    // ---------------------------------------------------------------- 类型化接口
-    public WorkerInfo Ping() => Call<WorkerInfo>("ping");
-
-    public string SetServer(string server)
-        => CallRaw("set_server", new { server })["server"]!.GetValue<string>();
-
-    public ScreenshotInfo LoadScreenshot(string path)
-        => Call<ScreenshotInfo>("screenshot_load", new { path });
-
-    public AppearResult AppearOn(string asset, int threshold = 10)
-        => Call<AppearResult>("appear_on", new { asset, threshold });
-
-    public AppearBatchResult AppearOnBatch(IEnumerable<string> assets, int threshold = 10)
-        => Call<AppearBatchResult>("appear_on_batch", new { assets = assets.ToArray(), threshold });
-
-    public ButtonMatchResult ButtonMatch(string asset, int offset = 30, double similarity = 0.85)
-        => Call<ButtonMatchResult>("button_match", new { asset, offset, similarity });
-
-    public TemplateMatchResult TemplateMatch(string asset, string? name = null)
-        => Call<TemplateMatchResult>("template_match", new { asset, name });
-
-    public string Ocr(double[] area, string lang = "azur_lane", string? letter = null)
-        => CallRaw("ocr", new { area, lang, letter })["text"]!.GetValue<string>();
-
+    /// <summary>让 worker 自行退出（之后仍应调用 <see cref="Dispose"/> 回收进程）。</summary>
     public void Shutdown()
     {
         if (_disposed) return;
         try
         {
-            CallRaw("shutdown");
+            CallRaw("shutdown", null);
         }
         catch (Exception)
         {
@@ -218,7 +175,7 @@ public sealed class VisionWorker : IDisposable
         }
     }
 
-    public void Dispose()
+    public override void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
@@ -236,6 +193,7 @@ public sealed class VisionWorker : IDisposable
             // 忽略清理期异常
         }
         _process.Dispose();
+        base.Dispose();
     }
 }
 

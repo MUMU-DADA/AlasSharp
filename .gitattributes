@@ -1,0 +1,10 @@
+# 统一换行符处理，避免跨平台 diff 噪声
+* text=auto
+
+# Windows 上 Visual Studio 期望 CRLF 的文件
+*.sln text eol=crlf
+
+# 二进制
+*.png binary
+*.jpg binary
+*.gif binary
