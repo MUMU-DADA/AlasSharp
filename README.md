@@ -187,6 +187,7 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 |---|---|---|
 | S0 数据契约 | 素材 + 关卡 IR → JSON，双向校验 | ✅ |
 | S1 识图桥接 | 识图不重写：进程内 CPython / 进程外 worker 直调上游模块 | ✅ 两种宿主双双验收 |
+| S-设备层 | ADB 截图/点击/滑动；桩 adb 已验通，**待真机冒烟** | 🔵 无硬件可验部分完成 |
 | S2 地图识别 | 单应性变换 + 网格判定 | 待开始 |
 | S3 关卡引擎 | 规则解释器已完成；引擎实现（120 方法 + 17 钩子）待开始 | 🔵 地基完成 |
 | S4 任务域 | 大世界 / 岛屿 / 科研 / 活动… | 待开始 |
@@ -194,13 +195,31 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 
 ### 建议的起手顺序
 
-1. **设备层最小闭环**（`ADB` 截图，先只做一种截图方式）—— 没有它，S2/S3 都无法端到端验证。
+1. ~~**设备层最小闭环**~~ → **已完成无硬件可验部分**（见下）。剩下的只有真机冒烟。
 2. **S3 引擎实现**按调用频次从高到低做，前 5 个方法覆盖绝大多数关卡：
    `battle_default`(1601) / `clear_siren`(1371) / `clear_boss`(1303) /
    `clear_filter_enemy`(1041) / `clear_enemy`(417)。
    契约全貌在 `.bench/engine_contract.json`（120 方法 + 139 模块依赖闭包）；
    钩子清单见 `alashub verify` 的「引擎钩子」段（48 个关卡、去重 17 个方法）。
 3. **S2 地图识别** —— 依赖 S1 的识图宿主，通路已打通，可直接调用。
+
+### 设备层（ADB）
+
+`alashub device` 用**桩 adb 可执行文件**跑通整条真实调用链（不是 mock 接口）：
+
+| 环节 | 实测 |
+|---|---|
+| `devices` / `get-state` | 列出桩设备、返回 device |
+| `wm size` | 解析出 1280x720 |
+| `exec-out screencap -p` | PNG 字节 → 宿主解码 → 形状 720x1280x3 |
+| **用该截图做真实判定** | 与 S0 基准的真值**一致** |
+| `input tap` / `input swipe` | 桩日志确认参数按上游形态传递 |
+
+命令形态照抄上游 `module/device/method/adb.py`：截图用 `exec-out`（不是 `shell`，避免 CRLF
+破坏二进制），点击 `shell input tap x y`。
+
+**仍未验的**：真机/模拟器冒烟（连接、真实 screencap 延迟、minitouch/maatouch 等控制方式）。
+桩 adb 只能证明「我们的调用链是对的」，不能证明「真机行为符合预期」。
 
 ### 设备路径已预演（截图字节流）
 

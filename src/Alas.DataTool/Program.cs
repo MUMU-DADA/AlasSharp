@@ -43,6 +43,13 @@ internal static class Program
                 fixture ??= Path.Combine(dataDir, "fixtures", "matching.json");
                 return MatchingCheck.Run(fixture, repoDir);
             }
+            if (command == "device")
+            {
+                fixture ??= Path.Combine(dataDir, "fixtures", "imaging.json");
+                string toolsDir2 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                    "..", "..", "..", "..", "..", "tools"));
+                return DeviceCheck.Run(fixture, repoDir, toolsDir2, dataDir);
+            }
             if (command == "vision")
             {
                 fixture ??= Path.Combine(dataDir, "fixtures", "imaging.json");
