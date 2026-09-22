@@ -218,7 +218,8 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 - 协议 op `s3_run_plan`（dry-run 默认 true；真跑需 `allow_actions=true`，
   带 `max_seconds` / `repeat_until_cleared` / 上游完成信号）；
 - **C# 产品侧入口**：`IVisionEngine.RunCampaignPlan(...)` 与
-  `alashub campaign <章模块>`（dry-run 默认；`--run --allow-actions` 才真打）。
+  `alashub campaign <章模块[,章模块...]>`（dry-run 默认；`--run --allow-actions` 才真打）。
+  传多关（逗号分隔）时**在同一个进程内连续驱动** —— 即实现常驻所需的「状态不跨进程丢」。
 
 实测（本账号）：计划执行器已在 **3 个关卡**上跑通、共 **13 次真实战斗全部无错**；
 4 张图已确认可识别（2-1 / 2-2 / 3-1 / 3-2）。已知不支持：第 1 章（7 格单行图，上游检测器失效）。
