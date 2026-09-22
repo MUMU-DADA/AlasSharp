@@ -56,8 +56,16 @@ def find_hook_body(tree: ast.AST, hook: str):
     return None
 
 
-def classify(body: ast.AST):
-    """返回 (标签, 细节)。细节用于报告里给出判断依据，不只给结论。"""
+def classify(body: ast.AST, module_methods: set):
+    """返回 (标签, 细节)。
+
+    关键区分（第一版没做，读源码时当场发现）：`self.X()` 里的 X 有两种完全不同的东西 ——
+      * X 是**本章节模块自己定义的方法**（例：`self.before_boss()` 后再 `super().clear_boss()`）
+        → 这是章节自己的调度顺序，不是引擎能力；
+      * X 解析到基类/引擎（例：`self._goto(...)`、`self.map.select(...)`）
+        → 这才是引擎能力，迁移要算依赖闭包。
+    不区分的话会把"调用自己的前置步骤再委托"误报成引擎候选。
+    """
     super_calls, self_calls, module_names, has_control_flow = 0, set(), set(), False
     for node in ast.walk(body):
         if isinstance(node, (ast.If, ast.For, ast.While, ast.Try)):
@@ -73,13 +81,29 @@ def classify(body: ast.AST):
         elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             if node.id not in ('self', 'super', 'True', 'False', 'None'):
                 module_names.add(node.id)
-    detail = {'super_calls': super_calls, 'self_calls': sorted(self_calls),
+    local_calls = sorted(c for c in self_calls if c in module_methods)
+    engine_calls = sorted(c for c in self_calls if c not in module_methods)
+    detail = {'super_calls': super_calls, 'local_calls': local_calls,
+              'engine_calls': engine_calls,
               'module_names': sorted(module_names)[:6], 'control_flow': has_control_flow}
-    if self_calls:
-        return 'self_calls', detail
+    if engine_calls:
+        return 'engine_calls', detail
+    if local_calls:
+        return 'chapter_local', detail
     if super_calls and not module_names and not has_control_flow:
         return 'pure_delegate', detail
     return 'data_only', detail
+
+
+def module_local_methods(tree: ast.AST):
+    """模块里**自己定义**的方法名（用于把 `self.X()` 分成章节本地调用与引擎调用）。"""
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    names.add(child.name)
+    return names
 
 
 def main() -> int:
@@ -104,7 +128,7 @@ def main() -> int:
                 buckets['not_in_module'].append(source)
                 details[source] = {'reason': '该模块里没有这个方法的定义（继承来的）'}
                 continue
-            label, detail = classify(body)
+            label, detail = classify(body, module_local_methods(tree))
             buckets[label].append(source)
             details[source] = detail
         classification[hook] = {'buckets': {k: v for k, v in buckets.items()},
@@ -128,23 +152,23 @@ def main() -> int:
         '',
         '## 逐钩子',
         '',
-        '| 钩子 | 覆盖章节 | pure_delegate | data_only | self_calls | not_in_module | 例（self_calls 优先） |',
-        '| --- | --- | --- | --- | --- | --- | --- |',
+        '| 钩子 | 覆盖章节 | pure_delegate | data_only | chapter_local | **engine_calls** | not_in_module | 例 |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- |',
     ]
     for hook, info in sorted(classification.items(),
                              key=lambda kv: -len(by_hook[kv[0]])):
         buckets = info['buckets']
         example = ''
-        for label in ('self_calls', 'data_only', 'pure_delegate', 'not_in_module'):
+        for label in ('engine_calls', 'chapter_local', 'data_only', 'pure_delegate', 'not_in_module'):
             if buckets.get(label):
                 example = f"`{buckets[label][0].split('/')[-1]}`({label})"
                 break
         lines.append(f"| `{hook}` | {len(by_hook[hook])} | {len(buckets.get('pure_delegate', []))} "
-                     f"| {len(buckets.get('data_only', []))} | {len(buckets.get('self_calls', []))} "
+                     f"| {len(buckets.get('data_only', []))} | {len(buckets.get('chapter_local', []))} | {len(buckets.get('engine_calls', []))} "
                      f"| {len(buckets.get('not_in_module', []))} | {example} |")
 
     engine_candidates = {h: i for h, i in classification.items()
-                         if i['buckets'].get('self_calls')}
+                         if i['buckets'].get('engine_calls')}
     lines += [
         '',
         '## 结论（用数据说话）',

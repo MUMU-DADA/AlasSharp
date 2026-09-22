@@ -15,29 +15,29 @@
 
 ## 逐钩子
 
-| 钩子 | 覆盖章节 | pure_delegate | data_only | self_calls | not_in_module | 例（self_calls 优先） |
-| --- | --- | --- | --- | --- | --- | --- |
-| `map_data_init` | 15 | 0 | 15 | 0 | 0 | `campaign_14_4.py`(data_only) |
-| `combat_status` | 8 | 0 | 8 | 0 | 0 | `ht3.py`(data_only) |
-| `get_map_clear_percentage` | 8 | 8 | 0 | 0 | 0 | `a2.py`(pure_delegate) |
-| `in_sight` | 4 | 0 | 2 | 2 | 0 | `b3.py`(self_calls) |
-| `_expected_end` | 3 | 0 | 3 | 0 | 0 | `campaign_hard.py`(data_only) |
-| `clear_boss` | 3 | 0 | 0 | 3 | 0 | `campaign_hard.py`(self_calls) |
-| `handle_clear_mode_config_cover` | 3 | 2 | 1 | 0 | 0 | `t4.py`(data_only) |
-| `map_init` | 3 | 0 | 3 | 0 | 0 | `campaign_16_3.py`(data_only) |
-| `before_boss` | 2 | 0 | 2 | 0 | 0 | `b2.py`(data_only) |
-| `bored_visit` | 2 | 0 | 0 | 2 | 0 | `a1.py`(self_calls) |
-| `brute_clear_boss` | 2 | 0 | 0 | 2 | 0 | `b2.py`(self_calls) |
-| `find_current_fleet` | 2 | 0 | 2 | 0 | 0 | `a1.py`(data_only) |
-| `handle_in_stage` | 2 | 0 | 0 | 2 | 0 | `c2.py`(self_calls) |
-| `_campaign_ocr_result_process` | 1 | 0 | 1 | 0 | 0 | `sp.py`(data_only) |
-| `catch_camera_repositioning` | 1 | 0 | 1 | 0 | 0 | `t4.py`(data_only) |
-| `execute_actions` | 1 | 0 | 0 | 1 | 0 | `sp.py`(self_calls) |
-| `is_event_animation` | 1 | 0 | 0 | 1 | 0 | `sp.py`(self_calls) |
+| 钩子 | 覆盖章节 | pure_delegate | data_only | chapter_local | **engine_calls** | not_in_module | 例 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `map_data_init` | 15 | 0 | 15 | 0 | 0 | 0 | `campaign_14_4.py`(data_only) |
+| `combat_status` | 8 | 0 | 8 | 0 | 0 | 0 | `ht3.py`(data_only) |
+| `get_map_clear_percentage` | 8 | 8 | 0 | 0 | 0 | 0 | `a2.py`(pure_delegate) |
+| `in_sight` | 4 | 0 | 2 | 0 | 2 | 0 | `b3.py`(engine_calls) |
+| `_expected_end` | 3 | 0 | 3 | 0 | 0 | 0 | `campaign_hard.py`(data_only) |
+| `clear_boss` | 3 | 0 | 0 | 2 | 1 | 0 | `campaign_hard.py`(engine_calls) |
+| `handle_clear_mode_config_cover` | 3 | 2 | 1 | 0 | 0 | 0 | `t4.py`(data_only) |
+| `map_init` | 3 | 0 | 3 | 0 | 0 | 0 | `campaign_16_3.py`(data_only) |
+| `before_boss` | 2 | 0 | 2 | 0 | 0 | 0 | `b2.py`(data_only) |
+| `bored_visit` | 2 | 0 | 0 | 0 | 2 | 0 | `a1.py`(engine_calls) |
+| `brute_clear_boss` | 2 | 0 | 0 | 2 | 0 | 0 | `b2.py`(chapter_local) |
+| `find_current_fleet` | 2 | 0 | 2 | 0 | 0 | 0 | `a1.py`(data_only) |
+| `handle_in_stage` | 2 | 0 | 0 | 0 | 2 | 0 | `c2.py`(engine_calls) |
+| `_campaign_ocr_result_process` | 1 | 0 | 1 | 0 | 0 | 0 | `sp.py`(data_only) |
+| `catch_camera_repositioning` | 1 | 0 | 1 | 0 | 0 | 0 | `t4.py`(data_only) |
+| `execute_actions` | 1 | 0 | 0 | 0 | 1 | 0 | `sp.py`(engine_calls) |
+| `is_event_animation` | 1 | 0 | 0 | 0 | 1 | 0 | `sp.py`(engine_calls) |
 
 ## 结论（用数据说话）
 
-- **有引擎能力候选（出现 `self_calls`）的钩子：7 个** —— `bored_visit`、`brute_clear_boss`、`clear_boss`、`execute_actions`、`handle_in_stage`、`in_sight`、`is_event_animation`
+- **有引擎能力候选（出现 `self_calls`）的钩子：6 个** —— `bored_visit`、`clear_boss`、`execute_actions`、`handle_in_stage`、`in_sight`、`is_event_animation`
 - 只做数据改写（`data_only`）的钩子：10 个 —— 这些留在上游，不搬进 C#。
 - 纯委托（`pure_delegate`）：2 个 —— 没有工作量。
 
