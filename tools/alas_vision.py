@@ -1613,9 +1613,24 @@ def op_s3_run_plan(args):
                 _ammo = getattr(inst, 'ammo_count', None)
             except Exception:
                 pass
+            # **直接测量**（不再靠读代码推断）：battle_count 决定 `battle_function` 选哪个
+            # `battle_N`；若它一直不递增，就会永远停在 battle_0（清路障）而打不到 BOSS ✗
+            _bc = None
+            _cfgkeys = {}
+            try:
+                _bc = getattr(inst, 'battle_count', None)
+            except Exception:
+                pass
+            for _k in ('MAP_CLEAR_ALL_THIS_TIME', 'POOR_MAP_DATA',
+                       'MAP_HAS_MOVABLE_NORMAL_ENEMY', 'Error_HandleError'):
+                try:
+                    _cfgkeys[_k] = getattr(getattr(inst, 'config', None), _k, None)
+                except Exception:
+                    pass
             steps.append({'round': _round, 'step': _step_name, 'ms': r.get('ms'),
                           'error': r.get('error'), 'completed': r.get('completed'),
-                          'map_clear_pct': _pct, 'ammo': _ammo})
+                          'map_clear_pct': _pct, 'ammo': _ammo,
+                          'battle_count': _bc, 'cfg': _cfgkeys})
             if r.get('completed'):
                 # 上游宣布关卡完成 —— 这是**正常收尾**，不需要再跑下一轮
                 out['campaign_end'] = True
