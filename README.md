@@ -220,11 +220,22 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 - **C# 产品侧入口**：`IVisionEngine.RunCampaignPlan(...)` 与
   `alashub campaign <章模块[,章模块...]>`（dry-run 默认；`--run --allow-actions` 才真打）。
   传多关（逗号分隔）时**在同一个进程内连续驱动** —— 即实现常驻所需的「状态不跨进程丢」。
+- **两套战斗流程**（上游本来就有，区别只在 `MAP_CLEAR_ALL_THIS_TIME`，见
+  `docs/s3-entry-sequence.md` 末章）：
+  - 默认：`battle_{battle_count}` —— **BOSS 一刷出来就打 BOSS**（小怪可能还剩）；
+  - `--clear-all`：先算 `remain = enemies+sirens+fortresses-bosses`，**清光小怪才打 BOSS**
+    （上游只在"还缺星 + 停止条件为三星/威胁排除"时自动开这个分支，本机配置下恒为 False，
+    所以给了显式开关）。
+- **舰队**：`--fleet1` / `--fleet2` / `--submarine`（0 = 不用）。本机账号的**高难图用
+  `--fleet1 3 --fleet2 6`**（用户规则）；不传时是上游默认 1/0。
+- **清图判据**：`tools/diagnostics/stage_progress.py` 读**游戏自己写的**「威胁排除 %」与三颗星
+  （`campaign_end` 与自数的敌人数量都被实测证伪过）。
 
-实测（本账号）：计划执行器已在 **3 个关卡**上跑通、共 **13 次真实战斗全部无错**；
-4 张图已确认可识别（2-1 / 2-2 / 3-1 / 3-2）。已知不支持：第 1 章（7 格单行图，上游检测器失效）。
-客户端适配共 6 项（numpy2 / OS 遮罩 / `Points` 空集 / `bar_opened` 亮度 /
-`auto_search` 跳过 / "正在攻略中"弹窗像素判定）。
+实测（本账号，2026-09-22 夜）：**11-1 两套流程各跑通**（均 `exit 0`、无 `WITHDRAW`、
+BOSS 击杀后回到章节页；两局 BOSS 分别刷在 `F3` 与 `A2`），2-1 全清验证 `Clear! ★★★`。
+已知不支持：**≤3 行的图**（1-1 / 1-2 / 1-4 / 7-1 / 8-1，上游检测器拟合不出内部线）。
+客户端适配 7 项（numpy2 / OS 遮罩 / `Points` 空集 / `bar_opened` 亮度 /
+`auto_search` 跳过 / "正在攻略中"弹窗像素判定 / `MAP_CLEAR_ALL_THIS_TIME` 显式开关）。
 
 **设备引擎（多后端可切换，见 `docs/device-engine.md`）**：设备 I/O 走宿主，换后端不改 C# 代码。
 本机实测最优（已设为默认）：**`--screenshot scrcpy`（抓图 128 ms，比 adb 快 2.5 倍）

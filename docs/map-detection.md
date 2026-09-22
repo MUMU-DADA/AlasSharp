@@ -492,7 +492,7 @@ view.py:  def predict(self): for grid in self: grid.predict()
 结论：海域图的**网格检出**已验证（49 格 / 9x6），**逐格语义**留待 S3 真需要时再对齐
 （那时可以拿具体格子的截图与上游模板逐一对照，和战役图当年查网格线是同一个套路）。
 
-## 困难图（1-4）：未能检出 —— 内部竖线拟合不出，消失点几何退化
+## 困难图（1-4）：曾未能检出（**已过时**，见文末"复核"一节 —— 加 5 档降阈值重试后已能识别）
 
 用户切到困难图 1-4 后抓到 `data/fixtures/map_hard_1_4.png`。画面特征：可见网格 **B-G × 1-3**、
 两艘 Lv.28 敌舰、底部困难图特有的 迎击/撤退/切换 按钮；**最左列 A 被左侧舰队栏挡住**
@@ -683,6 +683,38 @@ python tools/diagnostics/oneoff/resume_boss.py --chapter campaign.campaign_main.
 `Using function: battle_6` → `Is boss: [F3]` → `<<< CLEAR BOSS >>>` → 战斗 →
 回到章节页（`In stage.`，出击正常收尾）。事后 11-1 的关卡信息面板为
 **威胁排除 100%**、三个条件全亮、章节页徽章是 `Clear!` + `COMPLETELY ELIMINATED` + ★★★。
+
+
+## 复核：哪些"不支持"是真的（2026-09-22 夜，离线逐帧）
+
+起因：跑 `probe_backends.py` 时发现"7-1 识别不了"这条结论**站不住** ——
+`data/fixtures/inmap_7-1.png` 根本不是图内帧，而是**主界面**（秘书舰/宿舍背景那张 `page_main`）。
+拿它去测地图识别，当然报 `No vertical line detected`。
+
+`map_detect`（含 5 档降阈值重试）在存盘帧上的实测：
+
+| 帧 | 内容 | homography | perspective |
+| --- | --- | --- | --- |
+| `subchapter_1_1.png` | 1-1，**7 格单行**（真图内帧 ✓） | FAIL `No vertical line detected` | FAIL |
+| `map_hard_1_4.png` | 困难 1-4，**3 行 21 格** | **OK shape=[6,2]=21 格** | OK 但 [6,4]=35 格（多判一行）✗ |
+| `inmap_7-1.png` | ⚠️ **其实是主界面，不是图内帧** | FAIL（无意义） | FAIL（无意义） |
+| `inmap_2-2.png`（对照） | 2-2，4 行 24 格 | OK [6,4]=35 格 | OK [6,4]=35 格 |
+| `inmap_3-1.png`（对照） | 3-1，4 行 28 格 | **OK [6,3]=28 格** ✓ | OK 但 [6,5]=42 格（多判一行）✗ |
+| `inmap_3-2.png`（对照） | 3-2，4 行 32 格 | **OK [7,3]=32 格** ✓ | OK 但 [7,4]=40 格（多判一行）✗ |
+
+结论：
+1. **`perspective` 后端在多行图上会多判一行**（3-1/3-2/1-4 都是），所以默认仍必须是 `homography` ✓
+   —— 这与既有记录一致；
+2. **困难 1-4（3 行）现在是能识别的**（doc 前半段"困难图未能检出"那句已过时：那是加 5 档降阈值重试之前的结论）；
+3. **真正确认失效的只剩"单行图"（1-1）**，而且那一帧是真图内帧；
+4. **7-1 / 8-1 / 1-2 的"不支持"没有有效证据**（fixture 是错的或缺失），要重新抓真图内帧才能下结论。
+
+复现：
+
+```powershell
+python tools/diagnostics/oneoff/probe_backends.py          # 两后端 × 六帧并排
+python tools/diagnostics/oneoff/probe_backends.py --frames data/fixtures/inmap_7-1.png --backends homography
+```
 
 ## 复现
 
