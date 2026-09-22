@@ -35,6 +35,11 @@ public sealed class RunReport
     public int LogEntries { get; set; }
     public int LogErrors { get; set; }
     public int LogWarnings { get; set; }
+    /// <summary>各任务开始时的边界状态快照（任务 id → 快照）。</summary>
+    public Dictionary<string, JsonObject?> Boundaries { get; } = new(StringComparer.Ordinal);
+    /// <summary>边界上拿到画面 / 拿不到画面的任务数（dry-run 下拿不到是正常的）。</summary>
+    public int BoundariesWithFrame { get; set; }
+    public int BoundariesWithoutFrame { get; set; }
     public List<RunFinding> Findings { get; } = new();
     /// <summary>工件里的原始条目（任务/关卡/批次），按出现顺序。</summary>
     public List<JsonObject> Items { get; } = new();
@@ -150,6 +155,23 @@ public sealed class RunReport
                     path));
         }
 
+        // ---- 任务边界的只读状态快照（写在 `task-*.json` 里，R2 的"跨任务复位"证据）
+        // 为什么报告要读它：快照不落到数据面，前端就看不到"这个任务是从什么画面开始的" ——
+        // 而那正是判断"跨任务复位了没有"的依据。读了就顺手统计"有几个任务在边界上拿到了帧"。
+        foreach (var path in files.Where(f => Path.GetFileName(f).StartsWith("task-", StringComparison.Ordinal)))
+        {
+            var document = ReadJson(report, path);
+            if (document?["id"]?.GetValue<string>() is not string taskId) continue;
+            var boundary = document["boundary_state"] as JsonObject;
+            report.Boundaries[taskId] = boundary;
+            if (boundary?["available"]?.GetValue<bool>() == true) report.BoundariesWithFrame++;
+            else report.BoundariesWithoutFrame++;
+            foreach (var item in report.Items)
+                if (item["level"]?.GetValue<string>() == "task"
+                    && item["id"]?.GetValue<string>() == taskId)
+                    item["boundary_state"] = boundary?.DeepClone();
+        }
+
         // ---- 会话日志
         string logPath = Path.Combine(report.RunDirectory, "session-log.jsonl");
         if (File.Exists(logPath))
@@ -254,6 +276,8 @@ public sealed class RunReport
                 ["log_entries"] = LogEntries,
                 ["log_errors"] = LogErrors,
                 ["log_warnings"] = LogWarnings,
+                ["boundaries_with_frame"] = BoundariesWithFrame,
+                ["boundaries_without_frame"] = BoundariesWithoutFrame,
             },
             ["has_failures"] = HasFailures,
             ["evidence_complete"] = EvidenceComplete,

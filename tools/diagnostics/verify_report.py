@@ -108,6 +108,18 @@ def main() -> int:
             checks.append(('账号状态任务成功',
                            report['totals']['tasks_succeeded'] >= 1,
                            f"tasks_succeeded={report['totals']['tasks_succeeded']}"))
+        # 边界快照要落到数据面（否则前端看不到"任务从什么画面开始"，跨任务复位无从判断）
+        ran_tasks = [i for i in report['items'] if i['level'] == 'task' and not i.get('skipped')]
+        boundary_total = (report['totals'].get('boundaries_with_frame', 0)
+                          + report['totals'].get('boundaries_without_frame', 0))
+        checks += [
+            ('每个跑过的任务都有边界快照',
+             bool(ran_tasks) and all('boundary_state' in i for i in ran_tasks),
+             f"ran={[i['id'] for i in ran_tasks]}"),
+            ('边界快照统计与任务数一致',
+             boundary_total == len(ran_tasks),
+             f"统计={boundary_total} 任务={len(ran_tasks)}"),
+        ]
         print()
         print('=== 正常路径（报告读得出事实）===')
         for name, ok, detail in checks:
