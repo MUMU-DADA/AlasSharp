@@ -41,7 +41,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
     "globe_center: (np.float64(1423.0), np.float64(1690.0))",
-    "0.074s      similarity: 0.066",
+    "0.076s      similarity: 0.066",
     "Low similarity when matching OS globe"
   ],
   "similarity": 0.066,
@@ -98,6 +98,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 | `map_settled.png` | — | — | True |  |
 | `map_shape_9x6.png` | — | — | True |  |
 | `os_globe_live.png` | — | — | False | Failed to find a free tile |
+| `os_live_2.png` | — | — | False | Failed to find a free tile |
 | `os_map.png` | — | — | False | Vanish point and distant point too close |
 
 ## 正样本从哪来（这是完成 S2 验收的唯一缺口）
@@ -301,6 +302,25 @@ TypeError: arrays to stack must be passed as a "sequence" type ...
 
 另外 2-1 上 `(4,0)` 落在 IR 的 `ME`（可能有敌人）上、`(0,1)` 落在出生点上 ——
 识别语义与声明式地图在**具体格子**这一级也对得上。
+
+### 海域（OS）内地图：已推进到"锚定网格原点"这一步（比之前进了一步）
+
+用户进入海域后抓了 os_live_2.png（标题「陆间海C-安全海域」，完整网格 + 舰队 + 迷雾雷达）。
+先确认了它**不是**环球视图（os/MAP_GOTO_GLOBE_FOG 命中 0.8986，按上游命名这是海域图上"返回环球"的按钮）。
+
+关键判断：海域里的网格地图要用 View(config, mode='os')（会切到 ASSETS.ui_mask_os_in_map，见 view.py:47-48），而 GlobeDetection 是给**环球视图**用的—— 这也解释了为什么它在海域图上 similarity 只有 0.082：拿错了检测器。
+
+补上 mode 参数后（map_detect(mode="os")，网格类用上游的 OSGrid）：
+
+| 画面 | mode=main | mode=os |
+| --- | --- | --- |
+| os_live_2.png（海域内） | 失败 | **Failed to find a free tile** |
+| map_settled.png（2-1） | 24 格 [5,3] | 24 格 [5,3]（OS 模式不影响战役图）|
+
+也就是说：线找到了、网格建起来了，卡在**用"自由格"锚定网格原点**这一步。
+上游这一步靠模板匹配找一块"空地格"来确定地图偏移；本客户端海域地图的格子渲染（浅蓝底 + 细亮格线）可能与它预期的模板不同，导致找不到锚点。
+下一步：对照 	ile_center_image / 	ile_corner_image 与海域格子的实际外观，
+看是模板不匹配还是锚点搜索区间的问题。
 
 ### 后端选择：homography 与 IR 一致，perspective 在 2-1 上会多判一行（实测）
 

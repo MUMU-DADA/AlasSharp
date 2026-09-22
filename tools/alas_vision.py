@@ -1022,8 +1022,26 @@ def op_map_detect(args):
     if args.get('backend'):
         cfg.DETECTION_BACKEND = args['backend']
     out = {'backend': str(getattr(cfg, 'DETECTION_BACKEND', ''))}
+    # 作业海域（OS）的地图要用另一套遮罩：View(config, mode='os') 会切到
+    # ASSETS.ui_mask_os_in_map（view.py:47-48），网格类也换成 OS 的。
+    mode = str(args.get('mode') or 'main')
+    out['mode'] = mode
     try:
-        v = view_mod.View(cfg)
+        if mode == 'os':
+            grid_class = None
+            try:
+                import module.map_detection.os_grid as os_grid_mod
+                for name in ('OSGrid', 'OSGridInfo'):
+                    if hasattr(os_grid_mod, name):
+                        grid_class = getattr(os_grid_mod, name)
+                        break
+            except Exception:
+                grid_class = None
+            out['grid_class'] = getattr(grid_class, '__name__', None)
+            v = view_mod.View(cfg, mode='os', grid_class=grid_class) if grid_class \
+                else view_mod.View(cfg, mode='os')
+        else:
+            v = view_mod.View(cfg)
     except Exception as e:
         out['construct_error'] = f'{type(e).__name__}: {e}'
         return out
