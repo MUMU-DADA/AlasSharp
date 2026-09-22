@@ -79,6 +79,35 @@ def main():
     refused = op('s3_run_plan', chapter=CASES[0], dry_run=False).get('refused')
     print('安全锁（真跑无授权应被拒）: %s' % ('OK' if refused else '**失效**'))
     ok = ok and bool(refused)
+
+    # **客户端适配是否真的挂上了**（它们若不生效，整条线的适配会静默失效）
+    # 逐个查"垫片在目标类上留下的标记"，而不是看代码里有没有写 —— 只有真跑过 init 才有标记。
+    op('s3_campaign_init', chapter=CASES[0])
+    marks = []
+    try:
+        from module.handler.fast_forward import FastForwardHandler
+        marks.append(('auto_search 跳过垫片', bool(getattr(FastForwardHandler,
+                                                          '_alas_autosearch_compat', False))))
+    except Exception as e:
+        marks.append(('auto_search 跳过垫片', f'检查失败 {type(e).__name__}'))
+    try:
+        from module.map.map_fleet_preparation import FleetOperator
+        marks.append(('bar_opened 亮度垫片', bool(getattr(FleetOperator,
+                                                          '_alas_bar_compat', False))))
+    except Exception as e:
+        marks.append(('bar_opened 亮度垫片', f'检查失败 {type(e).__name__}'))
+    try:
+        from module.map_detection.utils import Points
+        marks.append(('Points 空集垫片', bool(getattr(Points, '_alas_empty_compat', False))))
+    except Exception as e:
+        marks.append(('Points 空集垫片', f'检查失败 {type(e).__name__}'))
+    # 弹窗判定：普通画面上必须**不误报**（它在弹窗帧上应报 True，由现场验证覆盖）
+    det = op('s3_abort_unfinished', dry=True)
+    marks.append(('弹窗判定（普通画面应 False）', det.get('unfinished_dialog') is False))
+    for name, good in marks:
+        print('%-28s %s' % (name, 'OK' if good is True else '**%s**' % good))
+        ok = ok and good is True
+
     print()
     print('S3 计划读取回归：%s' % ('通过' if ok else '**失败**'))
     return 0 if ok else 1
