@@ -16,6 +16,8 @@
 | 控制原语（返回键/长按/滑动） | 4 | **4** | 0 | `primitives.md` |
 | 文本输入（装备码流程） | 3 | **3** | 0 | `text-input.md` |
 | 全量回归（产品路径导航） | 29 | **29** | 0 | `regression.md` |
+| 页面规则合成正对照 | 53 | 52 | 1 跳过（`page_unknown` 无素材） | `positive-control.md` |
+| 控件 Switch 合成正对照 | 20 | 10 | 10 跳过（Scroll 判定依赖颜色掩码） | `positive-control.md` |
 
 （控件与页面条目在证据文件里含"动作行"，上表已把动作与规则分开计数；
 页面规则里 `page_main_white` / `page_channel` / `page_unknown` 是上游图里**无入边**的

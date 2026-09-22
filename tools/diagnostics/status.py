@@ -34,6 +34,8 @@ def main():
     ctrl = load(os.path.join(DATA, 'controls_verify.json'), [])
     prim = load(os.path.join(DATA, 'primitives_verify.json'), [])
     text = load(os.path.join(DATA, 'text_input_verify.json'), {}) or {}
+    pc = load(os.path.join(DATA, 'positive_control.json'), {}) or {}
+    rc = load(os.path.join(DATA, 'rule_positive_control.json'), {}) or {}
     regress = load(os.path.join(DATA, 'regress_pages.json'), [])
 
     verified = sorted(pages.get('verified', {}))
@@ -82,6 +84,10 @@ def main():
            sum(1 for x in text.get('results', []) if x['verdict'] != 'hit')),
         '| 全量回归（产品路径导航） | %d | **%d** | %d | `regression.md` |'
         % (len(regress), len(reg_ok), len(regress) - len(reg_ok)),
+        '| 页面规则合成正对照 | %d | %d | %d 跳过（`page_unknown` 无素材） | `positive-control.md` |'
+        % (pc.get('total', 0), pc.get('passed', 0), pc.get('skipped', 0)),
+        '| 控件 Switch 合成正对照 | %d | %d | %d 跳过（Scroll 判定依赖颜色掩码） | `positive-control.md` |'
+        % (rc.get('total', 0), rc.get('passed', 0), rc.get('skipped', 0)),
         '',
         '（控件与页面条目在证据文件里含"动作行"，上表已把动作与规则分开计数；',
         '页面规则里 `page_main_white` / `page_channel` / `page_unknown` 是上游图里**无入边**的',
