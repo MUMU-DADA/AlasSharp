@@ -104,6 +104,60 @@ def main() -> int:
     if not ok:
         failures.append(f'op 引入了目标模块: {sorted(after - before)}')
 
+    # ---- 任务侧：走队列（产品路径），断言结论与证据；输入有错必须 failed 而不是"部分成功"
+    print()
+    print('=== 任务侧（kind = periodic_plan，走队列）===')
+    exe = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+    if not exe.is_file():
+        print(f'[跳过] 未构建 {exe.relative_to(ROOT)}（先 dotnet build）—— 任务侧未验。')
+    else:
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix='alas-periodic-') as tmp:
+            tmpdir = Path(tmp)
+            good = tmpdir / 'good.json'
+            good.write_text(json.dumps({'tasks': [
+                {'id': 'plan', 'kind': 'periodic_plan', 'input': {'tasks': ['commission']}}]}),
+                encoding='utf-8')
+            bad = tmpdir / 'bad.json'
+            bad.write_text(json.dumps({'tasks': [
+                {'id': 'plan-bad', 'kind': 'periodic_plan',
+                 'input': {'tasks': ['commission', 'no_such_task_zzz']}}]}), encoding='utf-8')
+
+            def run_queue(queue_file: Path, artifacts: Path):
+                subprocess.run([str(exe), 'queue', '--file', str(queue_file),
+                                '--artifacts', str(artifacts)],
+                               capture_output=True, text=True, encoding='utf-8',
+                               errors='replace', timeout=300)
+                artifact = next(iter(sorted(artifacts.glob('*/task-*.json'))), None)
+                return json.loads(artifact.read_text(encoding='utf-8')) if artifact else {}
+
+            ok_doc = run_queue(good, tmpdir / 'art-good')
+            bad_doc = run_queue(bad, tmpdir / 'art-bad')
+            ok_evidence = ok_doc.get('evidence') or {}
+            bad_evidence = bad_doc.get('evidence') or {}
+            plan = (ok_evidence.get('plans') or [{}])[0]
+            expected = independent_read('commission') or {}
+            task_checks = [
+                ('全查到 → succeeded', ok_doc.get('outcome') == 'succeeded',
+                 f"outcome={ok_doc.get('outcome')}"),
+                ('证据里的行号与独立读一致', plan.get('lineno') == expected.get('lineno'),
+                 f"任务={plan.get('lineno')} 独立={expected.get('lineno')}"),
+                ('证据带导入与 run 标记',
+                 bool(plan.get('imports')) and plan.get('calls_run') is True, f'{plan}'),
+                ('有查不到的名字 → failed（不是部分成功）',
+                 bad_doc.get('outcome') == 'failed'
+                 and bad_evidence.get('missing') == ['no_such_task_zzz'],
+                 f"outcome={bad_doc.get('outcome')} missing={bad_evidence.get('missing')}"),
+                ('失败原因点名了是哪个任务',
+                 'no_such_task_zzz' in str(bad_doc.get('error') or ''),
+                 f"error={bad_doc.get('error')}"),
+            ]
+            for name, ok, detail in task_checks:
+                print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+                if not ok:
+                    failures.append(f'{name}: {detail}')
+
     print()
     if failures:
         print(f'结果: FAIL（{len(failures)} 项）')
