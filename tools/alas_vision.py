@@ -605,7 +605,7 @@ def op_ui_rules_sweep(args):
 
     report = {'pages': {'total': 0, 'driven': 0, 'hit': [], 'errors': []},
               'module_level': {'total': 0, 'driven': 0, 'hit': [], 'errors': []},
-              'cached_property': {'total': 0, 'constructed': 0, 'hit': [], 'errors': []}}
+              'cached_property': {'total': 0, 'constructed': 0, 'hit': [], 'errors': [], 'no_hit_criterion': []}}
 
     # ---- 1. 页面
     pl = op_page_list({})
@@ -655,6 +655,12 @@ def op_ui_rules_sweep(args):
             inst.device.image = image
             rule = getattr(inst, attr)
             report['cached_property']['constructed'] += 1
+            # Setting 类**没有** appear/get_info/get 方法（它是 is_option_active /
+            # _product_setting_status / set），用同一判据结构上永远不可能命中，
+            # 留在分母里会让 hit 比率失真。单独记出来，不混入命中统计。
+            if type(rule).__name__ == 'Setting':
+                report['cached_property']['no_hit_criterion'].append(label)
+                continue
             # 口径修正：构造成功 ≠ 识别命中。这里**真正跑一次识别**，只有返回真才算命中。
             # （原先把构造成功记进 hit，字段名与含义不符，会误导后续判断。）
             for meth in ('appear', 'get_info', 'get'):
