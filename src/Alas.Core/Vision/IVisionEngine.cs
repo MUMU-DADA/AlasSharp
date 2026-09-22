@@ -21,6 +21,12 @@ public interface IVisionEngine : IDisposable
     /// <summary>用截图字节流设置当前画面（真实设备路径：adb 回来的就是 PNG 字节）。
     /// 像素不跨语言边界 —— C# 只传字节，解码与识图全在宿主里。</summary>
     ScreenshotInfo SetScreenshot(byte[] pngBytes, string? label = null);
+    /// <summary>按因子重采样当前截图（识别层缩放适配用）。</summary>
+    ScaleResult ScaleScreenshot(double factor);
+    /// <summary>列出上游 module/ui/page.py 的页面规则。</summary>
+    PageListResult PageList();
+    /// <summary>**按上游 UI.ui_page_appear 的原规则**判定当前页面（模板匹配，非颜色检查）。</summary>
+    PageAppearResult PageAppear(string page);
     AppearResult AppearOn(string asset, int threshold = 10, bool detail = false);
     AppearBatchResult AppearOnBatch(IEnumerable<string> assets, int threshold = 10);
     ButtonMatchResult ButtonMatch(string asset, int offset = 30, double similarity = 0.85);
@@ -88,6 +94,11 @@ public abstract class VisionEngineBase : IVisionEngine
     public WorkerInfo Ping() => Call<WorkerInfo>("ping");
     public string SetServer(string server) => Call("set_server", new { server })["server"]!.GetValue<string>();
     public ScreenshotInfo LoadScreenshot(string path) => Call<ScreenshotInfo>("screenshot_load", new { path });
+    public PageListResult PageList() => Call<PageListResult>("page_list");
+    public PageAppearResult PageAppear(string page) => Call<PageAppearResult>("page_appear", new { page });
+    public ScaleResult ScaleScreenshot(double factor)
+        => Call<ScaleResult>("screenshot_scale", new { factor });
+
     public ScreenshotInfo SetScreenshot(byte[] pngBytes, string? label = null)
         => Call<ScreenshotInfo>("screenshot_set",
             new { png_base64 = Convert.ToBase64String(pngBytes), label });

@@ -65,6 +65,32 @@ public sealed class TemplateMatchResult
     [JsonPropertyName("button_area")] public List<double> ButtonArea { get; set; } = new();
 }
 
+public sealed class PageInfo
+{
+    [JsonPropertyName("page")] public string Page { get; set; } = "";
+    [JsonPropertyName("check_button")] public string? CheckButton { get; set; }
+    [JsonPropertyName("is_main")] public bool IsMain { get; set; }
+}
+
+public sealed class PageListResult
+{
+    [JsonPropertyName("pages")] public List<PageInfo> Pages { get; set; } = new();
+    [JsonPropertyName("count")] public int Count { get; set; }
+}
+
+public sealed class PageAppearResult
+{
+    [JsonPropertyName("page")] public string Page { get; set; } = "";
+    [JsonPropertyName("appear")] public bool Appear { get; set; }
+}
+
+public sealed class ScaleResult
+{
+    [JsonPropertyName("factor")] public double Factor { get; set; }
+    [JsonPropertyName("before")] public List<int> Before { get; set; } = new();
+    [JsonPropertyName("after")] public List<int> After { get; set; } = new();
+}
+
 public sealed class ScreenshotInfo
 {
     [JsonPropertyName("shape")] public List<int> Shape { get; set; } = new();

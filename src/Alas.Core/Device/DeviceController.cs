@@ -70,6 +70,17 @@ public sealed class DeviceController
     /// 截图：`exec-out screencap -p` 取 PNG 字节，交给识图宿主解码。
     /// 返回解码后的形状（宽, 高, 通道）。
     /// </summary>
+    /// <summary>只取 PNG 字节，不交给宿主解码（缩放适配扫描要反复重放同一帧）。</summary>
+    public byte[] ScreenshotBytes()
+    {
+        var r = _adb.Run(Args("exec-out", "screencap", "-p"));
+        if (r.ExitCode != 0)
+            throw new InvalidOperationException($"screencap 失败（exit={r.ExitCode}）: {r.Stderr.Trim()}");
+        if (r.StdoutBytes.Length == 0)
+            throw new InvalidOperationException("screencap 返回空字节流");
+        return r.StdoutBytes;
+    }
+
     public ScreenshotInfo Screenshot()
     {
         var r = _adb.Run(Args("exec-out", "screencap", "-p"));

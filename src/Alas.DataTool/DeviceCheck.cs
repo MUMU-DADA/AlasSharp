@@ -96,6 +96,53 @@ internal static class DeviceCheck
                 Console.WriteLine($"             {c2.Asset,-24} 容差={c2.Tolerance:F1}");
         }
 
+        // ---- 按上游原规则做页面识别
+        // 规则来源：module/ui/page.py 的 Page.check_button + module/ui/ui.py 的 ui_page_appear。
+        // 机制是 **Button.match（模板匹配）**，不是 appear_on（颜色检查）—— 后者只是快速预筛。
+        var pageList = vision.PageList();
+        Console.WriteLine();
+        Console.WriteLine($"[页面规则] 上游共 {pageList.Count} 个页面，逐个按原规则判定：");
+        var recognized = new List<string>();
+        foreach (var pg in pageList.Pages)
+        {
+            try
+            {
+                var r = vision.PageAppear(pg.Page);
+                if (r.Appear)
+                {
+                    recognized.Add(pg.Page);
+                    Console.WriteLine($"           ✓ {pg.Page,-28} check={pg.CheckButton}");
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"           ! {pg.Page}: {ex.Message}"); }
+        }
+        if (recognized.Count == 0)
+            Console.WriteLine("           （无页面被识别）");
+        else
+            Console.WriteLine($"[页面规则] 识别到 {recognized.Count} 个：{string.Join(", ", recognized)}");
+        // ---- 识别层缩放适配扫描
+        // 模拟器 DPI 与素材采集时不一致会让所有 UI 元素错位。用 ALAS 自己的缩放机制
+        // （Template.match 就是对图像做 cv2.resize）反过来扫：哪个因子让最多素材命中，
+        // 哪个就是当前 UI 的真实缩放比。**不改模拟器，只在识别层适配。**
+        byte[] raw = device.ScreenshotBytes();
+        Console.WriteLine();
+        Console.WriteLine("[缩放扫描] 用同一帧反复重采样，统计各因子下的命中数：");
+        double[] factors = { 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90,
+                             0.95, 1.00, 1.10, 1.20, 1.33, 1.50, 1.70 };
+        int bestHits = -1; double bestFactor = 0; double bestTol = double.MaxValue;
+        foreach (double fac in factors)
+        {
+            vision.SetScreenshot(raw);
+            vision.ScaleScreenshot(fac);
+            var b = vision.AppearOnBatch(assets);
+            int h = b.Results.Count(r => r.Appear);
+            double t = b.Results.Where(r => r.Tolerance is not null)
+                                .Min(r => r.Tolerance!.Value);
+            Console.WriteLine($"           factor={fac:F2}  命中 {h,3}   最好容差 {t,7:F1}");
+            if (h > bestHits || (h == bestHits && t < bestTol))
+            { bestHits = h; bestFactor = fac; bestTol = t; }
+        }
+        Console.WriteLine($"[缩放扫描] 最佳 factor={bestFactor:F2}（命中 {bestHits}，最好容差 {bestTol:F1}）");
         Console.WriteLine();
         if (problems.Count == 0) { Console.WriteLine("结果: OK"); return 0; }
         Console.WriteLine($"结果: FAIL（{problems.Count} 处）");

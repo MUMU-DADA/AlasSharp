@@ -141,6 +141,88 @@ def op_screenshot_set(args):
             'label': args.get('label')}
 
 
+def op_screenshot_scale(args):
+    """
+    把当前截图按给定因子重采样（用于**识别层的缩放适配**）。
+
+    语义对齐上游 `Template.match(image, scaling=...)`：上游是 `scaling = 1/scaling` 后
+    对**图像**做 cv2.resize。这里的 factor 就是那个最终作用于图像的 fx/fy。
+    适配的用途：模拟器 DPI 与素材采集时不一致会让所有 UI 元素错位，
+    用缩放把坐标系对齐，而不是要求用户改模拟器。
+    """
+    import cv2
+    image = _require_image()
+    f = float(args['factor'])
+    if f <= 0:
+        raise ValueError('factor 必须为正')
+    before = list(image.shape)
+    _state['image'] = cv2.resize(image, None, fx=f, fy=f)
+    return {'factor': f, 'before': before, 'after': list(_state['image'].shape)}
+
+def op_page_list(args):
+    """列出上游 module/ui/page.py 定义的页面及其 check_button（识图规则的入口）。"""
+    import module.ui.page as page_mod
+    pages = []
+    for name in sorted(dir(page_mod)):
+        if not name.startswith('page_'):
+            continue
+        obj = getattr(page_mod, name)
+        if type(obj).__name__ != 'Page':
+            continue
+        cb = getattr(obj, 'check_button', None)
+        pages.append({
+            'page': name,
+            'check_button': getattr(cb, 'name', None),
+            'check_file': getattr(cb, 'file', None),
+            'is_main': name == 'page_main',
+        })
+    return {'pages': pages, 'count': len(pages)}
+
+
+def op_page_appear(args):
+    """
+    **按上游 UI.ui_page_appear 的原规则**判定当前页面。
+
+    规则（逐条对齐上游 module/ui/ui.py）：
+      - page_main：先试 page_main_white.check_button（offset=传入值），
+        再试 page_main.check_button（offset=(5,5)），任一命中即为真
+      - en 服的 page_academy：额外试 ACADEMY_GOTO_MUNITIONS
+      - 其余：page.check_button.match(image, offset=offset)
+
+    注意：`Base.appear(button, offset=...)` 在 offset 为真时走的是 **Button.match（模板匹配）**，
+    不是 appear_on（颜色检查）—— 这一点很关键，颜色检查只是快速预筛。
+    """
+    import module.ui.page as page_mod
+    image = _require_image()
+    page_name = args['page']
+    page = getattr(page_mod, page_name)
+    offset = tuple(args.get('offset') or (30, 30))
+    server = server_module.server
+    tried = []
+
+    def try_button(btn, off, label):
+        try:
+            hit = bool(btn.match(image, offset=off))
+        except Exception as e:
+            tried.append({'button': label, 'error': f'{type(e).__name__}: {e}'})
+            return False
+        tried.append({'button': label, 'offset': list(off), 'appear': hit})
+        return hit
+
+    if server == 'en' and page_name == 'page_academy':
+        if try_button(_resolve('ui/ACADEMY_GOTO_MUNITIONS'), offset, 'ACADEMY_GOTO_MUNITIONS'):
+            return {'page': page_name, 'appear': True, 'tried': tried}
+
+    if page_name == 'page_main':
+        if try_button(getattr(page_mod, 'page_main_white').check_button, offset, 'page_main_white'):
+            return {'page': page_name, 'appear': True, 'tried': tried}
+        if try_button(page.check_button, (5, 5), 'page_main'):
+            return {'page': page_name, 'appear': True, 'tried': tried}
+        return {'page': page_name, 'appear': False, 'tried': tried}
+
+    hit = try_button(page.check_button, offset, page_name)
+    return {'page': page_name, 'appear': hit, 'tried': tried}
+
 def op_asset_info(args):
     obj = _resolve(args['asset'])
     info = {
@@ -270,6 +352,9 @@ OPS = {
     'screenshot_load': op_screenshot_load,
     'screenshot_set': op_screenshot_set,
     'asset_info': op_asset_info,
+    'page_list': op_page_list,
+    'page_appear': op_page_appear,
+    'screenshot_scale': op_screenshot_scale,
     'appear_on': op_appear_on,
     'appear_on_batch': op_appear_on_batch,
     'button_match': op_button_match,
