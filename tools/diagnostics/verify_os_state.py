@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """R2 第三域验收：大世界/海域只读探针（`kind = "os_state"`）。
 
-两件事：
+两件事（加一件接线回归）：
 
 1. **只读探针跑得通**：用存盘帧跑 `os_state` 任务，判据来自宿主已有的
    `map_detect(mode="os")` 产品路径，本脚本只核对证据字段与工件，不重复实现识别。
 2. **"没跑"不等于"跑失败"**：`capture=true` 在 dry-run 下必须记 **skipped + 原因**，
    而不是 failed —— 这正是 R2 通用任务模型的核心口径，顺手在这里也验一遍。
+3. **断点续跑的接线**：跑两次真实 CLI，第二次必须读到上一次的 `state.json`。
+   为什么要专门测接线：`selftest-runtime` 的用例直接往 `ResumeCompleted` 塞 id（单元路径），
+   曾经因此漏掉"CLI 读的是本次运行目录、永远读不到断点"这个真实缺陷。
 
 "没检测到"（`detected=false`）是**有效状态**：可能这一帧不在海域里（夹具是球面/大世界帧）。
 所以断言的是"字段齐全、结论是跑通"，不是"必须 detected=true"。
@@ -128,6 +131,40 @@ def main() -> int:
                                      'unmet_preconditions': capture.get('unmet_preconditions')},
         }, ensure_ascii=False, indent=1), encoding='utf-8')
         print('  证据已写入: data/os_state_probe.json')
+
+        # ---- 断点续跑的**接线**回归：跑两次真实 CLI，第二次必须读到上一次的 state.json。
+        # 为什么要专门测接线：`selftest-runtime` 的用例是直接往 ResumeCompleted 塞 id（单元路径），
+        # 曾经因此漏掉"CLI 读的是本次运行目录、永远读不到断点"这个真实缺陷。
+        print()
+        print('=== 断点续跑接线（两次真实 CLI）===')
+        resume_queue = tmpdir / 'resume-queue.json'
+        resume_queue.write_text(json.dumps({'tasks': [
+            {'id': 'a-os', 'kind': 'os_state', 'input': {'screenshot': str(FIXTURE.resolve())}},
+            {'id': 'b-bad', 'kind': 'campaign_batch', 'input': {'chapters': []}, 'required': True},
+        ]}, ensure_ascii=False, indent=1), encoding='utf-8')
+        resume_root = tmpdir / 'resume-artifacts'
+        first = subprocess.run([str(EXE), 'queue', '--file', str(resume_queue),
+                                '--artifacts', str(resume_root)],
+                               capture_output=True, text=True, encoding='utf-8',
+                               errors='replace', timeout=300)
+        second = subprocess.run([str(EXE), 'queue', '--file', str(resume_queue),
+                                 '--artifacts', str(resume_root), '--resume'],
+                                capture_output=True, text=True, encoding='utf-8',
+                                errors='replace', timeout=300)
+        out2 = second.stdout or ''
+        resume_checks = [
+            ('第一次运行产出断点文件',
+             bool(list(resume_root.glob('*/state.json'))), '没有 state.json'),
+            ('第二次运行读到上一次的断点',
+             '跳过 1 个已完成任务' in out2 and 'a-os' in out2,
+             f'stdout 里没有续跑记录: {[l for l in out2.splitlines() if "断点" in l][:2]}'),
+            ('已完成任务记 skipped（不是重跑）',
+             'outcome=skipped' in out2 and '断点续跑' in out2, '任务的续跑结论不对'),
+        ]
+        for name, ok, detail in resume_checks:
+            print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+            if not ok:
+                failures.append(f'{name}: {detail}')
 
     print()
     if failures:
