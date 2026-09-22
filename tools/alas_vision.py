@@ -1109,6 +1109,10 @@ def op_s3_campaign_init(args):
                 cfg.Campaign_Name = stage
             cfg.Emulator_ScreenshotMethod = str(_DEVICE_ARGS.get('screenshot') or 'scrcpy')
             cfg.Emulator_ControlMethod = str(_DEVICE_ARGS.get('control') or 'MaaTouch')
+            # **默认关掉"周回模式(ClearMode)"与"自律寻敌(AutoSearch)"** —— 上游自己的开关，
+            # 比点 UI 可靠得多（本项目曾因误开自律把一场战斗打完）。要开就显式传 True。
+            cfg.Campaign_UseClearMode = bool(args.get('clear_mode', False))
+            cfg.Campaign_UseAutoSearch = bool(args.get('auto_search', False))
     except Exception as e:
         return {'error': f'配置章节绑定失败: {type(e).__name__}: {e}', 'stage': stage}
     try:
@@ -1117,9 +1121,20 @@ def op_s3_campaign_init(args):
         inst = mod.Campaign(cfg, dev)
     except Exception as e:
         return {'error': f'实例化失败: {type(e).__name__}: {e}', 'chapter': chapter}
+    # **种一帧**：ALAS 的方法假定 `device.image` 已存在，而它只在 screenshot() 之后才有。
+    # 少了这一步，第一个动作就会死在 `AttributeError: 'Device' object has no attribute 'image'`
+    # （实测踩过）。顺带也预热了截图后端。
+    seeded = None
+    try:
+        import time as _t
+        t0 = _t.time()
+        dev.screenshot()
+        seeded = round((_t.time() - t0) * 1000, 1)
+    except Exception as e:
+        seeded = f'失败: {type(e).__name__}: {e}'
     _CAMPAIGN['obj'] = inst
     _CAMPAIGN['chapter'] = chapter
-    return {'chapter': chapter, 'instantiated': True,
+    return {'chapter': chapter, 'instantiated': True, 'frame_seeded_ms': seeded,
             'mro': [c.__name__ for c in type(inst).__mro__[:8]]}
 
 
@@ -1180,13 +1195,31 @@ def op_s3_campaign_call(args):
         return {'error': f'取不到 {name}: {type(e).__name__}: {e}'}
     if not callable(fn):
         return {'name': name, 'callable': False, 'value': json_default(fn)}
+    # `@name` 形式的参数解析成实例属性（例如 enter_map 需要 self.ENTRANCE 这种对象，
+    # JSON 传不过来）。这是给"调用上游方法"留的必要通道，不做任何游戏状态改写。
+    raw_args = args.get('args') or []
+    call_args = []
+    for a in raw_args:
+        if isinstance(a, str) and a.startswith('@'):
+            call_args.append(getattr(inst, a[1:]))
+        else:
+            call_args.append(a)
     t0 = time.time()
     try:
-        value = fn(*(args.get('args') or []))
+        value = fn(*call_args)
     except Exception as e:
         return {'name': name, 'ms': round((time.time() - t0) * 1000, 1),
                 'error': f'{type(e).__name__}: {e}'}
     out = {'name': name, 'ms': round((time.time() - t0) * 1000, 1)}
+    # `store='ATTR'`：把返回值写回实例属性。上游很多方法**靠返回值**传递对象
+    # （例如 `campaign_get_entrance('1-1')` 返回的 Button 要赋给 `self.ENTRANCE`，
+    #  类默认的 ENTRANCE 是空 Button → 直接传它会报 `not enough values to unpack`，实测踩过）。
+    if args.get('store'):
+        try:
+            setattr(inst, str(args['store']), value)
+            out['stored'] = str(args['store'])
+        except Exception as e:
+            out['store_error'] = f'{type(e).__name__}: {e}'
     try:
         out['value'] = json_default(value)
     except Exception:
