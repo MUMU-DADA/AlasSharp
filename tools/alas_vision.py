@@ -1303,6 +1303,45 @@ def apply_clear_all_override(enabled=True):
         cls._alas_clear_all_compat = True
 
 
+def apply_brute_finish_none_compat():
+    """**小图卡点的真凶**：上游用 `scipy.optimize.brute` 搜消失点/远点，而 scipy 的 brute
+    **默认 `finish=fmin`** —— 网格搜完之后再用**无约束**的 Nelder-Mead 精修一次，
+    精修结果**可以跑出给定区间**。实测（1-4 失败帧，把 brute 拦下来看参数与返回值）：
+
+        BRUTE _vanish_point_value   ranges=((540,740), (-3000,-1000))  -> [636.18, -1682.27]
+        BRUTE _distant_point_value  ranges=((-3200,-1600),)            -> [636.18]   ← 越界！
+
+    远点的 x 漂到了消失点的 x 上 ⇒ 两点距离 0 < 10 ⇒
+    `MapDetectionError: Vanish point and distant point too close` ⇒ **整张图判定失败**
+    （`perspective.py:123-128`）。这也是 1-1 / 1-4 / 7-1 / 8-1 这些"小图不能跑"的共同原因；
+    同时解释了为什么"放宽搜索区间"完全无效（区间不被精修尊重）。
+
+    垫片：强制 `finish=None`（纯网格搜索，结果必在区间内），并用 `np.atleast_1d` 包一层 ——
+    因为 `finish=None` 时 1 维 brute 返回的是**标量**，而上游代码是 `brute(...)[0]` 取数组元素，
+    不包就会 `IndexError: invalid index to scalar variable`（实测踩过 ✗）。
+
+    离线回归（`data/` 下两帧）：
+        失败帧 `_map_init_fail_campaign_1_4_att1.png`：原来直接抛错 → 现在能检出（28 格 / [7,4]）
+        好帧   `_14_entrypos.png`：仍是 21 格 / [7,3]（与 1-4 的 G3 一致）✓ **无回归**
+    """
+    try:
+        import numpy as _np
+        import module.map_detection.perspective as _p
+        from scipy import optimize as _opt
+        if getattr(_p, '_alas_brute_compat', False):
+            return
+        _orig = _opt.brute
+
+        def _brute_no_finish(func, ranges, *a, **kw):
+            kw['finish'] = None
+            return _np.atleast_1d(_orig(func, ranges, *a, **kw))
+
+        _p.optimize.brute = _brute_no_finish
+        _p._alas_brute_compat = True
+    except Exception:
+        pass
+
+
 def op_s3_campaign_init(args):
     """实例化上游章节的 `Campaign`（**不执行任何游戏动作**）。
 
@@ -1316,6 +1355,8 @@ def op_s3_campaign_init(args):
     apply_fleet_bar_compat()
     apply_auto_search_skip_compat()
     apply_boss_icon_color_compat()
+    # 小图卡点的真凶（scipy brute 的 finish=fmin 越界）—— 见函数注释
+    apply_brute_finish_none_compat()
     # 两个战斗场景的选择：默认（False）= BOSS 一刷出来就打 BOSS；
     # clear_all=True = 先清光小怪再打 BOSS。按次开关，每次 init 都要显式设回来。
     apply_clear_all_override(bool(args.get('clear_all', False)))
@@ -2526,6 +2567,8 @@ def op_map_grids(args):
     # 报告**生产行为**：带上 BOSS 眼睛颜色垫片，所以 `is_boss` 这一列就是修好之后的结果；
     # 逐色的 score_* 则保留原样，用来判断阈值余量。
     apply_boss_icon_color_compat()
+    # 小图卡点的真凶（scipy brute 的 finish=fmin 越界）—— 见函数注释
+    apply_brute_finish_none_compat()
     cfg = _map_config()
     v = view_mod.View(cfg)
     v.load(image)
@@ -3038,3 +3081,4 @@ def handle_line(request_json: str) -> str:
         return json.dumps({'id': req.get('id'), 'ok': True, 'result': {'bye': True}},
                           ensure_ascii=False, default=json_default)
     return json.dumps(handle(req), ensure_ascii=False, default=json_default)
+
