@@ -19,7 +19,11 @@ OUT = os.path.join(DOCS, 'page-verification.md')
 # 未验证页面的原因分类（人工判定，附证据出处）
 REASONS = {
     'page_channel': '上游页面图里**没有入边**，只有出边（`page_channel.link(GOTO_MAIN...)`）；'
-                    '世界频道是临时浮层，ALAS 从不导航进去。实体本身可驱动，但无法由导航到达',
+                    '世界频道是临时浮层。而且 `CHANNEL_CHECK` 在本客户端实测只有 0.11~0.13'
+                    '（旧版 UI 素材：主界面同位置现在是「任务」按钮）—— 即使打开了频道，'
+                    '这条规则也不会命中。找入口时我在主界面聊天条右侧误点了一次，'
+                    '结果是「屏蔽聊天」的确认弹窗（fail-safe 的返回键已取消，未确认、无副作用）；'
+                    '上游与新 UI 都没有世界频道的入口素材，故此项无法在真实画面上验证',
     'page_unknown': '`Page(None)` —— 合成实体，没有 check 按钮，不是真实画面',
     'page_coalition': '活动类型决定：`CAMPAIGN_MENU_GOTO_EVENT` 按当前活动指向 event/sp/raid/'
                       'coalition/rpg/hospital 之一；本机当前活动是普通活动，只命中 page_event',
