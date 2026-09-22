@@ -52,6 +52,7 @@ internal static class Program
                 string? runAdb = null, runSerial = null;
                 string runShot = "scrcpy", runCtrl = "MaaTouch";
                 double runTick = 0.5, runSeconds = 20;
+                string? runMap = null;
                 for (int i = 1; i < args.Length - 1; i++)
                 {
                     if (args[i] == "--adb") runAdb = args[i + 1];
@@ -60,15 +61,16 @@ internal static class Program
                     if (args[i] == "--control") runCtrl = args[i + 1];
                     if (args[i] == "--tick" && double.TryParse(args[i + 1], out double tk)) runTick = tk;
                     if (args[i] == "--seconds" && double.TryParse(args[i + 1], out double sc)) runSeconds = sc;
+                    if (args[i] == "--map") runMap = args[i + 1];
                 }
                 if (runAdb is null || runSerial is null)
                 {
                     Console.WriteLine("用法: run --adb <adb> --serial <serial> " +
-                        "[--screenshot scrcpy] [--control MaaTouch] [--tick 0.5] [--seconds 20]");
+                        "[--screenshot scrcpy] [--control MaaTouch] [--tick 0.5] [--seconds 20] [--map main|os]");
                     return 2;
                 }
                 return RunLoop.Run(runAdb, runSerial, repoDir, toolsDir6, runShot, runCtrl,
-                    runTick, runSeconds);
+                    runTick, runSeconds, runMap);
             }
             if (command == "capture")
             {

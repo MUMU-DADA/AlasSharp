@@ -20,7 +20,8 @@ namespace Alas.DataTool;
 internal static class RunLoop
 {
     public static int Run(string adbPath, string serial, string forkDir, string toolsDir,
-                          string screenshot, string control, double tickSeconds, double seconds)
+                          string screenshot, string control, double tickSeconds, double seconds,
+                          string? mapMode = null)
     {
         using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(forkDir, toolsDir);
         var adb = new ProcessAdbTransport(adbPath);
@@ -50,6 +51,8 @@ internal static class RunLoop
         var caps = new List<double>();
         var thinks = new List<double>();
         var gaps = new List<double>();
+        var detects = new List<double>();
+        int detectedHits = 0, lastGrids = -1;
         var deadline = Stopwatch.StartNew();
         var lastTick = deadline.Elapsed.TotalSeconds;
         int ticks = 0, errors = 0;
@@ -66,6 +69,28 @@ internal static class RunLoop
             t1.Stop();
             thinks.Add(t1.Elapsed.TotalMilliseconds);
             lastPages = string.Join(",", pc.Hit ?? new());
+
+            // 可选：每 tick 也做一次 S2 地图识别（战斗循环要"随时知道地图状态"）。
+            // 复用同一帧（抓帧后宿主已持有），不额外抓图。
+            if (mapMode is not null)
+            {
+                var t2 = Stopwatch.StartNew();
+                try
+                {
+                    var md = vision.CallTyped<Alas.MapDetection.MapDetectResult>(
+                        "map_detect", new { mode = mapMode });
+                    t2.Stop();
+                    detects.Add(t2.Elapsed.TotalMilliseconds);
+                    if (md.Detected) { detectedHits++; lastGrids = md.GridCount ?? -1; }
+                }
+                catch (Exception e)
+                {
+                    t2.Stop();
+                    detects.Add(t2.Elapsed.TotalMilliseconds);
+                    errors++;
+                    if (ticks < 3) Console.WriteLine($"[map错误 ] {e.Message}");
+                }
+            }
             ticks++;
 
             double now = deadline.Elapsed.TotalSeconds;
@@ -94,6 +119,11 @@ internal static class RunLoop
         Console.WriteLine($"[稳态    ] 共 {ticks} tick / {wall:F1}s（{ticks / wall:F2} tick/s，错误 {errors}）");
         Console.WriteLine($"[抓帧    ] {Stat(caps)}");
         Console.WriteLine($"[判定    ] {Stat(thinks)}");
+        if (mapMode is not null)
+        {
+            Console.WriteLine($"[地图    ] mode={mapMode} 命中 {detectedHits}/{ticks} tick，最近网格数={lastGrids}");
+            Console.WriteLine($"[地图耗时] {Stat(detects)}");
+        }
         Console.WriteLine($"[tick间隔] {Stat(gaps)}");
         Console.WriteLine($"[末页    ] {lastPages}");
         return errors == 0 ? 0 : 1;
