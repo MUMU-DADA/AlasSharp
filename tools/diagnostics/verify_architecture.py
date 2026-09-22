@@ -66,6 +66,33 @@ def task_domain_registration() -> list[str]:
     return problems
 
 
+def device_checklist_integrity() -> list[str]:
+    """真机清单里的两条**不能悄悄消失**的东西。
+
+    1. "主动撤退换一条 withdrawn 真机记录" —— 它是 R0 的已知缺口，但会消耗石油、
+       改变账号状态，所以必须保持"需本人授权、不自动执行"的标注；把标注删掉或让脚本
+       自动去跑，就是拿账号资源换一个文档上的勾。
+    2. "用新运行时跑一次真机通关" —— 现有通关证据出自运行时之前的 CLI 路径，
+       这条欠账不能在清单里被抹掉（抹掉之后没人记得还欠着）。
+
+    用**字面锁定**而不是语义分析：这里要的就是"改动必须显式且被看见"，
+    谁要动这两条，就得同时改这个守卫，改动天然进入审阅视野。
+    """
+    path = ROOT / "tools/diagnostics/device_smoke.py"
+    if not path.is_file():
+        return ["缺少真机清单: tools/diagnostics/device_smoke.py"]
+    text = path.read_text(encoding="utf-8")
+    problems = []
+    for phrase, why in (
+        ("【需本人授权】", "撤退项必须保持'需本人授权'标注（它消耗石油并改变账号状态）"),
+        ("不自动执行", "撤退项必须保持'不自动执行'标注（不许脚本自作主张）"),
+        ("新运行时", "清单里必须保留'用新运行时跑一次真机通关'这条欠账"),
+    ):
+        if phrase not in text:
+            problems.append(f"真机清单缺少 `{phrase}`：{why}")
+    return problems
+
+
 def contract_consistency() -> list[str]:
     """结果合同的两份实现必须说同一套词。
 
@@ -161,6 +188,7 @@ def main() -> int:
 
     problems.extend(contract_consistency())
     problems.extend(task_domain_registration())
+    problems.extend(device_checklist_integrity())
 
     roadmap = read("docs/architecture-roadmap.md")
     for phase in ("R0：", "R1：", "R2：", "R3：", "R4：", "R5："):
