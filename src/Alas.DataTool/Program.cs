@@ -92,11 +92,34 @@ internal static class Program
                 }
                 if (campChapter is null)
                 {
-                    Console.WriteLine("用法: campaign <chapter 模块> [--run --allow-actions] " +
+                    Console.WriteLine("用法: campaign <章模块[,章模块...]> [--run --allow-actions] " +
                                       "[--repeat] [--max-seconds 300] [--max-rounds 1]");
                     return 2;
                 }
+                // `--stages a,b,c`：**在同一个进程内**连续驱动多关（"常驻"的实质 —— 状态不跨进程丢）
+                var stageList = campChapter.Contains(',')
+                    ? campChapter.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0).ToArray()
+                    : new[] { campChapter };
+                Console.WriteLine($"[批量    ] {stageList.Length} 关，同一进程内连续驱动");
                 using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(repoDir, toolsDir7);
+                foreach (var one in stageList)
+                {
+                    var r = vision.RunCampaignPlan(one, dryRun: !campRun, allowActions: campAllow,
+                                                   maxSeconds: campMax, maxRounds: campRounds,
+                                                   repeatUntilCleared: campRepeat);
+                    Console.WriteLine($"[plan    ] {r.Chapter} stage={r.Stage} tier={r.Tier} dry_run={r.DryRun}");
+                    Console.WriteLine($"[steps   ] {string.Join(" → ", r.PlanSteps ?? new())}");
+                    Console.WriteLine($"[语义轨迹] {string.Join(", ", r.SemanticTrace ?? new())}");
+                    if (r.Refused == true) Console.WriteLine($"[拒绝    ] {r.Error}");
+                    if (r.Steps is not null)
+                        foreach (var step in r.Steps)
+                            Console.WriteLine("  " + string.Join(" ", step.Select(kv => $"{kv.Key}={kv.Value}")));
+                    if (r.ElapsedSeconds is not null)
+                        Console.WriteLine($"[结果    ] elapsed={r.ElapsedSeconds}s stopped_early={r.StoppedEarly} " +
+                                          $"stop_reason={r.StopReason} campaign_end={r.CampaignEnd}");
+                }
+                return 0;
+                /*
                 var r = vision.RunCampaignPlan(campChapter, dryRun: !campRun, allowActions: campAllow,
                                                maxSeconds: campMax, maxRounds: campRounds,
                                                repeatUntilCleared: campRepeat);
@@ -110,7 +133,7 @@ internal static class Program
                 if (r.ElapsedSeconds is not null)
                     Console.WriteLine($"[结果    ] elapsed={r.ElapsedSeconds}s stopped_early={r.StoppedEarly} " +
                                       $"stop_reason={r.StopReason} campaign_end={r.CampaignEnd}");
-                return r.Error is null || r.Refused == true ? 0 : 1;
+                */
             }
             if (command == "capture")
             {
