@@ -594,41 +594,56 @@ IR 交叉校验通过（shape 一致、缺格 0）。
 顺带记录：用户此时切的画面（`pages=[]`）检出 `30 格 / shape [7,3] / thr=75 / 3 个标志`，
 已存为 `data/fixtures/map_event.png` 待确认是否活动图（若是，需问用户是哪一关以登记 IR）。
 
-## BOSS 图标：形状模板是对的，**颜色不对**（2026-09-22 定位并修复）
+## BOSS 认不出来？**先怀疑自己的取证链路**（2026-09-22 更正，含一次我自己的错误结论）
 
-这是"清完小怪、只剩 BOSS 就主动撤退"的根因，也是本项目**唯一一个靠一帧画面就彻底定位**的
-客户端差异 —— 记在这里因为它最能说明"上游流程没问题，差的是像素"。
+原始症状：清完小怪、只剩 BOSS 时上游 `Full scan find boss.` → `No boss found.` →
+`battle_6` 的 `if boss:` 分支跳过 → 十次无战果 → `withdraw()`（用户实测"全清完小怪就主动撤退"）。
 
-### 上游怎么认 BOSS
+### 我当时的（错误）结论
 
-`module/map_detection/grid_predictor.py:226-242`：
+我存了一帧（BOSS 已刷出），量到"BOSS 格子上游红色判据 -0.382 ✗ / 蓝色判据 0.981 ✓"，
+于是判定**本客户端把 BOSS 眼睛画成了蓝色**，并加了一版"蓝色眼睛"垫片。
+那一版垫片**是错的**：它建立在"存盘 PNG 的颜色 = 引擎给上游的颜色"这个前提上，而这个前提不成立。
 
-```python
-image = self.relative_crop((-0.55, -0.2, 0.45, 0.2), shape=(50, 20))   # 格子上方一条
-image = color_similarity_2d(image, color=(255, 77, 82))                # ① 先转成"与红色有多像"
-if TEMPLATE_ENEMY_BOSS.match(image, similarity=0.75):                  # ② 再匹配眼睛形状
-    return True
+### 链路错在哪（这个坑值得单独记）
+
+```
+引擎截图 E（ALAS 约定 RGB）
+  → cv2.imwrite(path, E)      # cv2 把数组当 BGR 写 ⇒ 文件色相对真实屏幕 R/B 互换
+  → load_image(path)          # PIL 忠实读文件 ⇒ 又是一次 R/B 互换
 ```
 
-`TEMPLATE_ENEMY_BOSS.png`（`assets/cn/template/`，41×17）的形状**就是 BOSS 图标那对发光眼睛**
-（渲染出来是暗底上两道亮弧）。关键在①：它把画面先映射成"与红色 `(255,77,82)` 的相似度"，
-眼睛不是红色时，形状再对也是 0 分。
+两次叠加在一次分析里，红与蓝正好看反。用设备裸 `adb exec-out screencap -p` 当真值一比就清楚了：
 
-### 本客户端实测
-
-清完 6 只小怪、BOSS 刚刷出的那一帧（`data/_map_now3.png`）：
-
-| 判据 | BOSS 格 | 其余 29 格最高 |
+| 区域 | 真值 RGB | 引擎给上游的图 E |
 | --- | --- | --- |
-| 上游红色 `(255,77,82)` | **-0.382** ✗ | 0.449 |
-| 蓝色 `(82,77,255)` | **0.981** ✓ | 0.452 |
-| luma（不吃色相） | 0.968 ✓ | 0.485 |
+| "立即前往"按钮 | (247.2, 222.4, 157.7) | (245.7, 219.3, 149.3) ✓ 一致（黄） |
+| 存盘 PNG 读回 | — | (157.7, 222.4, 247.2) ✗ R/B 互换 |
 
-眼睛 RGB 实测 ≈ `(59, 67, 250)` —— 正好是上游那个红色常量的**通道互换**。所以垫片
-`apply_boss_icon_color_compat()` 只补一条 R/B 互换后的判据，阈值沿用上游的 0.75；
-上游原判据仍先跑，命中即返回。
+**结论：引擎给上游的图是对的（RGB，与设备真值一致）**，问题只在我的存盘/读回那一段。
 
-### 为什么"认出来"还不够（这一层容易漏）
+### 正确的复核方式与结论
+
+在**引擎真正交给上游的那张图 E** 上跑上游原版 `predict_boss`：
+
+```powershell
+python tools/diagnostics/oneoff/probe_boss_channel.py data/_map_now3.png
+#   === 文件色 ===  上游原版 predict_boss 认出的 BOSS 格: []
+#   === 引擎 E ===  上游原版 predict_boss 认出的 BOSS 格: [((3, 2), 'BO')]   ← 原版就能认出来
+```
+
+也就是说：**本客户端的 BOSS 图标本来就是上游期望的红色，`predict_boss()` 一直能工作**。
+"只剩 BOSS 却撤退"的真正原因在别处：
+
+1. **BOSS 所在格没进过相机视野** —— 上游 `full_scan()` 只走 `MAP.camera_data`
+   （11-1 是 `['D3','E4']`），而 BOSS 可能刷在别的 `MB` 格（11-1 有 4 个：`H1/A2/F3/G6`，
+   两次实测分别刷在 F3 和 A2）；
+2. **扫描时机早于 BOSS 刷新** —— BOSS 在第 6 回合才出现，紧接着就扫是扫不到的。
+
+执行器每轮调一次**上游自带、但上游自己没调用过**的 `full_scan_find_boss()`
+（`camera.py:530`，它会依次把相机对准每一个 `may_boss` 格），正好补上第 1 条。
+
+### 仍然成立的两条硬约束（与颜色无关）
 
 `module/map_detection/grid_info.py:220-225` 只接受**声明为 `MB` 的格**：
 
@@ -640,21 +655,31 @@ if info.is_boss:
         return False                          # ← 否则丢掉
 ```
 
-所以要用 `probe_boss_global.py` 离线确认"识别出的格子对齐到全局后落在 `may_boss` 上"：
-11-1 的 `may_boss = [H1, A2, F3, G6]`，实测 BOSS 落在 **F3** ✓。
+所以 BOSS 刷在哪个格都行，但必须是 `map_data` 里标了 `MB` 的那几个之一 —— 11-1 实测
+`may_boss = [H1, A2, F3, G6]`，两次真机分别落在 **F3**、**A2** ✓（离线对齐校验：
+`probe_boss_global.py`）。
+
+### 现在的做法
+
+- `apply_boss_icon_color_compat()` **默认关闭**（保留为"某章图标真不是红色时"的一键对照，没有被证实需要就不开）；
+- `op_device_screencap` 落盘前做 `RGB2BGR`，**存盘 PNG 从此与真实屏幕一致**
+  （`load_image(png)` 读回来 == 引擎的 E）；`device_capture_set` 也统一成"宿主当前图 = E"，
+  并显式处理 `raw=True` 时后端绕过 `BGR2RGB` 的情况。
 
 ### 复现与回归
 
 ```powershell
-# 离线（不碰游戏，同一帧可反复试）
-python tools/diagnostics/oneoff/probe_boss_icon.py data/_map_now3.png --icons
-python tools/diagnostics/oneoff/probe_boss_global.py data/_map_now3.png
-# 真机（从"只剩 BOSS"的半途状态接着打，不消耗小怪那 6 场）
+# 通道顺序自检（与设备裸 adb 截图对比，全程不落盘读回）
+python tools/diagnostics/oneoff/probe_channel_order.py
+# 在引擎约定的图上复核 BOSS 判据
+python tools/diagnostics/oneoff/probe_boss_channel.py data/_map_now3.png
+# 从"只剩 BOSS"的半途状态接着打（不消耗小怪那几场）
 python tools/diagnostics/oneoff/resume_boss.py --chapter campaign.campaign_main.campaign_11_1 \
     --battle-count 6 --fleet1 3 --fleet2 6
 ```
 
-真机验证记录：`Full scan find boss.` → **`Boss found: [F3]`** → `BATTLE_6` →
+真机记录（11-1，两套战斗流程各跑通一次，均 `exit 0`、无 `WITHDRAW`）：
+`Full scan find boss.` → **`Boss found: [F3]`**（另一局是 `[A2]`）→ `BATTLE_6` →
 `Using function: battle_6` → `Is boss: [F3]` → `<<< CLEAR BOSS >>>` → 战斗 →
 回到章节页（`In stage.`，出击正常收尾）。事后 11-1 的关卡信息面板为
 **威胁排除 100%**、三个条件全亮、章节页徽章是 `Clear!` + `COMPLETELY ELIMINATED` + ★★★。

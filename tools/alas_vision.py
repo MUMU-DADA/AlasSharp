@@ -1183,33 +1183,30 @@ def apply_fleet_bar_compat():
         pass
 
 
-def apply_boss_icon_color_compat():
-    """客户端适配：BOSS 图标的**眼睛颜色**（垫片，不改上游文件）。
+def apply_boss_icon_color_compat(enabled=False):
+    """**可选兜底**：给 BOSS 判据补一条"蓝色眼睛"判据。**默认关闭**。
 
-    上游怎么认 BOSS（`module/map_detection/grid_predictor.py:226-242` `predict_boss()`）：
+    ⚠️ 2026-09-22 深夜更正 —— 这条垫片的**前提是我自己的诊断搞错了**，所以默认关掉：
 
-        image = self.relative_crop((-0.55, -0.2, 0.45, 0.2), shape=(50, 20))
-        image = color_similarity_2d(image, color=(255, 77, 82))     # ← 先转成"与红色有多像"
-        if TEMPLATE_ENEMY_BOSS.match(image, similarity=0.75):        # ← 再匹配眼睛形状
-            return True
+    我最初的依据是"存盘的 PNG 里 BOSS 眼睛是蓝的，而上游红色判据恒不匹配"。
+    但那张 PNG 是 `cv2.imwrite(path, E)` 写的，cv2 把数组当 BGR，**文件色相对真实屏幕是
+    R/B 互换的**；`load_image()` 又走 PIL 忠实读文件 —— 两次叠加，我在文件上量到的"蓝"
+    恰好是引擎图 E 上的"红"。在 E（引擎真正交给上游的图）上复测：
 
-    `TEMPLATE_ENEMY_BOSS`（assets/cn/template/TEMPLATE_ENEMY_BOSS.png，41x17）的形状就是
-    BOSS 图标那对发光眼睛。**关键在第一步**：先把画面映射成"与红色 (255,77,82) 的相似度"，
-    所以眼睛不是红色时，形状再对也认不出来。
+        python tools/diagnostics/oneoff/probe_boss_channel.py data/_map_now3.png
+        === 文件色 ===  上游原版 predict_boss 认出的 BOSS 格: []
+        === 引擎 E ===  上游原版 predict_boss 认出的 BOSS 格: [((3, 2), 'BO')]   ← 原版就能认出来
 
-    本客户端（11-1，清完 6 只小怪、BOSS 刚刷出的一帧，离线可复现：
-    `python tools/diagnostics/oneoff/probe_boss_icon.py data/_map_now3.png`）：
+    即：**本客户端的 BOSS 图标本来就是上游期望的红色，`predict_boss()` 一直能工作**。
+    "只剩 BOSS 却撤退"的真正原因在别处 —— BOSS 所在格没进过相机视野（上游 `full_scan()` 只走
+    `MAP.camera_data`，而 BOSS 可能刷在别的 `MB` 格），加上扫描时机早于 BOSS 刷新；
+    执行器每轮调上游自带的 `full_scan_find_boss()`（上游自己没调用它）正好补上这一环。
 
-        BOSS 所在格  红判据 -0.382 ✗  蓝判据 **0.982** ✓
-        其余 29 格   蓝判据最高 0.452
-
-    眼睛 RGB 实测 ≈ (59, 67, 250)，恰好是上游红色常量的**通道互换**，所以这里补一条
-    `(82, 77, 255)`（=`(255,77,82)` 交换 R/B）的判据，阈值沿用上游的 0.75。
-
-    不改上游的后果（用户实测现象）：`Full scan find boss.` → `No boss found.`
-    （`camera.py:541-548`）→ `battle_6` 里 `if boss:` 分支被跳过 → `execute_a_battle`
-    十次打不出战果 → `withdraw()`（"全清完小怪、只剩 BOSS 就主动撤退"）。
+    保留本函数是为了"万一某章 BOSS 图标真不是红色"时能一键打开对比；
+    **没有被证实需要就不要开** —— 多一条判据就多一类误判。
     """
+    if not enabled:
+        return
     try:
         import module.map_detection.grid_predictor as _gp
         from module.base.utils import color_similarity_2d as _sim
@@ -2551,13 +2548,27 @@ def op_device_screencap(args):
     out = {'ms': round(ms, 1), 'raw': raw,
            'screenshot_method': method}
     if path:
-        # ALAS 的 `Device.screenshot()` 返回 **numpy 数组**（BGR），不是 PIL Image ——
+        # ALAS 的 `Device.screenshot()` 返回 **numpy 数组**，不是 PIL Image ——
         # 直接 `.save()` 会报 `'numpy.ndarray' object has no attribute 'save'`（实测踩过）。
+        #
+        # **落盘前必须把通道换回去**：ALAS 内部约定是 **RGB**（`method/adb.py:134` 的
+        # BGR2RGB），而 `cv2.imwrite` 把数组当 **BGR** 写 —— 直接写出来的 PNG 在**肉眼/看图工具**
+        # 里是 R/B 互换的（真实屏幕上的红 BOSS 图标会显示成蓝色）。
+        # 这个坑实实在在误导过我：我据"存盘 PNG 里眼睛是蓝的"写了一版 BOSS 颜色垫片，
+        # 而引擎真正交给上游的图（E）上眼睛本来就是红的、上游判据一直能工作 ✗
+        # 现在的约定：**落盘 PNG = 与真实屏幕一致**，`load_image(png)` 读回来就等于引擎的 E。
         if hasattr(img, 'save'):
             img.save(path)
         else:
             import cv2 as _cv2
-            _cv2.imwrite(path, img)
+            _write = img
+            try:
+                import numpy as _np
+                if isinstance(img, _np.ndarray) and img.ndim == 3 and img.shape[2] == 3:
+                    _write = _cv2.cvtColor(img, _cv2.COLOR_RGB2BGR)
+            except Exception:
+                _write = img
+            _cv2.imwrite(path, _write)
         try:
             out['bytes'] = os.path.getsize(path)
         except Exception:
@@ -2633,16 +2644,24 @@ def op_device_capture_set(args):
         img = dev.screenshot()
     cap_ms = (_time.time() - t0) * 1000
 
-    # 存进宿主的方式与 `screenshot_load` 保持**逐字节一致**：先存临时 PNG 再用上游
-    # `load_image` 读回。设备层返回的是 BGR numpy，而夹具路径走的是 `load_image`，
-    # 直接塞进去可能踩通道顺序的坑；这里多花 ~10ms 换"与夹具路径完全同源"。
+    # **通道顺序必须在这里定死**（这条链路踩过两次，代价是一版错误的垫片）：
+    #   - `raw=True` 直接调后端原始实现，**绕过了 `method/adb.py:134` 的 BGR2RGB** → 拿到的是 BGR；
+    #   - 落盘用 `cv2.imwrite`（把数组当 BGR）＋ 读回用 `load_image`（PIL，忠实读）＝ **一次 R/B 互换**。
+    # 所以先统一成"ALAS 约定的 RGB"，再用 `RGB2BGR` 忠实落盘；`load_image` 读回来的就正好是
+    # 引擎交给上游的那张图 E —— 与夹具路径（`screenshot_load`）同源，也与上游内部一致。
     import tempfile
+    import numpy as _np
+    import cv2 as _cv2
     from module.base.utils import load_image
     fd, tmp = tempfile.mkstemp(suffix='.png')
     os.close(fd)
     try:
-        import cv2 as _cv2
-        _cv2.imwrite(tmp, img)
+        if isinstance(img, _np.ndarray) and img.ndim == 3 and img.shape[2] == 3:
+            engine_img = _cv2.cvtColor(img, _cv2.COLOR_BGR2RGB) if raw else img
+            _cv2.imwrite(tmp, _cv2.cvtColor(engine_img, _cv2.COLOR_RGB2BGR))
+        else:
+            engine_img = img
+            img.save(tmp)
         _state['image'] = load_image(tmp)
         _state['path'] = tmp
     except Exception as e:
