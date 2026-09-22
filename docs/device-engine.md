@@ -248,3 +248,42 @@ scrcpy 走 H.264 视频流本地解码，抓一帧＝取最新解码帧，所以
 | ascreencap | — | — | ❌ 上游无 Android 10+ 二进制 |
 | nemu_ipc | — | — | ❌ 上游硬拒绝 MuMu 国际版 |
 | hermit / ldopengl / wsa | — | — | 仅对应平台（VMOS / LDPlayer / WSA） |
+
+## 引擎自带基准 vs 我们管线的同口径 A/B（结论不同，值得记住）
+
+上游引擎有**自动选择**：`Emulator_ScreenshotMethod='auto'` 会跑一次性能测试并自动写回最快的方案
+（`run_simple_screenshot_benchmark`，脚本见 `tools/diagnostics/bench_screenshot.py`）。
+本机实测它的输出：
+
+| Screenshot | Time | Speed |
+| --- | --- | --- |
+| ADB | 0.311s | Medium |
+| ADB_nc | 0.119s | Very Fast |
+| uiautomator2 | 0.328s | Medium |
+| DroidCast | 0.267s | Fast |
+| **DroidCast_raw** | **0.061s** | **Ultra Fast** → 被选中并自动写回配置 |
+
+但**在"抓图 + 置入宿主"这条端到端管线上**用同一口径重测（各 8 次、已预热），结论不一样：
+
+| 后端 | 中位 | 最小 | p25 | p75 | 最大 |
+| --- | --- | --- | --- | --- | --- |
+| adb（基线） | 324 ms | 312 | 320 | 350 | 361 |
+| ADB_nc | 248 ms | 229 | 236 | 274 | 279 |
+| DroidCast_raw | 270 ms | 233 | 267 | 275 | 276 |
+| **scrcpy** | **128 ms** | 120 | 128 | 128 | **129** |
+
+- **scrcpy 在我们管线上决定性胜出**（128 ms，且极其稳定）；
+- 引擎基准把 DroidCast_raw 排第一（61 ms），而我们量到 270 ms（≈ADB_nc）——
+  **基准口径与端到端口径不同，不能直接搬运结论**；
+- 修正我此前一次误测：我曾用 `screenshot='droidcast'`（普通版）量出 337–345 ms，
+  而快变体是 **`DroidCast_raw`**（引擎视为独立方法）；同理 `ADB_nc` 也比 `adb` 快。
+
+### 本机推荐配置
+
+```powershell
+# 截图 scrcpy（e2e 128 ms，最稳）+ 输入 MaaTouch（稳态 ~53 ms）
+alashub goto page_main --adb <adb> --serial 127.0.0.1:16384     --capture-engine --screenshot scrcpy --control MaaTouch
+```
+
+> 另注（来自上游应用说明，本机适用性已验证）：`nemu_ipc` 需与截图配套、且触控走模拟器内部 RPC，
+> 低性能机器上滑动易丢步——但本机是 MuMu **国际版**，上游**硬拒绝** nemu_ipc，用不了。
