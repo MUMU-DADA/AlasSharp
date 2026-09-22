@@ -59,10 +59,11 @@
 
 | 项 | 原因 |
 | --- | --- |
-| 文本输入 | 上游仅用于「装备码」，且走 uiautomator2 后端；本机是 adb 后端，
-`input text` 语义不同（不支持中文/清空） |
 | 长按的完整业务链 | 上游 `gems_farming` 那条真实用法要真的出击，未验；
 原语本身已用上游自己的判据（`EQUIPMENT_OPEN`）验过 |
+| uiautomator2 后端的文本输入 | 上游装备码用的是 `send_keys`（uiautomator2）。
+我们验的是 adb 的 `input text`（产品当前只有这个后端），两者语义不同：
+`input text` 不支持中文、不清空原内容 |
 
 ## 复现全部证据
 
