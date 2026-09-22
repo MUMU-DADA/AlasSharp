@@ -97,3 +97,26 @@ C# 拿不到可用坐标。两个方向：
 1. 让 `json_default` 把数值元组/ndarray 转成数组（协议层修）；
 2. **点击一律让 ALAS 自己执行**（`device.click(@ENTRANCE)` 已验证可用，62.5 ms）——
    这条更符合"动作交给上游"的架构，也绕开了序列化问题。
+
+## 第二次尝试（已带状态前置校验）：**手工复刻 `enter_map` 不等价**
+
+新增 `tools/diagnostics/s3_probe_dropdown.py`（先校验状态，不满足就退出；逐步骤打印素材分数）。
+本轮实测：
+
+| 步骤 | 结果 |
+| --- | --- |
+| 状态前置校验 | ✅ `pages=['page_campaign']`，通过后才继续 |
+| `device.click(@ENTRANCE)`（ALAS 自己点） | ❌ **没打开准备面板**（prep=0.1383） |
+| `handle_map_preparation()` → `device.click(@PREP)` | ⚠️ 打开的却是 **`MAP_PREPARATION` 面板本身**（1.0） |
+| 从准备面板点 `handle_map_preparation` 的返回值 | ❌ **没打开舰队选择浮层**（overlay=0.1246） |
+
+**结论（比"假设未验证"更进一步）**：**手工一步步复刻 `enter_map` 与让它自己跑并不等价** ——
+`enter_map` 内部有计时器与状态（`campaign_timer/map_timer/fleet_timer`、`map_click/campaign_click`
+计数、`checked_in_map` 等），我按顺序单独调用会被内部状态判定跳过或走错分支。
+
+**因此下一次应该换成"就地观测"而不是"复刻"**：
+让它**自己跑 `enter_map`**（它确实能走到浮层并反复点『选择』），同时在旁边**周期性截图**，
+看它在点『选择』的那一刻屏幕上到底是什么 —— 这样拿到的才是真现场的证据。
+
+顺带修掉一个脚本 bug：辅助函数 `op(name, **args)` 与业务参数 `name=` 撞名
+（`TypeError: op() got multiple values for argument 'name'`）→ 形参改名 `_op`。
