@@ -389,3 +389,28 @@ is_current_fleet/is_submarine）。道理直白 —— **在战斗中画面上�
 
 修正：`require_ships` **仅在 `mode='main'` 下生效**；海域模式跳过该判据（它另有自己的通路验证）。
 复验：产品路径 **5/5**、`verify_map_detection` 全通过。
+
+### 已修复：上游 `Points` 空集未定义（`Points object has no attribute 'x'`）
+
+**不是 numpy 2 的问题**（我此前的猜测错了），是上游的潜在缺陷 ——
+`module/map_detection/utils.py`：
+
+```python
+class Points:
+    def __init__(self, points):
+        if points is None or len(points) == 0:
+            self._bool = False
+            self.points = None          # ← 空集分支不设 x / y
+        else:
+            ...
+            self.x, self.y = self.points.T
+```
+
+空集一旦被用到（`.x` / `.y` / `to_lines`）就抛 `AttributeError`。上游调用方通常先判空，
+所以平时不炸；**在非地图画面上反复调用**时踩到了（实测菜单画面第 3 次起连续报错）。
+
+垫片 `apply_points_empty_compat()`：空集也给出空数组，让下游退化成"没有点/没有线"。
+复验：同一路径连续 12 次调用 —— **`Points` 报错 0/12**（此前从第 3 次起连续报），
+失败原因变成有意义的判词（"网格不干净" / "没有任何船标志"）。
+
+复验三件套：`verify_map_detection` 全通过、`verify_product_map` **5/5**、偏移对齐 0 矛盾。

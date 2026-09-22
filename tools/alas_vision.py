@@ -1023,6 +1023,46 @@ def set_os_mask_mode(on):
     _OS_MASK_MODE = bool(on)
 
 
+def apply_points_empty_compat():
+    """上游 `Points` 的**空集没有定义**（潜在缺陷，与 numpy 无关）。
+
+    `module/map_detection/utils.py` 里：
+
+        class Points:
+            def __init__(self, points):
+                if points is None or len(points) == 0:
+                    self._bool = False
+                    self.points = None          # ← 空集分支**不设** x / y
+                else:
+                    ...
+                    self.x, self.y = self.points.T
+
+    于是空集一旦被用到（`.x` / `.y` / `to_lines` 等）就抛
+    `AttributeError: 'Points' object has no attribute 'x'`。
+    上游调用方通常先判空所以平时不炸；我们在**非地图画面上反复调用**时踩到了
+    （实测：战役菜单画面连续调用后，第 3 次起连续报此错）。
+
+    垫片：空集也给出**空数组**，让下游自然退化成"没有点/没有线"，而不是崩溃。
+    """
+    try:
+        from module.map_detection import utils as _md_utils
+        if getattr(_md_utils.Points, '_alas_empty_compat', False):
+            return
+        _orig_init = _md_utils.Points.__init__
+
+        def _init(self, points):
+            _orig_init(self, points)
+            if not hasattr(self, 'x'):
+                import numpy as _np
+                self.x = _np.array([])
+                self.y = _np.array([])
+
+        _md_utils.Points.__init__ = _init
+        _md_utils.Points._alas_empty_compat = True
+    except Exception:
+        pass
+
+
 def _map_config():
     """S2 需要上游配置（`DETECTION_BACKEND` 等决定用 Homography 还是 Perspective 后端）。
     做法与 cached_rule_check 一致：用上游自己的 AzurLaneConfig，不自己造配置层。"""
@@ -1068,6 +1108,7 @@ def op_map_detect(args):
     import module.map_detection.view as view_mod
     image = _require_image()
     apply_numpy2_compat()
+    apply_points_empty_compat()
     cfg = _map_config()
     # 上游有两个检测后端（Homography / Perspective），由 config.DETECTION_BACKEND 选。
     # 允许显式指定：真机上出现过 homography 后端"找不到水平线/垂直线"而画面明明有网格，
