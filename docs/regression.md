@@ -8,6 +8,8 @@
 
 设备：MuMu 模拟器 `127.0.0.1:16384`（1280x720，国服）。
 脚本：`tools/diagnostics/regress_pages.py`；原始数据 `data/regress_pages.json`。
+账号前提：按 `data/account_probe.json`，本次仅解锁 **1 章 / 2 关**（第 1 章）。未解锁功能的入口不可达，会直接反映在上面的通过数里 —— **换号后必须重记基线，不能与旧数字直接比较。**
+
 
 ## 结果：29 / 34 通过
 
@@ -50,7 +52,7 @@
 
 ## 顺带发现：上游页面图里有"无入边"节点
 
-上游图共 53 节点 / 127 边，其中 **4 个节点没有任何入边**：`page_unknown`, `page_rpg_city`, `page_main_white`, `page_channel`。
+上游图共 53 节点 / 127 边，其中 **4 个节点没有任何入边**：`page_main_white`, `page_unknown`, `page_channel`, `page_rpg_city`。
 
 这类节点**不可能是导航目标**（没人能"走到"它），它们是：
 

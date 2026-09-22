@@ -130,6 +130,26 @@ def write_report(results, no_in, node_n, edge_n):
     """生成 docs/regression.md。独立成函数是为了 `--report-only` 能只重建文档。"""
     ok_n = sum(1 for r in results if r['verdict'] == 'ok')
     bad = [r for r in results if r['verdict'] != 'ok']
+    # ---- 账号前提：页面可达性受解锁进度影响，基线数字必须带上它。
+    # 教训（2026-09-23）：29/34 与记录的 33/34 差 5 个页，一度被当成回归；
+    # 实际是那条 33/34 测自**换号之前的旧号**。数字脱离账号前提就会误导。
+    def account_line():
+        try:
+            with open(os.path.join(HERE, '..', 'data', 'account_probe.json'),
+                      encoding='utf-8') as stream:
+                probe = json.load(stream)
+            chapters = probe.get('chapters') or []
+            unlocked = [c['chapter'] for c in chapters if c.get('stages')]
+            stages = sum(len(c.get('stages') or []) for c in chapters)
+            return ('账号前提：按 `data/account_probe.json`，本次仅解锁 **%d 章 / %d 关**（%s）。'
+                    '未解锁功能的入口不可达，会直接反映在上面的通过数里 —— '
+                    '**换号后必须重记基线，不能与旧数字直接比较。**'
+                    % (len(unlocked), stages,
+                       '、'.join('第 %d 章' % c for c in unlocked) or '无'))
+        except Exception:
+            return ('账号前提：未找到 `data/account_probe.json`，**本次基线未记录账号解锁进度** —— '
+                    '与历史数字比较前，先确认两次跑的是同一个账号。')
+
     # ---- 报告（生成 docs/regression.md，避免手写漂移）
     lines = [
         '# 页面识别全量回归（产品路径）',
@@ -142,6 +162,8 @@ def write_report(results, no_in, node_n, edge_n):
         '',
         '设备：MuMu 模拟器 `127.0.0.1:16384`（1280x720，国服）。',
         '脚本：`tools/diagnostics/regress_pages.py`；原始数据 `data/regress_pages.json`。',
+        account_line(),
+        '',
         '',
         '## 结果：%d / %d 通过' % (ok_n, len(results)),
         '',
