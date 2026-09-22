@@ -144,7 +144,10 @@ def main():
         '',
         '## tier C 独有（%d 个）——实施顺序上排最后' % len(c_only),
         '',
-        ' '.join('`%s`' % n for n in sorted(c_only, key=lambda n: -calls[n])),
+        # 次数相同的按名字再排一次：只按 -calls 排，同分项的顺序取决于 set 的迭代顺序，
+        # 而 Python 的字符串哈希每个进程都不同（PYTHONHASHSEED）→ 生成产物每次都在抖，
+        # `git status` 里反复出现"只换了几个词的位置"的假改动（实测踩过）。
+        ' '.join('`%s`' % n for n in sorted(c_only, key=lambda n: (-calls[n], n))),
         '',
         '## 建议的实施顺序（数据驱动，不是拍脑袋）',
         '',
