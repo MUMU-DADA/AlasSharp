@@ -1114,26 +1114,85 @@ def op_map_detect(args):
     # 要把它与"接线错误"（少传参数、np.stack 报错之类）区分开，所以分类型捕。
     import module.map_detection.utils as md_utils
     from module.map_detection.view import MapDetectionError
-    try:
-        v.load(image)
-        out['load'] = 'ok'
-    except MapDetectionError as e:
-        set_os_mask_mode(False)      # 异常路径也必须复位，否则泄漏到后续战役检测
-        # 上游自己的负样本信号（找到瓦片但没有成形的网格）
-        out['load'] = 'negative'
-        out['detected'] = False
-        out['reason'] = str(e)
-        return out
-    except Exception as e:
+
+    def _rebuild_view(threshold):
+        """按给定 Hough 阈值重建 cfg + View（阈值改了必须重建，配置是构造期读入的）。"""
+        nonlocal cfg, v
+        cfg = _map_config()
+        if args.get('backend'):
+            cfg.DETECTION_BACKEND = args['backend']
+        try:
+            cfg.INTERNAL_LINES_HOUGHLINES_THRESHOLD = threshold
+        except Exception:
+            pass
+        if mode == 'os':
+            cfg.Scheduler_Command = 'OpsiDaily'
+            v = view_mod.View(cfg, mode='os', grid_class=grid_class) if grid_class \
+                else view_mod.View(cfg, mode='os')
+        else:
+            v = view_mod.View(cfg)
+
+    # 失败后**降阈值重试**：困难图的竖线在倾斜 3D 平面上票数摊开，
+    # 默认阈值 75 一条都拟合不出 → 消失点几何退化（Vanish point ... too close）。
+    # 实测：2-1 / 10-4 用默认即可，困难 1-4 需要 50；但**不能全局降** ——
+    # 降到 40 时 2-1 会多检出一整圈（39 格 / shape [7,4] 而非 24 / [5,3]）。
+    # 所以按"默认优先、失败才降"的顺序试，与上游自己的
+    # search_tile_center → corner → rectangle 多策略同思路。
+    _last_reason = None
+    for _thr in (None, 50, 40):
+        if _thr is not None:
+            try:
+                _rebuild_view(_thr)
+            except Exception as e:
+                _last_reason = f'{type(e).__name__}: {e}'
+                break
+        try:
+            v.load(image)
+            out['load'] = 'ok'
+            out['threshold_used'] = int(getattr(cfg, 'INTERNAL_LINES_HOUGHLINES_THRESHOLD', 0))
+            _last_reason = None
+            break
+        except MapDetectionError as e:
+            # 上游自己的负样本信号；先记住，换更低的阈值再试
+            _last_reason = str(e)
+            continue
+        except Exception as e:
+            set_os_mask_mode(False)
+            # 非地图画面上上游会在 np.stack 上抛 TypeError（它假定调用方已确认在地图上）。
+            # 产品侧需要在任意画面上安全地"试一试"，所以这里也归为未检测到，
+            # 但**保留原始异常文本**，免得把"接线的锅"当成"画面的锅"。
+            out['load'] = 'negative'
+            out['detected'] = False
+            out['reason'] = f'{type(e).__name__}: {e}'
+            return out
+    if _last_reason is not None:
         set_os_mask_mode(False)
-        # 非地图画面上上游会在 np.stack 上抛 TypeError（它假定调用方已确认在地图上）。
-        # 产品侧需要在任意画面上安全地"试一试"，所以这里也归为未检测到，
-        # 但**保留原始异常文本**，免得把"接线的锅"当成"画面的锅"。
         out['load'] = 'negative'
         out['detected'] = False
-        out['reason'] = f'{type(e).__name__}: {e}'
+        out['reason'] = _last_reason
+        out['thresholds_tried'] = [t for t in (None, 50, 40)]
         return out
     set_os_mask_mode(False)      # 用完即复位，不影响后续战役检测
+    # 回退结果的**几何合理性闸门**：降阈值会把非地图画面也"检出"成一片网格
+    # （实测战役菜单 os_map.png 在 thr=50 下报 59 格 / shape [7,7]），
+    # 而真地图在回退阈值下是**干净矩形**（困难 1-4 → 21 格 = 7x3）。
+    # 判据：回退生效时，格数必须等于 (sx+1)*(sy+1)；给不出干净矩形就当没检出。
+    # 只在回退路径上卡这一道 —— 默认阈值下的正常结果不适用（10-4 本来就缺 6 格是 UI 遮挡）。
+    if _thr is not None:
+        _shape = getattr(v, 'shape', None)
+        _grids = getattr(v, 'grids', None)
+        if _shape is None or not isinstance(_grids, dict):
+            out['load'] = 'negative'
+            out['detected'] = False
+            out['reason'] = 'fallback 未给出网格'
+            return out
+        _sx, _sy = int(_shape[0]), int(_shape[1])
+        if len(_grids) != (_sx + 1) * (_sy + 1):
+            out['load'] = 'negative'
+            out['detected'] = False
+            out['reason'] = ('fallback 网格不干净（%d 格 vs %dx%d=%d），判为非地图画面'
+                             % (len(_grids), _sx + 1, _sy + 1, (_sx + 1) * (_sy + 1)))
+            return out
     if hasattr(v, 'predict'):
         try:
             v.predict()

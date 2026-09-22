@@ -9,5 +9,10 @@
     "chapter": "campaign_main/campaign_10_4.json",
     "name": "10-4",
     "note": "用户切换到的不同形状地图：10-4，9x6(I6)。检出 grids=48、shape=[8,5] 与 IR 的 I6 严格一致；缺 6 格为 UI 遮挡（左列 (0,4)(0,5) + 右列 (8,2..5)）"
+  },
+  "map_hard_1_4.png": {
+    "chapter": "campaign_main/campaign_1_4.json",
+    "name": "1-4（困难）",
+    "note": "困难图复用同章节地图数据（campaign_hard 下只有 12_4/14_4/campaign_hard），故取普通 1-4：G3 = 7x3 = 21 格。检出 21 格 shape[6,2]，走 Hough 阈值回退（75→50）后成功；画面最左列 A 被舰队栏挡住属相机窗口"
   }
 }
