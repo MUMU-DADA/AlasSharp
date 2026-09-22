@@ -208,6 +208,21 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 `device` / `goto`（真机导航，见 `docs/navigation.md`）/ `map`（S2 地图识别，见 `docs/map-detection.md`）/
 `map-ir`（关卡 IR 校验）/ `capture`（设备通道对比，见 `docs/device-engine.md`）。
 
+**S3（驱动上游关卡计划，见 `docs/s3-entry-sequence.md`）**：宿主把上游的
+`Campaign` 实例化后，按关卡 IR 的计划顺序调用它自己的 `battle_*` 方法
+（**战斗逻辑不重写**，C#/宿主只做编排）。入口：
+
+- `tools/diagnostics/s3_preflight.py <章模块>` —— 开跑前检查 6 项
+  （IR / 模块与形状 / 关卡名 / 配置绑定 / 调用词表 / **图内帧可识别性**）；
+- `tools/diagnostics/s3_plan_coverage.py` —— 全量统计"哪些章节现在就能跑"（1374 章中 88.1% 计划完整）；
+- 协议 op `s3_run_plan`（dry-run 默认 true；真跑需 `allow_actions=true`，
+  带 `max_seconds` / `repeat_until_cleared` / 上游完成信号）。
+
+实测（本账号）：计划执行器已在 **3 个关卡**上跑通、共 **13 次真实战斗全部无错**；
+4 张图已确认可识别（2-1 / 2-2 / 3-1 / 3-2）。已知不支持：第 1 章（7 格单行图，上游检测器失效）。
+客户端适配共 6 项（numpy2 / OS 遮罩 / `Points` 空集 / `bar_opened` 亮度 /
+`auto_search` 跳过 / "正在攻略中"弹窗像素判定）。
+
 **设备引擎（多后端可切换，见 `docs/device-engine.md`）**：设备 I/O 走宿主，换后端不改 C# 代码。
 本机实测最优（已设为默认）：**`--screenshot scrcpy`（抓图 128 ms，比 adb 快 2.5 倍）
 + `--control MaaTouch`（点击稳态 53 ms）**；导航流程因此快约 14.5%。
