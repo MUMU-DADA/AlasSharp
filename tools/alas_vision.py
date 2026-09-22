@@ -1338,6 +1338,44 @@ _UNFINISHED_RED_THRESHOLD = 0.15
 _UNFINISHED_ABORT_XY = (479, 510)              # 实测有效
 
 
+def _proactive_abort_worker(stop_event):
+    """进图期间**主动**盯“正在攻略中”弹窗，一出现就点「撤退」。
+
+    为什么需要：被动自愈要等 `enter_map` 卡满 60s 报 GameStuckError 才处理 ——
+    用户实测反馈“每次都要等好久才处理”。这里用独立线程提前介入。
+
+    **刻意走 adb 子进程**（exec-out screencap / input tap）而不走引擎设备层：
+    引擎那套（scrcpy 流）不是线程安全的，而本线程与主线程（正在跑 enter_map）并发 ✗
+    adb 每次都是独立进程，天然安全 ✓ 这也是坐标用固定 (479,510)（弹窗「撤退」，实测有效）的原因。
+    """
+    import subprocess as _sp
+    import numpy as _np
+    import cv2 as _cv2
+    _base = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                          '..', '.runtime', 'venv314', 'Lib',
+                                          'site-packages', 'adbutils', 'binaries', 'adb.exe'))
+    _adb = _base if os.path.exists(_base) else 'adb'
+    _serial = str(_DEVICE_ARGS.get('serial') or '127.0.0.1:16384')
+    _x1, _y1, _x2, _y2 = _UNFINISHED_RED_BOX
+    _ax, _ay = _UNFINISHED_ABORT_XY
+    while not stop_event.is_set():
+        try:
+            out = _sp.run([_adb, '-s', _serial, 'exec-out', 'screencap', '-p'],
+                          capture_output=True, timeout=15).stdout
+            img = _cv2.imdecode(_np.frombuffer(out, _np.uint8), _cv2.IMREAD_COLOR)
+            if img is not None and img.shape[0] >= _y2 and img.shape[1] >= _x2:
+                patch = img[_y1:_y2, _x1:_x2]
+                b = patch[:, :, 0].astype(int)
+                g = patch[:, :, 1].astype(int)
+                r = patch[:, :, 2].astype(int)
+                if float((((r > 140) & (g < 100) & (b < 100))).mean()) > _UNFINISHED_RED_THRESHOLD:
+                    _sp.run([_adb, '-s', _serial, 'shell', 'input', 'tap', str(_ax), str(_ay)],
+                            timeout=10)
+        except Exception:
+            pass
+        stop_event.wait(1.5)
+
+
 def op_s3_abort_unfinished(args):
     """检测并关闭"关卡正在攻略中"弹窗（客户端专属；上游不认识它）。
 
@@ -1403,10 +1441,14 @@ def op_s3_run_plan(args):
     if not dry and not args.get('allow_actions'):
         return {'refused': True,
                 'reason': '真跑需要 allow_actions=true（dry_run 默认可离线校验）'}
+    # 舰队选择也要能由调用方指定（不同账号/关卡要用不同舰队；此前只走 init 的默认值）。
     init = op_s3_campaign_init({'chapter': chapter,
                                 'serial': args.get('serial'),
                                 'screenshot': args.get('screenshot'),
-                                'control': args.get('control')})
+                                'control': args.get('control'),
+                                'fleet1': args.get('fleet1', 1),
+                                'fleet2': args.get('fleet2', 0),
+                                'submarine_fleet': args.get('submarine_fleet', 0)})
     if init.get('error'):
         return {'error': init['error'], 'stage': 'init'}
     inst = _CAMPAIGN.get('obj')
@@ -1473,9 +1515,19 @@ def op_s3_run_plan(args):
          if not (steps and steps[-1].get('error')) else {'error': 'skipped'})
     steps.append({'step': 'get_entrance', 'ms': r.get('ms'), 'error': r.get('error')})
     if not r.get('error'):
-        r = op_s3_campaign_call({'name': 'enter_map', 'args': ['@ENTRANCE', 'normal'],
-                                 'allow_actions': True})
-        steps.append({'step': 'enter_map', 'ms': r.get('ms'), 'error': r.get('error')})
+        # **主动盯防**（用户实测反馈：被动自愈要等 60s 才处理，太久）：
+        # 进图期间后台线程每 1.5s 查一次"正在攻略中"弹窗，一出现就点掉。
+        import threading as _th
+        _stop_ev = _th.Event()
+        _watcher = _th.Thread(target=_proactive_abort_worker, args=(_stop_ev,), daemon=True)
+        _watcher.start()
+        try:
+            r = op_s3_campaign_call({'name': 'enter_map', 'args': ['@ENTRANCE', 'normal'],
+                                     'allow_actions': True})
+            steps.append({'step': 'enter_map', 'ms': r.get('ms'), 'error': r.get('error')})
+        finally:
+            _stop_ev.set()
+            _watcher.join(timeout=5)
         # **自愈**：进图失败且像"卡住"时，多半是那个客户端弹窗挡着
         # （「关卡 xxx 正在攻略中…[撤退][立即前往]」）——它出现在 **enter_map 过程当中**，
         # 所以进图前那次检测抓不到（实测曾连续两轮各卡 60s，还被误判成"那关有问题"）。
