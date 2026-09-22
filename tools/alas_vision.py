@@ -732,6 +732,68 @@ def op_account_state(args):
     return out
 
 
+def op_task_catalog(args):
+    """上游**任务目录**（只读）：有哪些任务、各自属于哪些组、调度入口是什么。
+
+    为什么要有它（周期任务域的数据源）：科研/建造/委托/每日这类周期任务的清单与调度
+    定义在上游 `module/config/argument/task.yaml` 里，并且由上游生成器变成
+    `args.json` / `menu.json`。本项目**不在 C# 侧另维护一份任务表** —— 与素材、地图规则
+    同一条纪律：要用就先问宿主（宿主才有上游代码），C# 只消费结果。
+
+    只读：不写配置、不生成产物、不碰游戏。
+    """
+    from module.config.utils import read_file
+    candidates = [os.path.join(FORK, 'module', 'config', 'argument', 'task.yaml'),
+                  './module/config/argument/task.yaml']
+    data, source, error = None, None, None
+    for path in candidates:
+        try:
+            data = read_file(path)
+            source = path
+            break
+        except Exception as e:                       # 换下一个候选路径再试
+            error = f'{type(e).__name__}: {e}'
+    if data is None:
+        return {'error': f'读不到上游 task.yaml: {error}', 'tried': candidates}
+
+    names, groups = [], {}
+    if isinstance(data, dict):
+        names = sorted(data.keys())
+        for name, value in data.items():
+            if isinstance(value, list):
+                groups[name] = [str(v) for v in value]
+    elif isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict) and 'name' in item:
+                names.append(str(item['name']))
+            elif isinstance(item, str):
+                names.append(item)
+        names.sort()
+
+    # **两个来源要分清楚**（实测踩过）：`task.yaml` 的顶层键是**分组**（本机 9 个），
+    # 而"有哪些任务"的扁平表是上游生成器产出的 `args.json`（本机 68 个）。
+    # 直接把前者当任务清单会得出错误结论，所以两个都报，并标明各自是什么。
+    generated, generated_error = [], None
+    try:
+        with open(os.path.join(FORK, 'module', 'config', 'argument', 'args.json'),
+                  encoding='utf-8') as stream:
+            generated = sorted(json.load(stream).keys())
+    except Exception as e:
+        generated_error = f'{type(e).__name__}: {e}'
+    return {
+        'source': source,
+        'loader': 'module.config.utils.read_file',
+        'raw_type': type(data).__name__,
+        'source_groups': names,
+        'source_group_count': len(names),
+        'generated_tasks': generated,
+        'generated_task_count': len(generated),
+        'generated_source': os.path.join(FORK, 'module', 'config', 'argument', 'args.json'),
+        'generated_error': generated_error,
+        'groups': groups,
+    }
+
+
 def _asset_id_map():
     """id(Button 对象) -> '子模块/资产名'，实时扫描已导入的 module.*.assets。
 
@@ -2751,6 +2813,7 @@ OPS = {
     'ocr': op_ocr,
     'page_current': op_page_current,
     'account_state': op_account_state,
+    'task_catalog': op_task_catalog,
     'ui_page_graph': op_ui_page_graph,
     'cached_rule_check': op_cached_rule_check,
     'page_positive_control': op_page_positive_control,

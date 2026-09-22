@@ -105,7 +105,23 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 > （一个活动关跑不动不该把整条队列停掉），但失败仍按"失败即停"停下，要跑完请显式
 > `--continue-on-error`。
 
-## 七、第二个域：账号状态（只读）
+## 七、周期任务域的数据源（先查清，再动手）
+
+科研/建造/委托/每日这类周期任务的清单与分组定义在上游，**两个来源不是一回事**（实测）：
+
+| 来源 | 是什么 | 本机数量 |
+| --- | --- | --- |
+| `module/config/argument/task.yaml`（上游源） | 顶层键是**分组**（Alas / Event / Reward / DailyMission / EventDaily / Farm / Island / Opsi / Tool） | **9 个分组** |
+| `module/config/argument/args.json`（上游生成产物） | **扁平的任务清单**，就是"有哪些任务" | **68 个任务** |
+
+交集只有 3 个（Alas / Event / Reward），所以**把 task.yaml 的顶层键当成任务清单是错的** ——
+这一条是第一版验收脚本把两者当同一集合比对时被自己的对拍当场证伪的（正是对拍该干的事）。
+
+- 宿主 op：`task_catalog`（只读，用上游 loader 读源 + 读生成产物，两个都报、各自标明是什么）；
+- 验收：`python tools/diagnostics/verify_task_catalog.py`（两个来源可读、差异如实打印）；
+- **做周期任务域时**：任务清单取 `args.json`，分组关系去 `task.yaml` 找；本项目**不另维护任务表**。
+
+## 八、第二个域：账号状态（只读）
 
 `AccountStateTask`（`kind = "account_state"`）回答"现在是什么状态"：当前页面、**在不在图里**、
 服务器、章节实例与账号配置要点。它是**只读**的 —— 不点击、不导航，只有 `capture=true`
