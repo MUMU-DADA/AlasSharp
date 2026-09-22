@@ -212,7 +212,9 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 
 `alashub` 子命令：`verify` / `list` / `show` / `imaging` / `matching` / `vision` /
 `device` / `goto`（真机导航，见 `docs/navigation.md`）/ `map`（S2 地图识别，见 `docs/map-detection.md`）/
-`map-ir`（关卡 IR 校验）/ `capture`（设备通道对比，见 `docs/device-engine.md`）。
+`map-ir`（关卡 IR 校验）/ `capture`（设备通道对比，见 `docs/device-engine.md`）/
+`contract`（结果合同离线裁决，见 `docs/result-contract.md`）/
+`queue`（任务队列，见 `docs/tasks.md`）/ `selftest-runtime`（运行时离线自检，见 `docs/runtime.md`）。
 
 **S3（上游规则驱动，见 [适配说明](docs/s3-upstream-adaptation.md)）**：
 生产路径直接调用上游 `CampaignRun.load_campaign()`，完整合并章节 `Config`，
@@ -271,7 +273,7 @@ IR JSON 目前用于规则元数据和校验；完整执行读取的是上游生
 |---|---|---|
 | R0 真值与证据 | 统一成功/撤退/错误/限额结果合同，清理历史证据矛盾 | **基本完成**（见下）；只剩一条"本局撤退"真机记录待补 |
 | R1 常驻运行时 | 设备/宿主会话、取消超时、结构化日志、诊断工件、统一错误 | **第一切片完成**（见 [`docs/runtime.md`](docs/runtime.md)） |
-| R2 任务域垂直切片 | 战役批量 → 大世界 → 活动 → 周期任务，按域复用通用状态模型 | 待开始 |
+| R2 任务域垂直切片 | 战役批量 → 大世界 → 活动 → 周期任务，按域复用通用状态模型 | **通用任务模型 + 战役域完成**（见 [`docs/tasks.md`](docs/tasks.md)）；第二域等设备在线 |
 | R3 原生钩子迁移 | 按覆盖率、依赖和对拍证据迁移通用能力，上游保留回退 | 待开始 |
 | R4 产品入口与前端 | 基于任务/结果模型提供配置、队列、状态和证据操作 | 待开始 |
 | R5 宿主替换评估 | 仅在对拍、性能和真实路径证据齐备后替换局部宿主 | 待开始 |

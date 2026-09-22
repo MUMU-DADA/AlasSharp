@@ -257,12 +257,154 @@ def build_cases() -> list[dict]:
     ]
 
 
+def build_queue_cases() -> list[dict]:
+    """R2：任务队列。`tasks` 存在时自检走队列路径而不是单批路径。"""
+    def campaign(task_id, chapters, **input_overrides):
+        payload = {'chapters': chapters}
+        payload.update(input_overrides)
+        return {'id': task_id, 'kind': 'campaign_batch', 'input': payload}
+
+    return [
+        {
+            'name': 'queue_two_campaign_tasks_succeeded',
+            'dry_run': False,
+            'allow_actions': True,
+            'serial': 'stub-1',
+            'artifacts': True,
+            'tasks': [
+                dict(campaign('clear-1-1', [CLEARED]),
+                     documents={CLEARED: cleared_document(CLEARED, 'S', '1-1')}),
+                dict(campaign('clear-1-2', [CLEARED2]),
+                     documents={CLEARED2: cleared_document(CLEARED2, 'S', '1-2')}),
+            ],
+            'expect': {
+                'outcome': 'succeeded',
+                'host_start_count': 1,
+                'device_configure_count': 1,
+                'backend_calls': 3,          # 1 次设备配置 + 2 个任务各 1 次
+                'stopped_early': False,
+                'tasks': [
+                    {'id': 'clear-1-1', 'outcome': 'succeeded', 'error_kind': 'none'},
+                    {'id': 'clear-1-2', 'outcome': 'succeeded', 'error_kind': 'none'},
+                ],
+                'artifacts': ['queue.json', 'state.json', 'session-log.jsonl',
+                              'task-clear-1-1.json', 'task-clear-1-2.json',
+                              'sortie-1-1.json', 'sortie-1-2.json'],
+            },
+        },
+        {
+            'name': 'queue_precondition_is_skipped_not_failed',
+            'dry_run': False,
+            'allow_actions': True,
+            'serial': 'stub-1',
+            'artifacts': True,
+            'tasks': [
+                # 空章节 = 前置条件不满足：记 skipped，**不**当成失败，也不该调用后端
+                campaign('bad-input', []),
+                dict(campaign('clear-1-1', [CLEARED]),
+                     documents={CLEARED: cleared_document(CLEARED, 'S', '1-1')}),
+            ],
+            'expect': {
+                'outcome': 'partial',
+                'host_start_count': 1,
+                'device_configure_count': 1,
+                'backend_calls': 2,          # 设备配置 1 次 + 只有真正跑的任务调了后端
+                'stopped_early': False,
+                'tasks': [
+                    {'id': 'bad-input', 'outcome': 'skipped', 'error_kind': 'none'},
+                    {'id': 'clear-1-1', 'outcome': 'succeeded', 'error_kind': 'none'},
+                ],
+                'artifacts': ['queue.json', 'state.json',
+                              'task-bad-input.json', 'task-clear-1-1.json'],
+            },
+        },
+        {
+            'name': 'queue_required_precondition_stops_queue',
+            'dry_run': False,
+            'allow_actions': True,
+            'serial': 'stub-1',
+            'artifacts': True,
+            'tasks': [
+                dict(campaign('required-bad', []), required=True),
+                dict(campaign('clear-1-1', [CLEARED]),
+                     documents={CLEARED: cleared_document(CLEARED, 'S', '1-1')}),
+            ],
+            'expect': {
+                'outcome': 'failed',
+                'host_start_count': 1,
+                'device_configure_count': 1,
+                'backend_calls': 1,          # 只有设备配置；两个任务都没跑
+                'stopped_early': True,
+                'tasks': [
+                    {'id': 'required-bad', 'outcome': 'failed', 'error_kind': 'none'},
+                    {'id': 'clear-1-1', 'outcome': 'skipped', 'error_kind': 'none'},
+                ],
+                'artifacts': ['queue.json', 'state.json',
+                              'task-required-bad.json', 'task-clear-1-1.json'],
+            },
+        },
+        {
+            'name': 'queue_upstream_failure_stops_and_skips_rest',
+            'dry_run': False,
+            'allow_actions': True,
+            'serial': 'stub-1',
+            'artifacts': True,
+            'tasks': [
+                dict(campaign('boom', [UPSTREAM_BOOM]),
+                     errors={UPSTREAM_BOOM: 'RuntimeError: fixture upstream failure'}),
+                dict(campaign('clear-1-1', [CLEARED]),
+                     documents={CLEARED: cleared_document(CLEARED, 'S', '1-1')}),
+            ],
+            'expect': {
+                'outcome': 'failed',
+                'host_start_count': 1,
+                'device_configure_count': 1,
+                'backend_calls': 2,
+                'stopped_early': True,
+                'tasks': [
+                    {'id': 'boom', 'outcome': 'failed', 'error_kind': 'upstream_error'},
+                    {'id': 'clear-1-1', 'outcome': 'skipped', 'error_kind': 'upstream_error'},
+                ],
+                'artifacts': ['queue.json', 'state.json',
+                              'task-boom.json', 'task-clear-1-1.json'],
+            },
+        },
+        {
+            'name': 'queue_resume_skips_completed_task',
+            'dry_run': False,
+            'allow_actions': True,
+            'serial': 'stub-1',
+            'artifacts': True,
+            'resume_completed': ['clear-1-1'],
+            'tasks': [
+                dict(campaign('clear-1-1', [CLEARED]),
+                     documents={CLEARED: cleared_document(CLEARED, 'S', '1-1')}),
+                dict(campaign('clear-1-2', [CLEARED2]),
+                     documents={CLEARED2: cleared_document(CLEARED2, 'S', '1-2')}),
+            ],
+            'expect': {
+                'outcome': 'partial',
+                'host_start_count': 1,
+                'device_configure_count': 1,
+                'backend_calls': 2,          # 已完成的任务不该再调后端
+                'stopped_early': False,
+                'tasks': [
+                    {'id': 'clear-1-1', 'outcome': 'skipped', 'error_kind': 'none'},
+                    {'id': 'clear-1-2', 'outcome': 'succeeded', 'error_kind': 'none'},
+                ],
+                'artifacts': ['queue.json', 'state.json',
+                              'task-clear-1-1.json', 'task-clear-1-2.json'],
+            },
+        },
+    ]
+
+
 def main() -> int:
     if not EXE.is_file():
         print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先运行 dotnet build）')
         return 1
 
-    cases = build_cases()
+    cases = build_cases() + build_queue_cases()
     failures = []
     with TemporaryDirectory(prefix='alas-runtime-') as tmp:
         fixture = Path(tmp) / 'runtime-cases.json'
@@ -296,23 +438,35 @@ def main() -> int:
         problems = list(got['problems'])
         # 期望值由 Python 说了算：C# 只报事实，判据在这里（与结果合同同样的分工）。
         expect = case['expect']
-        for key in ('outcome', 'cleared', 'host_start_count', 'device_configure_count'):
-            want = expect[key]
-            have = got[key]
+        for key, want in expect.items():
+            if key in ('stages', 'tasks', 'artifacts', 'backend_calls'):
+                continue
+            have = got.get(key)
             if want != have:
                 problems.append(f'{key} 期望 {want} 实为 {have}')
-        for index, want_stage in enumerate(expect['stages']):
+        if 'backend_calls' in expect and expect['backend_calls'] != got['backend_calls']:
+            problems.append(f'后端调用次数 期望 {expect["backend_calls"]} 实为 {got["backend_calls"]}')
+        for index, want_stage in enumerate(expect.get('stages', [])):
             have_stage = got['stages'][index] if index < len(got['stages']) else None
             if have_stage is None:
                 problems.append(f'第{index + 1}关缺失')
                 continue
-            for key in ('chapter', 'outcome', 'cleared', 'failed'):
-                if want_stage[key] != have_stage[key]:
-                    problems.append(f'第{index + 1}关 {key} 期望 {want_stage[key]} '
+            for key in ('chapter', 'outcome', 'cleared', 'failed', 'skipped'):
+                if want_stage.get(key) != have_stage[key]:
+                    problems.append(f'第{index + 1}关 {key} 期望 {want_stage.get(key)} '
                                     f'实为 {have_stage[key]}')
-            if sorted(want_stage['violations']) != sorted(have_stage['violations']):
-                problems.append(f'第{index + 1}关 违例 期望 {sorted(want_stage["violations"])} '
+            if sorted(want_stage.get('violations', [])) != sorted(have_stage['violations']):
+                problems.append(f'第{index + 1}关 违例 期望 {sorted(want_stage.get("violations", []))} '
                                 f'实为 {sorted(have_stage["violations"])}')
+        for index, want_task in enumerate(expect.get('tasks', [])):
+            have_task = got['tasks'][index] if index < len(got['tasks']) else None
+            if have_task is None:
+                problems.append(f'第{index + 1}个任务缺失')
+                continue
+            for key in ('id', 'outcome', 'error_kind'):
+                if key in want_task and want_task[key] != have_task[key]:
+                    problems.append(f'第{index + 1}个任务 {key} 期望 {want_task[key]} '
+                                    f'实为 {have_task[key]}')
         for want_file in expect.get('artifacts', []):
             if want_file not in got['artifact_names']:
                 problems.append(f'缺少工件 {want_file}（实际 {got["artifact_names"]}）')
@@ -320,9 +474,6 @@ def main() -> int:
             if not got['stopped_early'] or got['stop_reason'] != 'cancelled':
                 problems.append(f'取消没有如实记录: stopped_early={got["stopped_early"]} '
                                 f'stop_reason={got["stop_reason"]}')
-        if case['name'] == 'live_batch_three_stages_cleared':
-            if got['backend_calls'] != 4:      # 3 关 + 1 次设备配置
-                problems.append(f'后端调用次数期望 4（3 关 + 1 次设备配置）实为 {got["backend_calls"]}')
 
         status = 'ok' if not problems else 'FAIL'
         print(f'  {status:<4} {name:<42} outcome={got["outcome"]:<10} '

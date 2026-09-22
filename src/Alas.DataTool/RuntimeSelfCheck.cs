@@ -52,7 +52,10 @@ internal static class RuntimeSelfCheck
         Console.WriteLine($"运行时自检：{cases.Count} 例（替身宿主，不启动 Python / 不连设备）");
         foreach (var node in cases)
         {
-            var report = RunCase(node!, workspace);
+            // 有 `tasks` 就是任务队列用例（R2）；否则是单批战役用例（R1）。
+            var report = node?["tasks"] is JsonArray
+                ? RunQueueCase(node!, workspace)
+                : RunCase(node!, workspace);
             reported.Add(report);
             bool ok = report["ok"]!.GetValue<bool>();
             if (!ok) failed++;
@@ -223,8 +226,193 @@ internal static class RuntimeSelfCheck
         return Report(name, problems, batch, engineCreations, artifactRoot, stub, log);
     }
 
-    private static IEnumerable<string> CheckReleased(AlasSession session, StubVisionEngine? stub)
+    /// <summary>
+    /// 任务队列用例（R2）：用替身宿主跑 `TaskQueue` + `CampaignBatchTask`，
+    /// 断言"没跑"与"跑失败"分开记、失败即停、断点续跑、宿主仍然只起一次。
+    /// </summary>
+    private static JsonObject RunQueueCase(JsonNode node, string? workspace)
     {
+        string name = node["name"]?.GetValue<string>() ?? "<未命名>";
+        bool dryRun = node["dry_run"]?.GetValue<bool>() ?? true;
+        bool allowActions = node["allow_actions"]?.GetValue<bool>() ?? false;
+        string? serial = node["serial"]?.GetValue<string>();
+        bool wantArtifacts = node["artifacts"]?.GetValue<bool>() ?? false;
+        bool stopOnFailure = node["stop_on_failure"]?.GetValue<bool>() ?? true;
+        var taskNodes = node["tasks"]!.AsArray();
+        var expect = node["expect"];
+
+        var requests = new List<Alas.Tasks.TaskRequest>();
+        var documents = new Dictionary<string, JsonObject>();
+        var errors = new Dictionary<string, string>();
+        foreach (var taskNode in taskNodes)
+        {
+            var request = new Alas.Tasks.TaskRequest
+            {
+                Id = taskNode!["id"]!.GetValue<string>(),
+                Kind = taskNode["kind"]!.GetValue<string>(),
+                Input = taskNode["input"] as JsonObject,
+                Required = taskNode["required"]?.GetValue<bool>() ?? false,
+            };
+            requests.Add(request);
+            if (taskNode["errors"] is JsonObject chapterErrors)
+                foreach (var (chapter, message) in chapterErrors)
+                    errors[chapter] = message!.GetValue<string>();
+            if (taskNode["documents"] is JsonObject chapterDocuments)
+                foreach (var (chapter, document) in chapterDocuments)
+                    documents[chapter] = (JsonObject)document!.DeepClone();
+        }
+
+        var problems = new List<string>();
+        string? artifactRoot = null;
+        if (wantArtifacts)
+        {
+            string baseDir = workspace ?? Path.GetTempPath();
+            artifactRoot = Path.Combine(baseDir, "queue-" + Sanitize(name));
+            if (Directory.Exists(artifactRoot)) Directory.Delete(artifactRoot, recursive: true);
+            Directory.CreateDirectory(artifactRoot);
+        }
+
+        var options = new SessionOptions
+        {
+            RepoDirectory = "stub://alas",
+            ToolsDirectory = "stub://tools",
+            Serial = serial,
+            DryRun = dryRun,
+            AllowActions = allowActions,
+            ArtifactsDirectory = artifactRoot,
+            MaxSeconds = 60,
+            MaxRounds = 3,
+        };
+
+        int engineCreations = 0;
+        StubVisionEngine? stub = null;
+        Alas.Tasks.QueueResult? queue = null;
+        var log = new SessionLog(echo: false);
+        AlasSession? session = null;
+        try
+        {
+            session = AlasSession.Start(options, _ =>
+            {
+                engineCreations++;
+                stub = new StubVisionEngine(documents, errors);
+                return stub;
+            }, log);
+            var runner = new Alas.Tasks.TaskQueue(session)
+            {
+                StopOnFailure = stopOnFailure,
+            }.Register(new Alas.Tasks.CampaignBatchTask());
+            if (node["resume_completed"] is JsonArray resumed)
+                foreach (var id in resumed)
+                    runner.ResumeCompleted.Add(id!.GetValue<string>());
+            queue = runner.Run(requests);
+        }
+        catch (Exception error)
+        {
+            problems.Add($"运行时抛异常: {error.GetType().Name}: {error.Message}");
+        }
+        finally
+        {
+            session?.Dispose();
+        }
+        if (session is not null) problems.AddRange(CheckReleased(session, stub));
+
+        if (queue is null)
+            return QueueReport(name, problems, null, engineCreations, artifactRoot, stub, log);
+
+        if (engineCreations != 1)
+            problems.Add($"宿主构造了 {engineCreations} 次（常驻会话必须只构造一次）");
+        if (wantArtifacts && queue.IndexPath is null)
+            problems.Add("配置了工件目录却没有写出 queue.json");
+
+        if (expect is not null)
+        {
+            Compare(expect, "outcome", queue.Outcome, problems);
+            Compare(expect, "host_start_count", 1, problems);
+            Compare(expect, "device_configure_count", stub?.DeviceConfigureCalls ?? 0, problems);
+            Compare(expect, "stopped_early", queue.StoppedEarly, problems);
+            if (expect["tasks"] is JsonArray wantTasks)
+            {
+                if (wantTasks.Count != queue.Tasks.Count)
+                    problems.Add($"任务数 期望 {wantTasks.Count} 实为 {queue.Tasks.Count}");
+                else
+                    for (int i = 0; i < wantTasks.Count; i++)
+                    {
+                        var want = wantTasks[i]!;
+                        var got = queue.Tasks[i];
+                        Compare(want, "id", got.Id, problems, $"第{i + 1}个任务");
+                        Compare(want, "outcome", got.OutcomeName, problems, $"第{i + 1}个任务");
+                        if (want["error_kind"] is JsonNode wantKind)
+                            Compare(want, "error_kind", RuntimeErrors.Name(got.ErrorKind),
+                                    problems, $"第{i + 1}个任务");
+                    }
+            }
+            if (expect["artifacts"] is JsonArray wantFiles && artifactRoot is not null)
+            {
+                var names = ListArtifacts(artifactRoot)
+                    .Select(Path.GetFileName).OfType<string>().ToList();
+                foreach (var want in wantFiles)
+                {
+                    string file = want!.GetValue<string>();
+                    if (!names.Contains(file))
+                        problems.Add($"缺少工件 {file}（实际 {string.Join(",", names)}）");
+                }
+            }
+            if (expect["backend_calls"]?.GetValue<int>() is int wantCalls &&
+                stub is not null && stub.Calls.Count != wantCalls)
+                problems.Add($"后端调用次数 期望 {wantCalls} 实为 {stub.Calls.Count}");
+        }
+
+        return QueueReport(name, problems, queue, engineCreations, artifactRoot, stub, log);
+    }
+
+    private static JsonObject QueueReport(string name, List<string> problems,
+                                          Alas.Tasks.QueueResult? queue, int engineCreations,
+                                          string? artifactRoot, StubVisionEngine? stub, SessionLog log)
+    {
+        var tasks = new JsonArray();
+        if (queue is not null)
+            foreach (var task in queue.Tasks)
+                tasks.Add(new JsonObject
+                {
+                    ["id"] = task.Id,
+                    ["kind"] = task.Kind,
+                    ["outcome"] = task.OutcomeName,
+                    ["error_kind"] = RuntimeErrors.Name(task.ErrorKind),
+                    ["error"] = task.Error,
+                    ["artifact"] = task.ArtifactPath,
+                });
+        var files = artifactRoot is null || !Directory.Exists(artifactRoot)
+            ? new JsonArray()
+            : new JsonArray(ListArtifacts(artifactRoot)
+                .OrderBy(f => f, StringComparer.Ordinal)
+                .Select(f => (JsonNode)JsonValue.Create(f)!).ToArray());
+        return new JsonObject
+        {
+            ["name"] = name,
+            ["ok"] = problems.Count == 0,
+            ["problems"] = new JsonArray(problems.Select(p => (JsonNode)JsonValue.Create(p)!).ToArray()),
+            ["outcome"] = queue?.Outcome ?? "failed",
+            ["cleared"] = queue?.Succeeded ?? false,
+            ["stopped_early"] = queue?.StoppedEarly ?? false,
+            ["stop_reason"] = queue?.StopReason,
+            ["host_start_count"] = engineCreations,
+            ["device_configure_count"] = stub?.DeviceConfigureCalls ?? 0,
+            ["backend_calls"] = stub?.Calls.Count ?? 0,
+            ["backend_ops"] = stub is null ? new JsonArray() : new JsonArray(
+                stub.Calls.Select(c => (JsonNode)JsonValue.Create(c)!).ToArray()),
+            ["artifacts"] = files,
+            ["artifact_names"] = new JsonArray(files
+                .Select(f => f!.GetValue<string>())
+                .Select(Path.GetFileName).OfType<string>()
+                .OrderBy(f => f, StringComparer.Ordinal)
+                .Select(f => (JsonNode)JsonValue.Create(f)!).ToArray()),
+            ["log_entries"] = log.Entries.Count,
+            ["tasks"] = tasks,
+            ["stages"] = new JsonArray(),
+        };
+    }
+
+    private static IEnumerable<string> CheckReleased(AlasSession session, StubVisionEngine? stub)    {
         if (stub is not null && !session.Vision.Equals(stub))
             yield return "会话持有的宿主与替身不一致";
         if (stub is not null && !stub.Disposed)

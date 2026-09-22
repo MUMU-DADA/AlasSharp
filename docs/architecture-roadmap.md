@@ -75,6 +75,21 @@
 
 阶段门槛：该域可以被批量调度、跨任务复位、失败后安全停止，并且结果能追溯到上游调用和设备证据；未满足门槛时不进入下一个业务域。
 
+**状态：通用任务模型 + 第一个域（战役批量）完成**；第二域（账号状态）等设备在线再做。
+
+| 交付物 | 落地 | 验证 |
+| --- | --- | --- |
+| 通用任务模型 | `Alas.Core/Tasks/TaskModel.cs`：`TaskRequest`/`TaskResult`/`TaskOutcome`/`ITaskRunner` | `verify_architecture.py`（模型必须是接口） |
+| 队列调度 | `Alas.Core/Tasks/TaskQueue.cs`：前置条件、跨任务复位边界、失败即停、取消、证据、断点 | `verify_runtime.py` 5 例队列用例 |
+| 输入模型 | `TaskQueueFile.cs`（队列/断点文件）+ 战役域自己的 `input` JSON | 同上 |
+| 第一个域：战役批量 | `Alas.Core/Tasks/CampaignBatchTask.cs`：接合同裁决与批次工件 | 5 例队列用例 + 已有 4 条真机通关证据 |
+| 可恢复状态 | 逐任务 `state.json` + `--resume` 跳过已完成任务 | `queue_resume_skips_completed_task` |
+| CLI 入口 | `alashub queue --file`；与 `campaign` 共用 `ParseRunFlags` | `verify_architecture.py`（参数解析共享） |
+
+**R2 未完成**：账号状态域（`AccountStateTask`）尚未实现 —— 它需要一个**只读**的账号状态 op
+（当前只有诊断脚本 `tools/diagnostics/account_probe.py`），且必须有一条真机证据才算完成；
+设备不在线时先不做，避免造出无法验收的域。大世界/活动/周期任务同理排在它之后。
+
 ### R3：原生钩子与高频能力迁移
 
 目标是按导出器的 `native_overrides`、调用词表和依赖闭包迁移通用 C# 能力。先做高频、低耦合、可对拍的操作，再做依赖地图状态和复杂继承的钩子；上游原生实现始终保留为基准和回退路径。

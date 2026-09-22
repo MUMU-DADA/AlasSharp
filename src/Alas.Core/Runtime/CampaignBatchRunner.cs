@@ -48,6 +48,35 @@ public sealed class CampaignBatchResult
 }
 
 /// <summary>
+/// 一次批量出击的运行参数。**会话级选项与任务级输入分开**：
+/// 会话级是"这台机器怎么连"（RepoDirectory/Serial/…），
+/// 任务级是"这一批怎么打"（上限、舰队、清图模式）——
+/// 队列里不同任务可以有各自的这一份，不必共用一个全局配置。
+/// </summary>
+public sealed class CampaignRunSettings
+{
+    public double MaxSeconds { get; set; } = 1500;
+    public int MaxRounds { get; set; } = 20;
+    public bool RepeatUntilCleared { get; set; } = true;
+    public bool ClearAll { get; set; }
+    public int Fleet1 { get; set; } = 1;
+    public int Fleet2 { get; set; }
+    public int SubmarineFleet { get; set; }
+
+    /// <summary>默认取会话选项（CLI 传进来的那一份）。</summary>
+    public static CampaignRunSettings From(SessionOptions options) => new()
+    {
+        MaxSeconds = options.MaxSeconds,
+        MaxRounds = options.MaxRounds,
+        RepeatUntilCleared = options.RepeatUntilCleared,
+        ClearAll = options.ClearAll,
+        Fleet1 = options.Fleet1,
+        Fleet2 = options.Fleet2,
+        SubmarineFleet = options.SubmarineFleet,
+    };
+}
+
+/// <summary>
 /// 战役批量任务（R1：业务编排从 CLI 搬进 Alas.Core）。
 ///
 /// 它只做四件事，且都是**通用**的（不认地图名、不写地图分支）：
@@ -67,18 +96,20 @@ public sealed class CampaignBatchRunner
 
     public CampaignBatchRunner(AlasSession session) => _session = session;
 
-    public CampaignBatchResult Run(IReadOnlyList<string> chapters, CancellationToken token = default)
+    public CampaignBatchResult Run(IReadOnlyList<string> chapters, CancellationToken token = default,
+                                   CampaignRunSettings? settings = null)
     {
         if (chapters.Count == 0) throw new ArgumentException("至少要有一关");
         var options = _session.Options;
+        var run = settings ?? CampaignRunSettings.From(options);
         var batch = new CampaignBatchResult { DryRun = options.DryRun };
         var watch = System.Diagnostics.Stopwatch.StartNew();
         _session.Log.Info("batch", "开始批量任务", new Dictionary<string, object?>
         {
             ["chapters"] = chapters.Count,
             ["dry_run"] = options.DryRun,
-            ["max_seconds"] = options.MaxSeconds,
-            ["max_rounds"] = options.MaxRounds,
+            ["max_seconds"] = run.MaxSeconds,
+            ["max_rounds"] = run.MaxRounds,
             ["artifacts"] = _session.RunDirectory,
         });
 
@@ -119,13 +150,13 @@ public sealed class CampaignBatchRunner
                     chapter,
                     dryRun: options.DryRun,
                     allowActions: options.AllowActions,
-                    maxSeconds: options.MaxSeconds,
-                    maxRounds: options.MaxRounds,
-                    repeatUntilCleared: options.RepeatUntilCleared,
-                    fleet1: options.Fleet1,
-                    fleet2: options.Fleet2,
-                    submarineFleet: options.SubmarineFleet,
-                    clearAll: options.ClearAll,
+                    maxSeconds: run.MaxSeconds,
+                    maxRounds: run.MaxRounds,
+                    repeatUntilCleared: run.RepeatUntilCleared,
+                    fleet1: run.Fleet1,
+                    fleet2: run.Fleet2,
+                    submarineFleet: run.SubmarineFleet,
+                    clearAll: run.ClearAll,
                     serial: options.Serial,
                     artifactsDir: _session.RunDirectory);
             }

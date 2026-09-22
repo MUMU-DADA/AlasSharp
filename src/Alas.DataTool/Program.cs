@@ -73,87 +73,80 @@ internal static class Program
             {
                 // S3：上游 Campaign.run() 负责整次出击；C# 传配置并报告结果。
                 string toolsDir7 = paths.ToolsDirectory;
-                string? campChapter = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
-                string? campAdb = null, campSerial = null, campArtifacts = null;
-                bool campRun = false, campAllow = false, campRepeat = true;
-                // R1 起默认"失败即停"：出错后继续下一关等于在状态未知时白耗账号资源。
-                // 需要旧行为（跑完全部关卡）时显式加 --continue-on-error。
-                bool campContinueOnError = false;
-                double campMax = 1500; int campRounds = 20;
-                int campFleet1 = 1, campFleet2 = 0, campSub = 0;
-                // 两套战斗流程二选一（上游 `MAP_CLEAR_ALL_THIS_TIME`）：
-                //   不加 --clear-all：BOSS 一刷出来就打 BOSS（battle_{battle_count}）
-                //   加 --clear-all  ：先清光小怪，清完才打 BOSS
-                bool campClearAll = false;
-                for (int i = 1; i < args.Length; i++)
-                {
-                    if (args[i] is "--run" or "--allow-actions" or "--repeat" or "--clear-all"
-                        or "--continue-on-error")
-                    {
-                        if (args[i] == "--run") campRun = true;
-                        if (args[i] == "--allow-actions") campAllow = true;
-                        if (args[i] == "--repeat") campRepeat = true;
-                        if (args[i] == "--clear-all") campClearAll = true;
-                        if (args[i] == "--continue-on-error") campContinueOnError = true;
-                        continue;
-                    }
-                    if (args[i].StartsWith("--") && i + 1 >= args.Length)
-                        throw new ArgumentException($"{args[i]} 缺少参数值");
-                    if (args[i] == "--chapter") campChapter = args[i + 1];
-                    if (args[i] == "--adb") campAdb = args[i + 1];
-                    if (args[i] == "--serial") campSerial = args[i + 1];
-                    if (args[i] == "--artifacts") campArtifacts = args[i + 1];
-                    if (args[i] == "--max-seconds" && double.TryParse(args[i + 1], out double ms2)) campMax = ms2;
-                    if (args[i] == "--max-rounds" && int.TryParse(args[i + 1], out int mr)) campRounds = mr;
-                    if (args[i] == "--fleet1" && int.TryParse(args[i + 1], out int f1)) campFleet1 = f1;
-                    if (args[i] == "--fleet2" && int.TryParse(args[i + 1], out int f2)) campFleet2 = f2;
-                    if (args[i] == "--submarine" && int.TryParse(args[i + 1], out int fs)) campSub = fs;
-                }
-                if (campChapter is null)
+                var flags = ParseRunFlags(args, "--chapter");
+                if (flags.Positional is null)
                 {
                     Console.WriteLine("用法: campaign <章模块[,章模块...]> [--run --allow-actions] " +
                                       "[--serial <设备>] [--clear-all] [--max-seconds 1500] [--max-rounds 20] " +
                                       "[--artifacts <目录>] [--continue-on-error]");
                     return 2;
                 }
-                if (campRun && !campAllow)
+                if (flags.Run && !flags.AllowActions)
                 {
                     Console.WriteLine("[拒绝    ] 真跑需要 --allow-actions");
                     return 2;
                 }
                 // 在同一个宿主内连续运行；各关入口由上游 ensure_campaign_ui 导航。
-                var stageList = campChapter.Contains(',')
-                    ? campChapter.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0).ToArray()
-                    : new[] { campChapter };
+                var stageList = flags.Positional.Contains(',')
+                    ? flags.Positional.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0).ToArray()
+                    : new[] { flags.Positional };
                 Console.WriteLine($"[批量    ] {stageList.Length} 关，同一进程内连续驱动");
-                if (campRun && campAllow && campAdb is not null)
+                if (flags.Run && flags.AllowActions && flags.Options.AdbPath is not null)
                     Console.WriteLine("[兼容    ] campaign 使用上游配置的 ADB；--adb 保留兼容，不覆盖宿主配置");
 
                 // R1：编排、判定、工件全部在 Alas.Core 的运行时里；CLI 只解析参数和排版报告。
-                var campOptions = new Alas.Runtime.SessionOptions
-                {
-                    RepoDirectory = repoDir,
-                    ToolsDirectory = toolsDir7,
-                    AdbPath = campAdb,
-                    Serial = campSerial,
-                    DryRun = !campRun,
-                    AllowActions = campAllow,
-                    MaxSeconds = campMax,
-                    MaxRounds = campRounds,
-                    RepeatUntilCleared = campRepeat,
-                    ClearAll = campClearAll,
-                    Fleet1 = campFleet1,
-                    Fleet2 = campFleet2,
-                    SubmarineFleet = campSub,
-                    ArtifactsDirectory = campArtifacts,
-                };
+                var campOptions = flags.Options;
+                campOptions.RepoDirectory = repoDir;
+                campOptions.ToolsDirectory = toolsDir7;
                 using var campSession = Alas.Runtime.AlasSession.Start(campOptions);
                 var batch = new Alas.Runtime.CampaignBatchRunner(campSession)
                 {
-                    StopOnFailure = !campContinueOnError,
+                    StopOnFailure = !flags.ContinueOnError,
                 }.Run(stageList);
                 PrintCampaignReport(batch, campOptions);
                 return batch.FailedCount == 0 ? 0 : 1;
+            }
+            if (command == "queue")
+            {
+                // R2：任务队列。队列文件描述"跑哪些任务"，业务判定在各域的 ITaskRunner 里。
+                var queueFlags = ParseRunFlags(args, "--file");
+                string queueFile = queueFlags.Positional ?? queueFlags.File ?? "";
+                if (queueFile.Length == 0)
+                {
+                    Console.WriteLine("用法: queue --file <队列.json> [--run --allow-actions] [--serial <设备>] " +
+                                      "[--artifacts <目录>] [--resume] [--continue-on-error]");
+                    return 2;
+                }
+                if (!File.Exists(queueFile))
+                {
+                    Console.Error.WriteLine($"找不到队列文件: {queueFile}");
+                    return 2;
+                }
+                if (queueFlags.Run && !queueFlags.AllowActions)
+                {
+                    Console.WriteLine("[拒绝    ] 真跑需要 --allow-actions");
+                    return 2;
+                }
+                var queueOptions = queueFlags.Options;
+                queueOptions.RepoDirectory = repoDir;
+                queueOptions.ToolsDirectory = paths.ToolsDirectory;
+                var requests = Alas.Tasks.TaskQueueFile.Parse(File.ReadAllText(queueFile));
+                Console.WriteLine($"[队列    ] {requests.Count} 个任务");
+                using var queueSession = Alas.Runtime.AlasSession.Start(queueOptions);
+                var queue = new Alas.Tasks.TaskQueue(queueSession)
+                {
+                    StopOnFailure = !queueFlags.ContinueOnError,
+                }.Register(new Alas.Tasks.CampaignBatchTask());
+                if (queueFlags.Resume)
+                {
+                    var done = Alas.Tasks.TaskQueueFile.ReadCompletedState(queueSession.RunDirectory);
+                    foreach (var id in done) queue.ResumeCompleted.Add(id);
+                    if (done.Count > 0)
+                        Console.WriteLine($"[断点    ] 跳过 {done.Count} 个已完成任务: {string.Join(", ", done)}");
+                }
+                var queueResult = queue.Run(requests);
+                PrintQueueReport(queueResult, requests);
+                return queueResult.FailedCount == 0 ? 0 : 1;
             }
             if (command == "selftest-runtime")
             {
@@ -546,6 +539,89 @@ internal static class Program
         if (ir.Unresolved.Count > 0)
             Console.WriteLine("未解析   : " + string.Join(" | ", ir.Unresolved));
         return 0;
+    }
+
+    /// <summary>
+    /// CLI 的公共参数层：`campaign` 与 `queue` 共用同一份解析，**不各写一套** ——
+    /// 参数字段填进 <see cref="Alas.Runtime.SessionOptions"/>，校验留给运行时。
+    /// </summary>
+    private sealed class CliRunFlags
+    {
+        public Alas.Runtime.SessionOptions Options { get; } = new();
+        public bool Run { get; set; }
+        public bool AllowActions { get; set; }
+        public bool ContinueOnError { get; set; }
+        public bool Resume { get; set; }
+        /// <summary>位置参数或 `--chapter`/`--file` 给的值。</summary>
+        public string? Positional { get; set; }
+        public string? File { get; set; }
+    }
+
+    private static CliRunFlags ParseRunFlags(string[] args, string positionalFlag)
+    {
+        var flags = new CliRunFlags { Positional = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null };
+        for (int i = 1; i < args.Length; i++)
+        {
+            string a = args[i];
+            if (a is "--run" or "--allow-actions" or "--repeat" or "--clear-all"
+                or "--continue-on-error" or "--resume")
+            {
+                if (a == "--run") flags.Run = true;
+                if (a == "--allow-actions") flags.AllowActions = true;
+                if (a == "--repeat") flags.Options.RepeatUntilCleared = true;
+                if (a == "--clear-all") flags.Options.ClearAll = true;
+                if (a == "--continue-on-error") flags.ContinueOnError = true;
+                if (a == "--resume") flags.Resume = true;
+                continue;
+            }
+            if (a.StartsWith("--") && i + 1 >= args.Length)
+                throw new ArgumentException($"{a} 缺少参数值");
+            string v = i + 1 < args.Length ? args[i + 1] : "";
+            if (a == "--chapter" || a == positionalFlag) flags.Positional = v;
+            else if (a == "--file") flags.File = v;
+            else if (a == "--adb") flags.Options.AdbPath = v;
+            else if (a == "--serial") flags.Options.Serial = v;
+            else if (a == "--artifacts") flags.Options.ArtifactsDirectory = v;
+            else if (a == "--screenshot") flags.Options.ScreenshotBackend = v;
+            else if (a == "--control") flags.Options.ControlBackend = v;
+            else if (a == "--max-seconds" && double.TryParse(v, out double ms)) flags.Options.MaxSeconds = ms;
+            else if (a == "--max-rounds" && int.TryParse(v, out int mr)) flags.Options.MaxRounds = mr;
+            else if (a == "--fleet1" && int.TryParse(v, out int f1)) flags.Options.Fleet1 = f1;
+            else if (a == "--fleet2" && int.TryParse(v, out int f2)) flags.Options.Fleet2 = f2;
+            else if (a == "--submarine" && int.TryParse(v, out int fs)) flags.Options.SubmarineFleet = fs;
+        }
+        flags.Options.DryRun = !flags.Run;
+        flags.Options.AllowActions = flags.AllowActions;
+        return flags;
+    }
+
+    /// <summary>任务队列报告：只排版，判定在 <see cref="Alas.Tasks.TaskQueue"/> 里做完了。</summary>
+    private static void PrintQueueReport(Alas.Tasks.QueueResult queue,
+                                         IReadOnlyList<Alas.Tasks.TaskRequest> requests)
+    {
+        var byId = requests.ToDictionary(r => r.Id, r => r);
+        foreach (var task in queue.Tasks)
+        {
+            byId.TryGetValue(task.Id, out var request);
+            Console.WriteLine($"[任务    ] {task.Id} kind={task.Kind} outcome={task.OutcomeName} " +
+                              $"elapsed={task.ElapsedSeconds}s " +
+                              $"error_kind={Alas.Runtime.RuntimeErrors.Name(task.ErrorKind)}" +
+                              (task.Error is null ? "" : $" error={task.Error}") +
+                              (request?.Required == true ? " required=true" : ""));
+            if (task.Evidence is not null)
+            {
+                if (task.Evidence["batch_outcome"] is System.Text.Json.Nodes.JsonNode batch)
+                    Console.WriteLine($"[任务证据] batch_outcome={batch} cleared={task.Evidence["cleared"]} " +
+                                      $"stages={task.Evidence["stages"]?.AsArray().Count ?? 0}");
+            }
+            if (task.ArtifactPath is not null) Console.WriteLine($"[任务工件] {task.ArtifactPath}");
+        }
+        Console.WriteLine($"[队列结果] outcome={queue.Outcome} 任务={queue.Tasks.Count} " +
+                          $"失败={queue.FailedCount} 跳过={queue.SkippedCount} " +
+                          $"提前停止={queue.StoppedEarly}" +
+                          (queue.StopReason is null ? "" : $" 原因={queue.StopReason}"));
+        if (queue.IndexPath is not null) Console.WriteLine($"[队列工件] {queue.IndexPath}");
+        if (queue.StatePath is not null) Console.WriteLine($"[断点文件] {queue.StatePath}");
     }
 
     /// <summary>

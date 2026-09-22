@@ -84,6 +84,10 @@ def main() -> int:
         "结构化日志": ROOT / "src/Alas.Core/Runtime/SessionLog.cs",
         "统一错误分类": ROOT / "src/Alas.Core/Runtime/RuntimeErrors.cs",
         "运行时说明": ROOT / "docs/runtime.md",
+        "任务模型": ROOT / "src/Alas.Core/Tasks/TaskModel.cs",
+        "任务队列": ROOT / "src/Alas.Core/Tasks/TaskQueue.cs",
+        "战役任务域": ROOT / "src/Alas.Core/Tasks/CampaignBatchTask.cs",
+        "任务域说明": ROOT / "docs/tasks.md",
     }
     for label, path in required.items():
         if not path.is_file():
@@ -110,6 +114,10 @@ def main() -> int:
         "战役编排走运行时": "AlasSession.Start" in program and "CampaignBatchRunner" in program,
         "CLI 不直接驱动引擎": "RunCampaignPlan" not in program
                               and "InProcessVisionEngine" not in program,
+        # R2：任务域走通用任务模型，CLI 只解析队列文件（不解释任务内容）。
+        "任务队列入口": "TaskQueueFile.Parse" in program and "TaskQueue" in program,
+        "参数解析共享": program.count("ParseRunFlags(") >= 2,
+        "任务模型是接口": "interface ITaskRunner" in read("src/Alas.Core/Tasks/TaskModel.cs"),
     }
     for label, ok in checks.items():
         if not ok:
