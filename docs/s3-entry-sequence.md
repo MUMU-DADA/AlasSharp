@@ -681,3 +681,27 @@ AFTER_WITHDRAW page_campaign → 归位 page_main ✓
 `map_is_auto_search` 置真；然后二选一：
 (a) 设那个条件的配置键；或 (b) 打垫片 —— 在我们的运行里**强制** `map_is_auto_search=False`
 （我们的配置本就要求关闭它，强制是安全的），再进图验证 3-1。
+
+### 已修：`AUTO_SEA` 卡点的垫片（离线验证通过，进图验证待下一轮）
+
+**定位修正**：`handle_auto_search` 的定义处是 **`module/handler/fast_forward.py:300`**
+（类 `FastForwardHandler`），**不是** `module/handler/auto_search.py`（那里只有
+`handle_auto_search_map_option`，第 182 行）—— 我第一次找错了模块。
+
+**垫片 `apply_auto_search_skip_compat()`**（与其它垫片一起在 `s3_campaign_init` 里应用）：
+
+- 按"在 `module.handler.fast_forward` 里找哪个类的 `__dict__` 定义了 `handle_auto_search`"
+  来定位目标（**不依赖类名**，避免再次找错）；
+- 包装后：`map_is_auto_search` 为假时**立即返回 False、不做任何点击**
+  —— 我们的配置本就要求关闭自律寻敌（`Campaign_UseAutoSearch=False`，已读回确认），
+  所以这是"按配置办事"，同时绕开了那个在本客户端不可靠的"双重 appear"状态判定。
+
+**离线验证**（无需出击）：
+
+```
+PATCHED_CLASSES ['FastForwardHandler']        ← 补丁挂到了正确的类
+HANDLE_AUTO_SEARCH -> {"name": "...", "ms": 0.0}   ← 立即返回、零耗时、无异常
+```
+
+**待办（下一轮，需要出击）**：重跑 3-1 的原子验证（导航 → 进图 → 识别 → 撤退 → 归位），
+确认 `enter_map` 不再撞 `AUTO_SEA`，并记录 3-1 的图可识别性。

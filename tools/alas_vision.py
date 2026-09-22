@@ -1076,6 +1076,42 @@ _DANGER_PREFIX = ('battle', 'clear', 'enter_map', 'run', 'mob_move', 'fleet',
 
 
 
+
+def apply_auto_search_skip_compat():
+    """客户端适配：`handle_auto_search()` 的**开关状态判定**在本客户端不可靠。
+
+    实测（docs/s3-entry-sequence.md）：进 3-1 时 `enter_map` 在该处理器上反复点击
+    `AUTO_SEA`（**被截断的按钮名**；真实按钮是 `AUTO_SEARCH_MAP_OPTION_ON/OFF`，
+    位于 (1205,549,1275,566)），19.8s 后 `GameTooManyClickError`。
+    上游判定是"双重 appear"（`module/handler/auto_search.py:179`：offset 窗口内一次 + 精确一次），
+    这种判定在 UI 差异下最容易失败。
+
+    定义处是 `module/handler/fast_forward.py:300`（不是 auto_search.py —— 我第一次找错了，
+    垫片按"在模块里找哪个类的 __dict__ 定义了它"来定位，不依赖类名）。
+
+    我们的配置本就要求**关闭**自律寻敌（`Campaign_UseAutoSearch=False`，已读回确认），
+    所以 `map_is_auto_search` 为假时**直接跳过**该处理 —— 符合配置，且绕开不可靠的 UI 判定。
+    """
+    try:
+        from module.handler import fast_forward as _ff
+    except Exception:
+        return
+    for name, cls in list(vars(_ff).items()):
+        if not isinstance(cls, type) or getattr(cls, '_alas_autosearch_compat', False):
+            continue
+        if 'handle_auto_search' not in cls.__dict__:
+            continue
+        orig = cls.__dict__['handle_auto_search']
+
+        def _handle_auto_search(self, *a, __orig=orig, **kw):
+            if not getattr(self, 'map_is_auto_search', False):
+                return False          # 配置要求关闭 → 不做任何点击
+            return __orig(self, *a, **kw)
+
+        setattr(cls, 'handle_auto_search', _handle_auto_search)
+        cls._alas_autosearch_compat = True
+
+
 def apply_fleet_bar_compat():
     """客户端适配：`FleetOperator.bar_opened()` 的亮度阈值（垫片，不改上游文件）。
 
@@ -1123,6 +1159,7 @@ def op_s3_campaign_init(args):
     apply_numpy2_compat()
     apply_points_empty_compat()
     apply_fleet_bar_compat()
+    apply_auto_search_skip_compat()
     for k in ('serial', 'screenshot', 'control'):
         if args.get(k):
             _DEVICE_ARGS[k] = args[k]
