@@ -1466,6 +1466,19 @@ def op_s3_run_plan(args):
         r = op_s3_campaign_call({'name': 'enter_map', 'args': ['@ENTRANCE', 'normal'],
                                  'allow_actions': True})
         steps.append({'step': 'enter_map', 'ms': r.get('ms'), 'error': r.get('error')})
+        # **自愈**：进图失败且像"卡住"时，多半是那个客户端弹窗挡着
+        # （「关卡 xxx 正在攻略中…[撤退][立即前往]」）——它出现在 **enter_map 过程当中**，
+        # 所以进图前那次检测抓不到（实测曾连续两轮各卡 60s，还被误判成"那关有问题"）。
+        if r.get('error') and 'Stuck' in str(r.get('error')):
+            ab = op_s3_abort_unfinished({'dry': False})
+            steps.append({'step': 'enter_map_abort',
+                          'dialog': ab.get('unfinished_dialog'),
+                          'red_frac': ab.get('red_frac')})
+            r2 = op_s3_campaign_call({'name': 'enter_map',
+                                     'args': ['@ENTRANCE', 'normal'],
+                                     'allow_actions': True})
+            steps.append({'step': 'enter_map_retry', 'ms': r2.get('ms'),
+                          'error': r2.get('error')})
     if not steps[-1].get('error'):
         r = op_s3_campaign_call({'name': 'map_init', 'args': ['@MAP'], 'allow_actions': True})
         steps.append({'step': 'map_init', 'ms': r.get('ms'), 'error': r.get('error')})
