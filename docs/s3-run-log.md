@@ -34,6 +34,7 @@ alashub campaign <章模块> --run --allow-actions --clear-all --fleet1 3 --flee
 | 2-1 | 4 | A | ✅ 全清 | — | — | 回到章节页 | 章节页徽章 `Clear!` + ★★★（`data/_campaign125.png`） |
 | 2-1 | 4 | A（对照跑） | ✅ | **160.9s**（4 轮） | — | `In stage.`，`campaign_end=True` | `%TEMP%\batch_21a.log` |
 | 2-1 | 4 | B（`--clear-all`） | ✅ | **238.6s**（7 轮） | D4 | `Enemy remain: []` → `Brute clear BOSS` | `%TEMP%\batch_21b.log` |
+| 3-1 | 5 | A | ✅ | **164.4s** | F1 | `In stage.`，`campaign_end=True`；3-1 有自己的 `battle_3` 钩子 | `%TEMP%\batch_c.log` |
 | 11-1 | 6 | A | ✅ | 360.6s | F3 | `In stage.`，`campaign_end=True`，无 `WITHDRAW` | `%TEMP%\hard11_full.log` |
 | 11-1 | 6 | A（复核：BOSS 颜色垫片已关） | ✅ | 340.8s | G6 | 同上 | `%TEMP%\hard11_noshim.log` |
 | 11-1 | 6 | A（半途续打：`battle_count=6`） | ✅ | 53.6s（单场） | F3 | 同上 | `tools/diagnostics/oneoff/resume_boss.py` |
