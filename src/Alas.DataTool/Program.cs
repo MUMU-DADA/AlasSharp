@@ -44,6 +44,17 @@ internal static class Program
                 fixture ??= Path.Combine(dataDir, "fixtures", "matching.json");
                 return MatchingCheck.Run(fixture, repoDir);
             }
+            if (command == "map-ir")
+            {
+                string? mirFile = null, mirDir = null;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--file") mirFile = args[i + 1];
+                    if (args[i] == "--dir") mirDir = args[i + 1];
+                }
+                mirDir ??= (mirFile is null ? Path.Combine(dataDir, "campaign") : null);
+                return MapIRCheck.Run(mirFile, mirDir, dataDir);
+            }
             if (command == "map")
             {
                 // S2 地图识别的产品路径验收；无 --fixture 时可用 --adb/--serial 抓真机画面
