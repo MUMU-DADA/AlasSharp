@@ -230,6 +230,11 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 本机实测最优（已设为默认）：**`--screenshot scrcpy`（抓图 128 ms，比 adb 快 2.5 倍）
 + `--control MaaTouch`（点击稳态 53 ms）**；导航流程因此快约 14.5%。
 
+## 最近一次自主会话的交接
+
+见 `docs/session-summary.md`（一夜自主工作的完整交接：设备引擎 / S2 误报修复 / S3 关卡驱动闭环、
+6 项客户端适配、三条方法论、待你决定的事项）。
+
 ## 验收记录
 
 **总状态先看 `docs/status.md`**（由 `tools/diagnostics/status.py` 从四份证据文件汇总生成，不手写）。
