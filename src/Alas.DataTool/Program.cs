@@ -44,6 +44,22 @@ internal static class Program
                 fixture ??= Path.Combine(dataDir, "fixtures", "matching.json");
                 return MatchingCheck.Run(fixture, repoDir);
             }
+            if (command == "map")
+            {
+                // S2 地图识别的产品路径验收；无 --fixture 时可用 --adb/--serial 抓真机画面
+                string toolsDir4 = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                    "..", "..", "..", "..", "..", "tools"));
+                string? mapAdb = null, mapSerial = null;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--adb") mapAdb = args[i + 1];
+                    if (args[i] == "--serial") mapSerial = args[i + 1];
+                    if (args[i] == "--fixture") fixture = args[i + 1];
+                }
+                fixture ??= (mapAdb is null
+                    ? Path.Combine(dataDir, "fixtures", "os_map.png") : null);
+                return MapCheck.Run(fixture, repoDir, toolsDir4, mapAdb, mapSerial);
+            }
             if (command == "device")
             {
                 fixture ??= Path.Combine(dataDir, "fixtures", "imaging.json");

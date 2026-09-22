@@ -41,6 +41,7 @@ STEPS = [
     ('verify_primitives.py', '控制原语（返回键/长按/滑动）', True, 1200),
     ('verify_text_input.py', '文本输入（装备码流程）', True, 900),
     ('verify_positive_control.py', '合成正对照（页面 + Switch）', False, 600),
+    ('verify_map_detection.py', 'S2 地图识别（素材链/单应性/负样本）', False, 600),
     ('analyze_specificity.py', '识别特异性矩阵', False, 300),
     ('report_pages.py', '重建 page-verification.md', False, 300),
     ('status.py', '重建 status.md', False, 300),
