@@ -13,7 +13,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 | 大世界单应性 | ✅ | `GlobeDetection.load` 成功并给出单应矩阵 |
 | 坐标往返自检 | ✅ | screen→globe→screen 误差 < 1e-6（同一变换的逆）
 | 非地图负样本 | ✅ | 非地图画面返回"未检测到 + 原因"，不崩 |
-| 地图正样本 | ✅ 4 张检测到网格 | 需要真机地图画面（见下） |
+| 地图正样本 | ✅ 6 张检测到网格 | 需要真机地图画面（见下） |
 | 检测 vs 关卡 IR | ✅ 3 张一致 | 检出的格数/形状必须与该关卡声明的 map_data 一致 |
 
 ## 素材链明细
@@ -41,7 +41,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
     "globe_center: (np.float64(2075.0), np.float64(414.0))",
-    "0.080s      similarity: 0.093",
+    "0.087s      similarity: 0.093",
     "Low similarity when matching OS globe"
   ],
   "similarity": 0.093,
@@ -95,7 +95,9 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 | fixture | globe | 往返误差 | map detected | 原因 |
 | --- | --- | --- | --- | --- |
 | `_probe_now.png` | — | — | True |  |
+| `_probe_r17.png` | — | — | True |  |
 | `map_2_1.png` | — | — | False | No vertical line detected |
+| `map_event.png` | — | — | True |  |
 | `map_hard_1_4.png` | — | — | True |  |
 | `map_settled.png` | — | — | True |  |
 | `map_shape_9x6.png` | — | — | True |  |
@@ -553,6 +555,29 @@ LOAD thr=50 → OK    grids=21 shape=[6,2]      ← 与 IR 的 G3（7x3=21 格�
 
 困难图 fixture 已登记进 `map_fixtures.json`（IR 用普通 `campaign_1_4`：G3 = 21 格），
 IR 交叉校验通过（shape 一致、缺格 0）。
+
+### 困难图暴露的一个判据问题：`is_current_fleet` 不该当"敌人落陆地"处理
+
+困难 1-4 的 IR 交叉校验在 C# 侧报 1 处不一致：船格 (6,1) 落在 IR 的陆地格上。
+把两侧数据摆出来看，性质很清楚：
+
+| 检出标志 | 格 | IR 地形 | 判定 |
+| --- | --- | --- | --- |
+| `is_fleet` | (0,0) | `SP`（出生点） | ✅ 一致 |
+| `is_enemy` | (2,1) | `ME` | ✅ 一致 |
+| `is_enemy` | (5,2) | `ME` | ✅ 一致 |
+| **`is_current_fleet`** | **(6,1)** | **`++`（陆地）** | ❌ 分歧 |
+
+**敌人三个全部落在 IR 允许的 `ME` 上**（这条最强）；唯一分歧出在 `is_current_fleet` ——
+它是**"当前操作舰队"的指派标志**（预测器判定哪支检出的舰队是当前舰队），不是地形信号，
+指错一格是预测器层面的问题，与"识别坐标整体偏移"不是一回事。
+
+所以判据要拆开：**敌人/BOSS/塞壬落在陆地 = 硬失败**（地形强约束）；
+**己方舰队落在陆地 = 警告**（列出但不判失败）—— 因为 `is_current_fleet`/`is_fleet`
+是派生指派，可能指错，而敌人位置与地形是强相关。这一条待改进 `MapCheck.cs` 的校验 3。
+
+顺带记录：用户此时切的画面（`pages=[]`）检出 `30 格 / shape [7,3] / thr=75 / 3 个标志`，
+已存为 `data/fixtures/map_event.png` 待确认是否活动图（若是，需问用户是哪一关以登记 IR）。
 
 ## 复现
 

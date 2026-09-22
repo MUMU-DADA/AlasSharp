@@ -7,6 +7,7 @@
 三张 fixture 覆盖三种通路：
   map_settled.png    战役 6x4（2-1），带关卡 IR 交叉校验
   map_shape_9x6.png  战役 9x6（10-4），带关卡 IR 交叉校验（含缺格记录）
+  map_hard_1_4.png   困难图 7x3（1-4），带 IR 交叉校验（困难图复用同章节地图数据）
   os_live_2.png      海域 9x6（OS 模式），无 IR（OS 地图不走 campaign 的 IR）
 
 判定：退出码为 0，且输出里出现 expected 的格数与 `detected=True`。
@@ -24,6 +25,7 @@ FIXTURES = os.path.join(ROOT, 'data', 'fixtures')
 CASES = [
     ('map_settled.png', 'main', 'campaign_main/campaign_2_1.json', 24),
     ('map_shape_9x6.png', 'main', 'campaign_main/campaign_10_4.json', 48),
+    ('map_hard_1_4.png', 'main', 'campaign_main/campaign_1_4.json', 21),
     ('os_live_2.png', 'os', None, 49),
 ]
 
