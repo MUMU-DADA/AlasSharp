@@ -51,6 +51,22 @@
 
 阶段门槛：同一进程连续运行多个任务时宿主和设备只初始化一次；取消、超时和异常都能释放资源并保留证据；CLI 参数不会再复制一套业务状态机。
 
+**状态：第一切片完成**（详见 [常驻运行时](runtime.md)）。
+
+| 交付物 | 落地 | 验证 |
+| --- | --- | --- |
+| 常驻会话 | `Alas.Core/Runtime/AlasSession.cs`：宿主 + 设备后端只起一次，释放有记录 | `verify_runtime.py` 断言 `host_start_count=1`、`device_configure_count≤1` |
+| 命令配置对象 | `Runtime/SessionOptions.cs`：CLI 只填字段，校验在运行时 | 同上 + `verify_dryrun_purity.py` |
+| 统一错误分类 | `Runtime/RuntimeErrors.cs`：设备/宿主/上游/合同/取消/超时/内部七类 | `verify_runtime.py` 的上游报错例 |
+| 结构化日志 | `Runtime/SessionLog.cs`：内存条目 + `session-log.jsonl` | 工件断言 |
+| 诊断工件 | 每次运行一个目录：`index.json` + 每关一份 `sortie-*.json` + 会话日志 | 工件断言（含失败关与被跳过的关） |
+| 批量编排 | `Runtime/CampaignBatchRunner.cs`：逐关驱动 → 合同裁决 → 失败即停/取消 | 6 例自检 |
+| CLI 变薄 | `alashub campaign` 不再出现 `RunCampaignPlan`/`InProcessVisionEngine` | `verify_architecture.py` 静态守卫 |
+| 离线替身测试 | `alashub selftest-runtime` + `tools/diagnostics/verify_runtime.py` | 6 例，不启动 Python、不连设备 |
+
+**R1 未完成**：`run`（观测循环）与 `goto`（页面导航）仍在 `Alas.DataTool`，
+等 R2 做任务域切片时一并搬进运行时；取消粒度目前是"关卡"，不是"单次操作"（见 `runtime.md` 已知边界）。
+
 ### R2：任务域垂直切片
 
 目标是按业务域完成端到端闭环，而不是按地图逐个适配。优先顺序为：战役批量任务与账号状态 → 大世界/海域任务 → 活动任务 → 科研、建造、收取等周期任务。每个域都复用页面图、素材解析、设备会话和上游规则，只新增通用状态、调度和结果模型。

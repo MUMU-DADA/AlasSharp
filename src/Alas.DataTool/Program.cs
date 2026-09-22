@@ -76,6 +76,9 @@ internal static class Program
                 string? campChapter = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
                 string? campAdb = null, campSerial = null, campArtifacts = null;
                 bool campRun = false, campAllow = false, campRepeat = true;
+                // R1 起默认"失败即停"：出错后继续下一关等于在状态未知时白耗账号资源。
+                // 需要旧行为（跑完全部关卡）时显式加 --continue-on-error。
+                bool campContinueOnError = false;
                 double campMax = 1500; int campRounds = 20;
                 int campFleet1 = 1, campFleet2 = 0, campSub = 0;
                 // 两套战斗流程二选一（上游 `MAP_CLEAR_ALL_THIS_TIME`）：
@@ -84,12 +87,14 @@ internal static class Program
                 bool campClearAll = false;
                 for (int i = 1; i < args.Length; i++)
                 {
-                    if (args[i] is "--run" or "--allow-actions" or "--repeat" or "--clear-all")
+                    if (args[i] is "--run" or "--allow-actions" or "--repeat" or "--clear-all"
+                        or "--continue-on-error")
                     {
                         if (args[i] == "--run") campRun = true;
                         if (args[i] == "--allow-actions") campAllow = true;
                         if (args[i] == "--repeat") campRepeat = true;
                         if (args[i] == "--clear-all") campClearAll = true;
+                        if (args[i] == "--continue-on-error") campContinueOnError = true;
                         continue;
                     }
                     if (args[i].StartsWith("--") && i + 1 >= args.Length)
@@ -108,7 +113,7 @@ internal static class Program
                 {
                     Console.WriteLine("用法: campaign <章模块[,章模块...]> [--run --allow-actions] " +
                                       "[--serial <设备>] [--clear-all] [--max-seconds 1500] [--max-rounds 20] " +
-                                      "[--artifacts <目录>]");
+                                      "[--artifacts <目录>] [--continue-on-error]");
                     return 2;
                 }
                 if (campRun && !campAllow)
@@ -116,90 +121,55 @@ internal static class Program
                     Console.WriteLine("[拒绝    ] 真跑需要 --allow-actions");
                     return 2;
                 }
-                if (campMax <= 0 || campRounds <= 0 || campFleet1 <= 0 || campFleet2 < 0 || campSub < 0)
-                    throw new ArgumentException("时间和轮次必须为正数；第一舰队必须大于 0，其他舰队不能小于 0");
                 // 在同一个宿主内连续运行；各关入口由上游 ensure_campaign_ui 导航。
                 var stageList = campChapter.Contains(',')
                     ? campChapter.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0).ToArray()
                     : new[] { campChapter };
                 Console.WriteLine($"[批量    ] {stageList.Length} 关，同一进程内连续驱动");
-                using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(repoDir, toolsDir7);
-                if (campRun && campAllow)
+                if (campRun && campAllow && campAdb is not null)
+                    Console.WriteLine("[兼容    ] campaign 使用上游配置的 ADB；--adb 保留兼容，不覆盖宿主配置");
+
+                // R1：编排、判定、工件全部在 Alas.Core 的运行时里；CLI 只解析参数和排版报告。
+                var campOptions = new Alas.Runtime.SessionOptions
                 {
-                    if (campAdb is not null)
-                        Console.WriteLine("[兼容    ] campaign 使用上游配置的 ADB；--adb 保留兼容，不覆盖宿主配置");
-                    if (campSerial is not null)
-                        vision.ConfigureDevice(campSerial, screenshot: "scrcpy", control: "MaaTouch");
-                }
-                bool campFailed = false;
-                if (campArtifacts is not null) Directory.CreateDirectory(campArtifacts);
-                foreach (var one in stageList)
+                    RepoDirectory = repoDir,
+                    ToolsDirectory = toolsDir7,
+                    AdbPath = campAdb,
+                    Serial = campSerial,
+                    DryRun = !campRun,
+                    AllowActions = campAllow,
+                    MaxSeconds = campMax,
+                    MaxRounds = campRounds,
+                    RepeatUntilCleared = campRepeat,
+                    ClearAll = campClearAll,
+                    Fleet1 = campFleet1,
+                    Fleet2 = campFleet2,
+                    SubmarineFleet = campSub,
+                    ArtifactsDirectory = campArtifacts,
+                };
+                using var campSession = Alas.Runtime.AlasSession.Start(campOptions);
+                var batch = new Alas.Runtime.CampaignBatchRunner(campSession)
                 {
-                    var r = vision.RunCampaignPlan(one, dryRun: !campRun, allowActions: campAllow,
-                                                   maxSeconds: campMax, maxRounds: campRounds,
-                                                   repeatUntilCleared: campRepeat,
-                                                   fleet1: campFleet1, fleet2: campFleet2,
-                                                   submarineFleet: campSub, clearAll: campClearAll,
-                                                   serial: campSerial, artifactsDir: campArtifacts);
-                    Console.WriteLine($"[plan    ] {r.Chapter} stage={r.Stage} tier={r.Tier} dry_run={r.DryRun}");
-                    Console.WriteLine($"[steps   ] {string.Join(" → ", r.PlanSteps ?? new())}");
-                    Console.WriteLine($"[语义轨迹] {string.Join(", ", r.SemanticTrace ?? new())}");
-                    if (r.ConfigCount is not null)
-                    {
-                        Console.WriteLine($"[Config  ] present={r.ConfigPresent?.ToString() ?? "unknown"} " +
-                                          $"complete={r.ConfigComplete?.ToString() ?? "unknown"} fields={r.ConfigCount}");
-                        Console.WriteLine($"[配置来源] {string.Join(", ", r.ConfigSources ?? new())}");
-                        Console.WriteLine($"[原生配置] {r.RuntimeConfigSource}");
-                    }
-                    if (r.Refused == true) Console.WriteLine($"[拒绝    ] {r.Reason ?? r.Error}");
-                    if (r.Error is not null) Console.WriteLine($"[错误    ] {r.Error}");
-                    if (r.Steps is not null)
-                        foreach (var step in r.Steps)
-                        {
-                            Console.WriteLine("  " + string.Join(" ", step
-                                .Where(kv => kv.Key != "traceback_tail")
-                                .Select(kv => $"{kv.Key}={kv.Value}")));
-                            // **把调用栈也打出来**：上游内部抛错时，栈是唯一定位线索
-                            // （实测 execute_a_battle 报 KeyError: () 时只有类型没有栈 ✗）
-                            if (step.TryGetValue("traceback_tail", out var tb) &&
-                                tb.ValueKind == System.Text.Json.JsonValueKind.Array)
-                                foreach (var ln in tb.EnumerateArray())
-                                    Console.WriteLine("      | " + ln.GetString());
-                        }
-                    if (r.ElapsedSeconds is not null)
-                        Console.WriteLine($"[结果    ] elapsed={r.ElapsedSeconds}s stopped_early={r.StoppedEarly} " +
-                                          $"stop_reason={r.StopReason} outcome={r.Outcome} cleared={r.Cleared} " +
-                                          $"campaign_end={r.CampaignEnd} end_reason={r.EndReason}");
-                    // 结算证据单独打出来：判"通关"靠的是它，不是 campaign_end（撤退也抛 CampaignEnd）。
-                    if (r.EndEvidence is not null)
-                        Console.WriteLine($"[结算证据] rank={r.EndEvidence.BattleRank ?? "-"} " +
-                                          $"source={r.EndEvidence.RankSource ?? "-"} " +
-                                          $"combat_status={r.EndEvidence.CombatStatus?.ToString() ?? "-"} " +
-                                          $"stage_observed={r.EndEvidence.StageObserved?.ToString() ?? "-"} " +
-                                          $"withdrawn={r.EndEvidence.Withdrawn?.ToString() ?? "-"}");
-                    if (r.Failure is not null)
-                        Console.WriteLine($"[失败    ] step={r.Failure.Step} error={r.Failure.Error} " +
-                                          $"frame={r.Failure.Frame ?? "-"}");
-                    var contractViolations = Alas.Campaign.SortieContract.Violations(r, campArtifacts);
-                    Console.WriteLine($"[合同    ] {Alas.Campaign.SortieContract.Describe(r, campArtifacts)}");
-                    if (campArtifacts is not null)
-                    {
-                        string stamp = DateTime.Now.ToString("yyyyMMdd'T'HHmmss");
-                        string file = Path.Combine(campArtifacts,
-                            $"sortie-{(r.Stage ?? one).Replace('/', '_')}-{stamp}.json");
-                        File.WriteAllText(file, System.Text.Json.JsonSerializer.Serialize(r,
-                            new System.Text.Json.JsonSerializerOptions
-                            {
-                                WriteIndented = true,
-                                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-                            }));
-                        Console.WriteLine($"[工件    ] {file}");
-                    }
-                    campFailed |= r.Refused == true || r.Error is not null
-                                  || contractViolations.Count > 0
-                                  || (campRun && r.Cleared != true);
+                    StopOnFailure = !campContinueOnError,
+                }.Run(stageList);
+                PrintCampaignReport(batch, campOptions);
+                return batch.FailedCount == 0 ? 0 : 1;
+            }
+            if (command == "selftest-runtime")
+            {
+                // R1 运行时自检：替身宿主，不启动 Python、不连设备。
+                string? runtimeFixture = null, runtimeJson = null;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--fixture") runtimeFixture = args[i + 1];
+                    if (args[i] == "--json") runtimeJson = args[i + 1];
                 }
-                return campFailed ? 1 : 0;
+                if (runtimeFixture is null)
+                {
+                    Console.WriteLine("用法: selftest-runtime --fixture <用例.json> [--json <裁决.json>]");
+                    return 2;
+                }
+                return RuntimeSelfCheck.Run(runtimeFixture, runtimeJson, Path.GetTempPath());
             }
             if (command == "contract")
             {
@@ -576,5 +546,74 @@ internal static class Program
         if (ir.Unresolved.Count > 0)
             Console.WriteLine("未解析   : " + string.Join(" | ", ir.Unresolved));
         return 0;
+    }
+
+    /// <summary>
+    /// 把一批关卡的结果排版出来。**这里只排版**：判定（通关/失败/违例）已经在
+    /// <see cref="Alas.Runtime.CampaignBatchRunner"/> 与结果合同里做完了，
+    /// CLI 不再自己算一遍（R1 阶段门槛：CLI 不复制业务状态机）。
+    /// </summary>
+    private static void PrintCampaignReport(Alas.Runtime.CampaignBatchResult batch,
+                                            Alas.Runtime.SessionOptions options)
+    {
+        foreach (var stage in batch.Stages)
+        {
+            var r = stage.Result;
+            Console.WriteLine($"[plan    ] {r?.Chapter ?? stage.Chapter} stage={stage.Stage} " +
+                              $"tier={r?.Tier} dry_run={r?.DryRun ?? options.DryRun}");
+            if (r is null)
+            {
+                Console.WriteLine($"[跳过    ] {stage.Error}");
+                continue;
+            }
+            Console.WriteLine($"[steps   ] {string.Join(" → ", r.PlanSteps ?? new())}");
+            Console.WriteLine($"[语义轨迹] {string.Join(", ", r.SemanticTrace ?? new())}");
+            if (r.ConfigCount is not null)
+            {
+                Console.WriteLine($"[Config  ] present={r.ConfigPresent?.ToString() ?? "unknown"} " +
+                                  $"complete={r.ConfigComplete?.ToString() ?? "unknown"} fields={r.ConfigCount}");
+                Console.WriteLine($"[配置来源] {string.Join(", ", r.ConfigSources ?? new())}");
+                Console.WriteLine($"[原生配置] {r.RuntimeConfigSource}");
+            }
+            if (r.Refused == true) Console.WriteLine($"[拒绝    ] {r.Reason ?? r.Error}");
+            if (r.Error is not null) Console.WriteLine($"[错误    ] {r.Error}");
+            if (r.Steps is not null)
+                foreach (var step in r.Steps)
+                {
+                    Console.WriteLine("  " + string.Join(" ", step
+                        .Where(kv => kv.Key != "traceback_tail")
+                        .Select(kv => $"{kv.Key}={kv.Value}")));
+                    // **把调用栈也打出来**：上游内部抛错时，栈是唯一定位线索
+                    // （实测 execute_a_battle 报 KeyError: () 时只有类型没有栈 ✗）
+                    if (step.TryGetValue("traceback_tail", out var tb) &&
+                        tb.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        foreach (var ln in tb.EnumerateArray())
+                            Console.WriteLine("      | " + ln.GetString());
+                }
+            if (r.ElapsedSeconds is not null)
+                Console.WriteLine($"[结果    ] elapsed={r.ElapsedSeconds}s stopped_early={r.StoppedEarly} " +
+                                  $"stop_reason={r.StopReason} outcome={r.Outcome} cleared={r.Cleared} " +
+                                  $"campaign_end={r.CampaignEnd} end_reason={r.EndReason}");
+            // 结算证据单独打出来：判"通关"靠的是它，不是 campaign_end（撤退也抛 CampaignEnd）。
+            if (r.EndEvidence is not null)
+                Console.WriteLine($"[结算证据] rank={r.EndEvidence.BattleRank ?? "-"} " +
+                                  $"source={r.EndEvidence.RankSource ?? "-"} " +
+                                  $"combat_status={r.EndEvidence.CombatStatus?.ToString() ?? "-"} " +
+                                  $"stage_observed={r.EndEvidence.StageObserved?.ToString() ?? "-"} " +
+                                  $"withdrawn={r.EndEvidence.Withdrawn?.ToString() ?? "-"}");
+            if (r.Failure is not null)
+                Console.WriteLine($"[失败    ] step={r.Failure.Step} error={r.Failure.Error} " +
+                                  $"frame={r.Failure.Frame ?? "-"}");
+            Console.WriteLine($"[合同    ] {Alas.Campaign.SortieContract.Describe(r, options.ArtifactsDirectory)}");
+            if (stage.ArtifactPath is not null) Console.WriteLine($"[工件    ] {stage.ArtifactPath}");
+        }
+        if (batch.Stages.Count > 1 || batch.StoppedEarly)
+        {
+            Console.WriteLine($"[批次    ] outcome={batch.Outcome} cleared={batch.Cleared} " +
+                              $"关数={batch.Stages.Count} 失败={batch.FailedCount} " +
+                              $"提前停止={batch.StoppedEarly}" +
+                              (batch.StopReason is null ? "" : $" 原因={batch.StopReason}"));
+            if (batch.IndexPath is not null) Console.WriteLine($"[批次工件] {batch.IndexPath}");
+        }
     }
 }

@@ -57,6 +57,7 @@ STEPS = [
     ('verify_s3_outcome.py', 'S3 原生 run 调度与清图/撤退判别（离线上游执行）', False, 300),
     ('verify_result_contract.py', 'R0 结果合同（四类判别 + 反例拒绝 + 跨语言对拍）', False, 300),
     ('audit_real_records.py', 'R0 实机记录重新核对（重建 result-evidence.md）', False, 300),
+    ('verify_runtime.py', 'R1 常驻运行时（会话只初始化一次 / 失败即停 / 取消 / 证据）', False, 300),
     ('s3_plan_inventory.py', 'S3 计划词表清点（重建 s3-plan-vocabulary.md）', False, 300),
     ('status.py', '重建 status.md', False, 300),
 ]

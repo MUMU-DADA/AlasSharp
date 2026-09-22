@@ -79,6 +79,11 @@ def main() -> int:
         "结果合同(Python)": ROOT / "tools/sortie_contract.py",
         "结果合同说明": ROOT / "docs/result-contract.md",
         "实机证据核对": ROOT / "tools/diagnostics/audit_real_records.py",
+        "常驻运行时": ROOT / "src/Alas.Core/Runtime/AlasSession.cs",
+        "批量任务编排": ROOT / "src/Alas.Core/Runtime/CampaignBatchRunner.cs",
+        "结构化日志": ROOT / "src/Alas.Core/Runtime/SessionLog.cs",
+        "统一错误分类": ROOT / "src/Alas.Core/Runtime/RuntimeErrors.cs",
+        "运行时说明": ROOT / "docs/runtime.md",
     }
     for label, path in required.items():
         if not path.is_file():
@@ -92,14 +97,19 @@ def main() -> int:
     vision = read("src/Alas.Core/Vision/IVisionEngine.cs")
     models = read("src/Alas.Core/UpstreamModels.cs")
     upstream = read("src/Alas.Core/UpstreamData.cs")
+    batch = read("src/Alas.Core/Runtime/CampaignBatchRunner.cs")
     checks = {
         "CLI 使用集中路径解析": "ProjectPaths.Resolve()" in program,
-        "战役生产入口": "RunCampaignPlan" in program and '"s3_run_plan"' in vision,
+        "战役生产入口": "RunCampaignPlan" in batch and '"s3_run_plan"' in vision,
         "上游数据读取入口": "static Catalog Open" in upstream,
         "服务器 button 解析": "ButtonFor(string server)" in models,
-        # 结果判定只走合同：CLI 不再自己拼 cleared/outcome 的口径。
-        "战役结果走合同裁决": "SortieContract.Violations" in program
+        # 结果判定只走合同：裁决在运行时里做，CLI 只把裁决结果排版出来。
+        "战役结果走合同裁决": "SortieContract.Violations" in batch
                               and "SortieContract.Describe" in program,
+        # R1：业务编排在运行时里，CLI 只解析参数与排版（不许自己驱动引擎）。
+        "战役编排走运行时": "AlasSession.Start" in program and "CampaignBatchRunner" in program,
+        "CLI 不直接驱动引擎": "RunCampaignPlan" not in program
+                              and "InProcessVisionEngine" not in program,
     }
     for label, ok in checks.items():
         if not ok:
