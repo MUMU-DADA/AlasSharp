@@ -41,7 +41,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
   "log_lines": [
     "[homo_storage] ((4, 3), [(np.int64(445), np.int64(180)), (np.int64(879), np.int64(180)), (np.int64(376), np.int64(497)), (np.int64(963), np.int64(497))])",
     "globe_center: (np.float64(2075.0), np.float64(414.0))",
-    "0.083s      similarity: 0.093",
+    "0.079s      similarity: 0.093",
     "Low similarity when matching OS globe"
   ],
   "similarity": 0.093,
@@ -101,10 +101,21 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 | `map_hard_1_4.png` | — | — | True |  |
 | `map_settled.png` | — | — | True |  |
 | `map_shape_9x6.png` | — | — | True |  |
+| `menu_01.png` | — | — | False | fallback 网格不干净（51 格 vs 8x7=56），判为非地图画面 |
+| `menu_02.png` | — | — | False | 检出网格但**没有任何船标志**（14 格），判为非战场画面 |
+| `menu_03.png` | — | — | False | fallback 网格不干净（37 格 vs 8x5=40），判为非地图画面 |
+| `menu_04.png` | — | — | False | 检出网格但**没有任何船标志**（14 格），判为非战场画面 |
+| `menu_05.png` | — | — | False | fallback 网格不干净（37 格 vs 8x5=40），判为非地图画面 |
+| `menu_06.png` | — | — | False | fallback 网格不干净（37 格 vs 8x5=40），判为非地图画面 |
+| `menu_07.png` | — | — | False | 检出网格但**没有任何船标志**（14 格），判为非战场画面 |
+| `menu_08.png` | — | — | False | 检出网格但**没有任何船标志**（14 格），判为非战场画面 |
+| `menu_09.png` | — | — | False | fallback 网格不干净（37 格 vs 8x5=40），判为非地图画面 |
+| `menu_10.png` | — | — | False | fallback 网格不干净（37 格 vs 8x5=40），判为非地图画面 |
 | `os_globe_live.png` | — | — | False | Failed to find a free tile |
 | `os_globe_view.png` | — | — | False | No vertical line detected |
 | `os_live_2.png` | — | — | False | fallback 网格不干净（56 格 vs 9x7=63），判为非地图画面 |
 | `os_map.png` | — | — | False | fallback 网格不干净（59 格 vs 8x8=64），判为非地图画面 |
+| `subchapter_1_1.png` | — | — | False | No vertical line detected |
 
 ## 正样本从哪来（这是完成 S2 验收的唯一缺口）
 
