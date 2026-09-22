@@ -1312,3 +1312,8 @@ step=enter_map ms=60196.4 error=GameStuckError: Wait too long | step=enter_map_a
 #### 10-1（(6,5) = 7×6 = 42 格，**6 行**，预测成功）
 
 实测：step=map_init ms=2082.9 error= | round=1 step=battle_0 ms=91754.2 error= completed= | round=1 step=battle_6 ms=81392.5 error= completed= | [结果    ] elapsed=247.3s stopped_early=False stop_reason= campaign_end=
+
+
+#### 11-1（(7,5) = 8×6 = 48 格，**6 行**，预测成功）
+
+实测：step=map_init ms=564.8 error= | round=1 step=battle_0 ms=93158.0 error= completed= | round=1 step=battle_6 ms=105721.0 error= completed= | [结果    ] elapsed=271.8s stopped_early=False stop_reason= campaign_end=
