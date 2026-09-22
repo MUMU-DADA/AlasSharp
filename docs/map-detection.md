@@ -98,6 +98,7 @@ S2 的图像算法全在上游（`module/map_detection`、`module/os/globe_detec
 | `map_settled.png` | — | — | True |  |
 | `map_shape_9x6.png` | — | — | True |  |
 | `os_globe_live.png` | — | — | False | Failed to find a free tile |
+| `os_globe_view.png` | — | — | False | No vertical line detected |
 | `os_live_2.png` | — | — | False | Failed to find a free tile |
 | `os_map.png` | — | — | False | Vanish point and distant point too close |
 
