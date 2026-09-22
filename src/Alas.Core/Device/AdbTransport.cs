@@ -55,16 +55,21 @@ public sealed class ProcessAdbTransport : IAdbTransport
 
         using var process = Process.Start(psi)
                             ?? throw new InvalidOperationException($"无法启动 {Executable}");
-        // 手工读二进制流：StandardOutput.ReadToEnd() 会按文本解码，截图字节会被破坏
+        // ⚠️ 两个流都必须**异步**读，且不能阻塞等 stderr 的 EOF：
+        //    `adb devices` 会顺手把常驻 daemon 拉起来，而 daemon **继承了子进程的句柄**，
+        //    于是 stderr 管道永不关闭，同步 ReadToEnd() 会一直挂住（实测：整个进程卡死无输出）。
         using var stdout = new MemoryStream();
-        var copy = process.StandardOutput.BaseStream.CopyToAsync(stdout);
-        string stderr = process.StandardError.ReadToEnd();
+        var outTask = Task.Run(() => process.StandardOutput.BaseStream.CopyTo(stdout));
+        var errTask = process.StandardError.ReadToEndAsync();
+
         if (!process.WaitForExit((int)(timeout ?? DefaultTimeout).TotalMilliseconds))
         {
             try { process.Kill(entireProcessTree: true); } catch (Exception) { }
             throw new TimeoutException($"adb 超时: {string.Join(' ', args)}");
         }
-        copy.Wait(TimeSpan.FromSeconds(5));
+        // 进程已退出，给两个流的读取留一点收尾时间；拿不到就算了（daemon 持有句柄的情形）
+        outTask.Wait(TimeSpan.FromSeconds(3));
+        string stderr = errTask.Wait(TimeSpan.FromSeconds(3)) ? errTask.Result : "";
         return new AdbResult(process.ExitCode, stdout.ToArray(), stderr);
     }
 }

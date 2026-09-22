@@ -29,6 +29,58 @@ internal static class DeviceCheck
         [JsonPropertyName("cases")] public List<FixtureCase> Cases { get; set; } = new();
     }
 
+    /// <summary>
+    /// 真机/模拟器验收。**只截图与查询，不发点击** —— 避免干扰用户正在运行的模拟器。
+    /// </summary>
+    public static int RunReal(string adbPath, string serial, string forkDir, string toolsDir)
+    {
+        var problems = new List<string>();
+        using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(forkDir, toolsDir);
+        var adb = new ProcessAdbTransport(adbPath);
+        var device = new DeviceController(adb, vision, serial);
+
+        var devices = device.Devices();
+        Console.WriteLine($"[devices ] {string.Join(", ", devices)}");
+        if (!devices.Contains(serial)) problems.Add($"devices 未列出 {serial}");
+
+        Console.WriteLine($"[get-state] {device.GetState()}");
+        var size = device.ScreenSize();
+        Console.WriteLine($"[wm size ] {size?.Width}x{size?.Height}");
+
+        // 真实 screencap 延迟（这是生产里的关键路径，之前一直没机会测）
+        var times = new List<double>();
+        ScreenshotInfo info = null!;
+        for (int i = 0; i < 8; i++)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            info = device.Screenshot();
+            times.Add(sw.Elapsed.TotalMilliseconds);
+        }
+        times.Sort();
+        Console.WriteLine($"[screencap] shape={string.Join("x", info.Shape)}"
+                          + $"  延迟 p50={times[times.Count / 2]:F1}ms min={times[0]:F1}ms"
+                          + $" max={times[^1]:F1}ms（含 adb 传输 + 宿主解码）");
+        if (info.Shape.Count != 3 || info.Shape[2] != 3)
+            problems.Add($"截图形状异常: {string.Join("x", info.Shape)}");
+
+        // 拿一个真实素材做判定，只为证明「真机截图 → 上游识图」跑得通
+        vision.SetServer("cn");
+        foreach (string asset in new[] { "ui/IDLE", "ui/BACK_ARROW", "ui/GOTO_MAIN" })
+        {
+            try
+            {
+                var r = vision.AppearOn(asset, detail: true);
+                Console.WriteLine($"[判定    ] {asset,-20} = {r.Appear,-5} 容差={r.Tolerance?.ToString("F1") ?? "-"}");
+            }
+            catch (Exception ex) { Console.WriteLine($"[判定    ] {asset}: {ex.Message}"); }
+        }
+
+        Console.WriteLine();
+        if (problems.Count == 0) { Console.WriteLine("结果: OK"); return 0; }
+        Console.WriteLine($"结果: FAIL（{problems.Count} 处）");
+        foreach (string p in problems) Console.WriteLine($"  - {p}");
+        return 1;
+    }
     public static int Run(string fixturePath, string forkDir, string toolsDir, string dataDir)
     {
         var fixture = JsonSerializer.Deserialize<Fixture>(
