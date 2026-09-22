@@ -1075,7 +1075,7 @@ _DANGER_PREFIX = ('battle', 'clear', 'enter_map', 'run', 'mob_move', 'fleet',
                   'combat', 'withdraw', 'retreat',
                   # **补漏**：`execute_a_battle` 是上游真正的"打一步"入口（campaign_base.run()
                   # 的循环体），但它不以 'battle' 开头，此前**绕过了 allow_actions 安全锁** ✗
-                  'execute')
+                  'execute', 'full_scan')
 
 
 
@@ -1626,7 +1626,12 @@ def op_s3_run_plan(args):
         # 只调 IR 里的 `battle_0`/`battle_6` 等于只做了上游逻辑的一小部分 → **清不完**
         # （用户实测反馈"并没有完全打完"，根因即此）。轮数由 max_rounds 控制，
         # 上游默认 20 —— 建议调用方传 `--max-rounds 20`。
-        for _step_name in ('execute_a_battle',):
+        # **先触发上游的 BOSS 扫描确认**：本客户端 BOSS 图标识别失败（实测 3 个标志里
+        # 没有 is_boss ✗），导致 `battle_6` 的 `if boss:` 分支被跳过 -> 十次无战果 ->
+        # 上游自己撤退（用户实测："全清完小怪后只剩boss就主动撤退" ✓）。
+        # `full_scan_find_boss()`（camera.py:530）正是用候选出生点扫描确认 BOSS 的上游能力；
+        # 正常流程会在只剩 BOSS 时走它，而我的执行器此前从未触发 ✗。
+        for _step_name in ('full_scan_find_boss', 'execute_a_battle'):
             if _t.time() - t_start > max_s:
                 steps.append({'round': _round, 'step': _step_name, 'skipped': '超过 max_seconds'})
                 break
