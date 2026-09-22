@@ -159,7 +159,17 @@ internal static class Program
                     if (r.Refused == true) Console.WriteLine($"[拒绝    ] {r.Error}");
                     if (r.Steps is not null)
                         foreach (var step in r.Steps)
-                            Console.WriteLine("  " + string.Join(" ", step.Select(kv => $"{kv.Key}={kv.Value}")));
+                        {
+                            Console.WriteLine("  " + string.Join(" ", step
+                                .Where(kv => kv.Key != "traceback_tail")
+                                .Select(kv => $"{kv.Key}={kv.Value}")));
+                            // **把调用栈也打出来**：上游内部抛错时，栈是唯一定位线索
+                            // （实测 execute_a_battle 报 KeyError: () 时只有类型没有栈 ✗）
+                            if (step.TryGetValue("traceback_tail", out var tb) &&
+                                tb.ValueKind == System.Text.Json.JsonValueKind.Array)
+                                foreach (var ln in tb.EnumerateArray())
+                                    Console.WriteLine("      | " + ln.GetString());
+                        }
                     if (r.ElapsedSeconds is not null)
                         Console.WriteLine($"[结果    ] elapsed={r.ElapsedSeconds}s stopped_early={r.StoppedEarly} " +
                                           $"stop_reason={r.StopReason} campaign_end={r.CampaignEnd}");

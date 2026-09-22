@@ -1510,3 +1510,36 @@ logger.warning('Battle function exhausted.')  -> withdraw 或 ScriptError
 
 **另记一个安全缺口**：`execute_a_battle` 不以 `battle` 开头，**没有被我现有的危险前缀拦到** ✗
 → 需把 `execute` 加入 `_DANGER_PREFIX`（否则它会绕过 allow_actions 安全锁）。
+
+
+## 🎉 完整清图走通：`campaign_end=True`（用户最初问题的最终答案）
+
+```
+[前置] 回战役页 尝试1 success=True
+step=ensure_chapter        163.4 ms ok
+step=get_entrance            0.0 ms ok
+step=enter_map            6523.5 ms ok     ← 主动盯防（不等 60s 超时）
+step=handle_map_fleet_lock   4.8 ms ok     ← 本轮补上的上游步骤
+step=map_init             2257.9 ms ok
+round=1 execute_a_battle 47613.6 ms ok | check=still_in_map
+round=2 execute_a_battle 46773.7 ms ok | check=still_in_map
+round=3 execute_a_battle  4057.6 ms ok | **completed=True**  ← CampaignEnd
+[结果] elapsed=107.7s **campaign_end=True**
+```
+
+上游自己的收尾（日志直证）：
+```
+WARNING ScriptError, No combat executed.
+WARNING ScriptError, No combat executed, Withdrawing    ← 地图打完 → 自动撤退结束出击
+```
+
+**"为什么以前打不完"的完整答案（三层，按发现顺序）**：
+
+| # | 原因 | 修法 |
+| --- | --- | --- |
+| 1 | 我传 `--max-rounds 1`（为控制验证耗时）| 用 `--repeat` + 足够轮数 |
+| 2 | 每进新图撞"正在攻略中"弹窗白等 60s | **主动盯防**（68s → 6.5s）|
+| 3 | **调错入口**：用 IR 的 `battle_0`/`battle_6` 而非上游调度入口 `execute_a_battle` | 改用 `execute_a_battle` ✓ |
+| 补充 | 漏调 `handle_map_fleet_lock`（上游 `run()` 里有）| 已补（`KeyError: ()` 与它无关，但顺序对齐了）|
+
+**舰队**：`Using fleet: [3, 6, 0]`（1 队=舰队 3、2 队=舰队 6，按用户规则）
