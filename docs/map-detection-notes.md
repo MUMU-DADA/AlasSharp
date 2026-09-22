@@ -126,8 +126,26 @@ python tools/diagnostics/oneoff/probe_backends.py          # 两后端 × 六帧
 python tools/diagnostics/oneoff/probe_backends.py --frames data/fixtures/inmap_7-1.png --backends homography
 ```
 
+## 单行图 1-1：卡在"峰→线"，且不是阈值问题（`map_detect_trace` 逐段实测）
+
+对真图内帧 `data/fixtures/subchapter_1_1.png` 跑 `map_detect_trace`：
+
+| 线族 | 峰像素 | 过掩膜后 | Hough 拟合出的线 | Hough 原始输出 |
+| --- | --- | --- | --- | --- |
+| `inner_h`（内部水平） | 1310 | 1310 | **2** | 6 |
+| `inner_v`（内部垂直） | **784** | 780 | **0** | **0** |
+| `edge_h`（边界水平） | 2398 | 1382 | 4 | 6 |
+| `edge_v`（边界垂直） | 849 | 629 | 1 | 1 |
+
+读法：垂直方向**有 784 个峰像素**，但 Hough 连一条线都拟合不出（阈值降到 40 也是 `hough_raw=0`）。
+Hough 是按"一条线上有多少共线像素"投票的 —— 784 个像素若散在很多短段/纹理上，
+每条线都凑不够票数。也就是说：**单行图的"垂直峰"主要是瓦片纹理噪声，不是格线**。
+这解释了为什么"降阈值 / 降峰参数 / 放大"三招都无效（既有结论在这里得到机制层面的解释）：
+要修得换思路（例如改用边界线推几何，或对单行图另做一条检测路径），
+而收益只有 1-1 这一张（1-2/1-3/1-4 都是多行图，不受影响），所以**先记为已知限制**。
+
 ## 困难图 1-4 的那节标题已过时
 
-docs/map-detection.md 里"困难图（1-4）：未能检出"那节是**加 5 档降阈值重试之前**的结论；
-现在用同一张 data/fixtures/map_hard_1_4.png（真图内帧）能识别出 shape=[6,2]＝21 格 ✓，
+`docs/map-detection.md` 里"困难图（1-4）：未能检出"那节是**加 5 档降阈值重试之前**的结论；
+现在用同一张 `data/fixtures/map_hard_1_4.png`（真图内帧）能识别出 `shape=[6,2]`＝21 格 ✓，
 详见上面的两后端对照表。这节标题由生成器输出，改不了，特此备注。
