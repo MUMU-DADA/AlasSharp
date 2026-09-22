@@ -1815,6 +1815,21 @@ def op_s3_run_plan(args):
             _init_attempts.append(_entry)
             if not r.get('error') and (_entry.get('health') or {}).get('consistent'):
                 break
+            # **把失败这一刻的现场帧存下来**：离线复现是定位这类问题的唯一可靠手段，
+            # 而"失败帧"必须在这一刻抓 —— 事后再截图，相机早被重试挪走了（实测踩过：
+            # 事后抓到的帧检测完全正常，21/21 格，反而把结论带偏 ✗）。
+            try:
+                import cv2 as _cv2
+                _img = getattr(inst.device, 'image', None)
+                if _img is not None:
+                    _fp = os.path.normpath(os.path.join(
+                        os.path.dirname(os.path.abspath(__file__)), '..', 'data',
+                        '_map_init_fail_%s_att%d.png' % (
+                            _CAMPAIGN.get('chapter', 'x').split('.')[-1], _att + 1)))
+                    _cv2.imwrite(_fp, _cv2.cvtColor(_img, _cv2.COLOR_RGB2BGR))
+                    _entry['saved_frame'] = _fp
+            except Exception as _e:
+                _entry['save_frame_error'] = f'{type(_e).__name__}: {_e}'
             if r.get('error') and 'Vanish point' not in str(r.get('error')) \
                     and 'No vertical line' not in str(r.get('error')):
                 break                      # 别的错误不靠挪机位解决
