@@ -1257,3 +1257,29 @@ map_init 行：step=map_init ms=3706.3 error=
 
 => 同样是"8 列"，7-1 只有 3 行而 9-1 有 5 行 —— **"行数偏少"比"格数偏少"更像决定因素**
 （待更多样本确认；我仍只当相关性，不当判据）。
+
+
+#### ⭐ 本轮最有价值的发现：**自愈逻辑在真实对局中自动救场了**
+
+9-1 的完整步骤（从 CLI 日志核实）：
+
+```
+step=ensure_chapter   2257.9 ms  ok
+step=get_entrance        0.0 ms  ok
+step=enter_map       60197.2 ms  err=GameStuckError: Wait too long   ← 卡在弹窗上 60s
+step=enter_map_abort              **dialog=True red_frac=0.3295**    ← 自愈识别出弹窗
+step=enter_map_retry  8429.3 ms  ok                                  ← 重试成功进图
+step=map_init         3706.3 ms  ok                                  ← 图可识别
+round=1 battle_0    101497.3 ms  ok
+round=1 battle_5     89218.5 ms  ok
+```
+
+**意义**：
+
+1. 第 60–61 轮加的自愈（点掉"正在攻略中"弹窗 + 重试，含"**现抓一帧**"修复）
+   **在真实对局里自动生效**，把一次本会失败的进图救回来了 —— 这是它第一次在生产路径上被触发；
+2. `red_frac = 0.3295` 与离线标定时的 **0.3271** 几乎一致 ✓ 说明像素判据在现场同样可靠；
+3. 若无自愈，这一关会直接失败（旧行为：`GameStuckError` → 整关跳过）。
+
+**顺带**：9-1 的战斗耗时 101s / 89s —— 远高于旧账号 2-x 关的 30–50s（章节更高、敌人更强），
+所以"一条命令跑一批"的时间估算要按章节调整。
