@@ -1135,3 +1135,30 @@ S3 累计：**6 个关卡**端到端驱动（2-1/2-2/2-3/2-4/3-1/3-2），真实
 **即：本账号可用且已验证的关卡 = 第 2 章全 4 关 + 3-1 / 3-2，共 6 关，全部已端到端跑通。**
 这既解释了"为什么只剩这几关可做"，也给"换账号/推进主线后再扩"留了明确的重跑路径：
 `tools/diagnostics/s3_plan_coverage.py` + `s3_preflight.py` 一句话就能重新出一份清单。
+
+### 多关连跑实测：第 1 关全绿，第 2 关卡在"跨关状态未复位"
+
+`alashub campaign "2-1,2-2" --run --allow-actions --repeat --max-rounds 1`（同一进程）：
+
+```
+[批量] 2 关，同一进程内连续驱动
+[plan] 2-1 → ✅ ensure_chapter 1960.6ms | enter_map 7247.3ms | map_init 2254.7ms
+              round=1 battle_0 42995.1ms ok | battle_2 7868.5ms ok   elapsed=62.7s
+[plan] 2-2 → ✗ ensure_chapter 25.7ms err=**CampaignNameError**
+              get_entrance 同样错 → battle_0 skipped（前一步出错即停）  elapsed=0.3s
+```
+
+**根因**：2-1 跑完后**游戏已不在战役页**（清图后离开了地图），于是下一关的
+`ensure_chapter` 在错误画面上执行 → `CampaignNameError`。
+
+**这又是"状态前置"那一课，只是升到了"跨关"层面**：
+- 单关内：进图前要有正确的（章节，关卡）上下文 ✓ 已解决；
+- **跨关：每关开始前必须回到 `page_campaign`** ✗ 尚未处理。
+
+**修法（下一步，明确）**：多关循环里，每关开始前检查当前页并在必要时**导航回 `page_campaign`**。
+实现上有两条路：
+1. **C# 侧**：`campaign` 命令里构造 `PageNavigator`（`alashub goto page_campaign` 的能力已在），
+   每关前调用一次 —— 最直接；
+2. 协议侧：宿主加一个 op（但宿主没有页面导航能力，导航是 C# 侧的事）=> 推荐路线 1。
+
+**当前行为是安全的**：出错即停（不会带着错误状态继续跑下一关），且命令行已提示。
