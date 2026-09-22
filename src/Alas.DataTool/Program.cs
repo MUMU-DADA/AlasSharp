@@ -128,11 +128,25 @@ internal static class Program
                     // 首关前也导航（此前要人工先跑 goto page_campaign）；**只在真跑时做** ——
                     // dry-run 不应有任何游戏副作用。
                     if (campNav is not null && campRun)
-                    {
-                        var nav = campNav.Goto("page_campaign");
-                        Console.WriteLine($"[{(campIdx == 0 ? "前置" : "复位")}    ] " +
-                                          $"第 {campIdx + 1} 关前回战役页 success={nav.Success}");
-                    }
+                        {
+                            // **导航失败要重试**：实测游戏若停在"战斗中/未完成出击"，一次 Goto 会 success=False，
+                            // 而此前直接放弃导致整个作业 0.4s 就退出（用户实测报告）。这里重试 3 次。
+                            bool navOk = false;
+                            for (int attempt = 1; attempt <= 3 && !navOk; attempt++)
+                            {
+                                var nav = campNav.Goto("page_campaign");
+                                navOk = nav.Success;
+                                Console.WriteLine($"[{(campIdx == 0 ? "前置" : "复位")}    ] " +
+                                                  $"第 {campIdx + 1} 关前回战役页 尝试{attempt} success={nav.Success}");
+                                if (!navOk) System.Threading.Thread.Sleep(4000);
+                            }
+                            if (!navOk)
+                            {
+                                Console.WriteLine($"[前置    ] 第 {campIdx + 1} 关导航失败 3 次 -> 跳过本关" +
+                                                  "（游戏可能停在战斗中/未完成出击，需先手动处理）");
+                                continue;
+                            }
+                        }
                     campIdx++;
                     var r = vision.RunCampaignPlan(one, dryRun: !campRun, allowActions: campAllow,
                                                    maxSeconds: campMax, maxRounds: campRounds,
