@@ -8,3 +8,12 @@
 *.png binary
 *.jpg binary
 *.gif binary
+
+# vendor 里是上游静态资源的逐字节镜像：禁掉换行转换与 diff。
+# 这些文件必须与上游完全一致 —— 例如 OCR 的 *.labels.txt 若被转成 CRLF，
+# 字符表里会混进 \r，识别结果直接错，而 diff 里看不出来。
+vendor/upstream/** -text -diff
+*.onnx binary
+*.params binary
+*.apk binary
+*.jar binary

@@ -145,14 +145,20 @@ src/Alas.Core/          数据模型 + 读取器 + 识图客户端
   UpstreamModels.cs       上游数据契约的 C# 模型
   UpstreamData.cs         契约读取入口
   Vision/VisionWorker.cs  识图引擎客户端（C# 一侧不实现任何图像算法）
+  Navigation/             页面导航图（运行时向上游要图）+ 导航器
   Imaging/                【参考实现，非产品路径】手工移植的 cv2 原语
 src/Alas.DataTool/      命令行工具 alashub
 tools/                  构建期脚本（需要 Python）
   export_upstream_data.py   上游 .py 产物 → JSON + Schema + 溯源清单
+  sync_upstream_assets.py   上游静态资源快照同步/校验（写入 vendor/upstream）
   verify_export.py          数据契约校验（Python 侧）
   vision_worker.py          识图引擎 worker（调用上游模块）
   make_*_fixture.py         对拍基准生成
   diagnostics/              定位过程留下的诊断脚本
+vendor/upstream/        上游静态资源的逐字节镜像（模板图/OCR 权重/设备端二进制）
+                        来源 commit 与逐文件 sha256 见其中的 MANIFEST.json 与 README
+data/                   上游数据契约的导出产物（运行期生成，不入库）
+docs/                   验收记录（如 page-verification.md：页面识别真机验证）
 ```
 
 ## 快速开始
