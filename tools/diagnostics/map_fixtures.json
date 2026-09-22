@@ -14,5 +14,10 @@
     "chapter": "campaign_main/campaign_1_4.json",
     "name": "1-4（困难）",
     "note": "困难图复用同章节地图数据（campaign_hard 下只有 12_4/14_4/campaign_hard），故取普通 1-4：G3 = 7x3 = 21 格。检出 21 格 shape[6,2]，走 Hough 阈值回退（75→50）后成功；画面最左列 A 被舰队栏挡住属相机窗口"
+  },
+  "map_event.png": {
+    "chapter": "event_20260908_cn/a1.json",
+    "name": "活动图 幽影迷城 A1（用户告知）",
+    "note": "检出 30 格 / shape [7,3]（8x4）/ thr=75（默认阈值）/ 3 个标志。**这是相机窗口**：画面列标签是 A-I（9 列），与 event_20260908_cn/a1 的 I8（9x8=72 格）吻合，但 9x8 装不下屏幕、A 列被左侧舰队栏挡住，所以检出的是可见窗口（8 列 x 4 行）。=> 交叉校验必须先按相机偏移对齐，不能直接比 shape"
   }
 }
