@@ -26,6 +26,9 @@ public sealed class RunReport
     public int? DeviceConfigureCount { get; set; }
     public string? QueueOutcome { get; set; }
     public string? BatchOutcome { get; set; }
+    /// <summary>是否提前停止，以及原因（人停的 / 失败即停 / 被前序任务带过）。</summary>
+    public bool StoppedEarly { get; set; }
+    public string? StopReason { get; set; }
     public int Tasks { get; set; }
     public int TasksSucceeded { get; set; }
     public int TasksFailed { get; set; }
@@ -35,6 +38,8 @@ public sealed class RunReport
     public int LogEntries { get; set; }
     public int LogErrors { get; set; }
     public int LogWarnings { get; set; }
+    /// <summary>日志的 scope 分布（部件 → 条数）。</summary>
+    public Dictionary<string, int> LogScopes { get; } = new(StringComparer.Ordinal);
     /// <summary>各任务开始时的边界状态快照（任务 id → 快照）。</summary>
     public Dictionary<string, JsonObject?> Boundaries { get; } = new(StringComparer.Ordinal);
     /// <summary>边界上拿到画面 / 拿不到画面的任务数（dry-run 下拿不到是正常的）。</summary>
@@ -77,6 +82,10 @@ public sealed class RunReport
             report.DryRun = queue["dry_run"]?.GetValue<bool>() ?? false;
             report.HostStartCount = queue["host_start_count"]?.GetValue<int>();
             report.DeviceConfigureCount = queue["device_configure_count"]?.GetValue<int>();
+            // 提前停止与原因也要上数据面：只给一个 `outcome=cancelled`，前端看不出"为什么停"
+            // （是人停的、还是失败即停、还是被前序任务带过的）。
+            report.StoppedEarly = queue["stopped_early"]?.GetValue<bool>() ?? false;
+            report.StopReason = queue["stop_reason"]?.GetValue<string>();
             if (queue["tasks"] is JsonArray tasks)
                 foreach (var node in tasks)
                 {
@@ -186,6 +195,11 @@ public sealed class RunReport
                     string level = entry?["level"]?.GetValue<string>() ?? "";
                     if (level == "ERROR") report.LogErrors++;
                     if (level == "WARN") report.LogWarnings++;
+                    // scope 分布：前端要能看出"这次运行里哪些部件说了话"
+                    // （例如 queue/stage/task/artifacts/session），只给总数看不见来源。
+                    string scope = entry?["scope"]?.GetValue<string>() ?? "";
+                    if (scope.Length > 0)
+                        report.LogScopes[scope] = report.LogScopes.GetValueOrDefault(scope) + 1;
                 }
                 catch (JsonException)
                 {
@@ -264,6 +278,8 @@ public sealed class RunReport
             ["host_start_count"] = HostStartCount,
             ["device_configure_count"] = DeviceConfigureCount,
             ["queue_outcome"] = QueueOutcome,
+            ["stopped_early"] = StoppedEarly,
+            ["stop_reason"] = StopReason,
             ["batch_outcome"] = BatchOutcome,
             ["totals"] = new JsonObject
             {
@@ -276,7 +292,9 @@ public sealed class RunReport
                 ["log_entries"] = LogEntries,
                 ["log_errors"] = LogErrors,
                 ["log_warnings"] = LogWarnings,
+            ["log_scopes"] = JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(LogScopes)),
                 ["boundaries_with_frame"] = BoundariesWithFrame,
+            ["log_scopes"] = JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(LogScopes)),
                 ["boundaries_without_frame"] = BoundariesWithoutFrame,
             },
             ["has_failures"] = HasFailures,
@@ -317,6 +335,8 @@ public sealed class RunReport
                 ["directory"] = report.RunDirectory,
                 ["dry_run"] = report.DryRun,
                 ["queue_outcome"] = report.QueueOutcome,
+                ["stopped_early"] = report.StoppedEarly,
+                ["stop_reason"] = report.StopReason,
                 ["batch_outcome"] = report.BatchOutcome,
                 ["tasks"] = report.Tasks,
                 ["tasks_failed"] = report.TasksFailed,

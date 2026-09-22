@@ -119,6 +119,14 @@ def main() -> int:
             ('边界快照统计与任务数一致',
              boundary_total == len(ran_tasks),
              f"统计={boundary_total} 任务={len(ran_tasks)}"),
+            # 停止信息与日志来源都要上数据面：只给 outcome，前端看不出"为什么停、谁在说话"
+            ('暴露提前停止与原因字段',
+             'stopped_early' in report and 'stop_reason' in report,
+             f"keys={[k for k in ('stopped_early', 'stop_reason') if k in report]}"),
+            ('日志 scope 分布且与总条数一致',
+             bool(report['totals'].get('log_scopes'))
+             and sum(report['totals']['log_scopes'].values()) == report['totals']['log_entries'],
+             f"scopes={report['totals'].get('log_scopes')} entries={report['totals']['log_entries']}"),
         ]
         print()
         print('=== 正常路径（报告读得出事实）===')
