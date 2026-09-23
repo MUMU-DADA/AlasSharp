@@ -196,6 +196,7 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 | 周期任务调度状态 | `verify_task_schedule.py` | 与独立读数对拍 + 四种边界（全禁用/全启用/缺段/配置不存在）+ **只读**（配置字节不变） |
 | 周期任务勘察与放行 | `verify_periodic_plan.py` | 勘察与独立读一致；四类边界；**不 import 目标模块**；放行判定四条路径 + **executes 恒 False**（永不执行） |
 | 运行报告 / 运行列表 | `verify_report.py` | 报告事实 + 3 个反例 + `runs` 同秒不覆盖 + 单批形态 |
+| 运行报告的 HTML 视图（R4 第一屏） | `verify_report_html.py` | 不丢事实（数据面里的事实都要出现在界面里）+ 单文件自足 + 缺工件也能看 |
 | 停止任务 | `verify_stop.py` | `--stop-file` 在任务边界生效；剩余任务记 skipped；无停止文件时照常跑完 |
 | 结果合同 | `verify_result_contract.py` | 四类结果 + 20 条反例 + 两侧裁决逐例一致 |
 | 实机证据 | `audit_real_records.py` | 归档日志重核：通关/撤退可解释、无自相矛盾 |
