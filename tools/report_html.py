@@ -158,14 +158,47 @@ def card(key: str, value) -> str:
            f'<div class="v">{html.escape(str(value))}</div></div>'
 
 
+def failures_of(items: list) -> list:
+    """失败与未通关的条目：任务侧看结论，关卡侧看 cleared。
+
+    为什么要有它：打开一份报告的第一诉求是"哪儿出问题了"，而不是从头读完几十行。
+    纯生成期过滤，不需要运行时筛选（见 `docs/runtime.md` 第十三节的交互路线）。
+    """
+    out = []
+    for item in items:
+        if item.get('level') == 'task' and str(item.get('outcome')) in ('failed', 'error'):
+            out.append(item)
+        elif item.get('level') == 'stage' and not item.get('cleared'):
+            out.append(item)
+    return out
+
+
+def failure_row(item: dict) -> str:
+    what = item.get('id') or f"{item.get('chapter')}/{item.get('stage')}"
+    return (f'<tr><td>{html.escape(str(what))}</td>'
+            f'<td>{html.escape(str(item.get("level")))}</td>'
+            f'<td class="{outcome_class(item.get("outcome"))}">'
+            f'{html.escape(str(item.get("outcome")))}</td>'
+            f'<td>{html.escape(str(item.get("error") or "—"))}</td></tr>')
+
+
 def render(report: dict) -> str:
     totals = report.get('totals') or {}
+    items_all = report.get('items') or []
+    failures = failures_of(items_all)
     parts = [
         '<!doctype html><meta charset="utf-8">',
         f'<title>运行报告 — {html.escape(str(report.get("run") or ""))}</title>',
         f'<style>{STYLE}</style>',
         f'<h1>运行报告</h1>',
         f'<div class="sub">{html.escape(str(report.get("run") or ""))}</div>',
+        # 页首锚点：一次运行可能有几十个关卡，先给一条能跳的路（纯 HTML，无 JS）
+        '<div class="sub">跳到：'
+        '<a href="#failures">失败与未通关</a> · '
+        '<a href="#tasks">任务</a> · '
+        '<a href="#stages">关卡</a> · '
+        '<a href="#findings">发现</a> · '
+        '<a href="#raw">原始数据面</a></div>',
         '<div class="cards">',
         card('队列结论', report.get('queue_outcome') or '—'),
         card('批次结论', report.get('batch_outcome') or '—'),
@@ -180,6 +213,13 @@ def render(report: dict) -> str:
         '</div>',
     ]
 
+    # 失败优先区块：打开报告先看"哪儿出问题了"（生成期过滤，无 JS）
+    parts.append('<h2 id="failures">失败与未通关</h2>')
+    if failures:
+        parts.append('<table><tr><th>条目</th><th>层</th><th>结论</th><th>错误</th></tr>'
+                     + ''.join(failure_row(i) for i in failures) + '</table>')
+    else:
+        parts.append('<div class="sub">无（这一份里没有失败项）</div>')
     scopes = totals.get('log_scopes') or {}
     if scopes:
         parts.append('<h2>日志来源（谁在说话）</h2><div class="cards">')
@@ -190,7 +230,7 @@ def render(report: dict) -> str:
     tasks = [i for i in items if i.get('level') == 'task']
     stages = [i for i in items if i.get('level') == 'stage']
     if tasks:
-        parts.append('<h2>任务</h2><table><tr><th>id</th><th>域</th><th>结论</th>'
+        parts.append('<h2 id="tasks">任务</h2><table><tr><th>id</th><th>域</th><th>结论</th>'
                      '<th>摘要</th><th>错误分类</th><th>错误</th><th>边界快照</th></tr>')
         for item in tasks:
             boundary = item.get('boundary_state') or {}
@@ -206,7 +246,7 @@ def render(report: dict) -> str:
                 f'<td>{frame}{" " + html.escape(str(pages)) if pages else ""}</td></tr>')
         parts.append('</table>')
     if stages:
-        parts.append('<h2>关卡</h2><table><tr><th>章节</th><th>关卡</th><th>结论</th>'
+        parts.append('<h2 id="stages">关卡</h2><table><tr><th>章节</th><th>关卡</th><th>结论</th>'
                      '<th>通关</th><th>错误</th></tr>')
         for item in stages:
             parts.append(
@@ -218,7 +258,7 @@ def render(report: dict) -> str:
         parts.append('</table>')
 
     findings = report.get('findings') or []
-    parts.append('<h2>发现</h2>')
+    parts.append('<h2 id="findings">发现</h2>')
     if findings:
         parts.append('<table><tr><th>代码</th><th>说明</th></tr>' + ''.join(
             f'<tr><td>{html.escape(str(f.get("code")))}</td>'
@@ -226,7 +266,7 @@ def render(report: dict) -> str:
     else:
         parts.append('<div class="sub">无（证据链完整、没有失败项）</div>')
 
-    parts.append('<h2>原始数据面</h2><pre>' +
+    parts.append('<h2 id="raw">原始数据面</h2><pre>' +
                  html.escape(json.dumps(report, ensure_ascii=False, indent=1)[:4000]) + '</pre>')
     return '\n'.join(parts)
 
