@@ -120,6 +120,28 @@ def render_index(target: Path, document: dict) -> str:
     ])
 
 
+def evidence_summary(artifact_path, limit: int = 4) -> str:
+    """从任务的工件里取**标量摘要**（如 batch_outcome / cleared / enabled_count / pages）。
+
+    为什么在这里读工件、而不是往报告里塞字段：报告只内联摘要、明细留在 `task-*.json`
+    （见 `docs/runtime.md` 第九节）。界面要显示的是"一眼能看懂的那几个数"，
+    按需读工件既能拿到它们，又不改变数据面已有的取舍。
+    """
+    if not artifact_path:
+        return ''
+    try:
+        document = json.loads(Path(str(artifact_path)).read_text(encoding='utf-8'))
+    except Exception:
+        return ''
+    parts = []
+    for key, value in (document.get('evidence') or {}).items():
+        if isinstance(value, (str, int, float, bool)) and value not in (None, ''):
+            parts.append(f'{key}={value}')
+        if len(parts) >= limit:
+            break
+    return ' · '.join(parts)
+
+
 def outcome_class(value) -> str:
     text = str(value)
     if text in ('cleared', 'succeeded', 'dry_run', 'ok'):
@@ -169,7 +191,7 @@ def render(report: dict) -> str:
     stages = [i for i in items if i.get('level') == 'stage']
     if tasks:
         parts.append('<h2>任务</h2><table><tr><th>id</th><th>域</th><th>结论</th>'
-                     '<th>错误分类</th><th>错误</th><th>边界快照</th></tr>')
+                     '<th>摘要</th><th>错误分类</th><th>错误</th><th>边界快照</th></tr>')
         for item in tasks:
             boundary = item.get('boundary_state') or {}
             frame = '有' if boundary.get('available') else f'<span class="muted">无</span>'
@@ -178,6 +200,7 @@ def render(report: dict) -> str:
                 f'<tr><td>{html.escape(str(item.get("id")))}</td>'
                 f'<td>{html.escape(str(item.get("kind")))}</td>'
                 f'<td class="{outcome_class(item.get("outcome"))}">{html.escape(str(item.get("outcome")))}</td>'
+                f'<td class="muted">{html.escape(evidence_summary(item.get("artifact")))}</td>'
                 f'<td>{html.escape(str(item.get("error_kind") or "—"))}</td>'
                 f'<td>{html.escape(str(item.get("error") or "—"))}</td>'
                 f'<td>{frame}{" " + html.escape(str(pages)) if pages else ""}</td></tr>')

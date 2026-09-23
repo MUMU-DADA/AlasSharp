@@ -85,6 +85,19 @@ def main() -> int:
                 facts.append(('任务 id', str(item['id'])))
             if item.get('stage'):
                 facts.append(('关卡', str(item['stage'])))
+            # 域摘要：界面要能从工件里读出**标量摘要**（如 batch_outcome / enabled_count），
+            # 否则用户为了看"这批打成了没"还得自己去翻 task-*.json
+            artifact = item.get('artifact')
+            if artifact and Path(str(artifact)).is_file():
+                try:
+                    evidence = json.loads(
+                        Path(str(artifact)).read_text(encoding='utf-8')).get('evidence') or {}
+                except Exception:
+                    evidence = {}
+                for key, value in evidence.items():
+                    if isinstance(value, (str, int, float, bool)) and value not in (None, ''):
+                        facts.append(('域摘要', f'{key}={value}'))
+                        break
         for finding in report.get('findings') or []:
             facts.append(('发现代码', str(finding.get('code'))))
         missing = [f'{kind}={value}' for kind, value in facts if value not in html]
