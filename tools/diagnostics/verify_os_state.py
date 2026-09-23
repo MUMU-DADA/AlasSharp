@@ -171,11 +171,11 @@ def main() -> int:
             ('已完成任务记 skipped（不是重跑）',
              'outcome=skipped' in out2 and '断点续跑' in out2, '任务的续跑结论不对'),
             # 与 report/runs 同一口径：杂目录不是一次运行，断点只从真运行里取。
-            # 只断言**来源**，不断言跳几个 —— 续跑的计数语义（本轮执行的算不算进 state）
-            # 我还没查实，先不拿没查实的东西当断言。
-            ('排序靠后的杂目录不算运行（断点不从它取）',
-             'zzz-bogus' not in out3 and '依据' in out3,
-             f'第三次续跑的断点来源不对: {[l for l in out3.splitlines() if "断点" in l][:2]}'),
+            # 同时这条还盯着**累积语义**：第 2 次续跑（A 跳过、B 失败）之后，A 仍必须留在
+            # "已完成"里 —— 若写入时只取本次切片，第 3 次就会把 A 重新执行（战役域＝再花一次石油）。
+            ('杂目录不算运行，且断点累积（A 仍被跳过，不重跑）',
+             'zzz-bogus' not in out3 and '跳过 1 个已完成任务' in out3 and 'a-os' in out3,
+             f'第三次续跑不对: {[l for l in out3.splitlines() if "断点" in l][:2]}'),
         ]
         for name, ok, detail in resume_checks:
             print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))

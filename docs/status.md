@@ -10,7 +10,7 @@
 | 范围 | 总数 | 已通过 | 未通过/阻塞 | 明细 |
 | --- | --- | --- | --- | --- |
 | 页面规则（Page） | 53 | **34** | 8 受游戏状态阻塞 + 11 原因已定位 | `page-verification.md` |
-| 控件规则（模块级 Switch/Scroll） | 20 | 11 | 9 | `controls.md` |
+| 控件规则（模块级 Switch/Scroll） | 20 | 9 | 11 | `controls.md` |
 | cached_property 规则 | 6 | 3 | 3 | `controls.md` |
 | 控制动作（滑动/开关驱动/探测） | 3 | 3 | 0 | `controls.md` |
 | 控制原语（返回键/长按/滑动） | 4 | **4** | 0 | `primitives.md` |
