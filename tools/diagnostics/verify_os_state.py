@@ -152,6 +152,16 @@ def main() -> int:
                                 capture_output=True, text=True, encoding='utf-8',
                                 errors='replace', timeout=300)
         out2 = second.stdout or ''
+        # 再放一个**排序靠后**的杂目录（名字在时间戳之后），里面塞一份"什么都没完成"的
+        # state.json —— 判定口径若被绕过，`--resume` 会用它，于是"跳过已完成任务"那句话就没了。
+        stray = resume_root / 'zzz-bogus'
+        stray.mkdir(parents=True, exist_ok=True)
+        (stray / 'state.json').write_text(json.dumps({'completed': []}), encoding='utf-8')
+        third = subprocess.run([str(EXE), 'queue', '--file', str(resume_queue),
+                                '--artifacts', str(resume_root), '--resume'],
+                               capture_output=True, text=True, encoding='utf-8',
+                               errors='replace', timeout=300)
+        out3 = third.stdout or ''
         resume_checks = [
             ('第一次运行产出断点文件',
              bool(list(resume_root.glob('*/state.json'))), '没有 state.json'),
@@ -160,6 +170,12 @@ def main() -> int:
              f'stdout 里没有续跑记录: {[l for l in out2.splitlines() if "断点" in l][:2]}'),
             ('已完成任务记 skipped（不是重跑）',
              'outcome=skipped' in out2 and '断点续跑' in out2, '任务的续跑结论不对'),
+            # 与 report/runs 同一口径：杂目录不是一次运行，断点只从真运行里取。
+            # 只断言**来源**，不断言跳几个 —— 续跑的计数语义（本轮执行的算不算进 state）
+            # 我还没查实，先不拿没查实的东西当断言。
+            ('排序靠后的杂目录不算运行（断点不从它取）',
+             'zzz-bogus' not in out3 and '依据' in out3,
+             f'第三次续跑的断点来源不对: {[l for l in out3.splitlines() if "断点" in l][:2]}'),
         ]
         for name, ok, detail in resume_checks:
             print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
