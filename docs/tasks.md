@@ -180,7 +180,7 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 影响面：`prepare_campaign_navigation` 判断"上一局残留"会漏判，最坏情况是多走一次
 客户端「正在攻略中」弹窗处理（已有垫片），不会把撤退记成通关。
 
-## 验收矩阵（每个域的入口）
+## 验收矩阵（**任务域**的入口；套件的完整清单以 `verify_all.py` 的 `STEPS` 为准）
 
 每个域都有自己的验收脚本。**本表只给"入口 + 断言什么"，不复制逐例清单** ——
 逐例细节以脚本自己的输出为准（此前这里抄了一份 `verify_runtime` 的 5 个用例，
@@ -201,6 +201,8 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 | 停止任务 | `verify_stop.py` | `--stop-file` 在任务边界生效；剩余任务记 skipped；无停止文件时照常跑完 |
 | 结果合同 | `verify_result_contract.py` | 四类结果 + 20 条反例 + 两侧裁决逐例一致 |
 | 实机证据 | `audit_real_records.py` | 归档日志重核：通关/撤退可解释、无自相矛盾 |
+| CLI 摘要行（跨域） | `verify_cli_evidence.py` | 战役/账号状态/大世界三域的 `[任务证据]` 行必须真的打印（走队列路径；缺存档帧则显式跳过） |
+| IN_MAP 垫片（跨域） | `verify_in_map_shim.py` | 上游阈值判不出、垫片后判得出、且没有无脑放宽（用归档真机帧） |
 | 静态守卫 | `verify_architecture.py` | 生产路径、素材边界、词表一致、**每个域名必须注册**、真机清单的两处授权标注 |
 
 ## 大世界/海域（第三个域，只读探针）
