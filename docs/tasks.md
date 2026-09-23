@@ -306,3 +306,35 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 **建议的下一个动作**（小、可验证）：先读 `reward`（无命中里最常用）的 `run()`，
 确认它的完整调用链上没有花费；若确认，它就是执行半边第一个可以谈"无人值守也安全"的候选 ——
 但**第一次真跑仍然要有人看着**。
+
+### 执行半边的第一个候选：`reward`（读源码得到，附已验证范围）
+
+用上一节的方法确认了它跑谁（`alas.py:208` → `from module.reward.reward import Reward`），
+再读它的 `run()`：
+
+```python
+def run(self):
+    """Pages: in: Any page / out: page_main or page_mission, may have info_bar"""
+    self.ui_ensure(page_reward)
+    self.reward_receive(oil=..., coin=..., exp=...)          # 领取
+    self.ui_goto(page_main)
+    self.reward_mission(daily=..., weekly=...)               # 领取任务奖励
+    self.config.task_delay(success=True)
+```
+
+**已核对**：`run()` 本体里没有 `OilMaxed` / `quick_finish` / 购买类调用；全文件的"花费/点击"信号只有
+两处 `device.click`（属导航与领取按钮）。调用链是 **导航 → 领取 → 领取 → 记调度**。
+
+**未核对（如实标注）**：
+
+1. `reward_receive()` 与 `reward_mission()` 的方法体**没读** —— 领取类里出现"买"的分支概率低，但没读过就不能说没有；
+2. 它会**写配置**（`config.task_delay(success=True)` 推进调度）—— 所以它不是"只读任务"，
+   验收时不能照搬 `task_schedule` 的"配置字节不变"那条断言；
+3. 它**要导航**（`ui_ensure` / `ui_goto`）—— 上游的页面判据风险在这条路径上照样存在。
+
+**结论**：`reward` 是执行半边目前最合适的第一个候选（无花费信号 + 调用链短），
+但**放开它之前**至少要读掉 `reward_receive` / `reward_mission` 两个方法体。
+第一次真跑仍要有人看着 —— 这条不变。
+
+顺带查实：`alas.py` 里**没有** `mission` 方法（`periodic_plan` 返回 found=false），
+所以"任务"这个界面入口不对应独立的周期任务名，先别按它去做映射。
