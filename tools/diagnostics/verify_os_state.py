@@ -162,6 +162,18 @@ def main() -> int:
                                capture_output=True, text=True, encoding='utf-8',
                                errors='replace', timeout=300)
         out3 = third.stdout or ''
+        # 消费侧容忍度：断点改成累积语义后会写出 `carried_over` 值（继承来的），
+        # 报告读 state.json 不能因此报出 state 相关发现 —— 这条手工验过一次，现在钉进套件。
+        # 取"真正的运行目录"用与产品同一口径（含 queue.json），顺带也验证了杂目录不算运行。
+        real_runs = sorted(p for p in resume_root.glob('*')
+                           if p.is_dir() and (p / 'queue.json').is_file())
+        resume_report_json = tmpdir / 'resume-report.json'
+        subprocess.run([str(EXE), 'report', '--run', str(real_runs[-1]),
+                        '--json', str(resume_report_json)],
+                       capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', timeout=300)
+        resume_report = json.loads(resume_report_json.read_text(encoding='utf-8')) \
+            if resume_report_json.is_file() else {}
         resume_checks = [
             ('第一次运行产出断点文件',
              bool(list(resume_root.glob('*/state.json'))), '没有 state.json'),
@@ -176,6 +188,11 @@ def main() -> int:
             ('杂目录不算运行，且断点累积（A 仍被跳过，不重跑）',
              'zzz-bogus' not in out3 and '跳过 1 个已完成任务' in out3 and 'a-os' in out3,
              f'第三次续跑不对: {[l for l in out3.splitlines() if "断点" in l][:2]}'),
+            # 消费者读新写出的 state.json 不能出问题（累积语义引入的 carried_over 值）
+            ('报告能容忍 carried_over（不报 state 相关发现）',
+             bool(resume_report) and not [f for f in resume_report.get('findings') or []
+                                          if 'state' in str(f.get('code'))],
+             f"findings={resume_report.get('findings')}"),
         ]
         for name, ok, detail in resume_checks:
             print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
