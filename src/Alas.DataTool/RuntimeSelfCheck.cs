@@ -558,9 +558,97 @@ internal sealed class StubVisionEngine : VisionEngineBase
                     return clone;
                 }
                 throw new VisionWorkerException(op, $"替身没有这一关的文档: {chapter}", "<stub>");
+            // ---- 小型导航环境（规格见 docs/runtime.md 第十五节）----
+            // 一张固定小图 + 一个"随点击迁移"的当前页状态机，用来在离线自检里真正驱动
+            // PageNavigator（不再只是"构造得出来"，而是"跑得起来、且能跑到失败"）。
+            // 注意：这里的小图是**测试夹具**，不是第二份页面表 —— 产品路径永远用真上游图。
+            case "ui_page_graph":
+                return NavigationGraphJson();
+            case "page_current":
+                return new JsonObject { ["hit"] = new JsonArray(_currentPage) };
+            case "button_match":
+                return NavigationButtonMatch(payload);
+            case "device_click":
+                NavigationClick(payload);
+                return new JsonObject { ["ms"] = 1 };
+            case "device_back":
+                return new JsonObject { ["ms"] = 1 };
+            case "device_capture_set":
+                return new JsonObject { ["captured"] = true };
             default:
                 return new JsonObject();
         }
+    }
+
+    /// <summary>固定小图：a → b → c，另有 b → dead（点了**不动**，用来模拟"入口未解锁"）。</summary>
+    private static readonly (string From, string To, string Button, int X, int Y)[] NavEdges =
+    {
+        ("page_a", "page_b", "ui/A_TO_B", 500, 300),
+        ("page_b", "page_c", "ui/B_TO_C", 600, 320),
+        ("page_b", "page_dead", "ui/B_TO_DEAD", 700, 340),
+    };
+
+    /// <summary>"点了不动的入口"：走到它不迁移当前页 —— 正是真机上账号未解锁时的表现。</summary>
+    private static readonly string[] InertTargets = { "page_dead" };
+
+    private string _currentPage = "page_a";
+
+    internal string CurrentPage => _currentPage;
+    internal void ResetNavigation() => _currentPage = "page_a";
+
+    private static JsonObject NavigationGraphJson()
+    {
+        var nodes = new JsonArray();
+        foreach (var group in NavEdges.GroupBy(e => e.From))
+        {
+            var links = new JsonArray();
+            foreach (var edge in group)
+                links.Add(new JsonObject
+                {
+                    ["to"] = edge.To,
+                    ["button"] = edge.Button,
+                    ["variants"] = new JsonArray(edge.Button),
+                });
+            nodes.Add(new JsonObject
+            {
+                ["name"] = group.Key,
+                ["check"] = $"ui/{group.Key.ToUpperInvariant()}_CHECK",
+                ["links"] = links,
+            });
+        }
+        return new JsonObject
+        {
+            ["nodes"] = nodes,
+            ["node_count"] = NavEdges.Select(e => e.From).Distinct().Count(),
+            ["edge_count"] = NavEdges.Length,
+        };
+    }
+
+    /// <summary>只对**当前页的出边按钮**报命中；其余一律不命中（导航器按分数择优，够用）。</summary>
+    private JsonObject NavigationButtonMatch(JsonObject payload)
+    {
+        string asset = payload["asset"]?.GetValue<string>() ?? "";
+        var edge = NavEdges.FirstOrDefault(e => e.From == _currentPage && e.Button == asset);
+        if (edge.Button is null)
+            return new JsonObject { ["match"] = false, ["similarity"] = 0.85, ["score"] = 0.0 };
+        return new JsonObject
+        {
+            ["match"] = true,
+            ["similarity"] = 0.85,
+            ["score"] = 0.99,
+            ["button_offset"] = new JsonArray(edge.X - 10, edge.Y - 10, edge.X + 10, edge.Y + 10),
+        };
+    }
+
+    /// <summary>按坐标反查边并迁移；查不到、或目标是"点了不动"的入口 → 当前页不变。</summary>
+    private void NavigationClick(JsonObject payload)
+    {
+        int x = payload["x"]?.GetValue<int>() ?? -1;
+        int y = payload["y"]?.GetValue<int>() ?? -1;
+        var edge = NavEdges.FirstOrDefault(e => e.From == _currentPage && e.X == x && e.Y == y);
+        if (edge.Button is null) return;
+        if (InertTargets.Contains(edge.To)) return;      // 点了没反应：当前页不变
+        _currentPage = edge.To;
     }
 
     public override void Dispose()

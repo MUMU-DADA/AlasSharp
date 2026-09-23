@@ -473,3 +473,23 @@ goto page_os            → hop1/2/3 都在 page_campaign_menu 上点 ui/CAMPAIG
 
 **所以那份规格的优先级提高了**：做一次，两个缺口一起关。这也是"写下来的计划会二次获益"的一个实例 ——
 第 43 轮写它的时候，我并不知道 113 轮之后会需要它来钉一句失败文案。
+
+### D 类补记二：小型导航环境**第一步已做**（第 160 轮），第二步未做
+
+`src/Alas.DataTool/RuntimeSelfCheck.cs` 的 `StubVisionEngine` 现在会回答导航相关的 op：
+`ui_page_graph`（固定小图 a→b→c，另有 b→dead）· `page_current`（状态机当前页）·
+`button_match`（只对当前页出边命中）· `device_click`（按坐标反查并迁移；**目标是 dead 时不迁移**，
+模拟真机上"入口未解锁、点了没反应"）· `device_back` / `device_capture_set`（空实现）。
+
+**第二步（下一步做）**：给 `RuntimeSelfCheck` 加一个**导航用例类型**并接进 `verify_runtime.py`：
+
+1. 分派：`Run()` 里现在只有"有 `tasks` → 队列用例 / 否则单批战役用例"两种；加第三种
+   `node["navigate"]` → `RunNavigateCase`；
+2. 用例体：用替身会话跑 `NavigateTask`，断言三条 ——
+   `navigate_to_c_succeeds`（到 page_c，2 跳）·
+   `navigate_to_dead_reports_inert_entry`（**失败原因含第 156 轮那句诊断后缀**）·
+   `navigate_unknown_target_skipped`（目标不在图里 → skipped）；
+3. 夹具与注册：`verify_runtime.py` 里加进那 13 例的清单。
+
+**为什么分两步**：第一步（替身会回答）是纯增量、编译即安全；第二步要动用例分派与 Python 夹具，
+一起做才可验证 —— 所以第一步先落地，第二步按上面的编号接着做，**不要重新设计**。
