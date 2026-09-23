@@ -228,8 +228,21 @@ public sealed class PageNavigator
             if (current.Hit.Contains(target))
                 return new NavigationResult(true, target, current.Hit, hops, null);
             if (hops.Count >= MaxHops)
+            {
+                // **诊断后缀**：把"点了没反应/被弹回"与"真的走错路"区分开 —— 前者多半是入口未解锁。
+                // 由来（2026-09-23 真机）：`page_guild` / `page_os` / `page_meowfficer` 三个页面走不到，
+                // 而入口都在屏、模板分 0.99~1.00 —— 真相是**账号未解锁**（点击要么无反应，要么弹回主界面）。
+                // 当时只有一句"超过最大跳数"，我为此先后错判成"素材不匹配"与"坐标错了"。
+                // 把当时的观察自动写进失败原因，下次一眼能分出是哪一类（详解见 `docs/runtime.md` 第十四节）。
+                var last = hops[^1];
+                bool unchanged = last.ArrivedPages is not { Count: > 0 }
+                                 || last.ArrivedPages.All(p => last.OnPages?.Contains(p) == true);
+                string hint = unchanged
+                    ? "（末次点击后画面未变：入口可能未解锁/不可用，见 docs/runtime.md 第十四节）"
+                    : "";
                 return new NavigationResult(false, target, current.Hit, hops,
-                    $"超过最大跳数 {MaxHops} 仍未到达");
+                    $"超过最大跳数 {MaxHops} 仍未到达{hint}");
+            }
 
             var reachable = current.Hit.Where(distance.ContainsKey).ToList();
             if (reachable.Count == 0)
