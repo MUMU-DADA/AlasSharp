@@ -809,7 +809,20 @@ internal static class Program
                                       $"来源={task.Evidence["source"]}");
                 // 周期任务调度状态：报"总共几个任务、几个开着"（明细在工件里，不在这里刷屏）
                 // 配置开关：报"查了几个、几个 true/false/missing"（明细在工件里，不在这刷屏）
-                if (task.Evidence["checked"] is System.Text.Json.Nodes.JsonNode cfgChecked)
+                // 周期任务执行：报"判定 / 跑了什么类 / 耗时"（明细在工件里）
+                if (task.Evidence["decision"] is System.Text.Json.Nodes.JsonNode runDecision)
+                {
+                    var target = task.Evidence["target"] as System.Text.Json.Nodes.JsonObject;
+                    // 被闸门挡下时没有构造/运行/耗时 —— 如实显示 "—"，不要打印成空串
+                    string Render(string key, string suffix = "")
+                        => task.Evidence[key] is System.Text.Json.Nodes.JsonNode node
+                           && node.GetValueKind() != System.Text.Json.JsonValueKind.Null
+                            ? node.ToString() + suffix : "—";
+                    Console.WriteLine($"[任务证据] 判定={runDecision} "
+                                      + $"目标={(target?["class"]?.GetValue<string>() ?? "—")} "
+                                      + $"构造={Render("constructed")} 已跑={Render("ran")} "
+                                      + $"耗时={Render("elapsed_s", "s")}");
+                }                if (task.Evidence["checked"] is System.Text.Json.Nodes.JsonNode cfgChecked)
                 {
                     int CountOf(string key)
                         => task.Evidence[key] is System.Text.Json.Nodes.JsonArray array ? array.Count : 0;
