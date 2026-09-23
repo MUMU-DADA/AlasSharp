@@ -11,6 +11,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / '.runtime' / 'engine'
 CALLER_CWD = Path.cwd()
+FRAME_FIXTURE = ROOT / 'tools' / 'diagnostics' / 'fixtures' / 'os_combat_pause_redacted.png'
 sys.path.insert(0, str(ROOT / 'tools'))
 os.chdir(ENGINE)
 
@@ -164,24 +165,31 @@ def main():
     results.append(check('compatibility hook is idempotent',
                          Combat.combat_appear is patched))
 
+    frame = FRAME_FIXTURE
+    frame_label = 'redacted failure-frame fixture'
     if len(sys.argv) > 1:
         given = Path(sys.argv[1])
         frame = given if given.is_absolute() else CALLER_CWD / given
-        loaded = vision.op_screenshot_load({'path': str(frame)})
-        image = vision._state.get('image')
-        pause = vision._resolve('combat_ui/PAUSE_New')
-        matched = loaded.get('shape') == list(image.shape) and pause.match_template_color(
-            image, offset=(10, 10))
-        results.append(check('saved failure frame has upstream running-combat control', matched))
-        state = State()
-        state.device = SimpleNamespace(image=image, stuck_record_add=lambda _: None)
-        state.config = SimpleNamespace(SERVER='cn')
-        state.is_combat_executing = lambda: BaseCombat.is_combat_executing(state)
-        detected = state.is_combat_executing()
-        results.append(check('upstream combat detector recognizes saved failure frame',
-                             detected is pause))
-        results.append(check('saved failure frame enters reacquisition path',
-                             matched and patched(state) is True))
+        frame_label = 'provided failure frame'
+    if not frame.is_file():
+        results.append(check(f'{frame_label} is available', False))
+        return 1
+
+    loaded = vision.op_screenshot_load({'path': str(frame)})
+    image = vision._state.get('image')
+    pause = vision._resolve('combat_ui/PAUSE_New')
+    matched = loaded.get('shape') == list(image.shape) and pause.match_template_color(
+        image, offset=(10, 10))
+    results.append(check(f'{frame_label} has upstream running-combat control', matched))
+    state = State()
+    state.device = SimpleNamespace(image=image, stuck_record_add=lambda _: None)
+    state.config = SimpleNamespace(SERVER='cn')
+    state.is_combat_executing = lambda: BaseCombat.is_combat_executing(state)
+    detected = state.is_combat_executing()
+    results.append(check(f'upstream combat detector recognizes {frame_label}',
+                         detected is pause))
+    results.append(check(f'{frame_label} enters reacquisition path',
+                         matched and patched(state) is True))
 
     return 0 if all(results) else 1
 
