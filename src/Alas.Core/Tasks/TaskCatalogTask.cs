@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Alas.Runtime;
 
@@ -19,12 +20,33 @@ namespace Alas.Tasks;
 /// </summary>
 public sealed class TaskCatalogTask : ITaskRunner
 {
+    private static readonly HashSet<string> InputFields = new(StringComparer.Ordinal)
+    {
+        "limit",
+    };
+
     public string Kind => "task_catalog";
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskContext context)
     {
-        // 没有额外前置条件：目录来自上游仓库，不依赖设备，也不依赖游戏的任何状态。
-        return Array.Empty<string>();
+        var problems = new List<string>();
+        if (request.Input is not null)
+        {
+            foreach (var field in request.Input.Select(pair => pair.Key))
+                if (!InputFields.Contains(field))
+                    problems.Add($"未知任务目录输入字段: input.{field}");
+        }
+
+        if (request.Input?.ContainsKey("limit") == true)
+        {
+            var limit = request.Input["limit"];
+            if (limit?.GetValueKind() != JsonValueKind.Number
+                || !TryLimit(limit, out _))
+                problems.Add($"input.limit 必须是 1 到 {int.MaxValue} 的整数数值");
+        }
+
+        // 目录来自上游仓库，不依赖设备，也不依赖游戏的任何状态。
+        return problems;
     }
 
     public TaskResult Run(TaskRequest request, TaskContext context, CancellationToken token)
@@ -32,8 +54,9 @@ public sealed class TaskCatalogTask : ITaskRunner
         var result = new TaskResult { Id = request.Id, Kind = Kind };
         int limit = 20;
         if (request.Input?["limit"] is JsonNode node
-            && node.GetValueKind() == System.Text.Json.JsonValueKind.Number)
-            limit = (int)node.GetValue<double>();
+            && node.GetValueKind() == JsonValueKind.Number
+            && TryLimit(node, out var parsedLimit))
+            limit = parsedLimit;
         try
         {
             var catalog = context.Session.Vision.TaskCatalog();
@@ -50,7 +73,7 @@ public sealed class TaskCatalogTask : ITaskRunner
             {
                 ["task_source"] = catalog.GeneratedSource,
                 ["task_count"] = catalog.GeneratedTaskCount ?? tasks.Count,
-                ["task_sample"] = new JsonArray(tasks.Take(Math.Max(1, limit))
+                ["task_sample"] = new JsonArray(tasks.Take(limit)
                     .Select(t => (JsonNode)JsonValue.Create(t)!).ToArray()),
                 ["group_source"] = catalog.Source,
                 ["group_count"] = catalog.SourceGroupCount ?? groups.Count,
@@ -73,5 +96,19 @@ public sealed class TaskCatalogTask : ITaskRunner
             result.Error = wrapped.Message;
         }
         return result;
+    }
+
+    private static bool TryLimit(JsonNode node, out int limit)
+    {
+        limit = 0;
+        try
+        {
+            double value = node.Deserialize<double>();
+            if (!double.IsFinite(value) || value < 1 || value > int.MaxValue
+                || value != Math.Truncate(value)) return false;
+            limit = (int)value;
+            return true;
+        }
+        catch (JsonException) { return false; }
     }
 }

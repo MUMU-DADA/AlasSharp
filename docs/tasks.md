@@ -171,6 +171,10 @@ CLI 的调用方生成不可执行队列。
 - 验收：`python tools/diagnostics/verify_task_catalog.py`（两个来源可读、差异如实打印）；
 - **做周期任务域时**：任务清单取 `args.json`，分组关系去 `task.yaml` 找；本项目**不另维护任务表**。
 
+`task_catalog` 的 `input` 只接受可选的 `limit` 字段；它必须是 `1..int.MaxValue` 范围内的整数。
+未知字段、零值、负数、小数和字符串值都会在任务前置条件阶段记为 `skipped`，不会调用上游目录读取，
+也不会把无效值静默改成默认样本数。省略 `input` 或 `limit` 时，样本上限默认为 20。
+
 ## 账号状态（第二个域，只读）
 
 `AccountStateTask`（`kind = "account_state"`）回答"现在是什么状态"：当前页面、**在不在图里**、

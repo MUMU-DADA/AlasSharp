@@ -122,11 +122,51 @@ def main() -> int:
                     ('样本取自任务表', all(t in expected_tasks
                                         for t in evidence.get('task_sample') or []),
                      f"sample={evidence.get('task_sample')}"),
+                    ('limit 限制样本条数', len(evidence.get('task_sample') or []) == 3,
+                     f"sample={evidence.get('task_sample')}"),
                 ]
                 for name, ok, detail in task_checks:
                     print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
                     if not ok:
                         failures.append(f'{name}: {detail}')
+
+                invalid_inputs = {
+                    'unknown-field': {'limit': 3, 'extra': True},
+                    'limit-zero': {'limit': 0},
+                    'limit-negative': {'limit': -1},
+                    'limit-fraction': {'limit': 1.5},
+                    'limit-string': {'limit': '3'},
+                    'limit-null': {'limit': None},
+                    'limit-overflow': {'limit': 2147483648},
+                }
+                for name, task_input in invalid_inputs.items():
+                    with tempfile.TemporaryDirectory(prefix='alas-task-catalog-invalid-') as invalid_tmp:
+                        invalid_tmpdir = Path(invalid_tmp)
+                        invalid_queue = invalid_tmpdir / 'queue.json'
+                        invalid_queue.write_text(json.dumps({'tasks': [
+                            {'id': 'catalog-invalid', 'kind': 'task_catalog',
+                             'input': task_input}]}, ensure_ascii=False), encoding='utf-8')
+                        invalid_artifacts = invalid_tmpdir / 'artifacts'
+                        invalid_executed = subprocess.run(
+                            [str(exe), 'queue', '--file', str(invalid_queue),
+                             '--artifacts', str(invalid_artifacts)],
+                            capture_output=True, text=True, encoding='utf-8',
+                            errors='replace', timeout=300)
+                        invalid_artifact = next(
+                            iter(sorted(invalid_artifacts.glob('*/task-catalog-invalid.json'))), None)
+                        invalid_document = (json.loads(invalid_artifact.read_text(encoding='utf-8'))
+                                            if invalid_artifact is not None else {})
+                        ok = (invalid_executed.returncode == 0
+                              and invalid_document.get('outcome') == 'skipped'
+                              and invalid_document.get('error_kind') == 'none'
+                              and bool(invalid_document.get('unmet_preconditions'))
+                              and invalid_document.get('evidence') is None)
+                        detail = (f"exit={invalid_executed.returncode} "
+                                  f"outcome={invalid_document.get('outcome')} "
+                                  f"preconditions={invalid_document.get('unmet_preconditions')}")
+                        print(f"  {'ok  ' if ok else 'FAIL'} {name}: {detail if not ok else 'skipped before host call'}")
+                        if not ok:
+                            failures.append(f'{name}: {detail}')
 
     print()
     if failures:
