@@ -309,8 +309,10 @@ def build_queue_cases() -> list[dict]:
                 'backend_calls': 5,          # 设备配置 1 + 每任务 2 次（边界快照 + s3_run_plan）
                 'stopped_early': False,
                 'tasks': [
-                    {'id': 'clear-1-1', 'outcome': 'succeeded', 'error_kind': 'none'},
-                    {'id': 'clear-1-2', 'outcome': 'succeeded', 'error_kind': 'none'},
+                    {'id': 'clear-1-1', 'outcome': 'succeeded', 'error_kind': 'none',
+                     'evidence_contains': ['batch_outcome', 'cleared', 'stages']},
+                    {'id': 'clear-1-2', 'outcome': 'succeeded', 'error_kind': 'none',
+                     'evidence_contains': ['batch_outcome', 'cleared', 'stages']},
                 ],
                 'artifacts': ['queue.json', 'state.json', 'session-log.jsonl',
                               'task-clear-1-1.json', 'task-clear-1-2.json',
@@ -337,7 +339,8 @@ def build_queue_cases() -> list[dict]:
                 'stopped_early': False,
                 'tasks': [
                     {'id': 'bad-input', 'outcome': 'skipped', 'error_kind': 'none'},
-                    {'id': 'clear-1-1', 'outcome': 'succeeded', 'error_kind': 'none'},
+                    {'id': 'clear-1-1', 'outcome': 'succeeded', 'error_kind': 'none',
+                     'evidence_contains': ['batch_outcome', 'cleared', 'stages']},
                 ],
                 'artifacts': ['queue.json', 'state.json',
                               'task-bad-input.json', 'task-clear-1-1.json'],
@@ -415,7 +418,8 @@ def build_queue_cases() -> list[dict]:
                 'stopped_early': False,
                 'tasks': [
                     {'id': 'clear-1-1', 'outcome': 'skipped', 'error_kind': 'none'},
-                    {'id': 'clear-1-2', 'outcome': 'succeeded', 'error_kind': 'none'},
+                    {'id': 'clear-1-2', 'outcome': 'succeeded', 'error_kind': 'none',
+                     'evidence_contains': ['batch_outcome', 'cleared', 'stages']},
                 ],
                 'artifacts': ['queue.json', 'state.json',
                               'task-clear-1-1.json', 'task-clear-1-2.json'],
