@@ -172,6 +172,10 @@ def main() -> int:
         queue_document = json.loads((run_dir / 'queue.json').read_text(encoding='utf-8'))
         queue_requests = queue_document['tasks']
         report_tasks = [item for item in report['items'] if item['level'] == 'task']
+        expected_requests = [
+            {'id': task['id'], 'kind': task['kind'],
+             'required': task.get('required', False), 'input': task.get('input')}
+            for task in tasks]
 
         checks = [
             ('任务数', report['totals']['tasks'] == len(tasks),
@@ -190,8 +194,8 @@ def main() -> int:
             ('队列结论', report['queue_outcome'] in ('dry_run', 'succeeded', 'partial'),
              f"queue_outcome={report['queue_outcome']}"),
             ('队列摘要逐任务保留完整请求',
-             all({key: item[key] for key in ('id', 'kind', 'required', 'input')} == task
-                 for item, task in zip(queue_requests, tasks))
+             all({key: item[key] for key in ('id', 'kind', 'required', 'input')} == expected
+                 for item, expected in zip(queue_requests, expected_requests))
              and len(queue_requests) == len(tasks),
              f"requests={queue_requests}"),
             ('报告逐任务显示原始输入',
@@ -239,8 +243,8 @@ def main() -> int:
         replay_requests = (json.loads((replay_runs[-1] / 'queue.json').read_text(encoding='utf-8'))['tasks']
                            if replay_runs else [])
         replay_ok = (replayed.returncode == 0 and len(replay_runs) == 1
-                     and all({key: item[key] for key in ('id', 'kind', 'required', 'input')} == task
-                             for item, task in zip(replay_requests, tasks))
+                     and all({key: item[key] for key in ('id', 'kind', 'required', 'input')} == expected
+                             for item, expected in zip(replay_requests, expected_requests))
                      and len(replay_requests) == len(tasks))
         print(f"  {'ok  ' if replay_ok else 'FAIL'} queue.json 回喂仍保留非默认输入")
         if not replay_ok:

@@ -83,6 +83,8 @@ STEPS = [
     ('verify_stop.py', 'R4 停止任务（--stop-file 在任务边界生效 + 对照）', False, 300),
     ('verify_report_html.py', 'R4 HTML 视图（不丢事实 / 单文件自足 / 缺工件也能看）', False, 600),
     ('verify_report.py', 'R2 运行报告（工件→结构化事实 + 证据完整性反例）', False, 600),
+    ('verify_control.py', 'R4 本地控制原型（真实 HTTP / dry-run / 授权 / 边界停止）', False, 300),
+    ('verify_control_ui.py', 'R4 本地控制页结构（浏览器交互另运行 --browser）', False, 120),
     ('verify_os_state.py', 'R2 大世界/海域只读探针（存盘帧；capture 前置条件口径）', False, 600),
     ('verify_os_action.py', 'R2 大世界动作入口（真实 CLI dry-run 拒绝动作并留工件）', False, 300),
     ('verify_os_combat_reentry.py', 'R2 大世界自动寻敌跳过准备画面后重新接管战斗', False, 120),

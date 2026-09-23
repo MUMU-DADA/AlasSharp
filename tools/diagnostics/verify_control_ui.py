@@ -69,9 +69,11 @@ const { chromium } = require('playwright');
   const html = fs.readFileSync(process.argv[1], 'utf8');
   const runPosts = [];
   const stopPosts = [];
+  const savePosts = [];
+  let heldHistory = null;
   const token = 'test-token';
   const apiState = {
-    running: false, mode: null,
+    active: { status: 'idle', mode: null, run_directory: null, error: null },
     queue: { tasks: [{ id: 'first', kind: 'observe', input: { arbitrary: 'value' } }] },
     report: {
       queue_outcome: 'failed', evidence_complete: false,
@@ -81,7 +83,8 @@ const { chromium } = require('playwright');
         error: '<script>window.__injected=1</script>', artifact: 'task-first.json' }],
       findings: [{ code: 'test_finding', detail: '<img src=x onerror="window.__injected=1">' }]
     },
-    logs: ['<script>window.__injected=1</script>'], error: null, token
+    live_tasks: [], recent_logs: [{ message: '<script>window.__injected=1</script>' }],
+    runs: { runs: [{ stamp: 'prior-run', queue_outcome: 'succeeded' }] }, token
   };
   page.route('http://localhost:32943/', route => route.fulfill({
     status: 200, contentType: 'text/html; charset=utf-8', body: html
@@ -92,16 +95,29 @@ const { chromium } = require('playwright');
     if (path === '/api/state') {
       return route.fulfill({ json: apiState });
     }
+    if (path === '/api/report') {
+      assert.equal(new URL(request.url()).searchParams.get('stamp'), 'prior-run');
+      if (heldHistory) {
+        const pending = heldHistory;
+        heldHistory = null;
+        pending.requested();
+        await pending.release;
+      }
+      return route.fulfill({ json: { ...apiState.report, directory: 'archived-run' } });
+    }
     assert.equal(request.headers()['x-alas-token'], token);
     const body = request.postDataJSON();
     if (path === '/api/run') {
       runPosts.push(body);
-      apiState.running = true;
-      apiState.mode = body.mode;
+      apiState.active.status = 'running';
+      apiState.active.mode = body.mode;
     } else if (path === '/api/stop') {
       stopPosts.push(body);
-      apiState.running = false;
-      apiState.mode = null;
+      apiState.active.status = 'completed';
+      apiState.active.mode = null;
+    } else if (path === '/api/queue') {
+      savePosts.push(body);
+      apiState.queue = body.queue;
     } else throw new Error(`Unexpected API path: ${path}`);
     route.fulfill({ json: {} });
   });
@@ -120,6 +136,24 @@ const { chromium } = require('playwright');
     assert.equal(await page.locator('#findings .finding').count(), 1);
     assert.equal(await page.evaluate(() => window.__injected), undefined);
     assert.equal(await page.locator('#findings img').count(), 0);
+    await page.locator('#run-history').selectOption('prior-run');
+    await page.waitForFunction(() => document.querySelector('#report-meta').textContent.includes('archived-run'));
+    await page.locator('#run-history').selectOption('');
+    assert.match(await page.locator('#report-meta').textContent(), /test-run/);
+
+    // 慢历史请求完成前已切回当前运行，旧响应不能覆盖新选择。
+    let requestArrived, releaseHistory;
+    const arrived = new Promise(resolve => { requestArrived = resolve; });
+    const release = new Promise(resolve => { releaseHistory = resolve; });
+    heldHistory = { requested: requestArrived, release };
+    await page.locator('#run-history').selectOption('prior-run');
+    await arrived;
+    assert.doesNotMatch(await page.locator('#report-meta').textContent(), /test-run/);
+    await page.locator('#run-history').selectOption('');
+    releaseHistory();
+    await page.waitForLoadState('networkidle');
+    assert.equal(await page.locator('#run-history').inputValue(), '');
+    assert.match(await page.locator('#report-meta').textContent(), /test-run/);
 
     await page.locator('#queue-json').fill('{');
     assert.equal(await page.locator('#run').isDisabled(), true);
@@ -127,6 +161,9 @@ const { chromium } = require('playwright');
     await page.locator('#queue-json').fill(JSON.stringify({
       tasks: [{ id: 'edited', kind: 'generic_kind', input: { any_key: ['x'] } }]
     }));
+    await page.locator('#save-queue').click();
+    assert.equal(savePosts.length, 1);
+    assert.equal(savePosts[0].queue.tasks[0].id, 'edited');
     await page.locator('#serial').fill('MOCK-DEVICE');
     await page.locator('#max-seconds').fill('0');
     await page.locator('#run').click();
@@ -160,6 +197,7 @@ const { chromium } = require('playwright');
     await page.waitForFunction(() => document.querySelector('#status').textContent === '运行中');
     assert.equal(runPosts.length, 2);
     assert.equal(runPosts[1].mode, 'actions');
+    assert.equal(runPosts[1].confirm_actions, true);
     assert.equal(runPosts[1].queue.tasks[0].input.any_key[0], 'x');
     assert.equal(await page.locator('#run').isDisabled(), true);
     assert.equal(await page.locator('#stop').isEnabled(), true);
@@ -183,7 +221,7 @@ const { chromium } = require('playwright');
         await page.screenshot({ path: require('path').join(screenshotDir, 'mobile.png'), fullPage: true });
       }
     }
-    console.log('mock API: run/stop/token/actions confirmation/JSON/XSS/responsive OK');
+    console.log('mock API: history/stale response/save/run/stop/token/actions confirmation/JSON/XSS/responsive OK');
   } finally {
     await browser.close();
   }
@@ -197,14 +235,14 @@ def verify_static() -> None:
     assert not parser.external, f"external resources: {parser.external}"
     assert len(parser.scripts) == 1 and len(parser.styles) == 1
     required_ids = {
-        "queue-json", "queue-error", "run", "stop", "status", "notice",
+        "queue-json", "queue-error", "save-queue", "run", "stop", "status", "notice", "run-history",
         "report-metrics", "items", "findings", "logs", "actions-dialog",
         "confirm-actions", "raw-report",
     }
     assert required_ids <= parser.ids, f"missing ids: {required_ids - parser.ids}"
     script = parser.scripts[0]
     assert not any(unsafe in script for unsafe in ("innerHTML", "outerHTML", "document.write", "insertAdjacentHTML"))
-    assert all(value in script for value in ("/api/state", "/api/run", "/api/stop", "X-Alas-Token"))
+    assert all(value in script for value in ("/api/state", "/api/report", "/api/queue", "/api/run", "/api/stop", "X-Alas-Token"))
     assert "showModal()" in script and "parseQueue" in script and "textContent" in script
     assert "@media (max-width: 560px)" in parser.styles[0]
     node = shutil.which("node")

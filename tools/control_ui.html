@@ -15,10 +15,10 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; min-width: 320px; }
-    button, input, textarea { font: inherit; }
+    button, input, select, textarea { font: inherit; }
     button { cursor: pointer; }
     button:disabled { cursor: not-allowed; opacity: .45; }
-    button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible {
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
       outline: 2px solid #007d76;
       outline-offset: 2px;
     }
@@ -84,6 +84,10 @@
     .action-row button { flex: 1; }
     .action-message { min-height: 22px; margin: 8px 0 0; color: #496466; }
     .report-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .history-row { display: flex; align-items: center; gap: 10px; margin-top: 13px; }
+    .history-row label { color: #556569; white-space: nowrap; }
+    .history-row select { min-width: 0; flex: 1; min-height: 36px; padding: 5px 9px;
+      border: 1px solid #aab9b8; border-radius: 5px; background: #fff; color: #24333a; }
     .refresh { padding: 5px 10px; min-height: 32px; }
     .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid #d4dcda; margin-top: 12px; }
     .metric { padding: 12px 10px; min-width: 0; }
@@ -155,6 +159,7 @@
           <div class="section-heading"><h2 id="queue-heading">任务队列</h2><span id="queue-count" class="muted small">-</span></div>
           <div class="toolbar">
             <button id="load-queue" class="tool-button" type="button" disabled>载入服务端队列</button>
+            <button id="save-queue" class="tool-button" type="button" disabled>保存队列</button>
             <button id="import-queue" class="tool-button" type="button">导入 JSON</button>
             <button id="format-queue" class="tool-button" type="button">格式化</button>
             <button id="download-queue" class="tool-button" type="button">下载 JSON</button>
@@ -192,6 +197,7 @@
       <div class="report-pane">
         <section class="section" aria-labelledby="report-heading">
           <div class="report-title"><h2 id="report-heading">最近报告</h2><button id="refresh" class="secondary refresh" type="button">刷新</button></div>
+          <div class="history-row"><label for="run-history">运行记录</label><select id="run-history"><option value="">当前运行</option></select></div>
           <div id="report-metrics" class="metrics" aria-live="polite"></div>
           <div id="report-meta" class="report-meta small"></div>
         </section>
@@ -223,7 +229,8 @@
     (() => {
       "use strict";
       const $ = id => document.getElementById(id);
-      const state = { running: false, mode: null, queue: null, report: null, logs: [], error: null, token: "" };
+      const state = { running: false, mode: null, queue: null, report: null,
+        liveTasks: [], logs: [], runs: [], error: null, token: "", runDirectory: null };
       let online = null;
       let refreshing = false;
       let requestBusy = false;
@@ -234,6 +241,10 @@
       let connectionError = "";
       let actionError = "";
       let pendingRun = null;
+      let selectedStamp = "";
+      let selectedReport = null;
+      let historyRequestVersion = 0;
+      let historySignature = "";
 
       const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
       const display = value => value === null || value === undefined || value === "" ? "-"
@@ -296,6 +307,7 @@
         const ready = online && Boolean(state.token) && !requestBusy;
         $("run").disabled = !ready || state.running || !queue;
         $("stop").disabled = !ready || !state.running;
+        $("save-queue").disabled = !ready || !queue;
         $("load-queue").disabled = !online || !state.queue || requestBusy;
         $("run-fields").disabled = state.running || requestBusy;
         $("refresh").disabled = refreshing;
@@ -318,7 +330,7 @@
       }
 
       function renderReport() {
-        const report = isObject(state.report) ? state.report : null;
+        const report = selectedStamp ? selectedReport : (isObject(state.report) ? state.report : null);
         const totals = report && isObject(report.totals) ? report.totals : {};
         $("report-metrics").replaceChildren(
           metric("队列结论", report?.queue_outcome),
@@ -328,8 +340,10 @@
         );
         $("report-meta").textContent = report
           ? `运行目录：${display(report.directory)}   提前停止：${display(report.stopped_early)}   原因：${display(report.stop_reason)}`
-          : "尚无运行报告";
-        const items = report && Array.isArray(report.items) ? report.items : [];
+          : selectedStamp ? "正在读取所选运行报告"
+          : state.running ? `运行目录：${display(state.runDirectory)}` : "尚无运行报告";
+        const items = report && Array.isArray(report.items) ? report.items
+          : selectedStamp ? [] : state.liveTasks.map(task => ({ ...task, level: "task" }));
         $("item-count").textContent = `${items.length} 条`;
         const list = $("items");
         list.replaceChildren();
@@ -373,6 +387,41 @@
         $("report-json").textContent = report ? JSON.stringify(report, null, 2) : "";
       }
 
+      function renderHistory() {
+        const signature = JSON.stringify(state.runs.map(run => [run.stamp, run.queue_outcome]));
+        if (signature === historySignature) return;
+        historySignature = signature;
+        const options = [element("option", "", "当前运行")];
+        options[0].value = "";
+        for (const run of state.runs) {
+          if (typeof run?.stamp !== "string") continue;
+          const option = element("option", "", `${run.stamp}  ${display(run.queue_outcome)}`);
+          option.value = run.stamp;
+          options.push(option);
+        }
+        $("run-history").replaceChildren(...options);
+        $("run-history").value = selectedStamp;
+      }
+
+      async function loadHistoricalReport(stamp) {
+        const version = ++historyRequestVersion;
+        selectedStamp = stamp;
+        selectedReport = null;
+        $("run-history").value = stamp;
+        renderReport();
+        if (!stamp) return;
+        try {
+          const response = await fetch(`/api/report?stamp=${encodeURIComponent(stamp)}`,
+            { cache: "no-store", credentials: "same-origin" });
+          const report = await readJson(response);
+          if (version !== historyRequestVersion) return;
+          selectedReport = report;
+          renderReport();
+        } catch (error) {
+          if (version === historyRequestVersion) throw error;
+        }
+      }
+
       function renderLogs() {
         const logs = Array.isArray(state.logs) ? state.logs : [];
         $("log-count").textContent = `${logs.length} 条`;
@@ -395,12 +444,15 @@
           const response = await fetch("/api/state", { cache: "no-store", credentials: "same-origin" });
           const body = await readJson(response);
           if (!isObject(body)) throw new Error("服务端状态格式错误");
-          state.running = body.running === true;
-          state.mode = body.mode ?? null;
+          state.running = body.active?.status === "running";
+          state.mode = body.active?.mode ?? null;
           state.queue = isObject(body.queue) ? body.queue : null;
           state.report = isObject(body.report) ? body.report : null;
-          state.logs = Array.isArray(body.logs) ? body.logs : [];
-          state.error = body.error ?? null;
+          state.liveTasks = Array.isArray(body.live_tasks) ? body.live_tasks : [];
+          state.logs = Array.isArray(body.recent_logs) ? body.recent_logs : [];
+          state.runs = Array.isArray(body.runs?.runs) ? body.runs.runs : [];
+          state.error = body.active?.error ?? null;
+          state.runDirectory = body.active?.run_directory ?? null;
           state.token = typeof body.token === "string" ? body.token : "";
           online = true;
           stateLoaded = true;
@@ -413,6 +465,9 @@
             }
           }
           if (!state.running && actionMessage.startsWith("已请求停止")) actionMessage = "运行已停止";
+          renderHistory();
+          if (!state.running && !state.error && !state.report && !selectedStamp && state.runs.length)
+            await loadHistoricalReport(state.runs[0].stamp);
           renderReport();
           renderLogs();
         } catch (error) {
@@ -465,6 +520,10 @@
         updateControls();
         renderStatus();
         try {
+          historyRequestVersion++;
+          selectedStamp = "";
+          selectedReport = null;
+          $("run-history").value = "";
           await postJson("/api/run", body);
           actionMessage = "队列已提交";
           await refreshState();
@@ -494,7 +553,7 @@
         const body = pendingRun;
         pendingRun = null;
         $("actions-dialog").close();
-        if (body) startRun(body);
+        if (body) startRun({ ...body, confirm_actions: true });
       });
       $("cancel-actions").addEventListener("click", () => { pendingRun = null; $("actions-dialog").close(); });
       $("actions-dialog").addEventListener("close", () => { pendingRun = null; });
@@ -523,11 +582,28 @@
       document.querySelectorAll('input[name="mode"]').forEach(node => node.addEventListener("change", editChanged));
       for (const id of ["serial", "max-seconds", "max-rounds", "resume"]) $(id).addEventListener("input", editChanged);
       $("refresh").addEventListener("click", refreshState);
+      $("run-history").addEventListener("change", async event => {
+        try { await loadHistoricalReport(event.target.value); }
+        catch (error) { requestError = error.message; renderStatus(); }
+      });
       $("load-queue").addEventListener("click", () => {
         if (!serverQueueText) return;
         if ($("queue-json").value !== serverQueueText && !window.confirm("载入服务端队列并舍弃当前编辑？")) return;
         $("queue-json").value = serverQueueText;
         updateControls();
+      });
+      $("save-queue").addEventListener("click", async () => {
+        const queue = validateEditor();
+        if (!queue || requestBusy) return;
+        requestBusy = true;
+        updateControls();
+        try {
+          await postJson("/api/queue", { queue });
+          serverQueueText = JSON.stringify(queue, null, 2);
+          actionMessage = "队列已保存";
+          requestError = "";
+        } catch (error) { requestError = error.message; }
+        finally { requestBusy = false; renderStatus(); updateControls(); }
       });
       $("format-queue").addEventListener("click", () => {
         const queue = validateEditor();

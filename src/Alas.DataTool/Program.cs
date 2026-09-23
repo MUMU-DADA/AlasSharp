@@ -150,6 +150,36 @@ internal static class Program
                 }
                 finally { Console.CancelKeyPress -= requestStop; }
             }
+            if (command == "control")
+            {
+                int port = 8765;
+                string? artifacts = null;
+                string? workspace = null;
+                for (int i = 1; i < args.Length; i++)
+                {
+                    switch (args[i])
+                    {
+                        case "--port":
+                            port = ParsePositiveIntOption(args, ref i, "--port");
+                            if (port > 65535) throw new ArgumentException("--port 必须不大于 65535");
+                            break;
+                        case "--artifacts":
+                            artifacts = RequireOptionValue(args, ref i, "--artifacts");
+                            break;
+                        case "--workspace":
+                            workspace = RequireOptionValue(args, ref i, "--workspace");
+                            break;
+                        case "--data":
+                        case "--repo":
+                            RequireOptionValue(args, ref i, args[i]);
+                            break;
+                        default:
+                            throw new ArgumentException($"control 未知参数: {args[i]}");
+                    }
+                }
+                return new ControlServer(paths.RootDirectory, repoDir, dataDir,
+                    paths.ToolsDirectory, artifacts, workspace, port).Run();
+            }
             if (command == "plan-queue")
             {
                 // R2 数据面：把活动清点结果翻译成**普通队列文件**（后面照样 queue/report/--resume）。

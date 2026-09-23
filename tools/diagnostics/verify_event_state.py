@@ -239,6 +239,7 @@ def main() -> int:
                 ('limit<0', ['--limit', '-2'], 'limit'),
                 ('limit 非数字', ['--limit', 'nope'], 'limit'),
                 ('max-rounds=0', ['--max-rounds', '0'], 'max-rounds'),
+                ('max-rounds 非数字', ['--max-rounds', 'nope'], 'max-rounds'),
                 ('max-seconds=0', ['--max-seconds', '0'], 'max-seconds'),
                 ('max-seconds 非数字', ['--max-seconds', 'nope'], 'max-seconds'),
             ]

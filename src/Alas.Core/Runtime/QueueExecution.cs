@@ -18,7 +18,8 @@ public static class QueueExecution
     public static QueueExecutionResult RunFile(string queueFile, SessionOptions options,
                                                bool stopOnFailure = true, bool resume = false,
                                                string? resumeState = null, string? stopFile = null,
-                                               CancellationToken token = default)
+                                               CancellationToken token = default,
+                                               Action<string?>? onSessionStarted = null)
     {
         var requests = TaskQueueFile.Parse(File.ReadAllText(queueFile));
         options.ResolveArtifactsDirectory();
@@ -35,6 +36,8 @@ public static class QueueExecution
             ? TaskQueueFile.ReadCompletedState(statePath, requests, options)
             : Array.Empty<string>();
         using var session = AlasSession.Start(options);
+        // 由运行时告知调用方当前工件目录，不能通过扫描新增目录猜测归属。
+        onSessionStarted?.Invoke(session.RunDirectory);
         var queue = new TaskQueue(session) { StopOnFailure = stopOnFailure }
             .Register(new CampaignBatchTask())
             .Register(new AccountStateTask())
