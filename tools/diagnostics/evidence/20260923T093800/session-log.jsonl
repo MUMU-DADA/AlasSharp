@@ -1,0 +1,8 @@
+{"time": "2026-09-23T09:38:00.314+08:00", "level": "INFO", "scope": "session", "message": "识图宿主已启动", "fields": {"repo": "<upstream-root>", "dry_run": false, "host_start_ms": 354.6}}
+{"time": "2026-09-23T09:38:00.353+08:00", "level": "INFO", "scope": "session", "message": "设备后端已配置", "fields": {"serial": "<device>", "screenshot": "scrcpy", "control": "MaaTouch", "configured": "serial=<device>,screenshot=scrcpy,control=MaaTouch"}}
+{"time": "2026-09-23T09:38:00.355+08:00", "level": "INFO", "scope": "batch", "message": "开始批量任务", "fields": {"chapters": 1, "dry_run": false, "max_seconds": 400, "max_rounds": 5, "artifacts": "<run-directory>"}}
+{"time": "2026-09-23T09:38:39.189+08:00", "level": "INFO", "scope": "artifacts", "message": "已写入工件", "fields": {"path": "<run-directory>/sortie-1-1.json"}}
+{"time": "2026-09-23T09:38:39.189+08:00", "level": "ERROR", "scope": "stage", "message": "合规 outcome=withdrawn cleared=False", "fields": {"chapter": "campaign.campaign_main.campaign_1_1", "stage": "1-1", "outcome": "withdrawn", "cleared": false, "elapsed_s": 38.8, "violations": 0}}
+{"time": "2026-09-23T09:38:39.191+08:00", "level": "INFO", "scope": "artifacts", "message": "已写入工件", "fields": {"path": "<run-directory>/index.json"}}
+{"time": "2026-09-23T09:38:39.191+08:00", "level": "INFO", "scope": "batch", "message": "批量任务结束", "fields": {"outcome": "withdrawn", "cleared": false, "stages": 1, "failed": 1, "elapsed_s": 38.8}}
+{"time": "2026-09-23T09:38:39.449+08:00", "level": "INFO", "scope": "session", "message": "识图宿主已释放", "fields": {}}

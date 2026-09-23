@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Alas.Runtime;
 
 namespace Alas.Tasks;
 
@@ -28,18 +29,22 @@ public static class TaskQueueFile
         {
             throw new ArgumentException($"队列文件不是合法 JSON: {e.Message}");
         }
-        if (root?["tasks"] is not JsonArray tasks)
+        if (root is not JsonObject document || document["tasks"] is not JsonArray tasks)
             throw new ArgumentException("队列文件缺少 tasks 数组");
         var requests = new List<TaskRequest>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var node in tasks)
         {
+            if (node is not JsonObject item)
+                throw new ArgumentException("队列中的任务必须是 JSON 对象");
+            if (item["input"] is JsonNode input && input is not JsonObject)
+                throw new ArgumentException("任务 input 必须是 JSON 对象或 null");
             var request = new TaskRequest
             {
-                Id = node?["id"]?.GetValue<string>()?.Trim() ?? "",
-                Kind = node?["kind"]?.GetValue<string>()?.Trim() ?? "",
-                Input = node?["input"] as JsonObject,
-                Required = node?["required"]?.GetValue<bool>() ?? false,
+                Id = item["id"]?.GetValue<string>()?.Trim() ?? "",
+                Kind = item["kind"]?.GetValue<string>()?.Trim() ?? "",
+                Input = item["input"] as JsonObject,
+                Required = item["required"]?.GetValue<bool>() ?? false,
             };
             if (request.Id.Length == 0)
                 throw new ArgumentException("队列里有任务缺少 id");
@@ -51,26 +56,81 @@ public static class TaskQueueFile
         return requests;
     }
 
-    /// <summary>读断点文件里"已完成"的任务 id（文件不存在 = 空集，不是错误）。</summary>
-    public static HashSet<string> ReadCompletedState(string? runDirectory)
+    /// <summary>只读取请求、前序任务及运行参数仍与当前队列一致的完成项。</summary>
+    public static HashSet<string> ReadCompletedState(string? statePath,
+                                                     IReadOnlyList<TaskRequest> requests,
+                                                     SessionOptions options)
     {
         var completed = new HashSet<string>(StringComparer.Ordinal);
-        if (runDirectory is null) return completed;
-        string path = Path.Combine(runDirectory, "state.json");
-        if (!File.Exists(path)) return completed;
+        if (statePath is null) return completed;
         try
         {
-            var root = JsonNode.Parse(File.ReadAllText(path));
-            if (root?["completed"] is JsonObject done)
-                foreach (var (key, _) in done)
-                    completed.Add(key);
+            var root = JsonNode.Parse(File.ReadAllText(statePath));
+            if (root is not JsonObject document || document["completed"] is not JsonObject done)
+                throw new ArgumentException($"断点文件缺少 completed 对象: {statePath}");
+            for (int index = 0; index < requests.Count; index++)
+            {
+                var request = requests[index];
+                if (done[request.Id] is not JsonObject entry) continue;
+                string? outcome = entry["outcome"] is JsonValue value &&
+                                  value.TryGetValue<string>(out var name) ? name : null;
+                if (outcome is not ("succeeded" or "dry_run" or "carried_over") ||
+                    entry["identity"] is not JsonObject identity)
+                    throw new ArgumentException($"断点文件包含非完成结论或缺少任务身份: {statePath}: {request.Id}");
+                if (JsonNode.DeepEquals(identity, ResumeIdentity(requests, index, options)))
+                    completed.Add(request.Id);
+            }
         }
-        catch (Exception)
+        catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException)
         {
-            // 断点文件坏了只是"续不上"，不该让整条队列失败；从这里开始重跑即可。
-            return new HashSet<string>(StringComparer.Ordinal);
+            throw new ArgumentException($"断点文件不可读取或不是合法 JSON: {statePath}: {error.Message}", error);
         }
         return completed;
+    }
+
+    public static JsonObject ResumeIdentity(IReadOnlyList<TaskRequest> requests, int index,
+                                            SessionOptions options)
+    {
+        var request = requests[index];
+        var preceding = new JsonArray();
+        for (int prior = 0; prior < index; prior++)
+        {
+            var earlier = requests[prior];
+            preceding.Add(new JsonObject
+            {
+                ["id"] = earlier.Id,
+                ["kind"] = earlier.Kind,
+                ["required"] = earlier.Required,
+                ["input"] = earlier.Input?.DeepClone(),
+            });
+        }
+        return new JsonObject
+        {
+            ["kind"] = request.Kind,
+            ["required"] = request.Required,
+            ["input"] = request.Input?.DeepClone(),
+            ["preceding_tasks"] = preceding,
+            ["session"] = new JsonObject
+            {
+                ["repo_directory"] = options.RepoDirectory,
+                ["tools_directory"] = options.ToolsDirectory,
+                ["data_directory"] = options.DataDirectory,
+                ["adb_path"] = options.AdbPath,
+                ["serial"] = options.Serial,
+                ["screenshot_backend"] = options.ScreenshotBackend,
+                ["control_backend"] = options.ControlBackend,
+                ["dry_run"] = options.DryRun,
+                ["allow_actions"] = options.AllowActions,
+                ["read_only_device"] = options.ReadOnlyDevice,
+                ["max_seconds"] = options.MaxSeconds,
+                ["max_rounds"] = options.MaxRounds,
+                ["repeat_until_cleared"] = options.RepeatUntilCleared,
+                ["clear_all"] = options.ClearAll,
+                ["fleet1"] = options.Fleet1,
+                ["fleet2"] = options.Fleet2,
+                ["submarine_fleet"] = options.SubmarineFleet,
+            },
+        };
     }
 
     /// <summary>

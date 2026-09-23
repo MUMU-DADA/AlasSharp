@@ -93,10 +93,13 @@
 
 ## 六、实机证据
 
-`docs/result-evidence.md`（由 `tools/diagnostics/audit_real_records.py` 从 `data/*.log` 重建）
+`docs/result-evidence.md`（由 `tools/diagnostics/audit_real_records.py` 从 `data/*.log` 与
+`tools/diagnostics/evidence/` 的脱敏运行工件重建）
 把每条归档记录的战果点击、`In stage.`、`CAMPAIGN END`、撤退事件逐条对上：
 4 条真实通关全部可解释、2 起真实撤退（进图前清理 / 导航期）全部可解释、0 条自相矛盾。
 
-**已知缺口**：归档里没有"本局撤退被判为 `withdrawn`"的真机记录 —— 现有撤退都属于上一局/客户端状态清理。
-补这一条需要一次真实出击后主动撤退（消耗石油、改变账号状态），留到设备在线且获授权时做；
-离线侧该分支已由 `verify_result_contract.py` 的替身用例覆盖。
+结构化归档另有一条本局 `withdrawn` 记录（`20260923T093800`）：`withdraw` 步骤、上游调用链与
+返回章节页证据共同支持撤退结论。审计复用本合同裁决，并交叉核对单关工件、批次索引与会话日志；
+`verify_real_records.py` 要求缺失、篡改和结论分歧均验收失败。本轮只补归档，不改生产判定。
+原件仍保留在本机忽略目录；入库副本隐藏绝对路径与设备序列号，清单分别保存原件和副本校验和。
+这不代表七个合同结果都有真机覆盖；离线各分支继续由 `verify_result_contract.py` 验证。

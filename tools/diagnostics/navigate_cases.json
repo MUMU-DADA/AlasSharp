@@ -1,40 +1,877 @@
 {
- "_comment": "小型导航环境的三条用例（替身宿主，离线）。规格见 docs/runtime.md 第十五节；由 verify_runtime.py 并入它的夹具。",
+ "_comment": "导航任务离线回归：保留旧小型导航图与动作会话 gate，并覆盖多回合复用、参数校验和设备错误；所有调用都由替身宿主响应。",
  "cases": [
   {
    "name": "navigate_to_c_succeeds",
+   "dry_run": false,
+   "allow_actions": true,
+   "serial": "stub-1",
    "tasks": [
-    { "id": "n1", "kind": "navigate", "input": { "to": "page_c" } }
+    {
+     "id": "n1",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c"
+     }
+    }
    ],
    "expect": {
     "outcome": "succeeded",
     "host_start_count": 1,
-    "tasks": [ { "id": "n1", "outcome": "succeeded", "error_kind": "none",
-                 "evidence_contains": ["page_c", "hops", "final_pages"] } ]
+    "tasks": [
+     {
+      "id": "n1",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "evidence_contains": [
+       "page_c",
+       "hops",
+       "final_pages"
+      ]
+     }
+    ]
    }
   },
   {
    "name": "navigate_to_dead_reports_inert_entry",
+   "dry_run": false,
+   "allow_actions": true,
+   "serial": "stub-1",
    "tasks": [
-    { "id": "n2", "kind": "navigate", "input": { "to": "page_dead" } }
+    {
+     "id": "n2",
+     "kind": "navigate",
+     "input": {
+      "to": "page_dead"
+     }
+    }
    ],
    "expect": {
     "outcome": "failed",
     "tasks": [
-     { "id": "n2", "outcome": "failed", "error_kind": "none",
-       "error_contains": "入口可能未解锁" }
+     {
+      "id": "n2",
+      "outcome": "failed",
+      "error_kind": "none",
+      "error_contains": "入口可能未解锁"
+     }
     ]
    }
   },
   {
    "name": "navigate_unknown_target_is_skipped",
+   "dry_run": false,
+   "allow_actions": true,
+   "serial": "stub-1",
    "tasks": [
-    { "id": "n3", "kind": "navigate", "input": { "to": "page_no_such" } }
+    {
+     "id": "n3",
+     "kind": "navigate",
+     "input": {
+      "to": "page_no_such"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "partial",
+    "backend_calls": 2,
+    "tasks": [
+     {
+      "id": "n3",
+      "outcome": "skipped",
+      "error_kind": "none"
+     }
+    ]
+   }
+  },
+  {
+   "name": "navigate_dryrun_cannot_click",
+   "dry_run": true,
+   "allow_actions": false,
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "blocked",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "partial",
+    "backend_calls": 0,
+    "device_configure_count": 0,
+    "tasks": [
+     {
+      "id": "blocked",
+      "outcome": "skipped",
+      "error_contains": "--run --allow-actions"
+     }
+    ],
+    "artifacts": [
+     "task-blocked.json",
+     "queue.json",
+     "state.json"
+    ]
+   }
+  },
+  {
+   "name": "navigate_readonly_session_cannot_click",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "blocked",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c"
+     }
+    }
    ],
    "expect": {
     "outcome": "partial",
     "backend_calls": 1,
-    "tasks": [ { "id": "n3", "outcome": "skipped", "error_kind": "none" } ]
+    "device_configure_count": 1,
+    "tasks": [
+     {
+      "id": "blocked",
+      "outcome": "skipped",
+      "error_contains": "只读会话"
+     }
+    ],
+    "artifacts": [
+     "task-blocked.json",
+     "queue.json",
+     "state.json"
+    ]
+   }
+  },
+  {
+   "name": "navigate_rounds_reuse_single_session",
+   "dry_run": false,
+   "allow_actions": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "rounds",
+     "kind": "navigate",
+     "input": {
+      "to": "page_goal",
+      "rounds": 3
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "succeeded",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": false,
+    "tasks": [
+     {
+      "id": "rounds",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "evidence_contains": [
+       "return_to_main",
+       "to_target",
+       "page_main",
+       "elapsed_ms"
+      ],
+      "evidence_equals": {
+       "success": true,
+       "rounds_requested": 3,
+       "rounds_completed": 3,
+       "final_pages": [
+        "page_goal"
+       ]
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-rounds.json"
+    ],
+    "backend_calls": 14,
+    "backend_ops": [
+     "device_configure:",
+     "ui_page_graph:",
+     "account_state:",
+     "ui_page_graph:",
+     "device_capture_set:",
+     "page_current:",
+     "device_capture_set:",
+     "page_current:",
+     "device_capture_set:",
+     "page_current:",
+     "device_capture_set:",
+     "page_current:",
+     "device_capture_set:",
+     "page_current:"
+    ]
+   },
+   "stub_responses": {
+    "ui_page_graph": [
+     {
+      "result": {
+       "nodes": [
+        {
+         "name": "page_main",
+         "links": []
+        },
+        {
+         "name": "page_goal",
+         "links": []
+        }
+       ],
+       "node_count": 2,
+       "edge_count": 0
+      }
+     }
+    ],
+    "page_current": [
+     {
+      "result": {
+       "hit": [
+        "page_goal"
+       ]
+      }
+     },
+     {
+      "result": {
+       "hit": [
+        "page_main"
+       ]
+      }
+     },
+     {
+      "result": {
+       "hit": [
+        "page_goal"
+       ]
+      }
+     },
+     {
+      "result": {
+       "hit": [
+        "page_main"
+       ]
+      }
+     },
+     {
+      "result": {
+       "hit": [
+        "page_goal"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "navigate_invalid_input_never_queries_graph_or_device",
+   "dry_run": false,
+   "allow_actions": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "to-number",
+     "kind": "navigate",
+     "input": {
+      "to": 7
+     }
+    },
+    {
+     "id": "to-blank",
+     "kind": "navigate",
+     "input": {
+      "to": "  "
+     }
+    },
+    {
+     "id": "hops-string",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "max_hops": "8"
+     }
+    },
+    {
+     "id": "hops-fraction",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "max_hops": 1.5
+     }
+    },
+    {
+     "id": "hops-null",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "max_hops": null
+     }
+    },
+    {
+     "id": "hops-zero",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "max_hops": 0
+     }
+    },
+    {
+     "id": "hops-range",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "max_hops": 2147483648
+     }
+    },
+    {
+     "id": "rounds-string",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "rounds": "2"
+     }
+    },
+    {
+     "id": "rounds-bool",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "rounds": true
+     }
+    },
+    {
+     "id": "rounds-container",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "rounds": []
+     }
+    },
+    {
+     "id": "rounds-null",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "rounds": null
+     }
+    },
+    {
+     "id": "rounds-negative",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "rounds": -1
+     }
+    },
+    {
+     "id": "rounds-fraction",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "rounds": 1.5
+     }
+    },
+    {
+     "id": "rounds-range",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c",
+      "rounds": 2147483648
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "partial",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": false,
+    "tasks": [
+     {
+      "id": "to-number",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.to 必须是非空字符串"
+     },
+     {
+      "id": "to-blank",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.to 必须是非空字符串"
+     },
+     {
+      "id": "hops-string",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.max_hops 必须是"
+     },
+     {
+      "id": "hops-fraction",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.max_hops 必须是"
+     },
+     {
+      "id": "hops-null",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.max_hops 必须是"
+     },
+     {
+      "id": "hops-zero",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.max_hops 必须是"
+     },
+     {
+      "id": "hops-range",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.max_hops 必须是"
+     },
+     {
+      "id": "rounds-string",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.rounds 必须是"
+     },
+     {
+      "id": "rounds-bool",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.rounds 必须是"
+     },
+     {
+      "id": "rounds-container",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.rounds 必须是"
+     },
+     {
+      "id": "rounds-null",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.rounds 必须是"
+     },
+     {
+      "id": "rounds-negative",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.rounds 必须是"
+     },
+     {
+      "id": "rounds-fraction",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.rounds 必须是"
+     },
+     {
+      "id": "rounds-range",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "input.rounds 必须是"
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-to-number.json",
+     "task-to-blank.json",
+     "task-hops-string.json",
+     "task-hops-fraction.json",
+     "task-hops-null.json",
+     "task-hops-zero.json",
+     "task-hops-range.json",
+     "task-rounds-string.json",
+     "task-rounds-bool.json",
+     "task-rounds-container.json",
+     "task-rounds-null.json",
+     "task-rounds-negative.json",
+     "task-rounds-fraction.json",
+     "task-rounds-range.json"
+    ],
+    "backend_calls": 1
+   }
+  },
+  {
+   "name": "navigate_capture_error_is_device_failure",
+   "dry_run": false,
+   "allow_actions": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "capture-fail",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "failed",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "capture-fail",
+      "outcome": "failed",
+      "error_kind": "device_unavailable",
+      "error_contains": "fixture navigation capture failed",
+      "evidence_contains": [
+       "traceback_tail",
+       "HostNavigationDevice"
+      ],
+      "evidence_equals": {
+       "success": false,
+       "rounds_completed": 0,
+       "failure_phase": "to_target"
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-capture-fail.json"
+    ],
+    "backend_calls": 5
+   },
+   "stub_responses": {
+    "device_capture_set": [
+     {
+      "result": {
+       "error": "fixture navigation capture failed"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "navigate_click_error_is_device_failure",
+   "dry_run": false,
+   "allow_actions": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "click-fail",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "failed",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "click-fail",
+      "outcome": "failed",
+      "error_kind": "device_unavailable",
+      "error_contains": "fixture navigation click failed",
+      "evidence_contains": [
+       "traceback_tail",
+       "HostNavigationDevice"
+      ],
+      "evidence_equals": {
+       "success": false,
+       "rounds_completed": 0,
+       "failure_phase": "to_target"
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-click-fail.json"
+    ]
+   },
+   "stub_responses": {
+    "device_click": [
+     {
+      "result": {
+       "click_error": "fixture navigation click failed"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "navigate_back_error_is_device_failure",
+   "dry_run": false,
+   "allow_actions": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "back-fail",
+     "kind": "navigate",
+     "input": {
+      "to": "page_c"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "failed",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "back-fail",
+      "outcome": "failed",
+      "error_kind": "device_unavailable",
+      "error_contains": "fixture navigation back failed",
+      "evidence_contains": [
+       "traceback_tail",
+       "HostNavigationDevice"
+      ],
+      "evidence_equals": {
+       "success": false,
+       "rounds_completed": 0,
+       "failure_phase": "to_target"
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-back-fail.json"
+    ]
+   },
+   "stub_responses": {
+    "page_current": [
+     {
+      "result": {
+       "hit": []
+      }
+     }
+    ],
+    "device_back": [
+     {
+      "result": {
+       "ok": false,
+       "error": "fixture navigation back failed"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "navigate_stops_on_later_return_to_main_failure",
+   "dry_run": false,
+   "allow_actions": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "round-fail",
+     "kind": "navigate",
+     "input": {
+      "to": "page_goal",
+      "rounds": 3
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "failed",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "round-fail",
+      "outcome": "failed",
+      "error_kind": "device_unavailable",
+      "error_contains": "fixture later round failed",
+      "evidence_contains": [
+       "return_to_main",
+       "to_target"
+      ],
+      "evidence_equals": {
+       "success": false,
+       "rounds_completed": 1,
+       "failure_phase": "return_to_main"
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-round-fail.json"
+    ],
+    "backend_calls": 7
+   },
+   "stub_responses": {
+    "ui_page_graph": [
+     {
+      "result": {
+       "nodes": [
+        {
+         "name": "page_main",
+         "links": []
+        },
+        {
+         "name": "page_goal",
+         "links": []
+        }
+       ],
+       "node_count": 2,
+       "edge_count": 0
+      }
+     }
+    ],
+    "page_current": [
+     {
+      "result": {
+       "hit": [
+        "page_goal"
+       ]
+      }
+     },
+     {
+      "result": {
+       "hit": [
+        "page_main"
+       ]
+      }
+     }
+    ],
+    "device_capture_set": [
+     {
+      "result": {
+       "capture_ms": 1,
+       "raw": true
+      }
+     },
+     {
+      "result": {
+       "error": "fixture later round failed"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "navigate_stops_on_later_to_target_failure",
+   "dry_run": false,
+   "allow_actions": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "round-fail",
+     "kind": "navigate",
+     "input": {
+      "to": "page_goal",
+      "rounds": 3
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "failed",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "round-fail",
+      "outcome": "failed",
+      "error_kind": "device_unavailable",
+      "error_contains": "fixture later round failed",
+      "evidence_contains": [
+       "return_to_main",
+       "to_target"
+      ],
+      "evidence_equals": {
+       "success": false,
+       "rounds_completed": 1,
+       "failure_phase": "to_target"
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-round-fail.json"
+    ],
+    "backend_calls": 9
+   },
+   "stub_responses": {
+    "ui_page_graph": [
+     {
+      "result": {
+       "nodes": [
+        {
+         "name": "page_main",
+         "links": []
+        },
+        {
+         "name": "page_goal",
+         "links": []
+        }
+       ],
+       "node_count": 2,
+       "edge_count": 0
+      }
+     }
+    ],
+    "page_current": [
+     {
+      "result": {
+       "hit": [
+        "page_goal"
+       ]
+      }
+     },
+     {
+      "result": {
+       "hit": [
+        "page_main"
+       ]
+      }
+     }
+    ],
+    "device_capture_set": [
+     {
+      "result": {
+       "capture_ms": 1,
+       "raw": true
+      }
+     },
+     {
+      "result": {
+       "capture_ms": 1,
+       "raw": true
+      }
+     },
+     {
+      "result": {
+       "error": "fixture later round failed"
+      }
+     }
+    ]
    }
   }
  ]

@@ -121,7 +121,8 @@ def periodic_run_gate_intact() -> list[str]:
     失效方式同样是静默的 —— 谁把闸门挪到构造之后、或删掉其中一个，
     代码照样能跑（甚至更"顺"），而代价是**未授权的账号操作**。
 
-    判据不看措辞、看**顺序**：两道闸的判断必须出现在 `cls(config=` 之前。
+    判据不看措辞、看**顺序**：两道闸的判断必须出现在原生调度器构造之前；执行必须
+    绑定 Scheduler.Command 对应的任务配置并调用 `AzurLaneAutoScript.run(method_name)`。
     """
     path = ROOT / "tools" / "alas_vision.py"
     if not path.is_file():
@@ -135,9 +136,9 @@ def periodic_run_gate_intact() -> list[str]:
     body = rest if end < 0 else rest[:end]
 
     problems = []
-    construct_at = body.find("cls(config=")
+    construct_at = body.find("runner = AzurLaneAutoScript(")
     if construct_at < 0:
-        problems.append("`op_periodic_run` 里没有构造上游对象的语句（行为变了？）")
+        problems.append("`op_periodic_run` 没有构造 AzurLaneAutoScript 原生调度器")
         return problems
     for marker, why in (("if not allow:", "allow_actions 闸"),
                         ("if confirm != task:", "二次确认闸")):
@@ -147,21 +148,101 @@ def periodic_run_gate_intact() -> list[str]:
         elif at > construct_at:
             problems.append(f"`op_periodic_run` 的{why}在**构造对象之后**才检查 —— 顺序错了，"
                             "等于没闸（对象已经建起来、很可能已经动了设备）")
+    required = (
+        "AzurLaneConfig('alas', task=command)",
+        "config.override(**overrides)",
+        "runner.run(method_name)",
+    )
+    missing = [marker for marker in required if marker not in body]
+    if missing:
+        problems.append(f"`op_periodic_run` 未完整复用上游任务绑定/调度语义: {missing}")
+    return problems
+
+
+def periodic_run_session_gate_intact() -> list[str]:
+    """队列文件不能把默认 dry-run 会话自行升级成周期任务动作会话。
+
+    宿主的两道闸只约束任务输入；CLI 的 `--run --allow-actions` 授权记录在
+    `SessionOptions`。产品任务必须先检查会话授权，再调用 `periodic_run`。
+    """
+    path = ROOT / "src/Alas.Core/Tasks/PeriodicRunTask.cs"
+    if not path.is_file():
+        return ["缺少 PeriodicRunTask.cs（周期任务产品入口没了？）"]
+    text = path.read_text(encoding="utf-8")
+    call_at = text.find('CallTyped<PeriodicRunResult>("periodic_run"')
+    if call_at < 0:
+        return ["PeriodicRunTask 没有调用宿主 periodic_run（行为变了？）"]
+    before_call = text[:call_at]
+    missing = [marker for marker in ("context.Options.DryRun", "context.Options.AllowActions")
+               if marker not in before_call]
+    if missing:
+        return [f"PeriodicRunTask 在调用宿主前没有检查会话级联锁: {missing}；"
+                "队列 JSON 可能绕过 --run --allow-actions"]
+    return []
+
+
+def cli_task_boundary_intact() -> list[str]:
+    """CLI 只解析队列文件路径和公共参数；运行时持有会话与 runner 注册。
+
+    `run` / `goto` 曾各自在 CLI 分支解析业务字段并直接构造会话和任务对象。表面上它们
+    也调用 TaskQueue，实际却保留了第二套任务入口和状态边界；参数遗漏还能在任务校验前
+    触及设备。兼容命令只能给出迁移提示，具体 `observe` / `navigate` 输入必须进队列 JSON。
+    """
+    path = ROOT / "src/Alas.DataTool/Program.cs"
+    if not path.is_file():
+        return ["缺少 Program.cs，无法检查 CLI 任务边界"]
+    text = path.read_text(encoding="utf-8")
+
+    def command_block(command: str) -> str:
+        marker = f'if (command == "{command}")'
+        start = text.find(marker)
+        if start < 0:
+            return ""
+        next_branch = text.find('\n            if (command == "', start + len(marker))
+        return text[start:next_branch if next_branch >= 0 else len(text)]
+
+    problems = []
+    queue = command_block("queue")
+    required_queue_markers = ("QueueExecution.RunFile", "ParseRunFlags")
+    missing = [marker for marker in required_queue_markers if marker not in queue]
+    if missing:
+        problems.append(f"queue 入口没有委托运行时执行: {missing}")
+    leaked_queue = [marker for marker in (
+        "TaskQueueFile.Parse", "AlasSession.Start", "new Alas.Tasks.TaskQueue",
+        ".Register(", "ReadCompletedState", "LatestState",
+    ) if marker in queue]
+    if leaked_queue:
+        problems.append(f"queue CLI 分支仍驱动会话或断点状态: {leaked_queue}")
+
+    forbidden = (
+        "TaskRequest", "TaskQueue", "AlasSession.Start", "ObserveTask", "NavigateTask",
+        '"tick_seconds"', '"seconds"', '"map"', '"max_hops"', '"rounds"',
+    )
+    for command in ("run", "goto"):
+        body = command_block(command)
+        if not body:
+            problems.append(f"缺少 {command} 兼容入口；请保留明确的 queue 迁移提示")
+            continue
+        leaked = [marker for marker in forbidden if marker in body]
+        if leaked:
+            problems.append(f"{command} CLI 分支仍解释任务内容或驱动会话: {leaked}")
+        if "已弃用" not in body or "queue --file" not in body:
+            problems.append(f"{command} CLI 分支没有明确指向 queue --file 的弃用提示")
     return problems
 
 def task_domain_registration() -> list[str]:
-    """每个任务域都必须在 CLI 里注册（否则队列只会报"没有注册运行器"然后失败）。
+    """每个任务域都必须在运行时队列入口注册。
 
     这类漏挂在静态上就能查出来，不必等到某次队列跑起来才发现：
-    扫 `Tasks/*Task.cs` 里实现 `ITaskRunner` 的类，要求 `Program.cs` 里有对应的
+    扫 `Tasks/*Task.cs` 里实现 `ITaskRunner` 的类，要求 `QueueExecution.cs` 里有对应的
     `new …<类名>()` 注册语句（注册用的是类，不是 `Kind` 字面量）。
     """
     problems: list[str] = []
-    program = ROOT / "src/Alas.DataTool/Program.cs"
+    runtime = ROOT / "src/Alas.Core/Runtime/QueueExecution.cs"
     tasks = ROOT / "src/Alas.Core/Tasks"
-    if not program.is_file() or not tasks.is_dir():
+    if not runtime.is_file() or not tasks.is_dir():
         return problems
-    text = program.read_text(encoding="utf-8")
+    text = runtime.read_text(encoding="utf-8")
     registered = 0
     for path in sorted(tasks.glob("*Task.cs")):
         source = path.read_text(encoding="utf-8")
@@ -173,7 +254,7 @@ def task_domain_registration() -> list[str]:
             continue
         name = match.group(1)
         if f"{name}()" not in text:
-            problems.append(f"任务域 {name}（{path.name}）没有在 Program.cs 里注册")
+            problems.append(f"任务域 {name}（{path.name}）没有在 QueueExecution.cs 里注册")
         else:
             registered += 1
     if registered == 0 and not problems:
@@ -182,13 +263,10 @@ def task_domain_registration() -> list[str]:
 
 
 def device_checklist_integrity() -> list[str]:
-    """真机清单里的两条**不能悄悄消失**的东西。
+    """真机清单保留新入口待验项，并禁止周期任务被冒烟脚本自动执行。
 
-    1. "主动撤退换一条 withdrawn 真机记录" —— 它是 R0 的已知缺口，但会消耗石油、
-       改变账号状态，所以必须保持"需本人授权、不自动执行"的标注；把标注删掉或让脚本
-       自动去跑，就是拿账号资源换一个文档上的勾。
-    2. "用新运行时跑一次真机通关" —— 现有通关证据出自运行时之前的 CLI 路径，
-       这条欠账不能在清单里被抹掉（抹掉之后没人记得还欠着）。
+    本局撤退证据已经归档；当前欠账是新队列入口的观测、导航、通关与
+    周期任务原生调度回归。动作任务仍须显式授权。
 
     用**字面锁定**而不是语义分析：这里要的就是"改动必须显式且被看见"，
     谁要动这两条，就得同时改这个守卫，改动天然进入审阅视野。
@@ -199,9 +277,11 @@ def device_checklist_integrity() -> list[str]:
     text = path.read_text(encoding="utf-8")
     problems = []
     for phrase, why in (
-        ("【需本人授权】", "撤退项必须保持'需本人授权'标注（它消耗石油并改变账号状态）"),
-        ("不自动执行", "撤退项必须保持'不自动执行'标注（不许脚本自作主张）"),
-        ("新运行时", "清单里必须保留'用新运行时跑一次真机通关'这条欠账"),
+        ("--read-only-device", "只读抓帧必须能独立于动作授权运行"),
+        ("当前队列入口的导航真机回归", "新入口导航证据仍待补"),
+        ("用新运行时跑一次真机通关", "新入口成功结算证据仍待补"),
+        ("【需本人授权】", "周期任务真跑必须标注需授权"),
+        ("不自动执行周期任务", "冒烟脚本不能自行执行周期动作"),
     ):
         if phrase not in text:
             problems.append(f"真机清单缺少 `{phrase}`：{why}")
@@ -292,8 +372,19 @@ def main() -> int:
         "战役编排走运行时": "AlasSession.Start" in program and "CampaignBatchRunner" in program,
         "CLI 不直接驱动引擎": "RunCampaignPlan" not in program
                               and "InProcessVisionEngine" not in program,
+        "观测任务只在队列入口注册": "RunLoop.Run" not in program
+                                   and not (ROOT / "src/Alas.DataTool/RunLoop.cs").exists()
+                                   and "new ObserveTask()" in read("src/Alas.Core/Runtime/QueueExecution.cs"),
+        "导航动作检查会话授权": all(marker in read("src/Alas.Core/Tasks/NavigateTask.cs")
+                                  for marker in ("context.Options.DryRun",
+                                                 "context.Options.AllowActions",
+                                                 "context.Session.DeviceConfigureCount")),
+        "导航任务只在队列入口注册": "DeviceCheck.RunGoto" not in program
+                                   and "public static int RunGoto" not in read("src/Alas.DataTool/DeviceCheck.cs")
+                                   and "new NavigateTask()" in read("src/Alas.Core/Runtime/QueueExecution.cs"),
         # R2：任务域走通用任务模型，CLI 只解析队列文件（不解释任务内容）。
-        "任务队列入口": "TaskQueueFile.Parse" in program and "TaskQueue" in program,
+        "任务队列入口": "QueueExecution.RunFile" in program
+                          and "TaskQueueFile.Parse" in read("src/Alas.Core/Runtime/QueueExecution.cs"),
         "参数解析共享": program.count("ParseRunFlags(") >= 2,
         "任务模型是接口": "interface ITaskRunner" in read("src/Alas.Core/Tasks/TaskModel.cs"),
     }
@@ -305,6 +396,8 @@ def main() -> int:
     problems.extend(task_domain_registration())
     problems.extend(withdraw_hook_present())
     problems.extend(periodic_run_gate_intact())
+    problems.extend(periodic_run_session_gate_intact())
+    problems.extend(cli_task_boundary_intact())
     problems.extend(campaign_shims_installed())
     problems.extend(shims_all_called())
     problems.extend(device_checklist_integrity())

@@ -10,7 +10,7 @@
 判定口径与页面验证一致：**在它自己的页面上命中**才算通过。不在该页的规则
 （岛屿/大世界/指挥喵等）在页面上必然不命中，属于受游戏状态阻塞，单列出来。
 
-导航用产品路径（`alashub goto`）而不是诊断脚本自己点：这样每一步都顺带回归
+导航用产品队列的 `navigate` 任务：这样每一步都顺带回归
 Navigation 的实现。
 """
 import json
@@ -22,6 +22,8 @@ import time
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 import alas_vision as av  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from queue_navigation import run_navigation  # noqa: E402
 
 ADB = os.environ['STUB_ADB']
 SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
@@ -173,9 +175,7 @@ def swipe(x1, y1, x2, y2, ms=400):
 def goto(page):
     # 必须显式 utf-8：alashub 用 Console.OutputEncoding=UTF8 输出中文，
     # 而 subprocess 默认按本机 GBK 解码，会让读线程抛 UnicodeDecodeError 并返回 stdout=None。
-    r = subprocess.run([ALASHUB, 'goto', page, '--adb', ADB, '--serial', SERIAL],
-                       capture_output=True, text=True, encoding='utf-8',
-                       errors='replace', timeout=600)
+    r = run_navigation(ALASHUB, page, SERIAL, adb=ADB, timeout=600)
     line = [l for l in (r.stdout or '').splitlines() if l.startswith('[result')]
     return r.returncode == 0, (line[0] if line else (r.stdout or r.stderr or '')[-200:])
 
@@ -416,6 +416,9 @@ miss = sum(1 for r in report if r['verdict'] == 'miss')
 blocked = sum(1 for r in report if r['verdict'] == 'blocked')
 print()
 print('小计: hit %d / miss %d / blocked %d（共 %d 项）' % (hits, miss, blocked, len(report)))
+if not REPORT_ONLY:
+    for entry in report:
+        entry['navigation_entry'] = 'queue:navigate'
 if not REPORT_ONLY and not ONLY:
     # ONLY 模式**不覆盖**完整证据文件：定向重跑只看到一步，写进去会把历史证据抹掉
     out = DATA
@@ -492,6 +495,10 @@ LABEL = {'hit': '✅ 已命中', 'deeper': '➡️ 需更深流程', 'blocked': 
 
 
 def build_doc():
+    entry_note = (
+        '本次样本经 `alashub queue --file` 的 `navigate` 任务采集。'
+        if report and all(r.get('navigation_entry') == 'queue:navigate' for r in report)
+        else '当前存档是旧直接导航入口的历史样本；队列入口仍需单独真机复跑。')
     rows = []
     for x in report:
         rule = x['rule']
@@ -525,8 +532,9 @@ def build_doc():
         '"可驱动"（不抛异常）不算 —— 那是 S1 阶段的结论。',
         '',
         '设备：MuMu 模拟器 `127.0.0.1:16384`（1280x720，国服，新版主界面）。',
-        '脚本：`tools/diagnostics/verify_controls.py`（导航走产品路径 `alashub goto`，',
+        '脚本：`tools/diagnostics/verify_controls.py`（导航走产品队列的 `navigate` 任务，',
         '顺带回归 Navigation 实现）；原始数据 `data/controls_verify.json`。',
+        entry_note,
         '',
         '## 本批实际运行结果',
         '',

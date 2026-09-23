@@ -3,7 +3,7 @@
 
 与 regress_pages.py 的区别：那个跑的是"已确认可达"的集合（回归），
 这个跑的是"此前不可达"的集合（探索）。判定同样严格：
-`alashub goto` 成功 **且** 随后 page_current 包含该页，才算真机命中。
+队列 `navigate` 任务成功 **且** 随后 page_current 包含该页，才算真机命中。
 
 命中的页面会写回 docs/page-verification.json（唯一真值来源），
 随后用 report_pages.py / status.py 重新生成文档即可。
@@ -12,7 +12,6 @@
 """
 import json
 import os
-import subprocess
 import sys
 import time
 
@@ -21,6 +20,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import alas_vision as av          # noqa: E402
 import adb_util                   # noqa: E402
+from queue_navigation import run_navigation  # noqa: E402
 
 ADB = os.environ['STUB_ADB']
 SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
@@ -53,9 +53,7 @@ def shot(path=PROBE):
 
 
 def goto(page):
-    r = subprocess.run([ALASHUB, 'goto', page, '--adb', ADB, '--serial', SERIAL],
-                       capture_output=True, text=True, encoding='utf-8',
-                       errors='replace', timeout=900)
+    r = run_navigation(ALASHUB, page, SERIAL, adb=ADB)
     hops = [l.strip() for l in (r.stdout or '').splitlines() if l.startswith('[hop')]
     failure = [l.strip() for l in (r.stdout or '').splitlines() if l.startswith('[failure')]
     path = [l.strip() for l in (r.stdout or '').splitlines() if l.startswith('[path')]

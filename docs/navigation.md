@@ -4,7 +4,8 @@
 这里记录产品路径（C# → 进程内 CPython → 上游规则 → adb）在真机上的实际运行结果。
 
 设备：MuMu 模拟器 `127.0.0.1:16384`（1280x720，国服，**新版主界面**）。
-命令：`alashub goto <页面> --adb <adb.exe> --serial <serial>`
+以下真机 hop 是退役的直接 `goto` 命令留下的历史记录。当前导航应把目标写入
+`navigate` 队列任务，并用 `alashub queue --file navigate.json --run --allow-actions --serial <serial>` 执行。
 
 ## 图从哪来
 
@@ -110,7 +111,7 @@ if self.appear(page.check_button, offset=offset, interval=5):
 
 固化下来的两条规矩：
 
-1. **清理现场一律用 `alashub goto page_main`，不要循环按返回键。** 导航器只在
+1. **清理现场使用目标为 `page_main` 的 `navigate` 队列任务，不要循环按返回键。** 导航器只在
    "画面上没有任何已建模页面"时才按一次返回，且按完立刻重新感知；而手写清理循环
    不知道当前在哪一页，很容易在主界面上多按一次 —— 这正是事故的成因。
 2. **主界面是"返回键的边界"。** 在 `page_main` 上按返回等于请求退出游戏，
@@ -119,9 +120,12 @@ if self.appear(page.check_button, offset=offset, interval=5):
 ## 复现
 
 ```powershell
-$env:STUB_ADB = "<adb.exe>"
-.\src\Alas.DataTool\bin\Release\net8.0\alashub.exe goto page_academy --adb $env:STUB_ADB --serial 127.0.0.1:16384
+alashub queue --file navigate.json --run --allow-actions --serial 127.0.0.1:16384
 ```
+
+`navigate.json` 的内容为
+`{"tasks":[{"id":"navigate","kind":"navigate","required":true,"input":{"to":"page_academy","max_hops":8,"rounds":1}}]}`。
+这是当前复现入口；上面的 hop 数值来自旧入口，不代表新入口已完成真机回归。
 
 输出里 `[hop N]` 的 score 与坐标就是点击依据；`(低置信)` 标记表示那一跳走的是
 "标称坐标"分支。

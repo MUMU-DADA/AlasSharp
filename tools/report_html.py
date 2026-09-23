@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
@@ -43,6 +44,8 @@ h2 { font-size: 15px; margin: 24px 0 8px; color: #444; }
 .card .v { font-size: 18px; margin-top: 2px; }
 table { border-collapse: collapse; width: 100%; background: #fff;
         border: 1px solid #e3e6ea; border-radius: 8px; overflow: hidden; }
+.table-scroll { max-width: 100%; overflow-x: auto; }
+.table-scroll table { min-width: 900px; }
 th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #eef0f3; }
 th { background: #fafbfc; color: #6b7280; font-weight: 600; font-size: 12px; }
 tr:last-child td { border-bottom: none; }
@@ -52,6 +55,10 @@ tr:last-child td { border-bottom: none; }
 .muted { color: #9aa1a9; }
 pre { background: #fff; border: 1px solid #e3e6ea; border-radius: 8px;
       padding: 10px; overflow-x: auto; font-size: 12px; }
+td details pre { max-width: 520px; max-height: 320px; overflow: auto; white-space: pre-wrap;
+                 overflow-wrap: anywhere; }
+summary { cursor: pointer; }
+@media (max-width: 700px) { body { padding: 12px; } }
 """
 
 
@@ -93,12 +100,13 @@ def is_root(target: Path) -> bool:
                for child in target.iterdir() if child.is_dir())
 
 
-def render_index(target: Path, document: dict) -> str:
+def render_index(target: Path, document: dict, index_path: Path, views: Path) -> str:
     """多次运行的索引页：每行一次运行，链到各自的 report.html。"""
     rows = []
     for entry in document.get('runs') or []:
         name = Path(str(entry.get('directory') or '')).name
-        link = f'../{target.name}-views/{name}.html'
+        relative = os.path.relpath(views / f'{name}.html', index_path.parent)
+        link = quote(relative.replace(os.sep, '/'), safe='/')
         rows.append(
             f'<tr><td><a href="{html.escape(link)}">{html.escape(name)}</a></td>'
             f'<td class="{outcome_class(entry.get("queue_outcome"))}">'
@@ -120,26 +128,47 @@ def render_index(target: Path, document: dict) -> str:
     ])
 
 
-def evidence_summary(artifact_path, limit: int = 4) -> str:
+def task_artifact(artifact_path, run_path) -> dict | None:
+    if not artifact_path or not run_path:
+        return None
+    path = Path(str(artifact_path))
+    if not path.name.startswith('task-') or path.suffix != '.json':
+        return None
+    try:
+        document = json.loads((Path(str(run_path)) / path.name).read_text(encoding='utf-8'))
+        return document if isinstance(document, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def evidence_summary(document, limit: int = 4) -> str:
     """从任务的工件里取**标量摘要**（如 batch_outcome / cleared / enabled_count / pages）。
 
-    为什么在这里读工件、而不是往报告里塞字段：报告只内联摘要、明细留在 `task-*.json`
-    （见 `docs/runtime.md` 第九节）。界面要显示的是"一眼能看懂的那几个数"，
-    按需读工件既能拿到它们，又不改变数据面已有的取舍。
+    报告只内联任务摘要，明细仍以 `task-*.json` 为准；页面从工件
+    提取便于扫描的标量摘要，完整证据留在折叠区。
     """
-    if not artifact_path:
-        return ''
-    try:
-        document = json.loads(Path(str(artifact_path)).read_text(encoding='utf-8'))
-    except Exception:
+    if document is None:
         return ''
     parts = []
-    for key, value in (document.get('evidence') or {}).items():
+    evidence = document.get('evidence')
+    for key, value in (evidence if isinstance(evidence, dict) else {}).items():
         if isinstance(value, (str, int, float, bool)) and value not in (None, ''):
             parts.append(f'{key}={value}')
         if len(parts) >= limit:
             break
     return ' · '.join(parts)
+
+
+def evidence_detail(document) -> str:
+    if document is None:
+        return '<span class="muted">工件不可用</span>'
+    evidence = document.get('evidence')
+    unmet = document.get('unmet_preconditions')
+    if not evidence and not unmet:
+        return '<span class="muted">无</span>'
+    detail = {'evidence': evidence, 'unmet_preconditions': unmet}
+    payload = html.escape(json.dumps(detail, ensure_ascii=False, indent=2))
+    return f'<details><summary>查看证据</summary><pre>{payload}</pre></details>'
 
 
 def outcome_class(value) -> str:
@@ -188,6 +217,7 @@ def failure_row(item: dict) -> str:
 
 
 def render(report: dict) -> str:
+    run_directory = report.get('directory') or report.get('run')
     totals = report.get('totals') or {}
     items_all = report.get('items') or []
     failures = failures_of(items_all)
@@ -205,10 +235,10 @@ def render(report: dict) -> str:
                 + '</div>')
     parts = [
         '<!doctype html><meta charset="utf-8">',
-        f'<title>运行报告 — {html.escape(str(report.get("run") or ""))}</title>',
+        f'<title>运行报告 — {html.escape(str(run_directory or ""))}</title>',
         f'<style>{STYLE}</style>',
         f'<h1>运行报告</h1>',
-        f'<div class="sub">{html.escape(str(report.get("run") or ""))}</div>',
+        f'<div class="sub">{html.escape(str(run_directory or ""))}</div>',
         # 页首锚点：一次运行可能有几十个关卡，先给一条能跳的路（纯 HTML，无 JS）
         nav_html,
         '<div class="cards">',
@@ -242,21 +272,23 @@ def render(report: dict) -> str:
     tasks = [i for i in items if i.get('level') == 'task']
     stages = [i for i in items if i.get('level') == 'stage']
     if tasks:
-        parts.append('<h2 id="tasks">任务</h2><table><tr><th>id</th><th>域</th><th>结论</th>'
-                     '<th>摘要</th><th>错误分类</th><th>错误</th><th>边界快照</th></tr>')
+        parts.append('<h2 id="tasks">任务</h2><div class="table-scroll"><table><tr><th>id</th><th>域</th><th>结论</th>'
+                     '<th>摘要</th><th>证据</th><th>错误分类</th><th>错误</th><th>边界快照</th></tr>')
         for item in tasks:
             boundary = item.get('boundary_state') or {}
             frame = '有' if boundary.get('available') else f'<span class="muted">无</span>'
             pages = boundary.get('pages')
+            artifact = task_artifact(item.get('artifact'), run_directory)
             parts.append(
                 f'<tr><td>{html.escape(str(item.get("id")))}</td>'
                 f'<td>{html.escape(str(item.get("kind")))}</td>'
                 f'<td class="{outcome_class(item.get("outcome"))}">{html.escape(str(item.get("outcome")))}</td>'
-                f'<td class="muted">{html.escape(evidence_summary(item.get("artifact")))}</td>'
+                f'<td class="muted">{html.escape(evidence_summary(artifact))}</td>'
+                f'<td>{evidence_detail(artifact)}</td>'
                 f'<td>{html.escape(str(item.get("error_kind") or "—"))}</td>'
                 f'<td>{html.escape(str(item.get("error") or "—"))}</td>'
                 f'<td>{frame}{" " + html.escape(str(pages)) if pages else ""}</td></tr>')
-        parts.append('</table>')
+        parts.append('</table></div>')
     if stages:
         parts.append('<h2 id="stages">关卡</h2><table><tr><th>章节</th><th>关卡</th><th>结论</th>'
                      '<th>通关</th><th>错误</th></tr>')
@@ -274,7 +306,8 @@ def render(report: dict) -> str:
     if findings:
         parts.append('<table><tr><th>代码</th><th>说明</th></tr>' + ''.join(
             f'<tr><td>{html.escape(str(f.get("code")))}</td>'
-            f'<td>{html.escape(str(f.get("message")))}</td></tr>' for f in findings) + '</table>')
+            f'<td>{html.escape(str(f.get("detail") or f.get("message") or ""))}</td></tr>'
+            for f in findings) + '</table>')
     else:
         parts.append('<div class="sub">无（证据链完整、没有失败项）</div>')
 
@@ -283,7 +316,7 @@ def render(report: dict) -> str:
     parts.append('<h2>原始数据面</h2>')
     parts.append(
         '<details id="raw"><summary>展开原始 report JSON（证据原文）</summary><pre>'
-        + html.escape(json.dumps(report, ensure_ascii=False, indent=1)[:4000])
+        + html.escape(json.dumps(report, ensure_ascii=False, indent=1))
         + '</pre></details>')
     return '\n'.join(parts)
 
@@ -296,18 +329,20 @@ def main() -> int:
         print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先 dotnet build）')
         return 1
     target = Path(sys.argv[1]).resolve()
+    root = is_root(target)
     out_path = Path(sys.argv[sys.argv.index('-o') + 1]).resolve() if '-o' in sys.argv \
-        else target / 'report.html'
+        else (target / 'index.html' if root else
+              target.parent.parent / (target.parent.name + '-views') / f'{target.name}.html')
 
     # artifacts 根目录（下面有多次运行）→ 生成索引页 + 每次运行各一页
-    if is_root(target):
+    if root:
         document = build_runs(target)
-        index_path = out_path if out_path.name != 'report.html' else target / 'index.html'
+        index_path = out_path
+        views = target.parent / (target.name + '-views')
         index_path.parent.mkdir(parents=True, exist_ok=True)
-        index_path.write_text(render_index(target, document), encoding='utf-8')
-        # **页面写到 <root>/views/，不写进运行目录**：运行目录里的文件数是"工件数"的一部分，
-        # 往里塞生成物会篡改证据记录（实测过一次：工件数会从 3 变 4）。
-        views = target.parent / (target.name + '-views')   # 写到根目录之外：report --artifacts 会扫根目录的子目录取最近一次，views/ 放在里面会被当成一次运行（实测报 log_missing）
+        index_path.write_text(render_index(target, document, index_path, views), encoding='utf-8')
+        # 页面写在 artifacts 根目录外：运行目录里的文件数是证据，
+        # 而根目录里的 views/ 会干扰 report --artifacts 选择最新运行。
         views.mkdir(exist_ok=True)
         made = 0
         for entry in document.get('runs') or []:

@@ -16,8 +16,9 @@
 
 ### 2. 识图引擎不重写 —— 用进程内 CPython 直调上游模块
 
-图像识别**不在 C# 里重新实现**。C# 通过**进程内嵌 CPython**（Python.NET）直接调用上游
-`module.base.*` 的 `Button` / `Template` / `Ocr`，底层就是上游那套 cv2 调用序列。
+图像识别**不在 C# 里重新实现**。C# 通过进程内嵌 CPython 的 C API（当前由
+`PythonHost` 以 P/Invoke 封装）直接调用上游 `module.base.*` 的 `Button` / `Template` /
+`Ocr`，底层就是上游那套 cv2 调用序列。Python.NET 是可单独评估的替代宿主，并未接入当前产品路径。
 
 **为什么必须这样**——手工移植 cv2 已被逐项实测证伪：
 
@@ -217,7 +218,7 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 ```
 
 `alashub` 子命令：`verify` / `list` / `show` / `imaging` / `matching` / `vision` /
-`device` / `goto`（真机导航，见 `docs/navigation.md`）/ `map`（S2 地图识别，见 `docs/map-detection.md`）/
+`device` / `map`（S2 地图识别，见 `docs/map-detection.md`）/
 `map-ir`（关卡 IR 校验）/ `capture`（设备通道对比，见 `docs/device-engine.md`）/
 `contract`（结果合同离线裁决，见 `docs/result-contract.md`）/
 `queue`（任务队列，见 `docs/tasks.md`）/ `selftest-runtime`（运行时离线自检，见 `docs/runtime.md`）/
@@ -235,6 +236,29 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 - `--fleet1` / `--fleet2` / `--submarine` 传账号的舰队槽位；默认 1 / 0 / 0。
 - 结果只有本次战斗成功结算并返回章节页才记为 `cleared=true`；撤退、错误、限轮都返回非零。
 
+**任务执行（R2）**：观测与导航必须通过队列文件执行；`run` 与 `goto` 已弃用，只会提示迁移。
+
+```json
+{"tasks":[{"id":"observe","kind":"observe","input":{"seconds":2,"tick_seconds":0.5}}]}
+```
+
+导航队列文件 `navigate.json`：
+
+```json
+{"tasks":[{"id":"navigate","kind":"navigate","required":true,
+  "input":{"to":"page_campaign","max_hops":8,"rounds":1}}]}
+```
+
+```powershell
+# 只读抓帧、识页
+alashub queue --file observe.json --run --read-only-device --serial <设备> --screenshot adb --control ADB
+
+# 动作导航
+alashub queue --file navigate.json --run --allow-actions --serial <设备> --screenshot adb --control ADB
+```
+
+页面图、识别和导航规则继续由上游对象提供。
+
 IR JSON 目前用于规则元数据和校验；完整执行读取的是上游生成的 Python `MAP` / `Config` / `Campaign`。
 不完整的 AST 摘要不会被当作可重放计划，也不代表上游关卡不可执行。
 之前“少行地图不支持”的判断来自**漏合并章节 Config**，已撤销；无夹具的地图标为未实测。
@@ -245,8 +269,8 @@ IR JSON 目前用于规则元数据和校验；完整执行读取的是上游生
 
 ## 最近一次自主会话的交接
 
-见 `docs/handover-r0-r2.md`（**最新**：R0–R2 六笔提交、一条命令复现、未做项与物理阻塞、
-这一夜踩过的经验）与 `docs/session-summary.md`（更早那次设备引擎/S2/S3 的交接，
+当前完成范围与未完成项见 `docs/architecture-roadmap.md`；设备窗口和历史过程见
+`docs/handover-r0-r2.md` 与 `docs/session-summary.md`（更早那次设备引擎/S2/S3 的交接，
 注意其中的数字是**当时**的快照）。
 
 ## 验收记录
@@ -256,12 +280,12 @@ IR JSON 目前用于规则元数据和校验；完整执行读取的是上游生
 | 范围 | 状态 | 证据 |
 |---|---|---|
 | 页面规则（53 个 Page） | **34 真机命中**；8 受游戏状态阻塞；11 原因已定位（其中 9 个岛屿按用户要求跳过） | `docs/page-verification.md` |
-| 页面识别全量回归 | **33/34 通过**（用产品导航器 `alashub goto` 重跑） | `docs/regression.md` |
+| 页面识别全量回归 | **历史 33/34 通过**（退役的直接 `goto` 入口；当前队列入口需重新验） | `docs/regression.md` |
 | 识别特异性 | 28 条精确命中 / 5 条共命中（主界面两皮肤、商店三连页）/ 0 条漏检 | `docs/specificity.md` |
 | 控件规则（20 模块级 Switch/Scroll + 6 cached_property） | 模块级 **11 命中**、cached 3 命中；其余逐条分类（需更深流程 / UI 版本差异 / 游戏状态阻塞 / 故意不验） | `docs/controls.md` |
 | 控制原语（返回键 / 长按 / 滑动 / 文本输入） | 4/4 + 文本输入 3/3（装备码流程，打入内容有截图与像素差双重证据） | `docs/primitives.md`、`docs/text-input.md` |
-| 页面导航（`alashub goto`） | 运行时向上游要图 + 变体择优 + 未建模画面按返回自救 | `docs/navigation.md` |
-| 结果合同（R0） | `sortie-result/1` 两侧实现 + 逐例对拍；实机 4 条通关 / 2 起撤退全部可解释、0 矛盾 | `docs/result-contract.md`、`docs/result-evidence.md` |
+| 页面导航（队列 `kind=navigate`） | 运行时向上游要图 + 变体择优 + 未建模画面按返回自救；当前队列入口待真机回归 | `docs/navigation.md` |
+| 结果合同（R0） | `sortie-result/1` 两侧对拍；历史日志 4 条通关 / 2 起清理或导航撤退；结构化工件 1 条本局撤退，0 矛盾 | `docs/result-contract.md`、`docs/result-evidence.md` |
 
 单项文档：
 
@@ -271,7 +295,7 @@ IR JSON 目前用于规则元数据和校验；完整执行读取的是上游生
 | `docs/navigation.md` | 页面导航图（控制能力）：图从上游运行时获取、变体择优、真机多跳运行记录 |
 | `docs/controls.md` | 20 个控件规则（Switch/Scroll）+ 滑动控制的真机验证与总账 |
 | `docs/result-contract.md` | R0 结果合同：结果词表、不变量、跨关复位定义、怎么被强制执行 |
-| `docs/result-evidence.md` | R0 实机结果证据核对（脚本从 `data/*.log` 重建，不手写） |
+| `docs/result-evidence.md` | R0 实机结果证据核对（脚本从历史日志与脱敏运行工件重建，不手写） |
 
 ## 路线图
 
@@ -279,20 +303,20 @@ IR JSON 目前用于规则元数据和校验；完整执行读取的是上游生
 
 | 阶段 | 交付目标 | 状态 |
 |---|---|---|
-| R0 真值与证据 | 统一成功/撤退/错误/限额结果合同，清理历史证据矛盾 | **基本完成**（见下）；只剩一条"本局撤退"真机记录待补 |
-| R1 常驻运行时 | 设备/宿主会话、取消超时、结构化日志、诊断工件、统一错误 | **第一切片完成**（见 [`docs/runtime.md`](docs/runtime.md)） |
-| R2 任务域垂直切片 | 战役批量 → 大世界 → 活动 → 周期任务，按域复用通用状态模型 | **十个域完成**（每个都有独立验收脚本，见 [`docs/tasks.md`](docs/tasks.md)）；域的**动作部分**仍需真机与账号授权 |
-| R3 原生钩子迁移 | 按覆盖率、依赖和对拍证据迁移通用能力，上游保留回退 | 待开始 |
-| R4 产品入口与前端 | 基于任务/结果模型提供配置、队列、状态和证据操作 | 待开始 |
-| R5 宿主替换评估 | 仅在对拍、性能和真实路径证据齐备后替换局部宿主 | 待开始 |
+| R0 真值与证据 | 统一成功/撤退/错误/限额结果合同，清理历史证据矛盾 | 合同与要求的真机证据门槛已验证，本局撤退已纳入审计 |
+| R1 常驻运行时 | 设备/宿主会话、取消超时、结构化日志、诊断工件、统一错误 | `observe`/`navigate` 仅经队列入口执行；观测核心任务有历史只读真机证据，当前队列入口待真机回归，见 [`docs/runtime.md`](docs/runtime.md) |
+| R2 任务域垂直切片 | 战役批量 → 大世界 → 活动 → 周期任务，按域复用通用状态模型 | 十类业务任务及导航/观测已实现；大世界/活动完整动作和其余周期执行路径仍待完成，见 [`docs/tasks.md`](docs/tasks.md) |
+| R3 原生钩子迁移 | 按覆盖率、依赖和对拍证据迁移通用能力，上游保留回退 | 已调查；当前无满足边界与对拍门槛的候选 |
+| R4 产品入口与前端 | 基于任务/结果模型提供配置、队列、状态和证据操作 | 数据面、静态 HTML 与前三层交互已有验收；完整控制前端未交付 |
+| R5 宿主替换评估 | 仅在对拍、性能和真实路径证据齐备后替换局部宿主 | 基线性能已量化；暂无符合全部门槛的替换候选 |
 
 **R0 已完成的部分**：`sortie-result/1` 结果合同（词表 + 22 条不变量）在 Python 与 C# 两侧
 各实现一份，由 `verify_result_contract.py` **逐例对拍**（四类结果判别 + 20 条反例必须被拒绝）；
 `alashub campaign` 的每关结论都过合同裁决，`--artifacts` 落盘整份结果文档；
 架构守卫新增"生产代码不得用 `CampaignEnd` 单字段判通关"与两侧词表漂移检查；
-归档实机记录用 `audit_real_records.py` 逐条重核（4 条通关 / 2 起撤退可解释、0 矛盾）。
-**未完成**：归档里没有"本局撤退被判 `withdrawn`"的真机记录（现有撤退都是上一局/客户端状态清理），
-补它需要一次真实出击后主动撤退。详见 [`docs/result-contract.md`](docs/result-contract.md)、
+归档实机记录用 `audit_real_records.py` 逐条重核（历史日志 4 条通关 / 2 起清理或导航撤退，
+另有 1 条本局撤退结构化工件，0 矛盾）。结构化工件同时核对合同、批次索引和会话日志，
+不把撤退算作通关。详见 [`docs/result-contract.md`](docs/result-contract.md)、
 [`docs/result-evidence.md`](docs/result-evidence.md)。
 
 ### 界面与控件识别的完整范围（目标：全部跑通）

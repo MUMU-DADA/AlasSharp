@@ -4,8 +4,9 @@
 "可驱动"（不抛异常）不算 —— 那是 S1 阶段的结论。
 
 设备：MuMu 模拟器 `127.0.0.1:16384`（1280x720，国服，新版主界面）。
-脚本：`tools/diagnostics/verify_controls.py`（导航走产品路径 `alashub goto`，
+脚本：`tools/diagnostics/verify_controls.py`（导航走产品队列的 `navigate` 任务，
 顺带回归 Navigation 实现）；原始数据 `data/controls_verify.json`。
+当前存档是旧直接导航入口的历史样本；队列入口仍需单独真机复跑。
 
 ## 本批实际运行结果
 

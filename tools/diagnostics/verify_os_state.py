@@ -38,6 +38,7 @@ except Exception:
 
 EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
 FIXTURE = DATA / 'fixtures' / 'os_map.png'
+GLOBE_FIXTURE = DATA / 'fixtures' / 'os_globe_view.png'
 
 
 def main() -> int:
@@ -53,12 +54,24 @@ def main() -> int:
     with TemporaryDirectory(prefix='alas-os-state-') as tmp:
         tmpdir = Path(tmp)
         queue_file = tmpdir / 'queue.json'
-        queue_file.write_text(json.dumps({'tasks': [
+        tasks = [
             {'id': 'os-map', 'kind': 'os_state',
              'input': {'screenshot': str(FIXTURE.resolve())}},
             # dry-run 下 capture=true 必须被前置条件拦下（记 skipped，不是 failed）
             {'id': 'os-capture-dry', 'kind': 'os_state', 'input': {'capture': True}},
-        ]}, ensure_ascii=False, indent=1), encoding='utf-8')
+            {'id': 'os-invalid-detect', 'kind': 'os_state',
+             'input': {'screenshot': str(FIXTURE.resolve()), 'detect': 'unknown'}},
+            {'id': 'os-invalid-capture', 'kind': 'os_state',
+             'input': {'screenshot': str(FIXTURE.resolve()), 'capture': 'false'}},
+        ]
+        if GLOBE_FIXTURE.is_file():
+            tasks.append({'id': 'os-globe', 'kind': 'os_state',
+                          'input': {'screenshot': str(GLOBE_FIXTURE.resolve()),
+                                    'detect': 'globe'}})
+        else:
+            print(f'[跳过] 没有 {GLOBE_FIXTURE.relative_to(ROOT)}；globe 分支未验。')
+        queue_file.write_text(json.dumps({'tasks': tasks}, ensure_ascii=False, indent=1),
+                              encoding='utf-8')
         artifacts = tmpdir / 'artifacts'
         proc = subprocess.run([str(EXE), 'queue', '--file', str(queue_file),
                                '--artifacts', str(artifacts)],
@@ -95,9 +108,42 @@ def main() -> int:
              f"frame={evidence.get('frame')}"),
             ('证据带 detected 字段', 'detected' in evidence, '缺 detected'),
             ('证据带 grid_count 字段', 'grid_count' in evidence, '缺 grid_count'),
-            ('队列结论 partial（一成功一跳过）', queue_artifact['outcome'] == 'partial',
+            ('队列结论 partial（成功与跳过并存）', queue_artifact['outcome'] == 'partial',
              f"outcome={queue_artifact['outcome']}"),
         ]
+
+        globe_evidence = {}
+        if GLOBE_FIXTURE.is_file():
+            globe_artifact_path = run_dir / 'task-os-globe.json'
+            globe_artifact = json.loads(globe_artifact_path.read_text(encoding='utf-8')) \
+                if globe_artifact_path.is_file() else {}
+            globe_evidence = globe_artifact.get('evidence') or {}
+            globe = globe_evidence.get('globe') or {}
+            checks += [
+                ('globe 探针成功', globe_artifact.get('outcome') == 'succeeded',
+                 f"outcome={globe_artifact.get('outcome')} error={globe_artifact.get('error')}"),
+                ('globe 保留上游单应性与坐标结果',
+                 globe_evidence.get('detect') == 'globe'
+                 and globe.get('load') == 'ok'
+                 and bool(globe.get('homo_data'))
+                 and bool(globe.get('screen2globe'))
+                 and bool(globe.get('globe2screen')),
+                 f"load={globe.get('load')} roundtrip={globe.get('roundtrip_error')}"),
+                ('globe 保留中心与上游日志',
+                 bool(globe_evidence.get('globe_center'))
+                 and bool(globe_evidence.get('log_lines')),
+                 f"center={globe_evidence.get('globe_center')}"),
+            ]
+
+        for task_id, field in [('os-invalid-detect', 'input.detect'),
+                               ('os-invalid-capture', 'input.capture')]:
+            path = run_dir / f'task-{task_id}.json'
+            artifact = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+            checks.append((f'{task_id} 被前置条件拦下',
+                           artifact.get('outcome') == 'skipped'
+                           and artifact.get('stop_reason') == 'precondition'
+                           and any(field in reason for reason in artifact.get('unmet_preconditions') or []),
+                           f"outcome={artifact.get('outcome')} unmet={artifact.get('unmet_preconditions')}"))
 
         capture_artifact_path = run_dir / 'task-os-capture-dry.json'
         if not capture_artifact_path.is_file():
@@ -126,6 +172,7 @@ def main() -> int:
         (DATA / 'os_state_probe.json').write_text(json.dumps({
             'note': '大世界只读探针的实测证据（detected=false 表示该帧不在海域里，是有效状态）',
             'evidence': evidence,
+            'globe_evidence': globe_evidence if GLOBE_FIXTURE.is_file() else None,
             'capture_precondition': {'outcome': capture.get('outcome'),
                                      'error': capture.get('error'),
                                      'unmet_preconditions': capture.get('unmet_preconditions')},

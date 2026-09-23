@@ -68,6 +68,7 @@ STEPS = [
     ('verify_s3_outcome.py', 'S3 原生 run 调度与清图/撤退判别（离线上游执行）', False, 300),
     ('verify_result_contract.py', 'R0 结果合同（四类判别 + 反例拒绝 + 跨语言对拍）', False, 300),
     ('audit_real_records.py', 'R0 实机记录重新核对（重建 result-evidence.md）', False, 300),
+    ('verify_real_records.py', 'R0 原始工件证据链（缺失/篡改/合同与会话分歧）', False, 300),
     ('verify_runtime.py', 'R1 常驻运行时（会话只初始化一次 / 失败即停 / 取消 / 证据）', False, 300),
     ('verify_account_state.py', 'R2 账号状态域（只读状态任务 + 真机帧 + 临界判据留证）', False, 600),
     ('verify_stop.py', 'R4 停止任务（--stop-file 在任务边界生效 + 对照）', False, 300),

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""页面识别全量回归：用**产品路径**（alashub goto）把已验证的每个页面重跑一遍。
+"""页面识别全量回归：用产品队列的 navigate 任务重跑已验证页面。
 
 为什么值得单独跑：
 - 之前的页面验证是分批做的（脚本点坐标导航），而导航后来换成了产品实现
@@ -7,11 +7,10 @@
   否则"29 个页面已验证"是旧代码的结论。
 - 一次跑完还能暴露"某些页只有从特定起点才到得了"这类顺序依赖。
 
-判定：`alashub goto <page>` 返回 success 且随后 `page_current` 里确实包含该页。
+判定：导航任务成功且随后 `page_current` 里确实包含该页。
 """
 import json
 import os
-import subprocess
 import sys
 import time
 
@@ -20,6 +19,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import alas_vision as av          # noqa: E402
 import adb_util                   # noqa: E402
+from queue_navigation import run_navigation  # noqa: E402
 
 try:
     ADB = os.environ['STUB_ADB']
@@ -74,9 +74,7 @@ def shot():
 
 
 def goto(page):
-    r = subprocess.run([ALASHUB, 'goto', page, '--adb', ADB, '--serial', SERIAL],
-                       capture_output=True, text=True, encoding='utf-8',
-                       errors='replace', timeout=900)
+    r = run_navigation(ALASHUB, page, SERIAL, adb=ADB)
     hops = [l.strip() for l in (r.stdout or '').splitlines() if l.startswith('[hop')]
     return r.returncode == 0, hops
 
@@ -123,7 +121,8 @@ def main():
             print('        %s' % h)
         results.append({'page': page, 'verdict': verdict, 'hops': hops,
                         'observed': pages, 'no_in_edge': page in no_in,
-                        'seconds': round(time.time() - t0, 1)})
+                        'seconds': round(time.time() - t0, 1),
+                        'navigation_entry': 'queue:navigate'})
 
     ok_n = sum(1 for r in results if r['verdict'] == 'ok')
     print()
@@ -142,6 +141,10 @@ def write_report(results, no_in, node_n, edge_n):
     """生成 docs/regression.md。独立成函数是为了 `--report-only` 能只重建文档。"""
     ok_n = sum(1 for r in results if r['verdict'] == 'ok')
     bad = [r for r in results if r['verdict'] != 'ok']
+    entry_note = (
+        '本次样本经 `alashub queue --file` 的 `navigate` 任务采集。'
+        if results and all(r.get('navigation_entry') == 'queue:navigate' for r in results)
+        else '当前存档是退役直接导航入口的历史样本；需重新运行脚本验证队列入口。')
     # ---- 账号前提：页面可达性受解锁进度影响，基线数字必须带上它。
     # 教训（2026-09-23）：29/34 与记录的 33/34 差 5 个页，一度被当成回归；
     # 实际是那条 33/34 测自**换号之前的旧号**。数字脱离账号前提就会误导。
@@ -166,8 +169,9 @@ def write_report(results, no_in, node_n, edge_n):
     lines = [
         '# 页面识别全量回归（产品路径）',
         '',
-        '用 `alashub goto` 对**已验证的每个页面**重跑一遍：既验证页面规则在各自页面上命中，',
+        '用 `alashub queue --file` 的 `navigate` 任务对**已验证的每个页面**重跑一遍：既验证页面规则在各自页面上命中，',
         '也验证导航器（运行时取自上游的页面图 + 变体择优 + 未建模画面自救）本身没退化。',
+        entry_note,
         '',
         '为什么需要单独做这一遍：早先的页面验证是分批做的（诊断脚本按资产坐标导航），',
         '后来导航换成了产品实现 —— 实现变了，"已验证"就必须重新证明。',
@@ -179,7 +183,7 @@ def write_report(results, no_in, node_n, edge_n):
         '',
         '## 结果：%d / %d 通过' % (ok_n, len(results)),
         '',
-        '| 页面 | 结果 | 耗时 | 跳数 | goto 输出 |',
+        '| 页面 | 结果 | 耗时 | 跳数 | 导航输出 |',
         '| --- | --- | --- | --- | --- |',
     ]
     for r in results:

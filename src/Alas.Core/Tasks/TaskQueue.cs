@@ -78,6 +78,8 @@ public sealed class TaskQueue
                 result.Outcome = TaskOutcome.Skipped;
                 result.ErrorKind = RuntimeErrorKind.Cancelled;
                 result.Error = "调用方取消：未开始这个任务";
+                result.ArtifactPath = WriteTaskArtifact(request, result);
+                LogTask(result);
                 SkipRemaining(queue, requests, "调用方取消：未开始这个任务",
                               RuntimeErrorKind.Cancelled);
                 queue.Outcome = "cancelled";
@@ -104,8 +106,16 @@ public sealed class TaskQueue
             {
                 // ---- 域级：前置条件（"没跑"与"跑失败"分开记）
                 var runner = _runners[request.Kind];
-                var unmet = runner.Preconditions(request, new TaskContext(_session));
-                if (unmet.Count > 0)
+                IReadOnlyList<string>? unmet = null;
+                try { unmet = runner.Preconditions(request, new TaskContext(_session)); }
+                catch (Exception error)
+                {
+                    var wrapped = RuntimeErrors.Wrap(error, $"任务 {request.Id} 前置校验异常");
+                    Fail(result, wrapped.Kind, wrapped.Message + "\n" +
+                         string.Join("\n", error.ToString().Split('\n').TakeLast(12)));
+                    result.StopReason = "precondition_error";
+                }
+                if (unmet is { Count: > 0 })
                 {
                     result.UnmetPreconditions.AddRange(unmet);
                     result.Outcome = request.Required ? TaskOutcome.Failed : TaskOutcome.Skipped;
@@ -113,15 +123,25 @@ public sealed class TaskQueue
                     result.Error = "前置条件不满足: " + string.Join("; ", unmet);
                     result.StopReason = "precondition";
                 }
-                else
+                else if (unmet is not null)
                 {
                     RunTask(runner, request, result, token);
                 }
             }
 
             result.ArtifactPath = WriteTaskArtifact(request, result);
-            WriteState(queue);
+            WriteState(queue, requests);
             LogTask(result);
+
+            if (result.ErrorKind == RuntimeErrorKind.Cancelled)
+            {
+                queue.StoppedEarly = true;
+                queue.StopReason = "cancelled";
+                queue.Outcome = "cancelled";
+                SkipRemaining(queue, requests, "调用方取消：未开始这个任务",
+                              RuntimeErrorKind.Cancelled);
+                break;
+            }
 
             if (result.Failed && StopOnFailure)
             {
@@ -251,7 +271,7 @@ public sealed class TaskQueue
             queue.Tasks.Add(skipped);
             LogTask(skipped);
         }
-        WriteState(queue);
+        WriteState(queue, requests);
     }
 
     private static void Aggregate(QueueResult queue)
@@ -298,8 +318,13 @@ public sealed class TaskQueue
     private string? WriteTaskArtifact(TaskRequest request, TaskResult result)
     {
         if (_session.RunDirectory is null) return null;
-        string name = $"task-{Sanitize(request.Id)}.json";
-        if (!_artifactNames.Add(name)) name = $"task-{Sanitize(request.Id)}-{_artifactNames.Count}.json";
+        string stem = $"task-{Sanitize(request.Id)}";
+        string name;
+        for (int suffix = 0; ; suffix++)
+        {
+            name = suffix == 0 ? $"{stem}.json" : $"{stem}-{suffix + 1}.json";
+            if (_artifactNames.Add(name)) break;
+        }
         return _session.WriteArtifact(name, new JsonObject
         {
             ["id"] = request.Id,
@@ -350,7 +375,7 @@ public sealed class TaskQueue
         => _session.RunDirectory is null ? null : Path.Combine(_session.RunDirectory, "state.json");
 
     /// <summary>逐任务刷新断点文件：中断后 `--resume` 能跳过已成功的任务。</summary>
-    private void WriteState(QueueResult queue)
+    private void WriteState(QueueResult queue, IReadOnlyList<TaskRequest> requests)
     {
         string? path = StatePath();
         if (path is null) return;
@@ -359,11 +384,20 @@ public sealed class TaskQueue
         // 若只写本次运行的切片，一次"全都跳过"的运行会把历史清空 —— 下一次 `--resume`
         // 就会重新执行那些任务。对战役域就是**再打一遍、再花一次石油**，而且不报错，
         // 只在日志里表现为"这次怎么又多打了几个图"（见 `docs/runtime.md` 第十二节）。
-        foreach (var id in ResumeCompleted)
-            done[id] = "carried_over";
-        foreach (var task in queue.Tasks)
-            if (task.Outcome is TaskOutcome.Succeeded or TaskOutcome.DryRun)
-                done[task.Id] = task.OutcomeName;
+        for (int index = 0; index < requests.Count; index++)
+        {
+            var request = requests[index];
+            var task = queue.Tasks.FirstOrDefault(t => t.Id == request.Id);
+            string? outcome = task?.Outcome is TaskOutcome.Succeeded or TaskOutcome.DryRun
+                ? task.OutcomeName
+                : ResumeCompleted.Contains(request.Id) ? "carried_over" : null;
+            if (outcome is null) continue;
+            done[request.Id] = new JsonObject
+            {
+                ["identity"] = TaskQueueFile.ResumeIdentity(requests, index, _session.Options),
+                ["outcome"] = outcome,
+            };
+        }
         File.WriteAllText(path, new JsonObject
         {
             ["completed"] = done,

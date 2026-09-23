@@ -308,9 +308,8 @@ public abstract class VisionEngineBase : IVisionEngine
 /// <summary>
 /// 进程内 CPython 宿主实现（**目标形态**）。
 ///
-/// 相比进程外 worker 省掉了每帧几十次的进程间往返：
-/// 实测进程外单次 <c>appear_on</c> 往返 6.83ms，其中 4.38ms 是通信开销，
-/// worker 内部真正算一次只要 0.014ms。
+/// 相比进程外 worker 省掉了进程间往返。基线中 ping 往返为 0.021ms（进程内）与
+/// 0.084ms（worker）；两者均调用同一份上游 Python 入口，实际识图和设备 I/O 的耗时另计。
 /// </summary>
 public sealed class InProcessVisionEngine : VisionEngineBase
 {

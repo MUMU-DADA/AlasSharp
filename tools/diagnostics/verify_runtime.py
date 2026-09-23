@@ -449,6 +449,153 @@ def build_queue_cases() -> list[dict]:
                               'task-withdraw-1-4.json', 'sortie-1-4.json'],
             },
         },
+        {
+            'name': 'queue_precondition_exception_keeps_artifacts',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'artifacts': True,
+            'tasks': [
+                {'id': 'bad-input', 'kind': 'test_precondition_error'},
+                dict(campaign('next-stage', [CLEARED]),
+                     documents={CLEARED: cleared_document(CLEARED, 'S', '1-1')}),
+            ],
+            'expect': {
+                'outcome': 'failed', 'host_start_count': 1, 'device_configure_count': 1,
+                'backend_calls': 1, 'stopped_early': True,
+                'tasks': [
+                    {'id': 'bad-input', 'outcome': 'failed', 'error_contains': '前置校验异常'},
+                    {'id': 'next-stage', 'outcome': 'skipped'},
+                ],
+                'artifacts': ['queue.json', 'state.json', 'task-bad-input.json', 'task-next-stage.json'],
+            },
+        },
+        {
+            'name': 'queue_cancelled_before_first_task_keeps_artifacts',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'artifacts': True, 'cancel_after_op': 'device_configure',
+            'tasks': [
+                campaign('cancel-first', [CLEARED]),
+                campaign('cancel-second', [CLEARED2]),
+            ],
+            'expect': {
+                'outcome': 'cancelled', 'host_start_count': 1, 'device_configure_count': 1,
+                'backend_calls': 1, 'stopped_early': True,
+                'tasks': [
+                    {'id': 'cancel-first', 'outcome': 'skipped', 'error_kind': 'cancelled'},
+                    {'id': 'cancel-second', 'outcome': 'skipped', 'error_kind': 'cancelled'},
+                ],
+                'artifacts': ['queue.json', 'state.json',
+                              'task-cancel-first.json', 'task-cancel-second.json'],
+            },
+        },
+        {
+            'name': 'queue_sanitized_artifact_names_are_unique',
+            'dry_run': True, 'artifacts': True,
+            'tasks': [
+                campaign('a/b', []),
+                campaign('a?b', []),
+                campaign('a*b', []),
+            ],
+            'expect': {
+                'outcome': 'partial', 'host_start_count': 1, 'device_configure_count': 0,
+                'backend_calls': 0, 'stopped_early': False,
+                'tasks': [
+                    {'id': 'a/b', 'outcome': 'skipped', 'error_kind': 'none'},
+                    {'id': 'a?b', 'outcome': 'skipped', 'error_kind': 'none'},
+                    {'id': 'a*b', 'outcome': 'skipped', 'error_kind': 'none'},
+                ],
+                'artifacts': ['queue.json', 'state.json',
+                              'task-a_b.json', 'task-a_b-2.json', 'task-a_b-3.json'],
+            },
+        },
+        {
+            'name': 'periodic_native_success_maps_to_succeeded',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'tasks': [{'id': 'periodic', 'kind': 'periodic_run', 'input': {
+                'task': 'reward', 'allow_actions': True, 'confirm': 'reward'}}],
+            'stub_responses': {'periodic_run': [{'result': {
+                'task': 'reward', 'decision': 'ran', 'confirm_matches': True,
+                'target': {'module': 'alas', 'class': 'AzurLaneAutoScript',
+                           'scheduler_command': 'Reward', 'method': 'reward'},
+                'constructed': True, 'ran': True, 'native_success': True,
+            }}]},
+            'expect': {
+                'outcome': 'succeeded', 'host_start_count': 1,
+                'device_configure_count': 1, 'backend_calls': 3, 'stopped_early': False,
+                'tasks': [{'id': 'periodic', 'outcome': 'succeeded',
+                           'evidence_equals': {'decision': 'ran', 'native_success': True,
+                                               'target.scheduler_command': 'Reward',
+                                               'target.method': 'reward'}}],
+            },
+        },
+        {
+            'name': 'periodic_native_false_maps_to_upstream_failure',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'tasks': [{'id': 'periodic', 'kind': 'periodic_run', 'input': {
+                'task': 'reward', 'allow_actions': True, 'confirm': 'reward'}}],
+            'stub_responses': {'periodic_run': [{'result': {
+                'task': 'reward', 'decision': 'failed', 'confirm_matches': True,
+                'constructed': True, 'ran': True, 'native_success': False,
+                'error': '上游原生调度器返回 False',
+            }}]},
+            'expect': {
+                'outcome': 'failed', 'host_start_count': 1,
+                'device_configure_count': 1, 'backend_calls': 3, 'stopped_early': True,
+                'tasks': [{'id': 'periodic', 'outcome': 'failed',
+                           'error_kind': 'upstream_error', 'error_contains': '返回 False',
+                           'evidence_equals': {'decision': 'failed', 'native_success': False}}],
+            },
+        },
+        {
+            'name': 'periodic_system_exit_maps_to_upstream_failure',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'tasks': [{'id': 'periodic', 'kind': 'periodic_run', 'input': {
+                'task': 'reward', 'allow_actions': True, 'confirm': 'reward'}}],
+            'stub_responses': {'periodic_run': [{'result': {
+                'task': 'reward', 'decision': 'error', 'confirm_matches': True,
+                'constructed': True, 'ran': True, 'native_success': False,
+                'exit_code': '1', 'error': 'SystemExit: 1',
+                'traceback_tail': ['fixture stack'],
+            }}]},
+            'expect': {
+                'outcome': 'failed', 'host_start_count': 1,
+                'device_configure_count': 1, 'backend_calls': 3, 'stopped_early': True,
+                'tasks': [{'id': 'periodic', 'outcome': 'failed',
+                           'error_kind': 'upstream_error', 'error_contains': 'SystemExit',
+                           'evidence_equals': {'decision': 'error', 'native_success': False,
+                                               'exit_code': '1'}}],
+            },
+        },
+        {
+            'name': 'periodic_host_denial_maps_to_input_failure',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'tasks': [{'id': 'periodic', 'kind': 'periodic_run', 'input': {
+                'task': 'reward', 'allow_actions': True, 'confirm': 'reward'}}],
+            'stub_responses': {'periodic_run': [{'result': {
+                'task': 'reward', 'decision': 'denied', 'confirm_matches': True,
+                'reason': 'fixture denied', 'constructed': False, 'ran': False,
+            }}]},
+            'expect': {
+                'outcome': 'failed', 'host_start_count': 1,
+                'device_configure_count': 1, 'backend_calls': 3, 'stopped_early': True,
+                'tasks': [{'id': 'periodic', 'outcome': 'failed',
+                           'error_kind': 'internal', 'error_contains': 'fixture denied',
+                           'evidence_equals': {'decision': 'denied'}}],
+            },
+        },
+        {
+            'name': 'periodic_invalid_overrides_never_reach_host_dispatch',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'tasks': [{'id': 'periodic', 'kind': 'periodic_run', 'input': {
+                'task': 'reward', 'allow_actions': True, 'confirm': 'reward', 'overrides': []}}],
+            # 若 C# 把数组悄悄转换成 null，这个替身错误会让用例失败；正确实现不会调用宿主。
+            'stub_responses': {'periodic_run': [{'error': 'invalid overrides reached host'}]},
+            'expect': {
+                'outcome': 'partial', 'host_start_count': 1,
+                'device_configure_count': 1, 'backend_calls': 1, 'stopped_early': False,
+                'tasks': [{'id': 'periodic', 'outcome': 'skipped', 'error_kind': 'none',
+                           'error_contains': 'overrides 必须是 JSON 对象'}],
+            },
+        },
     ]
 
 
@@ -457,33 +604,42 @@ def main() -> int:
         print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先运行 dotnet build）')
         return 1
 
+    # 整轮自检（包括下面逐项读取工件）共用本次独立的临时目录。
+    # 不使用 C# 的固定默认目录，避免并发验收互相删除工件。
+    with TemporaryDirectory(prefix='alas-runtime-') as tmp:
+        return verify_in_workspace(Path(tmp))
+
+
+def verify_in_workspace(workspace: Path) -> int:
     cases = build_cases() + build_queue_cases()
     failures = []
-    with TemporaryDirectory(prefix='alas-runtime-') as tmp:
-        # 小型导航环境的三条用例（替身宿主，离线）—— 规格见 docs/runtime.md 第十五节。
-        # 它们钉住两件事：导航任务的多跳/不可达行为，以及第 156 轮那句"入口可能未解锁"的诊断后缀。
-        navigate = json.loads((Path(__file__).resolve().parent / 'navigate_cases.json')
-                              .read_text(encoding='utf-8'))['cases']
-        cases = list(cases) + navigate
-        fixture = Path(tmp) / 'runtime-cases.json'
-        fixture.write_text(json.dumps({'cases': cases}, ensure_ascii=False, indent=1),
-                           encoding='utf-8')
-        verdicts = Path(tmp) / 'runtime-verdicts.json'
-        proc = subprocess.run([str(EXE), 'selftest-runtime', '--fixture', str(fixture),
-                               '--json', str(verdicts)],
-                              capture_output=True, text=True, encoding='utf-8',
-                              errors='replace', timeout=180)
-        for line in (proc.stdout or '').strip().splitlines():
-            print('  ' + line)
-        if proc.stderr:
-            print('  stderr: ' + proc.stderr.strip()[:400])
-        if proc.returncode != 0:
-            failures.append(f'selftest-runtime 退出码 {proc.returncode}')
-        if not verdicts.is_file():
-            print('**失败**：自检没有产出裁决文件')
-            return 1
+    # 小型导航环境的三条用例（替身宿主，离线）—— 规格见 docs/runtime.md 第十五节。
+    # 它们钉住两件事：导航任务的多跳/不可达行为，以及第 156 轮那句"入口可能未解锁"的诊断后缀。
+    diagnostics = Path(__file__).resolve().parent
+    navigate = json.loads((diagnostics / 'navigate_cases.json')
+                          .read_text(encoding='utf-8'))['cases']
+    observe = json.loads((diagnostics / 'observe_cases.json')
+                         .read_text(encoding='utf-8'))['cases']
+    cases = list(cases) + navigate + observe
+    fixture = workspace / 'runtime-cases.json'
+    fixture.write_text(json.dumps({'cases': cases}, ensure_ascii=False, indent=1),
+                       encoding='utf-8')
+    verdicts = workspace / 'runtime-verdicts.json'
+    proc = subprocess.run([str(EXE), 'selftest-runtime', '--fixture', str(fixture),
+                           '--json', str(verdicts), '--workspace', str(workspace)],
+                          capture_output=True, text=True, encoding='utf-8',
+                          errors='replace', timeout=180)
+    for line in (proc.stdout or '').strip().splitlines():
+        print('  ' + line)
+    if proc.stderr:
+        print('  stderr: ' + proc.stderr.strip()[:400])
+    if proc.returncode != 0:
+        failures.append(f'selftest-runtime 退出码 {proc.returncode}')
+    if not verdicts.is_file():
+        print('**失败**：自检没有产出裁决文件')
+        return 1
 
-        actual = {c['name']: c for c in json.loads(verdicts.read_text(encoding='utf-8'))['cases']}
+    actual = {c['name']: c for c in json.loads(verdicts.read_text(encoding='utf-8'))['cases']}
 
     print()
     print('=== 逐例核对（Python 侧判据）===')
@@ -529,23 +685,27 @@ def main() -> int:
         # 边界快照（R2 跨任务复位）：真正跑过的任务必须有 boundary_state，
         # 跳过（含断点续跑）的任务不该有 —— 它压根没开始，"边界"无从谈起。
         if got.get('run_directory'):
-            import glob as _glob
+            artifact_paths = []
             for have_task in got['tasks']:
-                pattern = f"{got['run_directory']}/task-{have_task['id']}.json"
-                files = _glob.glob(pattern)
-                if not files:
+                path = have_task.get('artifact')
+                if not path or not Path(path).is_file():
                     problems.append(f"缺少任务工件: {have_task['id']}")
                     continue
-                artifact = json.loads(Path(files[0]).read_text(encoding='utf-8'))
+                artifact_paths.append(path)
+                artifact = json.loads(Path(path).read_text(encoding='utf-8'))
                 boundary = artifact.get('boundary_state')
                 # "跑过"不能只看结论：`failed` 也可能是"前置条件不满足、根本没开始"
                 # （required 的前置失败记 failed 但不会执行任务）。用 unmet_preconditions 区分。
-                ran = (have_task['outcome'] != 'skipped'
+                # 观测在 tick 边界取消时已执行并有证据；被取消而未开始的任务没有证据。
+                ran = ((have_task['outcome'] != 'skipped' or artifact.get('evidence') is not None)
+                       and artifact.get('stop_reason') != 'precondition_error'
                        and not (artifact.get('unmet_preconditions') or []))
                 if ran and not (isinstance(boundary, dict) and 'available' in boundary):
                     problems.append(f"跑过的任务 {have_task['id']} 缺 boundary_state：{boundary}")
                 if not ran and boundary is not None:
                     problems.append(f"没跑的任务 {have_task['id']} 不该有 boundary_state：{boundary}")
+            if len(artifact_paths) != len(set(artifact_paths)):
+                problems.append('多个任务引用同一个任务工件')
         for want_file in expect.get('artifacts', []):
             if want_file not in got['artifact_names']:
                 problems.append(f'缺少工件 {want_file}（实际 {got["artifact_names"]}）')

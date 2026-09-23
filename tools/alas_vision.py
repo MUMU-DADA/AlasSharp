@@ -867,19 +867,80 @@ def op_task_schedule(args):
     return out
 
 
+def _resolve_periodic_target(task):
+    """从上游任务目录解析 scheduler command 及其原生调度方法。"""
+    import ast
+    import inflection
+
+    alas_py = os.path.join(FORK, 'alas.py')
+    args_json = os.path.join(FORK, 'module', 'config', 'argument', 'args.json')
+    if not os.path.exists(alas_py):
+        return {'task': task, 'found': False, 'error': f'找不到上游 alas.py: {alas_py}'}
+    try:
+        with open(alas_py, encoding='utf-8') as stream:
+            tree = ast.parse(stream.read())
+        with open(args_json, encoding='utf-8') as stream:
+            task_catalog = json.load(stream)
+    except Exception as error:
+        return {'task': task, 'found': False,
+                'error': f'读取上游任务目录失败: {type(error).__name__}: {error}'}
+
+    script = next((node for node in tree.body
+                   if isinstance(node, ast.ClassDef) and node.name == 'AzurLaneAutoScript'), None)
+    if script is None:
+        return {'task': task, 'found': False, 'error': 'alas.py 缺少 AzurLaneAutoScript'}
+    methods = {node.name: node for node in script.body if isinstance(node, ast.FunctionDef)}
+
+    matches = []
+    for section, groups in task_catalog.items():
+        if not isinstance(groups, dict):
+            continue
+        scheduler = groups.get('Scheduler')
+        command_arg = scheduler.get('Command') if isinstance(scheduler, dict) else None
+        command = command_arg.get('value') if isinstance(command_arg, dict) else None
+        if not isinstance(command, str) or not command:
+            continue
+        method = inflection.underscore(command)
+        if task in (method, command) and method in methods:
+            matches.append((str(section), command, method, methods[method]))
+
+    if not matches:
+        return {
+            'task': task,
+            'found': False,
+            'error': f'上游任务目录没有可调度方法 {task}（只允许 Scheduler.Command 对应的入口）',
+        }
+    if len(matches) > 1:
+        commands = sorted({item[1] for item in matches})
+        return {'task': task, 'found': False,
+                'error': f'上游任务目录对 {task} 的映射不唯一: {commands}'}
+    section, command, method, method_node = matches[0]
+    return {
+        'task': task,
+        'found': True,
+        'section': section,
+        'scheduler_command': command,
+        'method': method,
+        'source': alas_py,
+        'task_source': args_json,
+        '_method_node': method_node,
+    }
+
+
 def op_periodic_plan(args):
-    """周期任务的**执行前勘察**（只读）：上游接到任务名后会去跑哪个类。
+    """周期任务的**执行前勘察**（只读）：上游调度器会调用哪个原生方法。
 
     为什么先做这个（`docs/tasks.md` 第九节之后的动作半边）：周期任务的动作要真机，而且
     科研/建造/委托这类会**消耗账号资源**，不能无人值守乱跑。但"跑 X 会发生什么"是可查的 ——
-    上游把任务名到执行者的映射写在 `alas.py` 的同名方法里：
+    上游把 Scheduler.Command 写在生成的 `args.json`，再由调度器用
+    `inflection.underscore()` 映射到 `alas.py` 的方法：
 
         def commission(self):
             from module.commission.commission import Commission
             Commission(config=self.config, device=self.device).run()
 
-    本 op 用 **AST 读那一段**（不 import、不实例化、不碰设备），把"哪个模块、哪个类、
-    构造时传什么"如实报出来。这样在决定要不要真跑之前，先能看清它是谁。
+    本 op 同时消费这两个上游来源，用 **AST 读方法体**（不 import、不实例化、不碰设备），
+    把 command、方法和内部调用如实报出来。辅助方法不会因为在 `alas.py` 里存在就成为可执行任务。
 
     **只读纪律**：不 import 目标模块、不构造对象、不调用 run —— 真正的执行属于另一个 op，
     且必须带显式授权。
@@ -887,20 +948,11 @@ def op_periodic_plan(args):
     task = str(args.get('task') or '').strip()
     if not task:
         return {'error': '缺少 task（上游任务名，如 commission / research）'}
-    alas_py = os.path.join(FORK, 'alas.py')
-    if not os.path.exists(alas_py):
-        return {'error': f'找不到上游 alas.py: {alas_py}'}
+    resolved = _resolve_periodic_target(task)
+    if resolved.get('found') is not True:
+        return resolved
     import ast
-    with open(alas_py, encoding='utf-8') as stream:
-        tree = ast.parse(stream.read())
-    method = None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == task:
-            method = node
-            break
-    if method is None:
-        return {'task': task, 'found': False,
-                'error': f'alas.py 里没有名为 {task} 的方法（任务名是否正确？）'}
+    method = resolved.pop('_method_node')
     imports, constructed = [], []
     for node in ast.walk(method):
         if isinstance(node, ast.ImportFrom):
@@ -914,15 +966,13 @@ def op_periodic_plan(args):
             elif isinstance(func, ast.Attribute):
                 constructed.append(func.attr)
     return {
-        'task': task,
-        'found': True,
-        'source': alas_py,
+        **resolved,
         'lineno': method.lineno,
         'imports': imports,
         'calls': sorted(set(constructed)),
         'calls_run': any(isinstance(n, ast.Attribute) and n.attr == 'run'
                          for n in ast.walk(method)),
-        'note': '只报"会去跑什么"，不 import、不实例化、不执行；真跑属于另一个需要显式授权的 op',
+        'note': '只报上游 Scheduler.Command 与原生方法，不 import、不实例化、不执行',
     }
 
 
@@ -943,7 +993,7 @@ def op_periodic_preflight(args):
     **本 op 永不执行**：`executes` 恒为 false；真正的执行是另一个 op 的职责。
     """
     task = str(args.get('task') or '').strip()
-    allow_actions = bool(args.get('allow_actions'))
+    allow_actions = args.get('allow_actions') is True
     confirm = str(args.get('confirm') or '').strip()
 
     out = {'task': task, 'allow_actions': allow_actions, 'confirm_matches': confirm == task,
@@ -1015,7 +1065,7 @@ def op_config_get(args):
     }
 
 def op_periodic_run(args):
-    """周期任务的**执行**入口（两道闸 + 二次确认；真正的执行就在这里）。
+    """周期任务的**执行**入口：复用上游任务目录和 AzurLaneAutoScript 调度。
 
     为什么要两道闸（`docs/tasks.md` 的"周期任务的动作半边"）：查代码发现连"收委托"
     都有花费路径（油满买食物），所以执行入口必须**按任务显式授权**，不能"授权一次全能跑"。
@@ -1023,14 +1073,15 @@ def op_periodic_run(args):
       1. `allow_actions=true` —— 运行时的动作总开关；
       2. `confirm` **与 `task` 完全一致** —— 防手滑、防脚本误传。
 
-    通过之后：先用 `op_periodic_plan` 查清"会去跑哪个类"（只报不判），再**构造并运行**它。
-    返回里如实给：判定、勘察结果、构造是否成功、运行耗时、以及上游返回值的摘要。
+    通过之后：从上游任务目录解析 Scheduler.Command，绑定该任务的完整配置，再调用
+    `AzurLaneAutoScript.run(method)`。这样各任务在 `alas.py` 里的方法、参数、TaskEnd 与失败
+    语义都由上游负责；适配层不维护任务特例表。
 
     **不是**读一眼就完事：这一步会真的驱动游戏 —— 所以调用方必须明确知道自己在跑什么。
     """
     import time
     task = str(args.get('task') or '').strip()
-    allow = bool(args.get('allow_actions'))
+    allow = args.get('allow_actions') is True
     confirm = str(args.get('confirm') or '').strip()
     out = {'task': task, 'allow_actions': allow, 'confirm_matches': confirm == task}
     if not task:
@@ -1051,47 +1102,84 @@ def op_periodic_run(args):
         out.update(decision='denied', reason='任务名在上游 alas.py 里找不到：%s' % task)
         return out
 
-    # 从勘察结果里取"从哪个模块导入哪个类"（不猜、不写死）
-    import importlib
-    import re as _re
-    target = None
-    for line in plan.get('imports') or []:
-        m = _re.match(r'from\s+([\w\.]+)\s+import\s+(\w+)', line)
-        if m and m.group(2)[:1].isupper():
-            target = (m.group(1), m.group(2))
-            break
-    if target is None:
-        out.update(decision='denied',
-                   reason='勘察里没有可用的类（alas.py 的该方法没有 from X import Y 形式的导入）')
+    command = plan['scheduler_command']
+    method_name = plan['method']
+    out['target'] = {
+        'module': 'alas',
+        'class': 'AzurLaneAutoScript',
+        'scheduler_command': command,
+        'method': method_name,
+    }
+    overrides = args.get('overrides')
+    if overrides is None:
+        overrides = {}
+    if not isinstance(overrides, dict):
+        out.update(decision='denied', reason='overrides 必须是 JSON 对象')
         return out
-    module_name, class_name = target
-    out['target'] = {'module': module_name, 'class': class_name}
+
     started = time.time()
+    device = None
+    old_device_config = None
+    device_had_config = False
     try:
-        module = importlib.import_module(module_name)
-        cls = getattr(module, class_name)
+        from alas import AzurLaneAutoScript
         from module.config.config import AzurLaneConfig
-        config = AzurLaneConfig('alas')
-        # **内存内覆盖**：调用方可以只为这一次运行改配置（如打开 BuyFurniture_Enable），
-        # **不写回配置文件** —— 用户的账号设置不因为我们跑一次而被改动。
-        for key, value in (args.get('overrides') or {}).items():
-            setattr(config, key, value)
+        config = AzurLaneConfig('alas', task=command)
+        unknown = sorted(str(key) for key in overrides if key not in config.bound)
+        if unknown:
+            out.update(decision='denied',
+                       reason=f'overrides 含当前任务未绑定的字段: {unknown}')
+            return out
+        # 上游 override 会登记 overridden 并绕过 __setattr__ 的持久化路径；任务自身通过
+        # task_delay/task_call 写调度状态仍保留，这是原生调度语义。
+        if overrides:
+            config.override(**overrides)
+
         device = _device_engine()
-        instance = cls(config=config, device=device)
+        device_had_config = hasattr(device, 'config')
+        if device_had_config:
+            old_device_config = device.config
+        device.config = config
+        runner = AzurLaneAutoScript('alas')
+        runner.__dict__['config'] = config
+        runner.__dict__['device'] = device
         out['constructed'] = True
-        value = instance.run()
         out['ran'] = True
-        out['elapsed_s'] = round(time.time() - started, 1)
-        out['returned'] = (repr(value)[:300] if not isinstance(value, (str, int, float, bool, type(None)))
-                           else value)
-        out['decision'] = 'ran'
+        device.stuck_record_clear()
+        device.click_record_clear()
+        native_success = runner.run(method_name)
+        out['native_success'] = bool(native_success)
+        if native_success:
+            out['decision'] = 'ran'
+        else:
+            out['decision'] = 'failed'
+            out['error'] = '上游原生调度器返回 False'
+    except SystemExit as error:
+        out['ran'] = bool(out.get('ran'))
+        out['native_success'] = False
+        out['decision'] = 'error'
+        out['exit_code'] = None if error.code is None else str(error.code)
+        out['error'] = f'SystemExit: {error.code}'
+        import traceback
+        out['traceback_tail'] = traceback.format_exc().strip().splitlines()[-8:]
     except Exception as error:
-        out['ran'] = False
-        out['elapsed_s'] = round(time.time() - started, 1)
+        out['ran'] = bool(out.get('ran'))
+        out['native_success'] = False
         out['decision'] = 'error'
         out['error'] = f'{type(error).__name__}: {error}'
         import traceback
         out['traceback_tail'] = traceback.format_exc().strip().splitlines()[-8:]
+    finally:
+        if device is not None:
+            try:
+                if device_had_config:
+                    device.config = old_device_config
+                else:
+                    delattr(device, 'config')
+            except Exception as restore_error:
+                out['decision'] = 'error'
+                out['error'] = f'恢复设备配置失败: {type(restore_error).__name__}: {restore_error}'
+        out['elapsed_s'] = round(time.time() - started, 1)
     return out
 
 def _asset_id_map():

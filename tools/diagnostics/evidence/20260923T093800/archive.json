@@ -1,0 +1,17 @@
+{
+  "source_run": "runs/withdraw-final3/20260923T093800",
+  "redactions": [
+    "absolute local paths replaced by portable placeholders",
+    "device serial and configured endpoint replaced by <device>"
+  ],
+  "source_files_sha256": {
+    "index.json": "3802760f5b8c44d59c681f6bbc1463644469b491c6a37bb61d5a22a914c57101",
+    "session-log.jsonl": "407328b96cffadf5be10aa41a8b8b9ab41ec2dbf5acb7d23f4e6edf17a8a57b3",
+    "sortie-1-1.json": "d606d76a44c36820250b325cd08080af9e136b84d4ce1c5793f377c45bc242d5"
+  },
+  "files": {
+    "index.json": "b6adc3cacd67f113926e4c6e9c38a8bab29927d10578b3744c108ff866d3557f",
+    "session-log.jsonl": "4d27a669b6f290081cbddaf1d41ddd3cf20ffbcf549998583c36125096a92a16",
+    "sortie-1-1.json": "5dbe391ff78b386ead23cd9457d3ca655639762ab6771e9f498a6f1242e8696f"
+  }
+}

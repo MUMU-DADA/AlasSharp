@@ -23,8 +23,18 @@ public sealed class PeriodicPreflightTask : ITaskRunner
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskContext context)
     {
         var problems = new List<string>();
-        if (string.IsNullOrWhiteSpace(request.Input?["task"]?.GetValue<string>()))
+        if (request.Input?["task"] is not JsonValue taskValue
+            || !taskValue.TryGetValue<string>(out var task)
+            || string.IsNullOrWhiteSpace(task))
             problems.Add("input.task 为空：放行判定必须针对一个具体的上游任务名（如 reward）");
+        if (request.Input?.ContainsKey("allow_actions") == true
+            && (request.Input["allow_actions"] is not JsonValue allowValue
+                || !allowValue.TryGetValue<bool>(out _)))
+            problems.Add("input.allow_actions 必须是 JSON 布尔值");
+        if (request.Input?.ContainsKey("confirm") == true
+            && (request.Input["confirm"] is not JsonValue confirmValue
+                || !confirmValue.TryGetValue<string>(out _)))
+            problems.Add("input.confirm 必须是 JSON 字符串");
         return problems;
     }
 

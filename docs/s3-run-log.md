@@ -118,7 +118,9 @@
 
 ## 换号 / 新号后的操作顺序（runbook）
 
-1. **确认已登录**：游戏能停在战役页（`alashub goto page_campaign`）。
+1. **确认已登录**：游戏能停在战役页。使用 `navigate` 队列任务，输入
+   `{"to":"page_campaign","max_hops":8,"rounds":1}`，以
+   `alashub queue --file navigate.json --run --allow-actions --serial <设备>` 执行。
    标题/登录页上**不要**让自动化乱点（会误触"更换服务器"）。
 2. **探可达范围**：
    `python tools/diagnostics/account_probe.py --chapters 1-16`

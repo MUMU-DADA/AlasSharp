@@ -7,9 +7,9 @@ namespace Alas.Tasks;
 /// <summary>
 /// 周期任务动作半边的**勘察**任务（`kind = "periodic_plan"`，只读）。
 ///
-/// 用途：在决定"要不要真跑某个周期任务"之前，先看清它会去跑哪个类、构造什么 ——
-/// 上游把任务名到执行者的映射写在 `alas.py` 的同名方法里，宿主 op 用 AST 读它
-/// （不 import、不实例化、不碰设备）。
+/// 用途：在决定"要不要真跑某个周期任务"之前，先看清 Scheduler.Command、原生方法及其内部调用。
+/// 宿主同时消费上游 `args.json` 和 `alas.py` AST（不 import、不实例化、不碰设备），辅助方法
+/// 不会因为存在于 `alas.py` 就成为可执行任务。
 ///
 /// 为什么要有任务这一层：报告/前端/批量调度都只认 `ITaskRunner`；
 /// 而且"跑之前先看清"这件事本身就该是可调度、可留证据的一步。
@@ -52,6 +52,8 @@ public sealed class PeriodicPlanTask : ITaskRunner
                 {
                     ["task"] = name,
                     ["found"] = plan.Found,
+                    ["scheduler_command"] = plan.SchedulerCommand,
+                    ["method"] = plan.Method,
                     ["lineno"] = plan.LineNumber,
                     ["imports"] = new JsonArray((plan.Imports ?? new List<string>())
                         .Select(i => (JsonNode)JsonValue.Create(i)!).ToArray()),
@@ -73,7 +75,7 @@ public sealed class PeriodicPlanTask : ITaskRunner
                 // 名字写错是调用方的问题：明确失败并列出是哪些，不悄悄跳过
                 result.Outcome = TaskOutcome.Failed;
                 result.ErrorKind = RuntimeErrorKind.Internal;
-                result.Error = "这些任务名在上游 alas.py 里找不到：" + string.Join(", ", missing);
+                result.Error = "这些任务名在上游任务目录中没有可调度入口：" + string.Join(", ", missing);
             }
             else
             {
@@ -111,6 +113,8 @@ public sealed class PeriodicPlanResult
     [JsonPropertyName("task")] public string? Task { get; set; }
     [JsonPropertyName("found")] public bool? Found { get; set; }
     [JsonPropertyName("source")] public string? Source { get; set; }
+    [JsonPropertyName("scheduler_command")] public string? SchedulerCommand { get; set; }
+    [JsonPropertyName("method")] public string? Method { get; set; }
     [JsonPropertyName("lineno")] public int? LineNumber { get; set; }
     [JsonPropertyName("imports")] public List<string>? Imports { get; set; }
     [JsonPropertyName("calls")] public List<string>? Calls { get; set; }

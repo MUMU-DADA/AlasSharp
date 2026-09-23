@@ -1,0 +1,828 @@
+{
+ "_comment": "observe 只读设备会话的离线回归。替身可按 op 返回错误或在指定调用后取消；真实任务、队列、工件与释放路径不替换。",
+ "cases": [
+  {
+   "name": "observe_pages_and_capture_succeeds",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "observe-basic",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "succeeded",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": false,
+    "tasks": [
+     {
+      "id": "observe-basic",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "evidence_equals": {
+       "ticks": 1,
+       "errors": 0,
+       "read_only": true,
+       "warmup.ok": true,
+       "capture.attempts": 1,
+       "capture.succeeded": 1,
+       "capture.failed": 0,
+       "page_detection.attempts": 1,
+       "page_detection.failed": 0,
+       "pages": [
+        "page_a"
+       ],
+       "pages_tick": 1
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-observe-basic.json"
+    ],
+    "backend_calls": 5
+   }
+  },
+  {
+   "name": "observe_two_tasks_reuse_session",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "observe-main",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01,
+      "map": "main"
+     }
+    },
+    {
+     "id": "observe-os",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01,
+      "map": "os"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "succeeded",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": false,
+    "tasks": [
+     {
+      "id": "observe-main",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "evidence_equals": {
+       "ticks": 1,
+       "errors": 0,
+       "map.mode": "main",
+       "map.attempts": 1,
+       "map.detected_hits": 1,
+       "map.last_grid_count": 24
+      }
+     },
+     {
+      "id": "observe-os",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "evidence_equals": {
+       "ticks": 1,
+       "errors": 0,
+       "map.mode": "os",
+       "map.attempts": 1,
+       "map.detected_hits": 1,
+       "map.last_grid_count": 18
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-observe-main.json",
+     "task-observe-os.json"
+    ],
+    "backend_calls": 11
+   }
+  },
+  {
+   "name": "observe_map_not_detected_is_valid",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "observe-no-map",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01,
+      "map": "main"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "succeeded",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": false,
+    "tasks": [
+     {
+      "id": "observe-no-map",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "evidence_equals": {
+       "ticks": 1,
+       "errors": 0,
+       "map.attempts": 1,
+       "map.detected_hits": 0,
+       "map.last_grid_count": null,
+       "map.last_reason": "fixture is not a map"
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-observe-no-map.json"
+    ],
+    "backend_calls": 6
+   },
+   "stub_responses": {
+    "map_detect": [
+     {
+      "result": {
+       "detected": false,
+       "reason": "fixture is not a map"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "observe_requires_configured_device",
+   "dry_run": true,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "observe-offline",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "partial",
+    "host_start_count": 1,
+    "device_configure_count": 0,
+    "stopped_early": false,
+    "tasks": [
+     {
+      "id": "observe-offline",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "已配置设备"
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-observe-offline.json"
+    ],
+    "backend_calls": 0
+   }
+  },
+  {
+   "name": "observe_rejects_invalid_input_before_capture",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "seconds-string",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": "0.01"
+     }
+    },
+    {
+     "id": "seconds-null",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": null
+     }
+    },
+    {
+     "id": "tick-container",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": [],
+      "seconds": 0.01
+     }
+    },
+    {
+     "id": "tick-bool",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": true,
+      "seconds": 0.01
+     }
+    },
+    {
+     "id": "map-bool",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01,
+      "map": true
+     }
+    },
+    {
+     "id": "map-unknown",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01,
+      "map": "chapter_1"
+     }
+    },
+    {
+     "id": "seconds-zero",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0
+     }
+    },
+    {
+     "id": "tick-negative",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": -1,
+      "seconds": 0.01
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "partial",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": false,
+    "tasks": [
+     {
+      "id": "seconds-string",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "seconds 必须是数值"
+     },
+     {
+      "id": "seconds-null",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "seconds 必须是数值"
+     },
+     {
+      "id": "tick-container",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "tick_seconds 必须是数值"
+     },
+     {
+      "id": "tick-bool",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "tick_seconds 必须是数值"
+     },
+     {
+      "id": "map-bool",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "map 必须是字符串"
+     },
+     {
+      "id": "map-unknown",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "map 只支持上游通用模式"
+     },
+     {
+      "id": "seconds-zero",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "seconds 必须是大于 0"
+     },
+     {
+      "id": "tick-negative",
+      "outcome": "skipped",
+      "error_kind": "none",
+      "error_contains": "tick_seconds 必须是大于等于 0"
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-seconds-string.json",
+     "task-seconds-null.json",
+     "task-tick-container.json",
+     "task-tick-bool.json",
+     "task-map-bool.json",
+     "task-map-unknown.json",
+     "task-seconds-zero.json",
+     "task-tick-negative.json"
+    ],
+    "backend_calls": 1
+   }
+  },
+  {
+   "name": "observe_warmup_failure_keeps_evidence",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "warmup-failed",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01,
+      "map": "main"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "failed",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "warmup-failed",
+      "outcome": "failed",
+      "error_kind": "device_unavailable",
+      "error_contains": "fixture warmup failed",
+      "evidence_contains": [
+       "warmup_capture",
+       "fixture warmup failed"
+      ],
+      "evidence_equals": {
+       "ticks": 0,
+       "errors": 1,
+       "warmup.ok": false,
+       "capture.attempts": 0,
+       "capture.failed": 0,
+       "page_detection.attempts": 0,
+       "map.attempts": 0
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-warmup-failed.json"
+    ],
+    "backend_calls": 3
+   },
+   "stub_responses": {
+    "device_capture_set": [
+     {
+      "result": {
+       "error": "fixture warmup failed"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "observe_failed_capture_never_uses_stale_frame",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "capture-failed",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01,
+      "map": "main"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "failed",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "capture-failed",
+      "outcome": "failed",
+      "error_kind": "device_unavailable",
+      "error_contains": "fixture capture failed",
+      "evidence_contains": [
+       "device_capture_set",
+       "fixture capture failed"
+      ],
+      "evidence_equals": {
+       "ticks": 1,
+       "errors": 1,
+       "warmup.ok": true,
+       "capture.attempts": 1,
+       "capture.failed": 1,
+       "capture.succeeded": 0,
+       "page_detection.attempts": 0,
+       "page_detection.skipped_capture_failed": 1,
+       "map.attempts": 0,
+       "map.skipped_capture_failed": 1,
+       "pages": [],
+       "pages_tick": null
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-capture-failed.json"
+    ],
+    "backend_calls": 4
+   },
+   "stub_responses": {
+    "device_capture_set": [
+     {
+      "result": {
+       "capture_ms": 12.5,
+       "method": "stub",
+       "raw": true,
+       "shape": [
+        720,
+        1280,
+        3
+       ]
+      }
+     },
+     {
+      "result": {
+       "error": "fixture capture failed"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "observe_capture_exception_keeps_trace",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "capture-exception",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01,
+      "map": "os"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "failed",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "capture-exception",
+      "outcome": "failed",
+      "error_kind": "host_unavailable",
+      "error_contains": "fixture capture exception",
+      "evidence_contains": [
+       "traceback_tail",
+       "StubVisionEngine",
+       "fixture capture exception"
+      ],
+      "evidence_equals": {
+       "ticks": 1,
+       "errors": 1,
+       "capture.failed": 1,
+       "page_detection.attempts": 0,
+       "map.attempts": 0
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-capture-exception.json"
+    ],
+    "backend_calls": 4
+   },
+   "stub_responses": {
+    "device_capture_set": [
+     {
+      "result": {
+       "capture_ms": 12.5,
+       "method": "stub",
+       "raw": true,
+       "shape": [
+        720,
+        1280,
+        3
+       ]
+      }
+     },
+     {
+      "error": "fixture capture exception"
+     }
+    ]
+   }
+  },
+  {
+   "name": "observe_page_rule_errors_fail_task",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "page-failed",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01,
+      "map": "main"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "failed",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "page-failed",
+      "outcome": "failed",
+      "error_kind": "upstream_error",
+      "error_contains": "fixture page rule failed",
+      "evidence_contains": [
+       "page_current",
+       "fixture page rule failed"
+      ],
+      "evidence_equals": {
+       "ticks": 1,
+       "errors": 1,
+       "page_detection.attempts": 1,
+       "page_detection.failed": 1,
+       "pages": [
+        "page_a"
+       ],
+       "page_errors": [
+        "fixture page rule failed"
+       ],
+       "map.attempts": 1
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-page-failed.json"
+    ],
+    "backend_calls": 6
+   },
+   "stub_responses": {
+    "page_current": [
+     {
+      "result": {
+       "hit": [
+        "page_a"
+       ],
+       "errors": [
+        "fixture page rule failed"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "observe_map_exception_keeps_trace",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "map-exception",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01,
+      "map": "main"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "failed",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "map-exception",
+      "outcome": "failed",
+      "error_kind": "host_unavailable",
+      "error_contains": "fixture map exception",
+      "evidence_contains": [
+       "traceback_tail",
+       "StubVisionEngine",
+       "fixture map exception"
+      ],
+      "evidence_equals": {
+       "ticks": 1,
+       "errors": 1,
+       "capture.succeeded": 1,
+       "page_detection.failed": 0,
+       "map.attempts": 1,
+       "map.errors": 1,
+       "map.detected_hits": 0
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-map-exception.json"
+    ],
+    "backend_calls": 6
+   },
+   "stub_responses": {
+    "map_detect": [
+     {
+      "error": "fixture map exception"
+     }
+    ]
+   }
+  },
+  {
+   "name": "observe_cancel_finishes_tick_and_skips_rest",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "cancel-tick",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 1,
+      "map": "os"
+     }
+    },
+    {
+     "id": "after-cancel",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 0.01
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "cancelled",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "cancel-tick",
+      "outcome": "skipped",
+      "error_kind": "cancelled",
+      "error_contains": "tick 边界",
+      "evidence_equals": {
+       "ticks": 1,
+       "errors": 0,
+       "cancelled": true,
+       "capture.succeeded": 1,
+       "page_detection.attempts": 1,
+       "map.attempts": 1
+      }
+     },
+     {
+      "id": "after-cancel",
+      "outcome": "skipped",
+      "error_kind": "cancelled"
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-cancel-tick.json",
+     "task-after-cancel.json"
+    ],
+    "backend_calls": 6
+   },
+   "cancel_after_op": "device_capture_set",
+   "cancel_after_call": 2
+  },
+  {
+   "name": "observe_cancel_final_task",
+   "dry_run": false,
+   "allow_actions": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "artifacts": true,
+   "tasks": [
+    {
+     "id": "cancel-tick",
+     "kind": "observe",
+     "input": {
+      "tick_seconds": 0.02,
+      "seconds": 1,
+      "map": "os"
+     }
+    }
+   ],
+   "expect": {
+    "outcome": "cancelled",
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "stopped_early": true,
+    "tasks": [
+     {
+      "id": "cancel-tick",
+      "outcome": "skipped",
+      "error_kind": "cancelled",
+      "error_contains": "tick 边界",
+      "evidence_equals": {
+       "ticks": 1,
+       "errors": 0,
+       "cancelled": true,
+       "capture.succeeded": 1,
+       "page_detection.attempts": 1,
+       "map.attempts": 1
+      }
+     }
+    ],
+    "artifacts": [
+     "queue.json",
+     "state.json",
+     "session-log.jsonl",
+     "task-cancel-tick.json"
+    ],
+    "backend_calls": 6
+   },
+   "cancel_after_op": "device_capture_set",
+   "cancel_after_call": 2
+  }
+ ]
+}

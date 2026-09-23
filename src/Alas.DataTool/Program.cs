@@ -53,30 +53,8 @@ internal static class Program
             }
             if (command == "run")
             {
-                // 常驻 runner 骨架（S3 的壳）：设备层只构造一次，之后按 tick 循环抓帧+判定
-                string toolsDir6 = paths.ToolsDirectory;
-                string? runAdb = null, runSerial = null;
-                string runShot = "scrcpy", runCtrl = "MaaTouch";
-                double runTick = 0.5, runSeconds = 20;
-                string? runMap = null;
-                for (int i = 1; i < args.Length - 1; i++)
-                {
-                    if (args[i] == "--adb") runAdb = args[i + 1];
-                    if (args[i] == "--serial") runSerial = args[i + 1];
-                    if (args[i] == "--screenshot") runShot = args[i + 1];
-                    if (args[i] == "--control") runCtrl = args[i + 1];
-                    if (args[i] == "--tick" && double.TryParse(args[i + 1], out double tk)) runTick = tk;
-                    if (args[i] == "--seconds" && double.TryParse(args[i + 1], out double sc)) runSeconds = sc;
-                    if (args[i] == "--map") runMap = args[i + 1];
-                }
-                if (runAdb is null || runSerial is null)
-                {
-                    Console.WriteLine("用法: run --adb <adb> --serial <serial> " +
-                        "[--screenshot scrcpy] [--control MaaTouch] [--tick 0.5] [--seconds 20] [--map main|os]");
-                    return 2;
-                }
-                return RunLoop.Run(runAdb, runSerial, repoDir, toolsDir6, runShot, runCtrl,
-                    runTick, runSeconds, runMap);
+                return Fail("run 已弃用：请把 observe 的 seconds、tick_seconds、map 写入队列 JSON，"
+                            + "再使用 queue --file <队列.json> 和公共运行参数执行");
             }
             if (command == "campaign")
             {
@@ -123,7 +101,7 @@ internal static class Program
                 string queueFile = queueFlags.Positional ?? queueFlags.File ?? "";
                 if (queueFile.Length == 0)
                 {
-                    Console.WriteLine("用法: queue --file <队列.json> [--run --allow-actions] [--serial <设备>] " +
+                    Console.WriteLine("用法: queue --file <队列.json> [--run (--allow-actions|--read-only-device)] [--serial <设备>] " +
                                       "[--artifacts <目录>] [--resume] [--continue-on-error]");
                     return 2;
                 }
@@ -132,81 +110,45 @@ internal static class Program
                     Console.Error.WriteLine($"找不到队列文件: {queueFile}");
                     return 2;
                 }
-                if (queueFlags.Run && !queueFlags.AllowActions)
+                if (queueFlags.Run && !queueFlags.AllowActions && !queueFlags.Options.ReadOnlyDevice)
                 {
-                    Console.WriteLine("[拒绝    ] 真跑需要 --allow-actions");
+                    Console.WriteLine("[拒绝    ] 真跑需要 --allow-actions 或 --read-only-device");
                     return 2;
                 }
                 var queueOptions = queueFlags.Options;
                 queueOptions.RepoDirectory = repoDir;
                 queueOptions.ToolsDirectory = paths.ToolsDirectory;
                 queueOptions.DataDirectory = dataDir;
-                var requests = Alas.Tasks.TaskQueueFile.Parse(File.ReadAllText(queueFile));
-                Console.WriteLine($"[队列    ] {requests.Count} 个任务");
-                using var queueSession = Alas.Runtime.AlasSession.Start(queueOptions);
-                var queue = new Alas.Tasks.TaskQueue(queueSession)
-                {
-                    StopOnFailure = !queueFlags.ContinueOnError,
-                }.Register(new Alas.Tasks.CampaignBatchTask())
-                 .Register(new Alas.Tasks.AccountStateTask())
-                 .Register(new Alas.Tasks.OsStateTask())
-                 .Register(new Alas.Tasks.EventStateTask())
-                 .Register(new Alas.Tasks.TaskCatalogTask())
-                 .Register(new Alas.Tasks.NavigateTask())
-                 .Register(new Alas.Tasks.TaskScheduleTask())
-                 .Register(new Alas.Tasks.PeriodicPlanTask())
-                 .Register(new Alas.Tasks.PeriodicPreflightTask())
-                 .Register(new Alas.Tasks.ConfigGetTask())
-                 .Register(new Alas.Tasks.PeriodicRunTask());
-                if (queueFlags.Resume)
-                {
-                    // `--resume <state.json>` 显式给路径；只写 `--resume` 则取工件根目录下
-                    // **上一次**运行的断点（本次运行目录里永远没有 state.json，直接读它等于没续跑）。
-                    string? statePath = queueFlags.ResumeState
-                        ?? Alas.Tasks.TaskQueueFile.LatestState(queueOptions.ArtifactsDirectory,
-                                                                queueSession.RunDirectory);
-                    var done = Alas.Tasks.TaskQueueFile.ReadCompletedState(
-                        statePath is null ? null : Path.GetDirectoryName(statePath));
-                    foreach (var id in done) queue.ResumeCompleted.Add(id);
-                    if (statePath is null)
-                        Console.WriteLine("[断点    ] 没找到可续跑的 state.json（本次仍从头跑）");
-                    else
-                        Console.WriteLine($"[断点    ] 依据 {statePath} 跳过 {done.Count} 个已完成任务"
-                                          + (done.Count == 0 ? "" : $": {string.Join(", ", done)}"));
-                }
-                // R4「停止任务」：运行时的取消语义是"在任务边界生效"，这里只补两件触发方式 ——
-                // Ctrl-C 与 --stop-file（自动化/前端不方便发信号时，写个文件即可请求停止）。
+                // Ctrl-C 只提供取消信号；断点、停止文件和队列调度由运行时处理。
                 using var stop = new CancellationTokenSource();
-                Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
-                if (queueFlags.StopFile is not null)
+                ConsoleCancelEventHandler requestStop = (_, e) => { e.Cancel = true; stop.Cancel(); };
+                Console.CancelKeyPress += requestStop;
+                try
                 {
-                    string stopFile = Path.GetFullPath(queueFlags.StopFile);
-                    // 先立刻查一次：停止文件在启动前就已经存在时，不该等到第一个计时周期才生效。
-                    if (File.Exists(stopFile))
+                    var execution = Alas.Runtime.QueueExecution.RunFile(
+                        queueFile, queueOptions,
+                        stopOnFailure: !queueFlags.ContinueOnError,
+                        resume: queueFlags.Resume,
+                        resumeState: queueFlags.ResumeState,
+                        stopFile: queueFlags.StopFile,
+                        token: stop.Token);
+                    Console.WriteLine($"[队列    ] {execution.Requests.Count} 个任务");
+                    if (queueFlags.Resume)
                     {
-                        Console.WriteLine($"[停止    ] 检测到 {stopFile}（启动前已存在），请求停止");
-                        stop.Cancel();
+                        if (execution.ResumeStatePath is null)
+                            Console.WriteLine("[断点    ] 没找到可续跑的 state.json（本次仍从头跑）");
+                        else
+                            Console.WriteLine($"[断点    ] 依据 {execution.ResumeStatePath} "
+                                + $"跳过 {execution.ResumeCompleted.Count} 个已完成任务"
+                                + (execution.ResumeCompleted.Count == 0 ? ""
+                                   : $": {string.Join(", ", execution.ResumeCompleted)}"));
                     }
-                    var watcher = new System.Threading.Timer(_ =>
-                    {
-                        if (!File.Exists(stopFile) || stop.IsCancellationRequested) return;
-                        Console.WriteLine($"[停止    ] 检测到 {stopFile}，请求在任务边界停止");
-                        stop.Cancel();
-                    }, null, 200, 200);
-                    try
-                    {
-                        var queueResultWatched = queue.Run(requests, stop.Token);
-                        PrintQueueReport(queueResultWatched, requests);
-                        return queueResultWatched.FailedCount == 0 ? 0 : 1;
-                    }
-                    finally
-                    {
-                        watcher.Dispose();      // 显式释放，别依赖 GC 或 using 的写法
-                    }
+                    if (execution.StopFileTriggered)
+                        Console.WriteLine("[停止    ] 检测到停止文件，已请求在任务边界停止");
+                    PrintQueueReport(execution.Queue, execution.Requests);
+                    return execution.Queue.FailedCount == 0 ? 0 : 1;
                 }
-                var queueResult = queue.Run(requests, stop.Token);
-                PrintQueueReport(queueResult, requests);
-                return queueResult.FailedCount == 0 ? 0 : 1;
+                finally { Console.CancelKeyPress -= requestStop; }
             }
             if (command == "plan-queue")
             {
@@ -306,18 +248,19 @@ internal static class Program
             if (command == "selftest-runtime")
             {
                 // R1 运行时自检：替身宿主，不启动 Python、不连设备。
-                string? runtimeFixture = null, runtimeJson = null;
+                string? runtimeFixture = null, runtimeJson = null, runtimeWorkspace = null;
                 for (int i = 1; i < args.Length - 1; i++)
                 {
                     if (args[i] == "--fixture") runtimeFixture = args[i + 1];
                     if (args[i] == "--json") runtimeJson = args[i + 1];
+                    if (args[i] == "--workspace") runtimeWorkspace = args[i + 1];
                 }
                 if (runtimeFixture is null)
                 {
                     Console.WriteLine("用法: selftest-runtime --fixture <用例.json> [--json <裁决.json>]");
                     return 2;
                 }
-                return RuntimeSelfCheck.Run(runtimeFixture, runtimeJson, Path.GetTempPath());
+                return RuntimeSelfCheck.Run(runtimeFixture, runtimeJson, runtimeWorkspace);
             }
             if (command == "contract")
             {
@@ -411,29 +354,8 @@ internal static class Program
             }
             if (command == "goto")
             {
-                // 沿上游页面图真机导航：goto <page_target> [--adb .. --serial .. --server cn]
-                string? realAdb2 = null, realSerial2 = null, targetPage = null;
-                bool gotoEngineCapture = false;
-                // 默认取实测最优：scrcpy 抓图 e2e 128ms（比 adb 快 2.5 倍）、MaaTouch 点击稳态 53ms
-                string gotoScreen = "scrcpy", gotoCtrl = "MaaTouch";
-                int gotoRounds = 1;
-                for (int i = 1; i < args.Length - 1; i++)
-                {
-                    if (args[i] == "--adb") realAdb2 = args[i + 1];
-                    if (args[i] == "--serial") realSerial2 = args[i + 1];
-                    if (args[i] == "--to") targetPage = args[i + 1];
-                    if (args[i] == "--capture-engine") gotoEngineCapture = true;
-                    if (args[i] == "--screenshot") gotoScreen = args[i + 1];
-                    if (args[i] == "--control") gotoCtrl = args[i + 1];
-                    if (args[i] == "--rounds" && int.TryParse(args[i + 1], out int rd)) gotoRounds = rd;
-                }
-                targetPage ??= args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
-                if (realAdb2 is null || realSerial2 is null || targetPage is null)
-                    return Fail("用法: goto <page_目标> --adb <adb.exe> --serial <serial> " +
-                                "[--capture-engine [--screenshot droidcast] [--control ADB]]");
-                string toolsDir3 = paths.ToolsDirectory;
-                return DeviceCheck.RunGoto(realAdb2, realSerial2, repoDir, toolsDir3, targetPage,
-                    gotoEngineCapture, gotoScreen, gotoCtrl, gotoRounds);
+                return Fail("goto 已弃用：请把 navigate 的 to、max_hops、rounds 写入队列 JSON，"
+                            + "再使用 queue --file <队列.json> --run --allow-actions 执行");
             }
             if (command == "vision")
             {
@@ -458,8 +380,8 @@ internal static class Program
                 "show" => Show(catalog, target),
                 "campaign" => CampaignCheck.Run(catalog, target),
                 _ => Fail($"未知命令: {command}"
-                          + "（可用: verify / list / show / imaging / matching / vision / campaign / "
-                          + "map / map-ir / capture / device / goto / run / contract）"),
+                           + "（可用: verify / list / show / imaging / matching / vision / campaign / "
+                           + "map / map-ir / capture / device / queue / contract）"),
             };
         }
         catch (Exception ex)
@@ -746,20 +668,31 @@ internal static class Program
         for (int i = 1; i < args.Length; i++)
         {
             string a = args[i];
-            if (a is "--run" or "--allow-actions" or "--repeat" or "--clear-all"
+            if (a is "--run" or "--allow-actions" or "--read-only-device" or "--repeat" or "--clear-all"
                 or "--continue-on-error" or "--resume")
             {
                 if (a == "--run") flags.Run = true;
                 if (a == "--allow-actions") flags.AllowActions = true;
+                if (a == "--read-only-device") flags.Options.ReadOnlyDevice = true;
                 if (a == "--repeat") flags.Options.RepeatUntilCleared = true;
                 if (a == "--clear-all") flags.Options.ClearAll = true;
                 if (a == "--continue-on-error") flags.ContinueOnError = true;
                 if (a == "--resume") flags.Resume = true;
                 continue;
             }
-            if (a.StartsWith("--") && i + 1 >= args.Length)
+            if (!a.StartsWith("--"))
+            {
+                if (i == 1) continue;
+                throw new ArgumentException($"多余的位置参数: {a}");
+            }
+            if (a is not ("--chapter" or "--file" or "--resume-state" or "--stop-file"
+                or "--adb" or "--serial" or "--artifacts" or "--screenshot" or "--control"
+                or "--max-seconds" or "--max-rounds" or "--fleet1" or "--fleet2"
+                or "--submarine" or "--data" or "--repo"))
+                throw new ArgumentException($"未知参数: {a}");
+            if (i + 1 >= args.Length || args[i + 1].StartsWith("--"))
                 throw new ArgumentException($"{a} 缺少参数值");
-            string v = i + 1 < args.Length ? args[i + 1] : "";
+            string v = args[++i];
             if (a == "--chapter" || a == positionalFlag) flags.Positional = v;
             else if (a == "--resume-state") flags.ResumeState = v;
             else if (a == "--stop-file") flags.StopFile = v;
@@ -769,15 +702,59 @@ internal static class Program
             else if (a == "--artifacts") flags.Options.ArtifactsDirectory = v;
             else if (a == "--screenshot") flags.Options.ScreenshotBackend = v;
             else if (a == "--control") flags.Options.ControlBackend = v;
-            else if (a == "--max-seconds" && double.TryParse(v, out double ms)) flags.Options.MaxSeconds = ms;
-            else if (a == "--max-rounds" && int.TryParse(v, out int mr)) flags.Options.MaxRounds = mr;
-            else if (a == "--fleet1" && int.TryParse(v, out int f1)) flags.Options.Fleet1 = f1;
-            else if (a == "--fleet2" && int.TryParse(v, out int f2)) flags.Options.Fleet2 = f2;
-            else if (a == "--submarine" && int.TryParse(v, out int fs)) flags.Options.SubmarineFleet = fs;
+            else if (a == "--max-seconds")
+                flags.Options.MaxSeconds = double.TryParse(v, out double ms) ? ms
+                    : throw new ArgumentException($"{a} 需要数字: {v}");
+            else if (a == "--max-rounds")
+                flags.Options.MaxRounds = int.TryParse(v, out int mr) ? mr
+                    : throw new ArgumentException($"{a} 需要整数: {v}");
+            else if (a == "--fleet1")
+                flags.Options.Fleet1 = int.TryParse(v, out int f1) ? f1
+                    : throw new ArgumentException($"{a} 需要整数: {v}");
+            else if (a == "--fleet2")
+                flags.Options.Fleet2 = int.TryParse(v, out int f2) ? f2
+                    : throw new ArgumentException($"{a} 需要整数: {v}");
+            else if (a == "--submarine")
+                flags.Options.SubmarineFleet = int.TryParse(v, out int fs) ? fs
+                    : throw new ArgumentException($"{a} 需要整数: {v}");
         }
         flags.Options.DryRun = !flags.Run;
         flags.Options.AllowActions = flags.AllowActions;
         return flags;
+    }
+
+    /// <summary>兼容 goto 的 hop/result 文本；只排版任务已保存的逐回合导航证据。</summary>
+    private static void PrintNavigationEvidence(System.Text.Json.Nodes.JsonObject evidence)
+    {
+        static string Pages(System.Text.Json.Nodes.JsonNode? value)
+            => value is System.Text.Json.Nodes.JsonArray pages
+                ? string.Join(",", pages.Select(page => page?.GetValue<string>() ?? "")) : "";
+
+        if (evidence["rounds"] is System.Text.Json.Nodes.JsonArray rounds)
+            foreach (var round in rounds.OfType<System.Text.Json.Nodes.JsonObject>())
+            {
+                foreach (string phase in new[] { "return_to_main", "to_target" })
+                {
+                    if (round[phase] is not System.Text.Json.Nodes.JsonObject leg) continue;
+                    if (leg["hops"] is System.Text.Json.Nodes.JsonArray hops)
+                        foreach (var hop in hops.OfType<System.Text.Json.Nodes.JsonObject>())
+                            Console.WriteLine($"[hop {hop["Hop"]}   ] on={Pages(hop["OnPages"])} " +
+                                              $"click {hop["Button"]} score={hop["Score"]?.GetValue<double>():F4}" +
+                                              (hop["LowConfidence"]?.GetValue<bool>() == true ? "(低置信)" : "") +
+                                              $" at ({hop["ClickX"]},{hop["ClickY"]}) -> {Pages(hop["ArrivedPages"])}");
+                    Console.WriteLine($"[result  ] success={leg["success"]?.GetValue<bool>()} " +
+                                      $"final={Pages(leg["final_pages"])}");
+                    if (leg["failure"] is System.Text.Json.Nodes.JsonNode failure)
+                        Console.WriteLine($"[failure ] {failure}");
+                }
+                if (round["to_target"] is System.Text.Json.Nodes.JsonObject targetLeg)
+                    Console.WriteLine($"[round {round["round"]}   ] " +
+                                      $"{targetLeg["elapsed_ms"]?.GetValue<double>(),7:F0} ms " +
+                                      $"success={round["success"]?.GetValue<bool>()} " +
+                                      $"hops={targetLeg["hops"]?.AsArray().Count ?? 0}");
+            }
+        if (evidence["success"]?.GetValue<bool>() == true)
+            Console.WriteLine($"已到达 {evidence["target"]}（{evidence["hops"]?.AsArray().Count ?? 0} 跳）");
     }
 
     /// <summary>任务队列报告：只排版，判定在 <see cref="Alas.Tasks.TaskQueue"/> 里做完了。</summary>
@@ -795,6 +772,11 @@ internal static class Program
                               (request?.Required == true ? " required=true" : ""));
             if (task.Evidence is not null)
             {
+                if (task.Kind == "navigate") PrintNavigationEvidence(task.Evidence);
+                if (task.Evidence["ticks"] is System.Text.Json.Nodes.JsonNode ticks)
+                    Console.WriteLine($"[观测    ] ticks={ticks} errors={task.Evidence["errors"]} " +
+                                      $"pages={task.Evidence["pages"]?.ToJsonString()} " +
+                                      $"capture={task.Evidence["capture"]?["method"]}");
                 if (task.Evidence["batch_outcome"] is System.Text.Json.Nodes.JsonNode batch)
                     Console.WriteLine($"[任务证据] batch_outcome={batch} cleared={task.Evidence["cleared"]} " +
                                       $"stages={task.Evidence["stages"]?.AsArray().Count ?? 0}");

@@ -75,99 +75,128 @@ public sealed class RunReport
         }
 
         // ---- 队列层（`queue.json`）
-        var queue = ReadJson(report, Path.Combine(report.RunDirectory, "queue.json"));
+        string queuePath = Path.Combine(report.RunDirectory, "queue.json");
+        var queue = ReadJson(report, queuePath);
         if (queue is not null)
         {
-            report.QueueOutcome = queue["outcome"]?.GetValue<string>();
-            report.DryRun = queue["dry_run"]?.GetValue<bool>() ?? false;
-            report.HostStartCount = queue["host_start_count"]?.GetValue<int>();
-            report.DeviceConfigureCount = queue["device_configure_count"]?.GetValue<int>();
-            // 提前停止与原因也要上数据面：只给一个 `outcome=cancelled`，前端看不出"为什么停"
-            // （是人停的、还是失败即停、还是被前序任务带过的）。
-            report.StoppedEarly = queue["stopped_early"]?.GetValue<bool>() ?? false;
-            report.StopReason = queue["stop_reason"]?.GetValue<string>();
-            if (queue["tasks"] is JsonArray tasks)
-                foreach (var node in tasks)
-                {
-                    report.Tasks++;
-                    string outcome = node?["outcome"]?.GetValue<string>() ?? "unknown";
-                    if (outcome is "succeeded" or "dry_run") report.TasksSucceeded++;
-                    else if (outcome == "skipped") report.TasksSkipped++;
-                    else report.TasksFailed++;
-                    report.Items.Add(new JsonObject
+            try
+            {
+                if (queue["tasks"] is not JsonArray queueTasks ||
+                    queueTasks.Any(node => node is not JsonObject))
+                    throw new JsonException("queue.tasks 必须是对象数组");
+                report.QueueOutcome = queue["outcome"]?.GetValue<string>();
+                report.DryRun = queue["dry_run"]?.GetValue<bool>() ?? false;
+                report.HostStartCount = queue["host_start_count"]?.GetValue<int>();
+                report.DeviceConfigureCount = queue["device_configure_count"]?.GetValue<int>();
+                // 提前停止与原因也要上数据面：只给一个 `outcome=cancelled`，前端看不出"为什么停"
+                // （是人停的、还是失败即停、还是被前序任务带过的）。
+                report.StoppedEarly = queue["stopped_early"]?.GetValue<bool>() ?? false;
+                report.StopReason = queue["stop_reason"]?.GetValue<string>();
+                if (queue["tasks"] is JsonArray tasks)
+                    foreach (var node in tasks)
                     {
-                        ["level"] = "task",
-                        ["id"] = node?["id"]?.DeepClone(),
-                        ["kind"] = node?["kind"]?.DeepClone(),
-                        ["outcome"] = outcome,
-                        ["error_kind"] = node?["error_kind"]?.DeepClone(),
-                        ["error"] = node?["error"]?.DeepClone(),
-                        ["artifact"] = node?["artifact"]?.DeepClone(),
-                    });
-                    CheckArtifact(report, node?["artifact"]?.GetValue<string>());
-                    if (outcome is not ("succeeded" or "dry_run" or "skipped"))
-                        report.Findings.Add(new RunFinding("task_failed",
-                            $"任务 {node?["id"]?.GetValue<string>()} 结论 {outcome}"
-                            + (node?["error"] is JsonNode e ? $"：{e}" : ""),
-                            node?["artifact"]?.GetValue<string>()));
-                    if (report.QueueOutcome == "failed" && outcome == "skipped"
-                        && node?["error"] is JsonNode reason)
-                        report.Findings.Add(new RunFinding("task_skipped", $"任务被跳过：{reason}",
-                            node?["artifact"]?.GetValue<string>()));
-                }
-            if (report.QueueOutcome == "failed" && report.TasksFailed == 0)
-                report.Findings.Add(new RunFinding("batch_failed", "队列结论 failed 但没有失败任务（工件自相矛盾）"));
+                        report.Tasks++;
+                        string outcome = node?["outcome"]?.GetValue<string>() ?? "unknown";
+                        if (outcome is "succeeded" or "dry_run") report.TasksSucceeded++;
+                        else if (outcome == "skipped") report.TasksSkipped++;
+                        else report.TasksFailed++;
+                        report.Items.Add(new JsonObject
+                        {
+                            ["level"] = "task",
+                            ["id"] = node?["id"]?.DeepClone(),
+                            ["kind"] = node?["kind"]?.DeepClone(),
+                            ["outcome"] = outcome,
+                            ["error_kind"] = node?["error_kind"]?.DeepClone(),
+                            ["error"] = node?["error"]?.DeepClone(),
+                            ["artifact"] = node?["artifact"]?.DeepClone(),
+                        });
+                        CheckArtifact(report, node?["artifact"]?.GetValue<string>());
+                        if (outcome is not ("succeeded" or "dry_run" or "skipped"))
+                            report.Findings.Add(new RunFinding("task_failed",
+                                $"任务 {node?["id"]?.GetValue<string>()} 结论 {outcome}"
+                                + (node?["error"] is JsonNode e ? $"：{e}" : ""),
+                                node?["artifact"]?.GetValue<string>()));
+                        if (report.QueueOutcome == "failed" && outcome == "skipped"
+                            && node?["error"] is JsonNode reason)
+                            report.Findings.Add(new RunFinding("task_skipped", $"任务被跳过：{reason}",
+                                node?["artifact"]?.GetValue<string>()));
+                    }
+                if (report.QueueOutcome == "failed" && report.TasksFailed == 0)
+                    report.Findings.Add(new RunFinding("batch_failed", "队列结论 failed 但没有失败任务（工件自相矛盾）"));
+            }
+            catch (Exception error) when (IsJsonShapeError(error))
+            {
+                MarkUnreadable(report, queuePath, error);
+            }
         }
 
         // ---- 批次层（`index.json`，`campaign` 命令或队列里的战役任务都会写）
-        var batch = ReadJson(report, Path.Combine(report.RunDirectory, "index.json"));
+        string batchPath = Path.Combine(report.RunDirectory, "index.json");
+        var batch = ReadJson(report, batchPath);
         if (batch is not null)
         {
-            report.BatchOutcome = batch["outcome"]?.GetValue<string>();
-            report.DryRun |= batch["dry_run"]?.GetValue<bool>() ?? false;
-            // 单批命令（`alashub campaign`）没有 queue.json：宿主/设备的初始化次数要**回头从
-            // index.json 取**，否则数据面上是 `?`，而"宿主只起一次"正是 R1 门槛要看的东西。
-            report.HostStartCount ??= batch["host_start_count"]?.GetValue<int>();
-            report.DeviceConfigureCount ??= batch["device_configure_count"]?.GetValue<int>();
-            report.StoppedEarly |= batch["stopped_early"]?.GetValue<bool>() ?? false;
-            report.StopReason ??= batch["stop_reason"]?.GetValue<string>();
-            if (batch["stages"] is JsonArray stages)
-                foreach (var node in stages)
-                {
-                    report.Stages++;
-                    bool cleared = node?["cleared"]?.GetValue<bool>() ?? false;
-                    if (cleared) report.StagesCleared++;
-                    report.Items.Add(new JsonObject
+            try
+            {
+                if (batch["stages"] is not JsonArray batchStages ||
+                    batchStages.Any(node => node is not JsonObject))
+                    throw new JsonException("index.stages 必须是对象数组");
+                report.BatchOutcome = batch["outcome"]?.GetValue<string>();
+                report.DryRun |= batch["dry_run"]?.GetValue<bool>() ?? false;
+                // 单批命令（`alashub campaign`）没有 queue.json：宿主/设备的初始化次数要**回头从
+                // index.json 取**，否则数据面上是 `?`，而"宿主只起一次"正是 R1 门槛要看的东西。
+                report.HostStartCount ??= batch["host_start_count"]?.GetValue<int>();
+                report.DeviceConfigureCount ??= batch["device_configure_count"]?.GetValue<int>();
+                report.StoppedEarly |= batch["stopped_early"]?.GetValue<bool>() ?? false;
+                report.StopReason ??= batch["stop_reason"]?.GetValue<string>();
+                if (batch["stages"] is JsonArray stages)
+                    foreach (var node in stages)
                     {
-                        ["level"] = "stage",
-                        ["chapter"] = node?["chapter"]?.DeepClone(),
-                        ["stage"] = node?["stage"]?.DeepClone(),
-                        ["outcome"] = node?["outcome"]?.DeepClone(),
-                        ["cleared"] = cleared,
-                        ["failed"] = node?["failed"]?.DeepClone(),
-                        ["skipped"] = node?["skipped"]?.DeepClone(),
-                        ["error"] = node?["error"]?.DeepClone(),
-                        ["artifact"] = node?["artifact"]?.DeepClone(),
-                    });
-                    CheckArtifact(report, node?["artifact"]?.GetValue<string>());
-                    if (node?["failed"]?.GetValue<bool>() == true)
-                        report.Findings.Add(new RunFinding("stage_not_cleared",
-                            $"关卡 {node?["stage"]?.GetValue<string>() ?? node?["chapter"]?.GetValue<string>()} "
-                            + $"未通过：{node?["outcome"]?.GetValue<string>()}"
-                            + (node?["error"] is JsonNode e ? $"（{e}）" : ""),
-                            node?["artifact"]?.GetValue<string>()));
-                }
+                        report.Stages++;
+                        bool cleared = node?["cleared"]?.GetValue<bool>() ?? false;
+                        if (cleared) report.StagesCleared++;
+                        report.Items.Add(new JsonObject
+                        {
+                            ["level"] = "stage",
+                            ["chapter"] = node?["chapter"]?.DeepClone(),
+                            ["stage"] = node?["stage"]?.DeepClone(),
+                            ["outcome"] = node?["outcome"]?.DeepClone(),
+                            ["cleared"] = cleared,
+                            ["failed"] = node?["failed"]?.DeepClone(),
+                            ["skipped"] = node?["skipped"]?.DeepClone(),
+                            ["error"] = node?["error"]?.DeepClone(),
+                            ["artifact"] = node?["artifact"]?.DeepClone(),
+                        });
+                        CheckArtifact(report, node?["artifact"]?.GetValue<string>());
+                        if (node?["failed"]?.GetValue<bool>() == true)
+                            report.Findings.Add(new RunFinding("stage_not_cleared",
+                                $"关卡 {node?["stage"]?.GetValue<string>() ?? node?["chapter"]?.GetValue<string>()} "
+                                + $"未通过：{node?["outcome"]?.GetValue<string>()}"
+                                + (node?["error"] is JsonNode e ? $"（{e}）" : ""),
+                                node?["artifact"]?.GetValue<string>()));
+                    }
+            }
+            catch (Exception error) when (IsJsonShapeError(error))
+            {
+                MarkUnreadable(report, batchPath, error);
+            }
         }
 
         // ---- 单关结果的合同违例（`sortie-*.json` 里的 result.contract_violations）
         foreach (var path in files.Where(f => Path.GetFileName(f).StartsWith("sortie-", StringComparison.Ordinal)))
         {
             var document = ReadJson(report, path);
-            if (document?["result"]?["contract_violations"] is JsonArray violations
-                && violations.Count > 0)
-                report.Findings.Add(new RunFinding("contract_violation",
-                    $"结果未通过合同: {string.Join(",", violations.Select(v => v?.GetValue<string>()))}",
-                    path));
+            try
+            {
+                if (document?["result"]?["contract_violations"] is JsonArray violations
+                    && violations.Count > 0)
+                    report.Findings.Add(new RunFinding("contract_violation",
+                        $"结果未通过合同: {string.Join(",", violations.Select(v => v?.GetValue<string>()))}",
+                        path));
+            }
+            catch (Exception error) when (IsJsonShapeError(error))
+            {
+                MarkUnreadable(report, path, error);
+            }
         }
 
         // ---- 任务边界的只读状态快照（写在 `task-*.json` 里，R2 的"跨任务复位"证据）
@@ -176,15 +205,22 @@ public sealed class RunReport
         foreach (var path in files.Where(f => Path.GetFileName(f).StartsWith("task-", StringComparison.Ordinal)))
         {
             var document = ReadJson(report, path);
-            if (document?["id"]?.GetValue<string>() is not string taskId) continue;
-            var boundary = document["boundary_state"] as JsonObject;
-            report.Boundaries[taskId] = boundary;
-            if (boundary?["available"]?.GetValue<bool>() == true) report.BoundariesWithFrame++;
-            else report.BoundariesWithoutFrame++;
-            foreach (var item in report.Items)
-                if (item["level"]?.GetValue<string>() == "task"
-                    && item["id"]?.GetValue<string>() == taskId)
-                    item["boundary_state"] = boundary?.DeepClone();
+            try
+            {
+                if (document?["id"]?.GetValue<string>() is not string taskId) continue;
+                var boundary = document["boundary_state"] as JsonObject;
+                report.Boundaries[taskId] = boundary;
+                if (boundary?["available"]?.GetValue<bool>() == true) report.BoundariesWithFrame++;
+                else report.BoundariesWithoutFrame++;
+                foreach (var item in report.Items)
+                    if (item["level"]?.GetValue<string>() == "task"
+                        && item["id"]?.GetValue<string>() == taskId)
+                        item["boundary_state"] = boundary?.DeepClone();
+            }
+            catch (Exception error) when (IsJsonShapeError(error))
+            {
+                MarkUnreadable(report, path, error);
+            }
         }
 
         // ---- 会话日志
@@ -197,20 +233,20 @@ public sealed class RunReport
                 report.LogEntries++;
                 try
                 {
-                    var entry = JsonNode.Parse(line);
-                    string level = entry?["level"]?.GetValue<string>() ?? "";
+                    if (JsonNode.Parse(line) is not JsonObject entry)
+                        throw new JsonException("会话日志行必须是 JSON 对象");
+                    string level = LogString(entry, "level");
                     if (level == "ERROR") report.LogErrors++;
                     if (level == "WARN") report.LogWarnings++;
                     // scope 分布：前端要能看出"这次运行里哪些部件说了话"
                     // （例如 queue/stage/task/artifacts/session），只给总数看不见来源。
-                    string scope = entry?["scope"]?.GetValue<string>() ?? "";
+                    string scope = LogString(entry, "scope");
                     if (scope.Length > 0)
                         report.LogScopes[scope] = report.LogScopes.GetValueOrDefault(scope) + 1;
                 }
-                catch (JsonException)
+                catch (Exception error) when (IsJsonShapeError(error))
                 {
-                    report.Findings.Add(new RunFinding("unreadable_artifact",
-                        "会话日志里有非 JSON 行", logPath));
+                    MarkUnreadable(report, logPath, error);
                 }
             }
         }
@@ -251,12 +287,16 @@ public sealed class RunReport
             $"引用的工件不存在: {artifact}", artifact));
     }
 
-    private static JsonNode? ReadJson(RunReport report, string path)
+    private static JsonObject? ReadJson(RunReport report, string path)
     {
         if (!File.Exists(path)) return null;
         try
         {
-            return JsonNode.Parse(File.ReadAllText(path));
+            if (JsonNode.Parse(File.ReadAllText(path)) is JsonObject document)
+                return document;
+            report.Findings.Add(new RunFinding("unreadable_artifact",
+                $"{Path.GetFileName(path)} 必须是 JSON 对象", path));
+            return null;
         }
         catch (Exception error)
         {
@@ -264,6 +304,21 @@ public sealed class RunReport
                 $"{Path.GetFileName(path)} 读不出来: {error.Message}", path));
             return null;
         }
+    }
+
+    private static bool IsJsonShapeError(Exception error)
+        => error is JsonException or InvalidOperationException or FormatException or ArgumentException;
+
+    private static void MarkUnreadable(RunReport report, string path, Exception error)
+        => report.Findings.Add(new RunFinding("unreadable_artifact",
+            $"{Path.GetFileName(path)} 格式错误: {error.Message}", path));
+
+    private static string LogString(JsonObject entry, string key)
+    {
+        if (entry[key] is null) return "";
+        if (entry[key] is JsonValue value && value.TryGetValue<string>(out var text))
+            return text;
+        throw new JsonException($"会话日志的 {key} 必须是字符串");
     }
 
     public JsonObject ToJson()
@@ -298,9 +353,8 @@ public sealed class RunReport
                 ["log_entries"] = LogEntries,
                 ["log_errors"] = LogErrors,
                 ["log_warnings"] = LogWarnings,
-            ["log_scopes"] = JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(LogScopes)),
+                ["log_scopes"] = JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(LogScopes)),
                 ["boundaries_with_frame"] = BoundariesWithFrame,
-            ["log_scopes"] = JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(LogScopes)),
                 ["boundaries_without_frame"] = BoundariesWithoutFrame,
             },
             ["has_failures"] = HasFailures,

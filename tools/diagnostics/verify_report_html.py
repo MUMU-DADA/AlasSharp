@@ -17,10 +17,13 @@
 from __future__ import annotations
 
 import json
+import html as html_lib
+import importlib.util
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[2]
 EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
@@ -66,6 +69,61 @@ def main() -> int:
         return 1
 
     failures: list[str] = []
+    spec = importlib.util.spec_from_file_location('report_html', GENERATOR)
+    report_html = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(report_html)
+    with tempfile.TemporaryDirectory(prefix='alas-html-detail-') as tmp:
+        run_dir = Path(tmp) / 'run'
+        run_dir.mkdir()
+        artifact = run_dir / 'task-detail.json'
+        artifact.write_text(json.dumps({
+            'evidence': {'count': 3, 'nested': {'marker': '<script>unsafe</script>'}},
+            'unmet_preconditions': ['needs-device'],
+        }), encoding='utf-8')
+        report = {
+            'directory': str(run_dir),
+            'items': [{'level': 'task', 'id': 'detail', 'kind': 'observe',
+                       'outcome': 'skipped', 'artifact': str(run_dir / 'old' / artifact.name)}],
+            'findings': [{'code': 'fixture', 'detail': '真实发现说明'}],
+            'long_value': 'X' * 4200 + 'END_OF_REPORT',
+        }
+        detail_html = report_html.render(report)
+        detail_checks = [
+            ('搬迁后同名工件的嵌套证据可查看',
+             '查看证据' in detail_html and html_lib.escape('"marker": "<script>unsafe</script>"') in detail_html,
+             '嵌套证据缺失'),
+            ('未满足的前置条件可查看', 'needs-device' in detail_html,
+             '前置条件缺失'),
+            ('证据内容经过 HTML 转义', '<script>unsafe</script>' not in detail_html,
+             '证据包含未转义脚本'),
+            ('原始报告未截断', 'END_OF_REPORT' in detail_html,
+             '长报告尾部缺失'),
+            ('运行目录与发现说明来自真实数据字段',
+             str(run_dir) in detail_html and '<td>真实发现说明</td>' in detail_html,
+             'directory/detail 字段未显示'),
+            ('任务宽表在窄屏内独立滚动',
+             '<div class="table-scroll"><table>' in detail_html
+             and '.table-scroll { max-width: 100%; overflow-x: auto; }' in detail_html,
+             '宽表没有滚动容器'),
+        ]
+        artifact.unlink()
+        missing_html = report_html.render(report)
+        detail_checks.append(('工件缺失时仍可查看报告',
+                              '工件不可用' in missing_html and 'detail' in missing_html,
+                              '缺工件状态未显示'))
+        outside = Path(tmp) / 'task-private.json'
+        outside.write_text(json.dumps({'evidence': {'private': 'OUTSIDE_RUN'}}), encoding='utf-8')
+        report['items'][0]['artifact'] = str(outside)
+        external_html = report_html.render(report)
+        detail_checks.append(('外部工件路径不会被内联',
+                              'OUTSIDE_RUN' not in external_html and '工件不可用' in external_html,
+                              '读入了运行目录以外的 JSON'))
+        print('=== 逐任务证据 ===')
+        for name, ok, detail in detail_checks:
+            print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+            if not ok:
+                failures.append(f'{name}: {detail}')
+
     with tempfile.TemporaryDirectory(prefix='alas-html-verify-') as tmp:
         tmpdir = Path(tmp)
         artifacts = build_run(tmpdir)
@@ -77,6 +135,16 @@ def main() -> int:
         # "不丢事实"说的是**运行视图**不能丢事实。
         run_dir = sorted(p for p in artifacts.glob('*') if p.is_dir())[-1]
         _, html = render(run_dir, tmpdir / 'view.html')
+        before_default = sorted(str(p.relative_to(run_dir)) for p in run_dir.rglob('*') if p.is_file())
+        default_proc = run(sys.executable, GENERATOR, run_dir)
+        after_default = sorted(str(p.relative_to(run_dir)) for p in run_dir.rglob('*') if p.is_file())
+        default_html = artifacts.parent / (artifacts.name + '-views') / f'{run_dir.name}.html'
+        default_ok = (default_proc.returncode == 0 and default_html.is_file()
+                      and before_default == after_default)
+        print('=== 默认输出位置 ===')
+        print(f"  {'ok  ' if default_ok else 'FAIL'} 单次运行视图不改动工件目录")
+        if not default_ok:
+            failures.append('单次运行默认输出改动了工件目录或未生成视图')
 
         print('=== 不丢事实（界面 vs 数据面）===')
         facts = []
@@ -100,6 +168,8 @@ def main() -> int:
                         break
         for finding in report.get('findings') or []:
             facts.append(('发现代码', str(finding.get('code'))))
+            facts.append(('发现说明', str(finding.get('detail'))))
+        facts.append(('运行目录', str(report.get('directory'))))
         missing = [f'{kind}={value}' for kind, value in facts if value not in html]
         checks = [
             ('数据面里的任务/关卡/发现都在 HTML 里出现', not missing,
@@ -140,11 +210,17 @@ def main() -> int:
         run(EXE, 'runs', '--artifacts', artifacts, '--json', index_json)
         index_runs = json.loads(index_json.read_text(encoding='utf-8')).get('runs') or []
         per_run = sorted((artifacts.parent / (artifacts.name + '-views')).glob('*.html'))
+        import re as _re
+        index_links = _re.findall(r'href="([^"#]+\.html)"', index_html)
+        linked_pages = [(index_path.parent / unquote(link)).resolve() for link in index_links]
         index_checks = [
             ('索引生成成功', index_proc.returncode == 0 and '运行列表' in index_html,
              f'rc={index_proc.returncode} len={len(index_html)}'),
             ('索引链到每次运行', all(p.name in index_html for p in per_run if p.is_file()),
              f'页面={[str(p.name) for p in per_run]}'),
+            ('自定义索引位置的相对链接可打开',
+             len(linked_pages) == len(per_run) and all(p.is_file() for p in linked_pages),
+             f'链接={index_links}'),
             # 索引里的**数值**也要真的来自数据面（列名对不上时会静默显示成 "—"）
             ('索引里的任务/关卡数与数据面一致',
              all(f'>{entry.get("tasks")}<' in index_html and f'>{entry.get("stages")}<' in index_html
@@ -225,7 +301,6 @@ def main() -> int:
 
             failures_section = section_of(bad_html, 'failures')
             # 悬空锚点：页首每个 #x 链接，文档里都必须有 id="x"
-            import re as _re
             linked = set(_re.findall(r'href="#([\w-]+)"', clean_html))
             dangling = sorted(a for a in linked if f'id="{a}"' not in clean_html)
             interact_checks = [

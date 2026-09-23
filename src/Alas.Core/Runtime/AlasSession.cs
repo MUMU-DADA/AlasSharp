@@ -87,6 +87,8 @@ public sealed class AlasSession : IDisposable
         {
             ["repo"] = options.RepoDirectory,
             ["dry_run"] = options.DryRun,
+            ["allow_actions"] = options.AllowActions,
+            ["read_only_device"] = options.ReadOnlyDevice,
             ["host_start_ms"] = Math.Round(started.Elapsed.TotalMilliseconds, 1),
         });
 

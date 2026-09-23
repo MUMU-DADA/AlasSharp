@@ -1,0 +1,26 @@
+{
+  "contract": "sortie-result/1",
+  "dry_run": false,
+  "requested_stages": 1,
+  "outcome": "withdrawn",
+  "cleared": false,
+  "error_kind": "none",
+  "stopped_early": true,
+  "stop_reason": "关卡未通过: withdrawn",
+  "elapsed_s": 38.8,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "stages": [
+    {
+      "chapter": "campaign.campaign_main.campaign_1_1",
+      "stage": "1-1",
+      "outcome": "withdrawn",
+      "cleared": false,
+      "failed": true,
+      "skipped": false,
+      "error_kind": "none",
+      "error": null,
+      "artifact": "<run-directory>/sortie-1-1.json"
+    }
+  ]
+}

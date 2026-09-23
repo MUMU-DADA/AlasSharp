@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""R0：把已归档的**实机跑图日志**重新核对一遍（结果证据链）。
+"""R0：把已归档的实机日志与脱敏运行工件重新核对（结果证据链）。
 
 为什么需要它：R0 的阶段门槛要求"至少一条真实成功结算和一条真实撤退证据都能从日志解释"。
 文档里写着"通关了"不算证据 —— 要能从原始日志里指出**是哪一次战果点击、
@@ -12,12 +12,14 @@
      `WITHDRAW CALLED` / `MAP WITHDRAW`、`[错误]`、步骤行、失败帧路径；
   3. 按 sortie-result/1 的规则复核 `cleared` / `campaign_end` 声称；
   4. 撤退事件按**发生在哪**分类：进图前的上一局清理 / 导航期 / 本局过程；
-  5. 产出 `data/result_records_audit.json` 与 `docs/result-evidence.md`。
+  5. 对结构化工件复用 sortie-result/1，并核对索引、会话日志与归档完整性；
+  6. 产出 `data/result_records_audit.json` 与 `docs/result-evidence.md`。
 
 退出码非 0 = 有记录解释不通，或有门槛项缺失。
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -28,6 +30,9 @@ ROOT = HERE.parents[1]
 DATA = ROOT / 'data'
 DOCS = ROOT / 'docs'
 sys.path.insert(0, str(ROOT / 'tools'))
+from sortie_contract import CONTRACT, evaluate
+
+ARCHIVE = HERE / 'evidence'
 
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -230,11 +235,115 @@ def audit_log(path: Path):
     return records
 
 
+def audit_artifact(path: Path):
+    """复核运行时脱敏归档的工件；结果语义仍由 sortie-result/1 判定。
+
+    index、单关工件与 session-log 必须指向同一次真实运行。旧机器绝对路径仅作为
+    来源标识；同目录归档以文件名关联，不要求原机器的运行目录仍存在。
+    """
+    artifact = json.loads(path.read_text(encoding='utf-8'))
+    result = artifact['result']
+    index = json.loads((path.parent / 'index.json').read_text(encoding='utf-8'))
+    session = [json.loads(line) for line in
+               (path.parent / 'session-log.jsonl').read_text(encoding='utf-8').splitlines()
+               if line.strip()]
+    verdict = evaluate(result, path.parent)
+    problems = list(verdict['details'])
+    if result.get('contract') != CONTRACT or index.get('contract') != CONTRACT:
+        problems.append('结构化归档缺少匹配的合同版本')
+    if result.get('dry_run') is not False or index.get('dry_run') is not False:
+        problems.append('结构化归档不是实际运行')
+    for key in ('chapter', 'stage', 'cleared'):
+        if artifact.get(key) != result.get(key):
+            problems.append(f'单关工件包装与结果的 {key} 不一致')
+    stages = [s for s in index.get('stages', [])
+              if str(s.get('artifact', '')).replace('\\', '/').rsplit('/', 1)[-1] == path.name]
+    if len(stages) != 1:
+        problems.append('index 必须有且只有一条对应工件记录')
+    else:
+        for key in ('chapter', 'stage', 'outcome', 'cleared'):
+            if stages[0].get(key) != result.get(key):
+                problems.append(f'index 与单关结果的 {key} 不一致')
+    matching = [entry for entry in session if entry.get('scope') == 'stage'
+                and entry.get('fields', {}).get('chapter') == result.get('chapter')]
+    if len(matching) != 1:
+        problems.append('session-log 必须有且只有一条对应关卡结论')
+    else:
+        fields = matching[0]['fields']
+        for key in ('stage', 'outcome', 'cleared'):
+            if fields.get(key) != result.get(key):
+                problems.append(f'session-log 与单关结果的 {key} 不一致')
+        if fields.get('violations') != len(verdict['violations']):
+            problems.append('session-log 合同违例数量与重新裁决不一致')
+    configured = any(e.get('scope') == 'session'
+                     and e.get('fields', {}).get('serial') for e in session)
+    real_session = any(e.get('scope') == 'session'
+                       and e.get('fields', {}).get('dry_run') is False for e in session)
+    if not configured or not real_session:
+        problems.append('session-log 缺少真实会话/设备配置记录')
+    evidence = result.get('end_evidence') or {}
+    steps = result.get('steps') or []
+    stage_withdrawal = (result.get('outcome') == 'withdrawn'
+                       and evidence.get('withdrawn') is True
+                       and evidence.get('stage_observed') is True
+                       and any(s.get('step') == 'withdraw' for s in steps)
+                       and any(p.endswith('.withdraw') for p in evidence.get('call_path', [])))
+    return {
+        'artifact': path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path),
+        'chapter': result.get('chapter'), 'stage': result.get('stage'),
+        'outcome': verdict['outcome'], 'cleared': verdict['cleared'],
+        'contract_violations': verdict['violations'],
+        'call_path': evidence.get('call_path', []),
+        'stage_observed': evidence.get('stage_observed'),
+        'withdrawn': evidence.get('withdrawn'),
+        'stage_withdrawal': stage_withdrawal,
+        'steps': [s.get('step') for s in steps],
+        'session_time': matching[0].get('time') if len(matching) == 1 else None,
+        'verdict': 'contradiction' if problems else 'consistent', 'problems': problems,
+    }
+
+
+def audit_archive(archive: Path = ARCHIVE):
+    records, errors = [], []
+    manifests = list(archive.rglob('archive.json'))
+    if not manifests:
+        errors.append(f'{archive}: 缺少结构化原始工件归档清单')
+    for manifest in manifests:
+        try:
+            metadata = json.loads(manifest.read_text(encoding='utf-8'))
+            files = metadata['files']
+            if not metadata.get('source_run') or not isinstance(files, dict):
+                raise ValueError('归档必须有原运行目录和文件校验和')
+            if set(metadata.get('source_files_sha256', {})) != set(files):
+                raise ValueError('脱敏副本必须逐文件保留原件校验和')
+            required = {'index.json', 'session-log.jsonl'}
+            if not required <= files.keys() or not any(n.startswith('sortie-') for n in files):
+                raise ValueError('归档必须包括 index、会话日志与单关工件')
+            for name, checksum in files.items():
+                if Path(name).name != name or '/' in name or '\\' in name:
+                    raise ValueError('归档文件名不得包含目录')
+                if hashlib.sha256((manifest.parent / name).read_bytes()).hexdigest() != checksum:
+                    raise ValueError(f'原始工件校验和不一致: {name}')
+            unlisted = {p.name for p in manifest.parent.glob('sortie-*.json')} - files.keys()
+            if unlisted:
+                raise ValueError(f'工件未登记在归档清单: {sorted(unlisted)}')
+        except (KeyError, TypeError, ValueError, OSError, AttributeError) as error:
+            errors.append(f'{manifest}: {type(error).__name__}: {error}')
+    for path in sorted(archive.rglob('sortie-*.json')):
+        try:
+            if not (path.parent / 'archive.json').is_file():
+                raise ValueError('单关工件缺少归档清单')
+            records.append(audit_artifact(path))
+        except (KeyError, TypeError, ValueError, OSError, AttributeError) as error:
+            errors.append(f'{path}: {type(error).__name__}: {error}')
+    return records, errors
+
+
 def render_markdown(audit) -> str:
     lines = [
         '# 实机结果证据核对（R0）',
         '',
-        '> 本页由 `tools/diagnostics/audit_real_records.py` 从 `data/*.log` 重新核对生成，**不手写**。',
+        '> 本页由 `tools/diagnostics/audit_real_records.py` 从 `data/*.log` 与 `tools/diagnostics/evidence/` 脱敏工件重新核对生成，**不手写**。',
         '> 每条记录都能指回原始日志的行号；对不上就报矛盾，不做解释性兜底。',
         '',
         f"归档日志：{len(audit['logs'])} 份；出击记录：{len(audit['records'])} 条；"
@@ -263,6 +372,20 @@ def render_markdown(audit) -> str:
               '| 日志 | 行 | 性质 | 依据 |', '| --- | --- | --- | --- |']
     for event in audit['withdraw_events']:
         lines.append(f"| `{event['log']}` | {event['line'] + 1} | {event['kind']} | {event['why']} |")
+    lines += ['', '## 结构化运行工件', '',
+              '脱敏归档保留调用链与结果字段，同时检查结果合同、index 与会话日志。下表不把撤退当成通关；'
+              '它与上面的历史控制台日志分别计数。', '',
+              '| 工件 | 会话时间 | 结果 | 本局撤退证据 | 裁决 |',
+              '| --- | --- | --- | --- | --- |']
+    for record in audit['artifact_records']:
+        lines.append(f"| `{record['artifact']}` | {record['session_time']} | "
+                     f"{record['outcome']}, cleared={record['cleared']} | "
+                     f"{'withdraw 步骤 + 上游调用链 + 返回章节页' if record['stage_withdrawal'] else '—'} | "
+                     f"{'一致' if record['verdict'] == 'consistent' else '**矛盾**'} |")
+        for problem in record['problems']:
+            lines.append(f'\n- ⚠️ {problem}')
+    for error in audit['artifact_errors']:
+        lines.append(f'\n- ⚠️ {error}')
     lines += ['', '## 门槛与缺口', '']
     for item in audit['summary']['gate']:
         lines.append(f"- {item}")
@@ -283,23 +406,30 @@ def main() -> int:
             for event in record['evidence']['withdraw_events']:
                 all_events.append({'log': record['log'], 'stage': record['stage'], **event})
 
+    artifact_records, artifact_errors = audit_archive()
+    artifact_contradictions = [r for r in artifact_records if r['verdict'] != 'consistent']
     clears = [r for r in records if r['reported']['cleared']]
     explained_clears = [r for r in clears if r['verdict'] == 'consistent']
     contradictions = [r for r in records if r['verdict'] != 'consistent']
     explained_events = [e for e in all_events if e['kind'] in
                         ('cleanup_previous_sortie', 'navigation', 'stage')]
     stage_level_withdrawn = [r for r in records if r['reported'].get('outcome') == 'withdrawn']
+    artifact_withdrawn = [r for r in artifact_records
+                         if r['verdict'] == 'consistent' and r['stage_withdrawal']]
+    contradiction_count = len(contradictions) + len(artifact_contradictions) + len(artifact_errors)
 
     gate = []
     gate.append(f"真实成功结算：{len(explained_clears)} 条可解释"
                 + ('（通过）' if explained_clears else '（**未通过**）'))
     gate.append(f"真实撤退证据：{len(explained_events)} 起可解释"
                 + ('（通过）' if explained_events else '（**未通过**）'))
-    gate.append(f"记录自相矛盾：{len(contradictions)} 条"
-                + ('（通过）' if not contradictions else '（**未通过**）'))
+    gate.append(f"本局撤退结构化真机记录：{len(artifact_withdrawn)} 条可解释"
+                + ('（通过）' if artifact_withdrawn else '（待补）'))
+    gate.append(f"记录自相矛盾或工件无法核验：{contradiction_count} 条"
+                + ('（通过）' if not contradiction_count else '（**未通过**）'))
 
     gaps = []
-    if not stage_level_withdrawn:
+    if not stage_level_withdrawn and not artifact_withdrawn:
         gaps.append('归档日志里**没有**以 `outcome=withdrawn` 收尾的一局：'
                     + (f'现有 {len(all_events)} 起撤退都是进图前清理或导航期发生，'
                        '属于"上一局/客户端状态"清理，不是本局结论。'
@@ -318,6 +448,8 @@ def main() -> int:
         'contract': 'sortie-result/1',
         'logs': [p.name for p in logs],
         'records': records,
+        'artifact_records': artifact_records,
+        'artifact_errors': artifact_errors,
         'withdraw_events': all_events,
         'gaps': gaps,
         'summary': {
@@ -328,8 +460,9 @@ def main() -> int:
             'error_records': sum(1 for r in records if r['reported'].get('outcome') == 'error'),
             'withdraw_events': len(all_events),
             'withdraw_explained': len(explained_events),
-            'stage_level_withdrawn': len(stage_level_withdrawn),
-            'contradictions': len(contradictions),
+            'stage_level_withdrawn': len(stage_level_withdrawn) + len(artifact_withdrawn),
+            'artifact_records': len(artifact_records),
+            'contradictions': contradiction_count,
             'gate': gate,
         },
     }
@@ -353,7 +486,9 @@ def main() -> int:
     print()
     print('证据已写入: data/result_records_audit.json')
     print('证据文档: docs/result-evidence.md')
-    ok = bool(explained_clears) and bool(explained_events) and not contradictions
+    ok = (bool(explained_clears) and bool(explained_events or artifact_withdrawn)
+          and bool(stage_level_withdrawn or artifact_withdrawn)
+          and not contradiction_count)
     print()
     print('结果: ' + ('OK（真实通关与真实撤退都能从日志解释）' if ok else 'FAIL'))
     return 0 if ok else 1

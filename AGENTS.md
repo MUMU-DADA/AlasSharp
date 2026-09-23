@@ -53,7 +53,8 @@ Frozen：结论口径写在 `docs/result-contract.md`，生产方 `tools/sortie_
 - 改词表、不变量或违例码，必须**同时**改 Python 与 C# 两侧，并跑
   `python tools/diagnostics/verify_result_contract.py`（35 例）与
   `python tools/diagnostics/verify_architecture.py`（词表/违例码漂移会直接失败）。
-- `docs/result-evidence.md` 由 `tools/diagnostics/audit_real_records.py` 从 `data/*.log` 重建，不手写；
+- `docs/result-evidence.md` 由 `tools/diagnostics/audit_real_records.py` 从本地 `data/*.log` 与
+  `tools/diagnostics/evidence/` 脱敏归档重建，不手写；
   发现"声称结果与原始证据对不上"时，先修证据链或补真机验证，不得改小核对规则来让它变绿。
 - 失败必须可定位：`error` 带调用栈尾部，存下来的失败帧必须登记在 `failure_frames`。
 

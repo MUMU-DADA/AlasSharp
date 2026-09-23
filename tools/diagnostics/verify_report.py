@@ -135,6 +135,34 @@ def main() -> int:
             if not ok:
                 failures.append(f'{name}: {detail}')
 
+        # 合法 JSON 也可能含错误类型；报告应留 finding，不能直接抛异常。
+        print()
+        print('=== 反例：工件和日志的 JSON 类型错误 ===')
+        for case_number, (label, artifact_name, content) in enumerate((
+            ('queue.json 顶层数组', 'queue.json', '[]'),
+            ('queue.json 任务条目为数值', 'queue.json', '{"outcome":"succeeded","tasks":[42]}'),
+            ('index.json 关卡条目为数值', 'index.json', '{"outcome":"dry_run","stages":[42]}'),
+            ('任务工件 id 为数值', 'task-dry-rules.json', '{"id":42}'),
+            ('单关结果 result 为数组', 'sortie-2-1.json', '{"result":[]}'),
+            ('日志行顶层数组', 'session-log.jsonl', '[]\n'),
+            ('日志 level 为数组', 'session-log.jsonl', '{"level":[]}\n'),
+        ), start=1):
+            wrong_shape = tmpdir / f'wrong-shape-{case_number}'
+            shutil.copytree(run_dir, wrong_shape)
+            (wrong_shape / artifact_name).write_text(content, encoding='utf-8')
+            wrong_json = tmpdir / (wrong_shape.name + '.json')
+            wrong_result = run([str(EXE), 'report', '--run', str(wrong_shape),
+                                '--json', str(wrong_json)])
+            wrong_report = (json.loads(wrong_json.read_text(encoding='utf-8'))
+                            if wrong_json.is_file() else {})
+            codes = [finding['code'] for finding in wrong_report.get('findings', [])]
+            ok = (wrong_result.returncode == 0 and 'unreadable_artifact' in codes
+                  and wrong_report.get('evidence_complete') is False)
+            print(f"  {'ok  ' if ok else 'FAIL'} {label}：rc={wrong_result.returncode} "
+                  f'findings={codes}')
+            if not ok:
+                failures.append(f'{label} 未报告 unreadable_artifact')
+
         # ---- 反例一：删掉被引用的任务工件 → 必须报 missing_artifact
         # 工件里存的是**绝对路径**，所以要连原件一起删，否则绝对路径仍然命中。
         broken = tmpdir / 'broken-missing-artifact'

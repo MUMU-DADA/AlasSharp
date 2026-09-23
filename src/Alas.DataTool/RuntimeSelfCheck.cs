@@ -129,6 +129,7 @@ internal static class RuntimeSelfCheck
             Serial = serial,
             DryRun = dryRun,
             AllowActions = allowActions,
+            ReadOnlyDevice = node["read_only_device"]?.GetValue<bool>() ?? false,
             ArtifactsDirectory = artifactRoot,
             MaxSeconds = 60,
             MaxRounds = 3,
@@ -279,6 +280,7 @@ internal static class RuntimeSelfCheck
             Serial = serial,
             DryRun = dryRun,
             AllowActions = allowActions,
+            ReadOnlyDevice = node["read_only_device"]?.GetValue<bool>() ?? false,
             ArtifactsDirectory = artifactRoot,
             MaxSeconds = 60,
             MaxRounds = 3,
@@ -288,24 +290,36 @@ internal static class RuntimeSelfCheck
         StubVisionEngine? stub = null;
         Alas.Tasks.QueueResult? queue = null;
         var log = new SessionLog(echo: false);
+        using var cancel = new CancellationTokenSource();
+        string? cancelAfterOperation = node["cancel_after_op"]?.GetValue<string>();
+        int cancelAfterCall = node["cancel_after_call"]?.GetValue<int>() ?? 1;
         AlasSession? session = null;
         try
         {
             session = AlasSession.Start(options, _ =>
             {
                 engineCreations++;
-                stub = new StubVisionEngine(documents, errors);
+                stub = new StubVisionEngine(documents, errors,
+                    operationResponses: node["stub_responses"] as JsonObject,
+                    afterOperation: (operation, count) =>
+                    {
+                        if (operation == cancelAfterOperation && count == cancelAfterCall)
+                            cancel.Cancel();
+                    });
                 return stub;
             }, log);
             var runner = new Alas.Tasks.TaskQueue(session)
             {
                 StopOnFailure = stopOnFailure,
             }.Register(new Alas.Tasks.CampaignBatchTask())
-             .Register(new Alas.Tasks.NavigateTask());   // 小型导航环境（docs/runtime.md 第十五节）
+             .Register(new Alas.Tasks.NavigateTask())    // 小型导航环境（docs/runtime.md 第十五节）
+             .Register(new Alas.Tasks.ObserveTask())
+             .Register(new Alas.Tasks.PeriodicRunTask())
+             .Register(new PreconditionFailureTask());
             if (node["resume_completed"] is JsonArray resumed)
                 foreach (var id in resumed)
                     runner.ResumeCompleted.Add(id!.GetValue<string>());
-            queue = runner.Run(requests);
+            queue = runner.Run(requests, cancel.Token);
         }
         catch (Exception error)
         {
@@ -342,6 +356,17 @@ internal static class RuntimeSelfCheck
                         var got = queue.Tasks[i];
                         Compare(want, "id", got.Id, problems, $"第{i + 1}个任务");
                         Compare(want, "outcome", got.OutcomeName, problems, $"第{i + 1}个任务");
+                        if (want["evidence_equals"] is JsonObject wantValues)
+                            foreach (var (path, expectedValue) in wantValues)
+                            {
+                                JsonNode? actual = got.Evidence;
+                                foreach (string segment in path.Split('.'))
+                                    actual = actual is JsonObject obj ? obj[segment] : null;
+                                if (!JsonNode.DeepEquals(expectedValue, actual))
+                                    problems.Add($"第{i + 1}个任务 evidence.{path} 期望 "
+                                        + $"{expectedValue?.ToJsonString() ?? "null"} 实为 "
+                                        + $"{actual?.ToJsonString() ?? "null"}");
+                            }
                         // 失败**文案**也要能断言：第 156 轮那句"入口可能未解锁"的诊断后缀就靠它钉住
                         if (want["error_contains"] is JsonNode wantError)
                         {
@@ -520,6 +545,16 @@ internal static class RuntimeSelfCheck
 
     private static string Sanitize(string name)
         => new(name.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+    private sealed class PreconditionFailureTask : Alas.Tasks.ITaskRunner
+    {
+        public string Kind => "test_precondition_error";
+        public IReadOnlyList<string> Preconditions(Alas.Tasks.TaskRequest request,
+                                                   Alas.Tasks.TaskContext context)
+            => throw new InvalidOperationException("fixture precondition failure");
+        public Alas.Tasks.TaskResult Run(Alas.Tasks.TaskRequest request,
+                                        Alas.Tasks.TaskContext context, CancellationToken token)
+            => throw new InvalidOperationException("precondition failure must not run");
+    }
 }
 
 /// <summary>
@@ -532,17 +567,23 @@ internal sealed class StubVisionEngine : VisionEngineBase
     private readonly Dictionary<string, JsonObject> _documents;
     private readonly Dictionary<string, string> _errors;
     private readonly Action<string>? _afterResponse;
+    private readonly JsonObject? _operationResponses;
+    private readonly Action<string, int>? _afterOperation;
+    private readonly Dictionary<string, int> _operationCounts = new(StringComparer.Ordinal);
 
     public List<string> Calls { get; } = new();
     public int DeviceConfigureCalls { get; private set; }
     public bool Disposed { get; private set; }
 
     public StubVisionEngine(Dictionary<string, JsonObject> documents, Dictionary<string, string> errors,
-                            Action<string>? afterResponse = null)
+                            Action<string>? afterResponse = null, JsonObject? operationResponses = null,
+                            Action<string, int>? afterOperation = null)
     {
         _documents = documents;
         _errors = errors;
         _afterResponse = afterResponse;
+        _operationResponses = operationResponses;
+        _afterOperation = afterOperation;
     }
 
     protected override JsonNode CallRaw(string op, object? args)
@@ -552,6 +593,30 @@ internal sealed class StubVisionEngine : VisionEngineBase
             : JsonNode.Parse(JsonSerializer.Serialize(args))!.AsObject();
         string chapter = payload["chapter"]?.GetValue<string>() ?? "";
         Calls.Add($"{op}:{chapter}");
+        int count = _operationCounts.GetValueOrDefault(op) + 1;
+        _operationCounts[op] = count;
+        try
+        {
+            // 脚本只替换宿主返回；用例可以让第一次抓帧成功、后续抓帧失败，或返回页面错误。
+            // 序列耗尽后重复最后一项，避免测试结果依赖调度器的精确 tick 时序。
+            if (_operationResponses?[op] is JsonArray { Count: > 0 } sequence)
+            {
+                var response = sequence[Math.Min(count - 1, sequence.Count - 1)]!;
+                if (response["error"] is JsonNode error)
+                    throw new VisionWorkerException(op, error.GetValue<string>(), "<stub>");
+                return response["result"]?.DeepClone() ?? new JsonObject();
+            }
+            return DefaultResponse(op, payload, chapter);
+        }
+        finally
+        {
+            // 注入取消时先完整交付本次宿主调用；runner 必须在 tick 边界才响应它。
+            _afterOperation?.Invoke(op, count);
+        }
+    }
+
+    private JsonNode DefaultResponse(string op, JsonObject payload, string chapter)
+    {
         switch (op)
         {
             case "device_configure":
@@ -591,7 +656,21 @@ internal sealed class StubVisionEngine : VisionEngineBase
             case "device_back":
                 return new JsonObject { ["ms"] = 1 };
             case "device_capture_set":
-                return new JsonObject { ["captured"] = true };
+                return new JsonObject
+                {
+                    ["capture_ms"] = 12.5,
+                    ["method"] = "stub",
+                    ["raw"] = payload["raw"]?.GetValue<bool>() ?? true,
+                    ["shape"] = new JsonArray(720, 1280, 3),
+                };
+            case "map_detect":
+                return new JsonObject
+                {
+                    ["backend"] = "upstream-stub",
+                    ["detected"] = true,
+                    ["grid_count"] = payload["mode"]?.GetValue<string>() == "os" ? 18 : 24,
+                    ["reason"] = null,
+                };
             default:
                 return new JsonObject();
         }

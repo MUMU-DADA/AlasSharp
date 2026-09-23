@@ -20,16 +20,16 @@
 import argparse
 import json
 import os
-import subprocess
 import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(HERE, '..')))
 import alas_vision as av          # noqa: E402
+from queue_navigation import run_navigation  # noqa: E402
 
 ALASHUB = os.environ.get('ALASHUB', os.path.normpath(os.path.join(
-    HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net8.0', 'alashub.exe')))
+    HERE, '..', '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net8.0', 'alashub.exe')))
 
 
 def op(op_name, **args):
@@ -56,7 +56,7 @@ def main():
     p.add_argument('--chapter', default='campaign.campaign_main.campaign_11_1')
     p.add_argument('--stage', default=None, help='默认从 chapter 名推出来（campaign_11_1 -> 11-1）')
     p.add_argument('--serial', default=os.environ.get('SERIAL', '127.0.0.1:16384'))
-    p.add_argument('--no-goto', action='store_true', help='不先跑 alashub goto page_campaign')
+    p.add_argument('--no-goto', action='store_true', help='不先运行导航队列任务到 page_campaign')
     p.add_argument('--fleet1', type=int, default=3)
     p.add_argument('--fleet2', type=int, default=6)
     args = p.parse_args()
@@ -68,19 +68,22 @@ def main():
         stage = f'{parts[-2]}-{parts[-1]}' if len(parts) >= 3 else stem
 
     if not args.no_goto:
-        print(f'=== goto page_campaign ===', flush=True)
+        print('=== navigate page_campaign ===', flush=True)
         # **不用管道抓输出**：本机沙箱下"管道式 stdio"会以 EPERM 失败（实测）；
         # 这里只需要它的副作用（把游戏开到章节页），所以输出直接丢给 DEVNULL。
         try:
-            r = subprocess.run([ALASHUB, 'goto', 'page_campaign', '--serial', args.serial],
-                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL, timeout=180)
+            r = run_navigation(ALASHUB, 'page_campaign', args.serial,
+                               timeout=180, capture_output=False)
             print(f'  exit={r.returncode}', flush=True)
+            if r.returncode != 0:
+                print('  导航未完成；不在未知页面继续读取关卡进度', flush=True)
+                return r.returncode
         except OSError as e:
             # 沙箱下 python 起子进程可能直接 EPERM（实测）。此时不是"逻辑错"，
-            # 而是"本进程不许 spawn" —— 让调用方自己先跑 `alashub goto page_campaign`。
+            # 而是"本进程不许 spawn" —— 让调用方先跑导航队列任务。
             print(f'  !! 起不了子进程（{type(e).__name__}: {e}）；'
-                  f'请先自行 `alashub goto page_campaign`，或加 --no-goto', flush=True)
+                  '请先自行运行导航队列任务到 page_campaign，或加 --no-goto', flush=True)
+            return 2
 
     print('=== init ===', flush=True)
     print(' ', json.dumps(op('s3_campaign_init', chapter=args.chapter, serial=args.serial,

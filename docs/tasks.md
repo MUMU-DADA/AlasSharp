@@ -5,7 +5,7 @@
 | 主题 | 看哪节 |
 | --- | --- |
 | 通用任务模型与队列语义 | 模型 · 队列语义 |
-| 六个域（按实现顺序） | 战役批量域 → 账号状态 → 大世界/海域 → 活动章节清点 → 周期任务清点 → 周期任务调度状态 |
+| 十类业务任务与通用任务 | 战役批量、账号状态、大世界探针、活动清点、周期任务清点/调度/勘察/放行/执行、配置读取；通用导航与观测 |
 | 怎么跑 | 命令 |
 | 怎么验 | 验收矩阵 |
 | 还差什么 | 下一步与本域的缺口 |
@@ -31,6 +31,12 @@ src/Alas.Core/Tasks/
 | `TaskResult` | 结论 + `error_kind` + `evidence`（结构化事实）+ 工件路径 |
 | `TaskQueue` | 顺序调度，逐任务写工件与断点，产出 `queue.json` |
 
+队列文件的 `tasks` 必须是数组，逐项必须是对象；存在的 `input` 只能是 JSON 对象或 `null`。
+通用解析器只校验这个容器形状，业务字段继续由对应的 `ITaskRunner` 校验。数组、字符串等错误
+`input` 会在会话启动前返回输入错误，不会被当作缺省输入执行。
+战役域还会在出击前校验章节、布尔开关、时间/轮次/舰队数及字段名；错误类型、小数轮次、
+越界值和拼错字段均记前置条件不满足，不会静默采用默认值。
+
 **为什么把 `Skipped` 单独拿出来**：前置条件不满足是"没跑"，不是"跑失败"。
 混在一起报告会撒谎 —— 用户看到"失败"会去查游戏，其实只是这轮不该跑它。
 `required: true` 的任务前置条件不满足时才算失败（并停队列）。
@@ -45,7 +51,16 @@ src/Alas.Core/Tasks/
 | 取消 | 在**任务边界**生效；当前任务不打断，剩余任务记 `skipped` + `cancelled` |
 | 队列结论 | 有失败 → `failed`；被取消 → `cancelled`；全成功 → `succeeded`；全 dry-run → `dry_run`；其余 → `partial` |
 | 跨任务复位 | 每个任务开始前记一条边界日志；**复位由任务自己负责**（战役域交给上游 `prepare_campaign_navigation`） |
-| 断点续跑 | 逐任务写 `state.json`；`--resume` 跳过已成功/已 dry-run 的任务，并如实记 `skipped` + 原因 |
+| 断点续跑 | 逐任务写 `state.json`；`--resume` 只跳过当前任务及其有序前序任务的 id、kind、input、required 和会话运行参数均匹配的已成功/已 dry-run 任务，并如实记 `skipped` + 原因。队尾追加新任务不使已有完成项失效 |
+
+断点按当前队列逐项匹配，不把同一 id 的新任务当成旧任务。dry-run 与真实运行的会话参数不同，
+所以 dry-run 的完成项不会跳过后来的真实执行。旧格式仅保存任务 id、无法证明请求相同，续跑时
+会重新执行；同一请求的完成项仍在后续断点中累积保留。
+显式 `--resume-state <文件>` 必须与 `--resume` 同时使用；文件不存在时在会话启动前报输入错误，
+不会悄悄从头执行。找到的断点若损坏或缺少 `completed` 对象，也在启动前报错；自动寻找的
+断点同样如此。
+完成项只接受 `succeeded`、`dry_run` 或累积续跑的 `carried_over`；其他结果或缺少任务身份的
+条目会被视为损坏断点，在会话启动前报错。
 
 ## 战役批量域（第一个垂直切片）
 
@@ -77,6 +92,10 @@ src/Alas.Core/Tasks/
 alashub queue --file queue.json [--run --allow-actions] [--serial <设备>] `
               [--artifacts <目录>] [--resume] [--continue-on-error] [--max-rounds 20] ...
 ```
+
+只读设备任务使用 `--run --read-only-device`，动作任务使用 `--run --allow-actions`；两种授权都由
+会话记录，队列 JSON 不能自行把 dry-run 或只读会话升级为动作会话。`run` 与 `goto` 已弃用，
+只打印迁移提示，不能再作为任务执行入口。
 
 队列文件示例：
 
@@ -146,7 +165,7 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 
 | 字段 | 来自 |
 | --- | --- |
-| `pages` | 上游 `Page.check_button`（与 `alashub goto` 同一套页面判定） |
+| `pages` | 上游 `Page.check_button`（与 `NavigateTask` 同一套页面判定） |
 | `in_map` | 上游 `is_in_map()` 用的同一个 `handler/IN_MAP` 按钮（`ModuleBase.appear` → 颜色比对） |
 | `in_map_tolerance` | 该比对的实测相似度，**留数值不只留布尔** |
 | `config` | 账号配置要点（章节名/模式/舰队/心情/后端），只读快照 |
@@ -190,13 +209,13 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 | --- | --- | --- |
 | 运行时 / 队列 | `verify_runtime.py` | 宿主只起一次、失败即停、取消在边界生效、断点续跑、任务边界快照、撤退与上游报错可区分 |
 | 账号状态（只读） | `verify_account_state.py` | 真机帧上跑只读任务；逐帧相似度留证（含 `IN_MAP` 临界） |
-| 大世界/海域探针 | `verify_os_state.py` | 只读探针；`capture` 在 dry-run 记 skipped 而非失败；断点续跑接线 |
+| 大世界/海域探针 | `verify_os_state.py` | map / globe 两种上游只读检测；`capture` 在 dry-run 记 skipped；断点续跑接线 |
 | 活动清点 + 生成队列 | `verify_event_state.py` | 与独立数对拍；`plan-queue` 生成物**可直接执行** |
 | 周期任务清点 | `verify_task_catalog.py` | 两个来源（`task.yaml` 分组 / `args.json` 任务）可读且**不是同一集合** |
 | 周期任务调度状态 | `verify_task_schedule.py` | 与独立读数对拍 + 四种边界（全禁用/全启用/缺段/配置不存在）+ **只读**（配置字节不变） |
 | 周期任务勘察与放行 | `verify_periodic_plan.py` | 勘察与独立读一致；四类边界；**不 import 目标模块**；放行判定四条路径 + **executes 恒 False**（永不执行） |
 | 配置开关（授权前留档） | `verify_config_get.py` | 与独立读数对拍；**缺失 ≠ false**；空输入记 skipped |
-| 周期任务执行（执行环） | `verify_periodic_plan.py` | 未授权 → failed 且 CLI 打出判定行；真机两域见上文（dorm 闭环 / reward） |
+| 周期任务执行（执行环） | `verify_periodic_plan.py` | 会话未授权 → 前置跳过（required 才失败）；已授权后按上游 Scheduler.Command 绑定配置并调用原生 dispatcher；reward / opsi / event、TaskEnd / False / SystemExit 与设备配置恢复均有离线回归；历史真机两域见下文 |
 | 运行报告 / 运行列表 | `verify_report.py` | 报告事实 + 3 个反例 + `runs` 同秒不覆盖 + 单批形态 |
 | 运行报告的 HTML 视图（R4 第一屏） | `verify_report_html.py` | 不丢事实（数据面里的事实都要出现在界面里）+ 单文件自足 + 缺工件也能看 |
 | 停止任务 | `verify_stop.py` | `--stop-file` 在任务边界生效；剩余任务记 skipped；无停止文件时照常跑完 |
@@ -222,19 +241,19 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 | 调用 | `LoadScreenshot(path)`（或宿主当前帧）→ `CallTyped<MapDetectResult>("map_detect", new { mode = "os" })`；`globe` 走 `globe_detect` |
 | 结论 | **探针跑通即 `Succeeded`**（"没检测到"是有效状态，不是失败）；宿主/设备异常才 `Failed` |
 | 证据 | `detected`、`grid_count`、`center_loca`、`globe_center`、`log_lines`（已归一计时）、来源（帧路径 / 设备抓帧） |
-| 离线验收 | `tools/diagnostics/verify_os_state.py`：用 `data/fixtures/os_map.png`（宿主 `alashub map` 的默认夹具）跑队列任务，断言证据字段齐全、工件落盘；没有夹具时显式跳过 |
+| 离线验收 | `tools/diagnostics/verify_os_state.py`：用 `data/fixtures/os_map.png` 与 `os_globe_view.png` 跑队列任务，分别核对地图结果和上游球面单应性/坐标证据；缺夹具时显式跳过对应分支 |
 | 守卫 | 新增域名后 `verify_architecture.py` 会自动要求它在 `Program.cs` 注册（已有检查） |
 
-**动作流程（导航、海域选择、出击）暂不做**：它们必须真机验收，而现在
-`adb devices` 为空 —— 先做能验收的部分，避免造出无法验收的域（这是 R2 一贯的口径）。
+**大世界动作流程（海域选择、出击）尚未完成**：通用页面导航已有独立任务，
+大世界域的动作仍需自己的任务输入、结果和真实产品路径证据。
 
 ## 下一步与本域的缺口
 
-- 账号状态域的**真机验收待补**：目前只用了存盘真机帧（帧是现场的，但"当场抓帧"路径未跑）。
-  设备在线时补一条 `capture=true` 的真机记录。
-- 队列目前只有 CLI 入口；前端（R4）要读 `queue.json` / `state.json` 来展示与操作。
-- 大世界/海域、活动、周期任务三个域排在后面；每个域都要按本页的模型接
-  `ITaskRunner`，并带离线回归 + 一条真实产品路径证据。
+- 账号状态 `capture=true` 与 `IN_MAP` 现场复核已有设备窗口记录，见 `handover-r0-r2.md` 第五节与第八节补充六。
+- 队列已有 CLI 入口和静态 HTML 证据视图；统一配置、任务和运行控制前端仍未交付。
+- 大世界目前为只读探针，活动为清点/生成队列；完整动作流程仍需各域自己的真实产品路径验证。
+- 周期任务已接通通用执行入口，dorm/reward 有真机证据；其余执行路径不能据此视为已验证。
+- 观测已进入任务队列，完成离线故障/取消回归与只读真机抓帧/识页验证；可选地图模式及其他后端不据此外推。
 
 ## 周期任务调度状态（第六个域，只读；已实现并验收）
 
@@ -258,11 +277,11 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 2. **不要重算"下次运行时间"**：那是上游调度器的逻辑（含 `ServerUpdate` 语义），本域只透传；
    自己实现一版等于养第二份真相。
 
-写完之后，周期任务的**动作**部分再按域逐个做（每个都要真机 + 真机证据），顺序由覆盖率决定，不由某张图是否失败决定。
-## 周期任务的动作半边：暂不做，以及为什么（含一条实测证据）
+写完之后，周期任务的**动作**部分按通用上游调度入口接入；每条真实执行路径仍需独立真机证据，
+顺序由覆盖率决定，不由某张图是否失败决定。
+## 周期任务动作授权的依据（含一条实测证据）
 
-勘察半边（`periodic_plan`）已完成并验收。**执行半边故意没做**，理由不是"没时间"，而是查过之后
-发现一个具体风险：
+勘察半边（`periodic_plan`）完成后，执行入口没有直接默认放开；代码审计发现了一个具体风险：
 
 > `module/commission/commission.py` 的 `run()`（第 603 行起）在处理 **油满** 时会
 > **买食物把油消耗掉**：第 563 行 `if self.appear(OIL_MAXED, ...): raise OilMaxed`，
@@ -277,14 +296,14 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 2. **执行入口必须按任务显式授权**，而不是"授权一次就都能跑"。第一版应当只支持
    **单个任务名 + 显式确认**，并把"这次会调用哪个类、它可能花什么"作为运行的**前置证据**打印出来。
 
-**下一步的最小可行形状**（写下来，免得下次重新推）：
+**据此实现的最小形状**：
 
 | 项 | 设计 |
 | --- | --- |
 | op | `periodic_run(task, allow_actions, confirm)`：`confirm` 必须与 `task` 完全一致才执行（防手滑/防脚本误传） |
-| 前置证据 | 复用 `periodic_plan` 的结果（哪个类、哪一行）+ 本次要跑的任务名，**先打印再执行** |
+| 前置证据 | 复用 `periodic_plan` 的结果（Scheduler.Command、原生方法和内部调用）+ 本次要跑的任务名 |
 | 结论与证据 | 复用结果合同之外的**任务账**：跑通/异常/被拒；异常带上游调用栈尾部（与 S3 同规格） |
-| 验收 | 离线只能验**拒绝路径**（没授权/confirm 不匹配 → 明确拒绝）；真跑路径必须有人当场看着做第一次 |
+| 验收 | 离线验拒绝路径和原生 dispatcher 行为；任何新的真跑路径仍需明确动作授权并单独留证 |
 
 **未查**：其它周期任务（research / dorm / reward / freebies …）是否也有类似的隐性花费路径。
 要放开任何一个，先按上面第 1 条查它的 `run()` 与异常分支。
@@ -621,8 +640,9 @@ Mission claim receive
 Mission collect finished
 ```
 
-**结论**：执行入口对**不同域**都成立 —— 它只做三件事（两道闸 → 用勘察结果定位上游类 →
-构造并 `run()`），域差异全部由上游自己的类消费。**没有为任何域写专用分支。**
+**结论**：历史记录证明 dorm / reward 两条动作路径能运行，但当时的适配器直接构造勘察到的类并
+统一调用 `run()`，不能外推到 `opsi_*` 或活动入口。当前实现改为消费上游 Scheduler.Command、
+任务绑定和 `AzurLaneAutoScript.run()`；域差异及参数继续由上游 `alas.py` 方法消费，没有维护任务特例表。
 
 #### 执行环的产品路径（`kind = "periodic_run"`，2026-09-23 真机验证）
 
@@ -631,11 +651,10 @@ Mission collect finished
 
 ```json
 {"id":"run","kind":"periodic_run",
- "input":{"task":"reward","allow_actions":true,"confirm":"reward",
-          "overrides":{"BuyFurniture_Enable":true}}}
+ "input":{"task":"reward","allow_actions":true,"confirm":"reward"}}
 ```
 
-**真机验证（走队列，两条路径都验）**：
+**历史真机验证（走队列，两条路径都验）**：
 
 ```
 [任务] deny kind=periodic_run outcome=failed error_kind=internal
@@ -643,12 +662,39 @@ Mission collect finished
 [任务] run  kind=periodic_run outcome=succeeded elapsed=7s
 ```
 
-即：**闸门在产品路径上也生效**（未授权的任务记 `failed` + 原因，不是"跳过"），放行后正常执行。
+这些记录来自旧的直接构造适配器，只证明当时的 dorm / reward 样本，不能证明新的原生 dispatcher
+适配已做真机回归。当前产品路径先检查会话授权：会话未授权记前置条件不满足，
+非 required 任务为 `skipped`、required 任务为 `failed`；两者都没有开始执行。
+已授权会话中，宿主返回的 `denied` 仍带原因及 `constructed`/`ran` 证据。
 
-**安全语义不另判一套**：两道闸与顺序由宿主 op 保证，并由静态守卫
+**安全语义分两层**：任务侧先检查会话由 `--run --allow-actions` 授权，队列 JSON 不能把
+默认 dry-run 或只读设备会话升级成动作会话。输入中的两道闸与顺序由宿主 op 保证，并由静态守卫
 `periodic_run_gate_intact()` 检查（闸门必须在构造上游对象**之前**）；
-任务侧只把 `denied` 翻译成 `failed`、把上游异常翻译成 `upstream_error`。
+`input.allow_actions` 只接受 JSON 布尔值 `true`，字符串 `"true"` 或 `"false"` 均不能授权。
+任务侧将 `denied` 翻译成输入失败，将原生返回 `False`、`SystemExit` 和其他上游异常翻译成
+`upstream_error`；`TaskEnd` 继续由上游 dispatcher 视为正常完成。
 
-**`overrides` 的边界**：只作用于本次运行的配置对象（内存内），**不写回配置文件** ——
-用户的账号设置不会因为我们跑一次而被改动；但**上游任务自己会写调度状态**
-（如 `task_delay()`），那是上游既有行为。
+**`overrides` 的边界**：只接受当前任务绑定的字段，并通过上游 `config.override()` 登记为对象生命期
+覆盖，不走字段赋值的自动持久化路径。**上游任务自己写调度状态**（如 `task_delay()` / `task_call()`）
+仍会更新配置，那是原生调度语义，适配器不会回滚整个配置文件。
+
+## 通用观测任务（`observe`）
+
+`ObserveTask` 只能由 `alashub queue --file` 调度。任务输入为
+`{"seconds":20,"tick_seconds":0.5,"map":"main"}`，`map` 可省略或为上游 `main`/`os` 模式；
+`navigate` 同样由队列以 `{"to":"page_campaign","max_hops":8,"rounds":1}` 输入调度。
+两者复用宿主抓帧、识页、地图识别或页面图，不维护第二份规则表。
+
+```json
+{"tasks":[{"id":"observe","kind":"observe","input":{"seconds":2,"tick_seconds":0.5}}]}
+```
+
+```powershell
+alashub queue --file observe.json --run --read-only-device --serial <device> --screenshot adb --control ADB
+```
+
+队列入口要求设备已配置，dry-run 的前置条件不满足时记 `Skipped`；`required` 决定其是否导致队列失败。
+观测可在 tick 边界停止，故障必须留在任务证据中。其离线验收由 `observe_cases.json` 与
+`verify_runtime.py` 覆盖。历史 `run` 兼容入口的只读真机记录为 4 tick、0 error，命中
+`page_main` / `page_main_white`，宿主/设备各初始化一次；它覆盖观测核心任务，当前队列入口仍待真机回归。
+原始现场工件在忽略目录 `data/progress-audit-observe/20260923T105409`，未入库，原配置已恢复。

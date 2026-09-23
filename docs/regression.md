@@ -1,7 +1,8 @@
 # 页面识别全量回归（产品路径）
 
-用 `alashub goto` 对**已验证的每个页面**重跑一遍：既验证页面规则在各自页面上命中，
+用 `alashub queue --file` 的 `navigate` 任务对**已验证的每个页面**重跑一遍：既验证页面规则在各自页面上命中，
 也验证导航器（运行时取自上游的页面图 + 变体择优 + 未建模画面自救）本身没退化。
+当前存档是退役直接导航入口的历史样本；需重新运行脚本验证队列入口。
 
 为什么需要单独做这一遍：早先的页面验证是分批做的（诊断脚本按资产坐标导航），
 后来导航换成了产品实现 —— 实现变了，"已验证"就必须重新证明。
@@ -13,7 +14,7 @@
 
 ## 结果：29 / 34 通过
 
-| 页面 | 结果 | 耗时 | 跳数 | goto 输出 |
+| 页面 | 结果 | 耗时 | 跳数 | 导航输出 |
 | --- | --- | --- | --- | --- |
 | `page_academy` | ok | 8.7s | 2 | [hop 1   ] on=page_main click ui_white/MAIN_GOTO_DORMMENU_WHITE score=0.9959 at (562,679) -> page_dormmenu<br>[hop 2   ] on=page_dormmenu click ui/DORMMENU_GOTO_ACADEMY score=0.9877 at (298,537) -> page_academy |
 | `page_archives` | ok | 11.5s | 3 | [hop 1   ] on=page_academy click ui_white/GOTO_MAIN_WHITE score=0.2408(低置信) at (1227,32) -> page_main,page_main_white<br>[hop 2   ] on=page_main click ui_white/MAIN_GOTO_CAMPAIGN_WHITE score=0.9447 at (1192,508) -> page_campaign_menu<br>[hop 3   ] on=page_campaign_menu click ui/CAMPAIGN_MENU_GOTO_WAR_ARCHIVES score=0.9983 at (260,612) -> page_archives |
@@ -52,7 +53,7 @@
 
 ## 顺带发现：上游页面图里有"无入边"节点
 
-上游图共 53 节点 / 127 边，其中 **4 个节点没有任何入边**：`page_rpg_city`, `page_channel`, `page_main_white`, `page_unknown`。
+上游图共 53 节点 / 127 边，其中 **4 个节点没有任何入边**：`page_main_white`, `page_rpg_city`, `page_unknown`, `page_channel`。
 
 这类节点**不可能是导航目标**（没人能"走到"它），它们是：
 

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Alas.Runtime;
 
@@ -23,21 +24,44 @@ namespace Alas.Tasks;
 /// </summary>
 public sealed class CampaignBatchTask : ITaskRunner
 {
+    private static readonly HashSet<string> InputFields = new(StringComparer.Ordinal)
+    {
+        "chapters", "stop_on_failure", "max_seconds", "max_rounds",
+        "repeat_until_cleared", "clear_all", "fleet1", "fleet2", "submarine",
+    };
+
     public string Kind => "campaign_batch";
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskContext context)
     {
         var problems = new List<string>();
-        var chapters = Chapters(request);
-        if (chapters.Count == 0)
-            problems.Add("input.chapters 为空：战役任务必须给出至少一个完整章节模块名");
-        foreach (var chapter in chapters)
+        if (request.Input is not null)
+            foreach (var field in request.Input.Select(pair => pair.Key))
+                if (!InputFields.Contains(field)) problems.Add($"未知战役输入字段: input.{field}");
+
+        if (request.Input?["chapters"] is not JsonArray chapters || chapters.Count == 0)
+            problems.Add("input.chapters 必须是非空章节数组");
+        else foreach (var item in chapters)
         {
-            var parts = chapter.Split('.');
+            if (item is not JsonValue value || !value.TryGetValue<string>(out var chapter)
+                || string.IsNullOrWhiteSpace(chapter))
+            {
+                problems.Add("input.chapters 的每一项必须是非空章节模块名字符串");
+                continue;
+            }
+            var parts = chapter.Trim().Split('.');
             if (parts.Length != 3 || parts[0] != "campaign"
                 || parts.Any(p => !p.All(c => char.IsLetterOrDigit(c) || c == '_')))
                 problems.Add($"章节必须是完整的 campaign 模块名: {chapter}");
         }
+        ValidateBoolean(request, "stop_on_failure", problems);
+        ValidateBoolean(request, "repeat_until_cleared", problems);
+        ValidateBoolean(request, "clear_all", problems);
+        ValidatePositiveNumber(request, "max_seconds", problems);
+        ValidateInteger(request, "max_rounds", 1, problems);
+        ValidateInteger(request, "fleet1", 1, problems);
+        ValidateInteger(request, "fleet2", 0, problems);
+        ValidateInteger(request, "submarine", 0, problems);
         if (!context.Options.DryRun && !context.Options.AllowActions)
             problems.Add("真跑需要 allow_actions（会话级安全联锁）");
         return problems;
@@ -139,9 +163,45 @@ public sealed class CampaignBatchTask : ITaskRunner
         var list = new List<string>();
         if (request.Input?["chapters"] is JsonArray array)
             foreach (var item in array)
-                if (item?.GetValue<string>() is { Length: > 0 } chapter)
+                if (item is JsonValue value && value.TryGetValue<string>(out var chapter)
+                    && !string.IsNullOrWhiteSpace(chapter))
                     list.Add(chapter.Trim());
         return list;
+    }
+
+    private static void ValidateBoolean(TaskRequest request, string key, List<string> problems)
+    {
+        if (request.Input?.ContainsKey(key) != true) return;
+        if (request.Input[key] is JsonValue value && value.TryGetValue<bool>(out _)) return;
+        problems.Add($"input.{key} 必须是 JSON 布尔值");
+    }
+
+    private static void ValidatePositiveNumber(TaskRequest request, string key, List<string> problems)
+    {
+        if (request.Input?.ContainsKey(key) != true) return;
+        if (TryNumber(request.Input[key], out double number) && number > 0) return;
+        problems.Add($"input.{key} 必须是大于 0 的有限数值");
+    }
+
+    private static void ValidateInteger(TaskRequest request, string key, int minimum,
+                                        List<string> problems)
+    {
+        if (request.Input?.ContainsKey(key) != true) return;
+        if (TryNumber(request.Input[key], out double number) && number >= minimum
+            && number <= int.MaxValue && number == Math.Truncate(number)) return;
+        problems.Add($"input.{key} 必须是 {minimum} 到 {int.MaxValue} 的整数数值");
+    }
+
+    private static bool TryNumber(JsonNode? node, out double number)
+    {
+        number = 0;
+        if (node?.GetValueKind() != JsonValueKind.Number) return false;
+        try
+        {
+            number = node.Deserialize<double>();
+            return double.IsFinite(number);
+        }
+        catch (JsonException) { return false; }
     }
 
     private static CampaignRunSettings Settings(TaskRequest request, SessionOptions options)

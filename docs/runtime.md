@@ -11,6 +11,7 @@ src/Alas.Core/Runtime/
   SessionOptions.cs        一次会话/一批任务的输入（CLI 只负责把参数填进来）
   AlasSession.cs           常驻会话：宿主 + 设备后端 + 日志 + 工件目录 + 释放
   CampaignBatchRunner.cs   战役批量任务：逐关驱动 → 合同裁决 → 工件 → 失败即停/取消
+  QueueExecution.cs        队列文件入口：runner 注册、断点、停止文件、任务调度
   SessionLog.cs            结构化日志（内存条目 + JSONL 落盘）
   RuntimeErrors.cs         统一错误分类与 AlasRuntimeException
 src/Alas.DataTool/RuntimeSelfCheck.cs   `alashub selftest-runtime`：替身宿主下的离线自检
@@ -18,7 +19,8 @@ src/Alas.DataTool/RuntimeSelfCheck.cs   `alashub selftest-runtime`：替身宿�
 
 CLI（`alashub campaign`）现在只做三件事：解析参数 → `AlasSession.Start` → `CampaignBatchRunner.Run`，
 然后把结果排版出来。**它不再直接调用 `RunCampaignPlan`，也不再自己判定成功/失败**；
-这一条由 `verify_architecture.py` 静态守着（`CLI 不直接驱动引擎`）。
+`alashub queue` 则把队列文件和公共运行参数交给 `QueueExecution.RunFile`，由运行时创建单会话、
+注册任务、处理断点与停止请求。两条边界由 `verify_architecture.py` 静态守着。
 
 ## 二、三条阶段门槛怎么被证明
 
@@ -80,18 +82,50 @@ alashub report --artifacts <工件根目录>        # 取最新一次运行
 
 ## 七、已知边界
 
-- 取消粒度是**关卡**，不是单次操作：正在跑的 `Campaign.run()` 不会被中途打断。
-  真要中途打断，得在上游操作边界插检查点，那是 R3 的活（现在没有证据说明需要）。
+- 战役取消粒度是**关卡**：正在跑的 `Campaign.run()` 不会被 Ctrl-C 中途打断。
+  显式本局撤退请求在战斗边界调用上游 `withdraw()`（见第十七节）；只读观测可在 tick 边界停止。
 - `session-log.jsonl` 在会话释放时一次性落盘；进程被强杀时只有控制台输出，
   没有文件。要更强的保证需要边写边刷盘，等出现"强杀后查不到日志"的真实需求再做。
-- 目前只有战役任务走运行时；`run`（观测循环）、`goto`（导航）仍在 `Alas.DataTool`，
-  等 R2 做任务域切片时一并搬。
+- 战役、观测与导航都复用常驻会话；观测和导航只能通过通用任务队列进入
+  `ObserveTask` / `NavigateTask`。`run` 与 `goto` 只保留弃用提示，不能再各自解释任务输入、
+  创建会话或驱动任务。
+
+本轮观测验收：离线运行时用例包含故障注入、旧帧隔离、输入校验、会话复用和取消；
+历史 `run` 兼容入口的真机记录为 4 tick、0 error，命中 `page_main` / `page_main_white`，
+宿主/设备各初始化一次。
+原始工件保存在忽略目录 `data/progress-audit-observe/20260923T105409`，不入库；设备参数留在本机，
+原账号配置已按字节恢复。它证明观测核心任务和只读设备路径，当前 `queue --file` 入口仍须补一条
+真机回归；该证据也不代表所有地图模式或后端均已验收。
+
+当前产品入口如下。观测使用只读设备授权；导航是动作任务，必须显式授权动作会话。
+
+```json
+{"tasks":[{"id":"observe","kind":"observe",
+  "input":{"seconds":2,"tick_seconds":0.5}}]}
+```
+
+```powershell
+alashub queue --file observe.json --run --read-only-device --serial <device> --screenshot adb --control ADB
+```
+
+```json
+{"tasks":[{"id":"navigate","kind":"navigate","required":true,
+  "input":{"to":"page_campaign","max_hops":8,"rounds":1}}]}
+```
+
+```powershell
+alashub queue --file navigate.json --run --allow-actions --serial <device> --screenshot adb --control ADB
+```
+
+导航沿用上游页面图、变体择优和未建模画面的返回自救；多回合、失败即停与取消都在核心任务中处理。
+默认设备 I/O 使用上游配置，显式 `--screenshot` / `--control` 优先，`--adb` 仅保留参数兼容。
+当前导航只跑替身与离线入口回归，队列入口的真机回归仍未完成。
 
 ## 八、复现
 
 ```powershell
 dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
-python tools\diagnostics\verify_runtime.py          # 11 例：只初始化一次 / 失败即停 / 取消 / 工件 / 队列
+python tools\diagnostics\verify_runtime.py          # 44 例：会话 / 批次 / 队列 / 导航 / 观测
 python tools\diagnostics\verify_report.py           # 报告读得出事实；缺工件/缺日志/目录不存在都会被指出
 python tools\diagnostics\verify_architecture.py     # CLI 不复制业务状态机
 ```
@@ -169,6 +203,13 @@ File.WriteAllText(path, new JsonObject { ["completed"] = done, ... }.ToJsonStrin
 `TaskQueue` 在被 `--resume` 唤起时已经知道上一份 `state.json`（`TaskQueueFile.LatestState`），
 把它的 `completed` 读进来做并集，再写新的；**不要清空**。
 配套回归：`verify_os_state.py` 的断点续跑段第三次续跑断言"**跳过 1 个已完成任务**"且点名 `a-os`（即累积语义生效、A 不重跑），同一条还盯着"排序靠后的杂目录不算运行"。原本设想的负例（"清空"）已被这条覆盖：改回旧写法它会立刻变红。
+
+当前 `state.json` 的完成项同时保存请求身份（kind、input、required）与会话运行参数。
+`--resume` 只继承当前队列中身份完全一致的完成项；同 id 改输入、改域或从 dry-run 切到
+真实运行都会重跑。旧版只有完成 id 的断点不再用于跳过任务，因为无法验证它对应的请求。
+`verify_cli_errors.py` 用真实 CLI 覆盖改输入和 dry-run 切真实运行，`verify_os_state.py` 继续
+覆盖同请求的累积续跑。
+显式 `--resume-state <文件>` 直接读取该文件，不再忽略文件名并转读同目录的 `state.json`。
 以及"清空"这条负例（当前行为）应当变红。
 
 **过程说明（为什么先记、下一轮才改）**：这属于会**花资源的路径**（改动影响哪些任务会被重新执行）。
@@ -178,16 +219,16 @@ File.WriteAllText(path, new JsonObject { ["completed"] = done, ... }.ToJsonStrin
 
 ```powershell
 # 一次运行 → 那一份的单文件视图
-python tools\report_html.py <artifacts>\<时间戳>            # 产物：<时间戳>\report.html
+python tools\report_html.py <artifacts>\<时间戳>            # 产物：<artifacts>-views\<时间戳>.html
 
 # 工件根目录（多次运行）→ 索引 + 每次运行各一页
 python tools\report_html.py <artifacts>                     # 产物：<artifacts>\index.html
                                                             #       <artifacts>-views\<时间戳>.html
 ```
 
-* 产物是**单文件 HTML**（自带样式、无外部引用），双击就能看，也可以直接发给别人；
+* 产物是**单文件 HTML**（自带样式、无外部引用），双击就能看；它可能包含本机路径和任务证据，对外分享前必须脱敏；
 * 页面里能看到：队列/批次结论、提前停止与原因、**宿主启动/设备配置次数**、日志条目与错误、
-  日志来源（scope 分布）、任务表（含**边界快照**）、关卡表、以及**发现**（证据完整性问题）；
+  日志来源（scope 分布）、任务表（含**边界快照**和可展开的完整任务证据）、关卡表、以及**发现**（证据完整性问题）；
 * **页面写在运行目录之外**（`<artifacts>-views\`）：运行目录里的文件数是"工件数"的一部分，
   往里放生成物等于篡改证据（第十一节）；
 * 验收在 `tools/diagnostics/verify_report_html.py`：不丢事实（数据面里的事实都要出现在界面里）、
@@ -198,7 +239,8 @@ python tools\report_html.py <artifacts>                     # 产物：<artifact
 
 ### 交互：暂时不做，以及要做时走哪条路（写给下一轮）
 
-现状是**静态**视图（结论卡片 + 任务表 + 关卡表 + 发现 + 原始 JSON）。没做筛选/展开。
+现状是**静态**视图（结论卡片 + 任务表 + 关卡表 + 发现 + 完整原始 JSON）。
+原始报告和逐任务证据可展开；尚未做筛选。
 这不是漏了，而是**有意的顺序**：先把"数据面够不够撑起一屏"验掉（第 101-104 轮），再谈交互。
 
 **要做时按这个顺序，且优先无 JS**：
@@ -370,7 +412,10 @@ step=withdraw outcome=withdrawn
 [批次]     outcome=withdrawn 原因=关卡未通过: withdrawn
 ```
 
-这是 R0 需要的"**本局撤退判 `withdrawn`**"真机记录（合同七个结论至此都有真机覆盖）。
+这是 R0 需要的"**本局撤退判 `withdrawn`**"真机记录；它只补齐本局撤退，
+不能据此声称合同七个结论都有真机覆盖。脱敏工件归档在
+`tools/diagnostics/evidence/20260923T093800`，`audit_real_records.py` 同时核对合同、
+批次索引、会话日志和调用链，并重建 `result-evidence.md`。
 
 **防线**：`verify_architecture.py` 的 `withdraw_hook_present()` 断言挂钩与路径约定都还在 ——
 它们失效的方式是静默的（请求文件出现却没人理，不报错、不失败）。

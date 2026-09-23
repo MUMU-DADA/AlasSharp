@@ -24,8 +24,10 @@ public sealed class SessionOptions
 
     /// <summary>dry-run：只读规则，不初始化设备、不碰游戏。</summary>
     public bool DryRun { get; set; } = true;
-    /// <summary>真跑的第二把锁；`DryRun=false` 且它为假时**在启动宿主之前**就拒绝。</summary>
+    /// <summary>游戏动作授权；非 dry-run 未授权时只允许显式的只读设备会话。</summary>
     public bool AllowActions { get; set; }
+    /// <summary>只读设备会话（如 observe）：配置截图后端，但不授予任何游戏动作。</summary>
+    public bool ReadOnlyDevice { get; set; }
 
     public double MaxSeconds { get; set; } = 1500;
     public int MaxRounds { get; set; } = 20;
@@ -50,10 +52,11 @@ public sealed class SessionOptions
         if (Fleet1 <= 0) throw new ArgumentException("第一舰队必须大于 0");
         if (Fleet2 < 0) throw new ArgumentException("第二舰队不能为负");
         if (SubmarineFleet < 0) throw new ArgumentException("潜艇舰队不能为负");
-        if (!DryRun && !AllowActions)
+        if (!DryRun && !AllowActions && !ReadOnlyDevice)
             throw new ArgumentException("真跑需要 AllowActions（宿主侧还有一道硬性安全联锁）");
     }
 
-    /// <summary>要不要把设备后端配置进宿主：只有真跑才需要，dry-run 一律不碰设备。</summary>
-    public bool ShouldConfigureDevice => !DryRun && AllowActions && !string.IsNullOrWhiteSpace(Serial);
+    /// <summary>动作会话与只读观测都可配置设备；dry-run 一律不碰设备。</summary>
+    public bool ShouldConfigureDevice => !DryRun && (AllowActions || ReadOnlyDevice)
+                                         && !string.IsNullOrWhiteSpace(Serial);
 }

@@ -140,7 +140,8 @@ alashub capture --adb <adb> --serial 127.0.0.1:16384 --screenshot droidcast --co
 重构：`INavigationDevice` 的 `byte[] Screenshot()` 改为语义化的 **`void Capture()`**
 （"让宿主拿到当前帧"），`DeviceController.CaptureForHost()` 负责选路：
 `UseEngineCapture=true` → 引擎抓图直入宿主；否则沿用 `adb 取字节 → SetScreenshot`。
-`goto` 新增 `--capture-engine [--screenshot droidcast] [--control ADB]`。
+以下是退役的直接 `goto` 入口当时新增的 `--capture-engine` 测量记录；当前任务队列
+通过公共 `--screenshot` / `--control` 选择后端，不能传 `--capture-engine`。
 
 实测（每跳约 2.5s settle，两次都先回 page_main 再量）：
 
@@ -158,11 +159,11 @@ alashub capture --adb <adb> --serial 127.0.0.1:16384 --screenshot droidcast --co
 
 结论：这条通道的收益要在**长驻进程**里兑现（正式运行时 `Device` 只构造一次），
 命令行的一次性调用不是它的使用场景。下一步若要给导航侧也拿到收益，
-应当在长驻进程里预热设备层（或让 `goto` 支持"进程内导航两次"以量稳态）。
+应当在长驻进程里预热设备层；历史 `goto` 后来支持过进程内多回合测量。
 
-## 稳态测量（`goto --rounds N`）：导航场景下收益只有 ~1.7%，别夸大
+## 历史稳态测量（退役的 `goto --rounds N`）：导航场景下收益只有 ~1.7%，别夸大
 
-为了把"一次性设备层初始化"从数字里剔除，给 `goto` 加了 `--rounds N`：
+为了把"一次性设备层初始化"从数字里剔除，当时给直接 `goto` 加了 `--rounds N`：
 先正常走一次，然后再跑 N-1 个回合（回 page_main → 再去目标）并逐回合计时。
 
 实测（每变体 3 回合 = 首次 + 2 次被测；设备层在进程内只构造一次）：
@@ -281,8 +282,9 @@ scrcpy 走 H.264 视频流本地解码，抓一帧＝取最新解码帧，所以
 ### 本机推荐配置
 
 ```powershell
-# 截图 scrcpy（e2e 128 ms，最稳）+ 输入 MaaTouch（稳态 ~53 ms）
-alashub goto page_main --adb <adb> --serial 127.0.0.1:16384     --capture-engine --screenshot scrcpy --control MaaTouch
+# 截图 scrcpy（历史 e2e 128 ms）+ 输入 MaaTouch（历史稳态 ~53 ms）
+# navigate.json: {"tasks":[{"id":"navigate","kind":"navigate","input":{"to":"page_main"}}]}
+alashub queue --file navigate.json --run --allow-actions --serial 127.0.0.1:16384 --screenshot scrcpy --control MaaTouch
 ```
 
 > 另注（来自上游应用说明，本机适用性已验证）：`nemu_ipc` 需与截图配套、且触控走模拟器内部 RPC，
@@ -290,7 +292,7 @@ alashub goto page_main --adb <adb> --serial 127.0.0.1:16384     --capture-engine
 
 ## 默认配置已切换为实测最优：`scrcpy` + `MaaTouch`
 
-- `goto` / `capture` / `DeviceController.ConfigureEngineDevice()` 的默认值：
+- 队列会话 / `capture` / `DeviceController.ConfigureEngineDevice()` 的默认值：
   **screenshot=`scrcpy`、control=`MaaTouch`**（仍可用 `--screenshot` / `--control` 覆盖）。
 
 实测（同一路径 page_main→page_campaign、每变体 3 回合、同一测量口径）：
@@ -304,16 +306,18 @@ alashub goto page_main --adb <adb> --serial 127.0.0.1:16384     --capture-engine
 即：换掉截图后端（droidcast→scrcpy）后，**导航流程本身也快了约 13 个百分点**
 （原先把"抓图快"等同于"流程快"是不成立的，现在有了同口径的对照数据）。
 
-命令示例（不写 `--screenshot/--control` 即用默认）：
+当前命令示例（`rounds` 放进任务输入；不写 `--screenshot/--control` 即用默认）：
 
 ```powershell
-alashub goto page_campaign --adb <adb> --serial 127.0.0.1:16384 --capture-engine --rounds 3
+# navigate.json: {"tasks":[{"id":"navigate","kind":"navigate","input":{"to":"page_campaign","rounds":3}}]}
+alashub queue --file navigate.json --run --allow-actions --serial 127.0.0.1:16384
 ```
 
-## 常驻 runner 骨架（`alashub run`）：稳态数字确定，这就是 S3 的壳
+## 历史常驻观测器（退役的 `alashub run`）：稳态数字确定
 
 CLI 一次调用一个进程，设备层初始化（约 2.3s）会吃掉全部收益；S3 的自动化循环必然是**长驻**的。
-本轮把那个壳搭起来：`alashub run`（只"看"不"动"，安全观测器）
+当时把那个壳搭起来：`alashub run`（只"看"不"动"，安全观测器）；当前使用队列中的
+`observe` 任务和 `--run --read-only-device`。
 
 1. 一次性构造识图引擎 + 设备层（含后端选择）并预热；
 2. 之后按 tick 循环：引擎抓帧（像素不跨语言边界）→ 页面判定 → 记耗时；
