@@ -353,3 +353,24 @@ def run(self):
 
 > **`reward` 已下钻两层未见花费路径；要把它作为执行半边第一个放开对象，
 > 还差把这三个最深的方法读掉。**第一次真跑仍要有人看着 —— 这条不变。
+
+#### 补二：`reward` 的调用树已下钻四层，全程无花费信号
+
+| 层 | 方法 | 花费信号 |
+| --- | --- | --- |
+| 1 | `run` | 无 |
+| 2 | `reward_receive` / `reward_mission` | 无 |
+| 3 | `reward_mission_notice` / `_reward_mission_all` / `_reward_mission_weekly` | 无 |
+| 4 | `_reward_mission_collect` / `reward_side_navbar_ensure` | 无 |
+
+`_reward_mission_collect` 只调用 `_reward_mission_claim_click` / `_reward_mission_claim_receive`
+（名字都是"claim/receive"）以及若干 `record_clear`；`reward_side_navbar_ensure` 只调 `set`。
+
+**结论（带范围）**：从 `Reward.run()` 可达的**方法级调用树（4 层）里没有任何**
+`buy` / `purchase` / `spend` / `OilMaxed` / `quick_finish` / `COST` / `gem` 信号。
+未读的只剩 `_reward_mission_claim_click` / `_reward_mission_claim_receive` / `_reward_wait_mission_list`
+（名字语义仍是"领取"）以及上游公共设施（`ui_goto` / `appear` / `click` 这类，全项目共用）。
+
+**但静态阅读证明不了运行时行为** —— 真正剩下的风险不是"代码里有购买分支"，
+而是"**点错了地方**"：如果某个意料之外的弹窗出现，一个按坐标盲点的点击可能落到"购买/确定"上。
+这正是我坚持"**第一次真跑要有人看着**"的原因，而不是形式主义。
