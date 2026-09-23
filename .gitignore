@@ -9,6 +9,9 @@ obj/
 # 理由见 README：数据必须始终可追溯到某个上游 commit，不入库就不会出现「不知道哪来的 JSON」
 data/
 
+# 本地运行工件含设备标识、账号画面和绝对路径；仅脱敏后的证据可明确归档入库。
+runs/
+
 # 本机 NuGet 配置（离线源）。模板见 NuGet.config.example
 NuGet.config
 

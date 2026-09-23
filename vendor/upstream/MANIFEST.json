@@ -5,7 +5,7 @@
     "commit": "f6db21563bd89f046ae22cb2f2fcb1352a0ee6aa",
     "branch": "migrate/py314-base",
     "worktree_clean": true,
-    "path": "<developer-home>\\source\\ALAS fork project\\my fork project\\AzurLaneAutoScript"
+    "path": "<upstream-root>"
   },
   "roots": [
     "assets",

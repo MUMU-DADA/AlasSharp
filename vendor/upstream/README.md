@@ -19,11 +19,14 @@ Python checkout 存在。
 
 | 项 | 值 |
 |---|---|
-| 仓库 | AzurLaneAutoScript (source identity redacted) |
+| 仓库 | AzurLaneAutoScript 来源工作区（个人 fork 身份已脱敏） |
 | commit | `f6db21563bd89f046ae22cb2f2fcb1352a0ee6aa` |
 | 分支 | `migrate/py314-base` |
 | 上游工作区是否干净 | 是（快照等于该 commit，不是"某次本地改动"） |
 | 文件数 / 体积 | 7436 / 153.6 MB |
+
+来源元数据不保存个人远端 URL 或本机绝对路径；commit、分支及逐文件 SHA-256 保持原值。
+`source.path` 使用 `<upstream-root>` 占位，实际工作区由同步命令的 `--source` 或环境配置提供。
 
 ## 范围
 

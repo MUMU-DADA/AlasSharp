@@ -12,8 +12,10 @@ from collections import Counter
 
 from PIL import Image
 
-FORK = r"<developer-home>\source\ALAS fork project\csharp\.runtime\engine"
-assets = json.load(open(r"<developer-home>\source\ALAS fork project\csharp\data\assets.json",
+ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     '..', '..', '..'))
+FORK = os.path.join(ROOT, '.runtime', 'engine')
+assets = json.load(open(os.path.join(ROOT, 'data', 'assets.json'),
                         encoding='utf-8'))['assets']
 
 modes = Counter()

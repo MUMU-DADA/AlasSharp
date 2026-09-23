@@ -43,6 +43,7 @@ except Exception:
 # 另外：verify_map_ir.py 曾经也在这里之外，它因此烂了很久（判据把"跳过"当失败，永远红）。
 # **任何 verify_* 脚本都该在套件里跑，除非像上面那样写清为什么不在。**
 STEPS = [
+    ('verify_privacy.py', '隐私边界（个人目录/明确凭据/本机工件不入库）', False, 120),
     ('verify_architecture.py', '整体架构边界（宿主/数据/路径/禁止地图特例）', False, 120),
     ('regress_pages.py', '页面识别全量回归（产品导航器）', True, 1800),
     ('retry_blocked_pages.py', '此前阻塞的页面定向重试', True, 1800),

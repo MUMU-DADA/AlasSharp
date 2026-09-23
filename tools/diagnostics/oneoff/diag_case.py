@@ -7,14 +7,16 @@ import sys
 import cv2
 import numpy as np
 
-FORK = r"<developer-home>\source\ALAS fork project\csharp\.runtime\engine"
+ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     '..', '..', '..'))
+FORK = os.path.join(ROOT, '.runtime', 'engine')
 os.chdir(FORK)
 sys.path.insert(0, FORK)
 import module.device.pkg_resources  # noqa: F401
 
 from module.base.utils import crop, load_image
 
-fx = json.load(open(r"<developer-home>\source\ALAS fork project\csharp\data\fixtures\matching.json",
+fx = json.load(open(os.path.join(ROOT, 'data', 'fixtures', 'matching.json'),
                     encoding='utf-8'))
 target = sys.argv[1] if len(sys.argv) > 1 else 'combat/READY_AIR_RAID'
 case = next(c for c in fx['match'] if c['id'] == target)

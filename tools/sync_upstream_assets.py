@@ -89,7 +89,8 @@ def git_info(source):
 
     dirty = run('status', '--porcelain')
     return {
-        'repository': run('config', '--get', 'remote.origin.url'),
+        # 个人 fork 的远端可能暴露账号或凭据；可复现性由 commit 与逐文件哈希保证。
+        'repository': 'AzurLaneAutoScript (source identity redacted)',
         'commit': run('rev-parse', 'HEAD'),
         'branch': run('rev-parse', '--abbrev-ref', 'HEAD'),
         # 上游工作区若被改过，快照就不等于任何 commit —— 必须记下来
@@ -108,7 +109,8 @@ def load_manifest(dest):
 def write_manifest(dest, source, files, info):
     manifest = {
         'note': '上游静态资源快照清单。由 tools/sync_upstream_assets.py 生成，不要手改。',
-        'source': dict(info, path=os.path.abspath(source)),
+        'source': dict(info, repository='AzurLaneAutoScript (source identity redacted)',
+                       path='<upstream-root>'),
         'roots': INCLUDE_ROOTS,
         'file_count': len(files),
         'total_bytes': sum(size for size, _ in files.values()),

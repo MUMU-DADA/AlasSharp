@@ -14,7 +14,9 @@ import os
 import sys
 from collections import Counter
 
-FORK = r"<developer-home>\source\ALAS fork project\csharp\.runtime\engine"
+ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     '..', '..', '..'))
+FORK = os.path.join(ROOT, '.runtime', 'engine')
 os.chdir(FORK)
 sys.path.insert(0, FORK)
 import module.device.pkg_resources  # noqa: F401
@@ -23,7 +25,7 @@ import cv2
 import imageio
 import numpy as np
 
-assets = json.load(open(r"<developer-home>\source\ALAS fork project\csharp\data\assets.json",
+assets = json.load(open(os.path.join(ROOT, 'data', 'assets.json'),
                         encoding='utf-8'))['assets']
 
 frames_hist = Counter()
