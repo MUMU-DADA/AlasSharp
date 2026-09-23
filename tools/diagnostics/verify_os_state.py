@@ -63,6 +63,10 @@ def main() -> int:
              'input': {'screenshot': str(FIXTURE.resolve()), 'detect': 'unknown'}},
             {'id': 'os-invalid-capture', 'kind': 'os_state',
              'input': {'screenshot': str(FIXTURE.resolve()), 'capture': 'false'}},
+            {'id': 'os-mixed-source', 'kind': 'os_state',
+             'input': {'screenshot': str(FIXTURE.resolve()), 'capture': True}},
+            {'id': 'os-empty-source', 'kind': 'os_state',
+             'input': {'screenshot': ''}},
         ]
         if GLOBE_FIXTURE.is_file():
             tasks.append({'id': 'os-globe', 'kind': 'os_state',
@@ -136,7 +140,9 @@ def main() -> int:
             ]
 
         for task_id, field in [('os-invalid-detect', 'input.detect'),
-                               ('os-invalid-capture', 'input.capture')]:
+                               ('os-invalid-capture', 'input.capture'),
+                               ('os-mixed-source', 'input.capture 与 input.screenshot'),
+                               ('os-empty-source', 'input.screenshot')]:
             path = run_dir / f'task-{task_id}.json'
             artifact = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
             checks.append((f'{task_id} 被前置条件拦下',

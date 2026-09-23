@@ -163,6 +163,39 @@ def main() -> int:
             print('         等真机复核后再决定是否做兼容垫片。')
         print('  判据数值已写入: data/account_state_probe.json')
 
+        invalid_file = tmpdir / 'invalid-queue.json'
+        invalid_cases = [
+            ('state-mixed-source', {'capture': True, 'screenshot': str((DATA / present[0]['frame']).resolve())},
+             'input.capture 与 input.screenshot'),
+            ('state-invalid-capture', {'capture': 'true', 'screenshot': str((DATA / present[0]['frame']).resolve())},
+             'input.capture'),
+            ('state-empty-source', {'screenshot': ''}, 'input.screenshot'),
+            ('state-invalid-source', {'screenshot': 7}, 'input.screenshot'),
+        ]
+        invalid_file.write_text(json.dumps({'tasks': [
+            {'id': name, 'kind': 'account_state', 'input': input_}
+            for name, input_, _ in invalid_cases]}, ensure_ascii=False), encoding='utf-8')
+        invalid_artifacts = tmpdir / 'invalid-artifacts'
+        invalid_run = subprocess.run([str(EXE), 'queue', '--file', str(invalid_file),
+                                      '--artifacts', str(invalid_artifacts)],
+                                     capture_output=True, text=True, encoding='utf-8',
+                                     errors='replace', timeout=300)
+        invalid_dirs = sorted(p for p in invalid_artifacts.glob('*') if p.is_dir())
+        if invalid_run.returncode != 0 or not invalid_dirs:
+            failures.append('账号状态无效输入队列没有完成并落盘')
+        else:
+            invalid_dir = invalid_dirs[-1]
+            for name, _, reason in invalid_cases:
+                path = invalid_dir / f'task-{name}.json'
+                artifact = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+                if (artifact.get('outcome') != 'skipped'
+                        or artifact.get('stop_reason') != 'precondition'
+                        or not any(reason in text for text in artifact.get('unmet_preconditions') or [])):
+                    failures.append(f'{name} 未被前置条件拦下')
+            queue = json.loads((invalid_dir / 'queue.json').read_text(encoding='utf-8'))
+            if queue.get('device_configure_count') != 0:
+                failures.append('账号状态无效输入触碰了设备')
+
     print()
     if failures:
         print(f'结果: FAIL（{len(failures)} 项）')

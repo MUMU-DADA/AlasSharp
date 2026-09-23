@@ -40,14 +40,17 @@ public sealed class OsStateTask : ITaskRunner
             problems.Add("input.capture 必须是 JSON 布尔值");
         if (request.Input?.ContainsKey("screenshot") == true
             && (request.Input["screenshot"] is not JsonValue screenshotValue
-                || !screenshotValue.TryGetValue<string>(out _)))
-            problems.Add("input.screenshot 必须是帧路径字符串");
+                || !screenshotValue.TryGetValue<string>(out var path)
+                || string.IsNullOrWhiteSpace(path)))
+            problems.Add("input.screenshot 必须是非空帧路径字符串");
         bool capture = request.Input?["capture"] is JsonValue captureNode
                        && captureNode.TryGetValue<bool>(out var captureValueChecked)
                        && captureValueChecked;
         string? screenshot = request.Input?["screenshot"] is JsonValue screenshotNode
                              && screenshotNode.TryGetValue<string>(out var screenshotValueChecked)
             ? screenshotValueChecked : null;
+        if (capture && screenshot is not null)
+            problems.Add("input.capture 与 input.screenshot 只能二选一");
         if (!capture && string.IsNullOrWhiteSpace(screenshot))
             problems.Add("需要 screenshot=<帧路径> 或 capture=true（二者之一）");
         if (capture && context.Options.DryRun)

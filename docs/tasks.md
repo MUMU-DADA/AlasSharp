@@ -155,6 +155,8 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 `AccountStateTask`（`kind = "account_state"`）回答"现在是什么状态"：当前页面、**在不在图里**、
 服务器、章节实例与账号配置要点。它是**只读**的 —— 不点击、不导航，只有 `capture=true`
 才让设备抓一帧；因此 dry-run 里也能跑，没有设备时用存盘帧即可验收。
+`capture=true` 与 `screenshot` 二选一；错误类型、空路径和同时提供两种来源都会在任务前置条件中拒绝，
+避免把存盘帧误记成现场抓帧。
 
 ```json
 {"id": "state-now", "kind": "account_state",

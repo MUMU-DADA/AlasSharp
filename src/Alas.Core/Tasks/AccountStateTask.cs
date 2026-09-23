@@ -27,13 +27,27 @@ public sealed class AccountStateTask : ITaskRunner
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskContext context)
     {
         var problems = new List<string>();
-        bool capture = request.Input?["capture"]?.GetValue<bool>() ?? false;
+        if (request.Input?.ContainsKey("capture") == true
+            && (request.Input["capture"] is not JsonValue captureValue
+                || !captureValue.TryGetValue<bool>(out _)))
+            problems.Add("input.capture 必须是 JSON 布尔值");
+        if (request.Input?.ContainsKey("screenshot") == true
+            && (request.Input["screenshot"] is not JsonValue screenshotValue
+                || !screenshotValue.TryGetValue<string>(out var path)
+                || string.IsNullOrWhiteSpace(path)))
+            problems.Add("input.screenshot 必须是非空帧路径字符串");
+        bool capture = request.Input?["capture"] is JsonValue captureNode
+                       && captureNode.TryGetValue<bool>(out var captureChecked) && captureChecked;
+        string? screenshot = request.Input?["screenshot"] is JsonValue screenshotNode
+                             && screenshotNode.TryGetValue<string>(out var screenshotChecked)
+            ? screenshotChecked : null;
+        if (capture && screenshot is not null)
+            problems.Add("input.capture 与 input.screenshot 只能二选一");
         // 只有"现抓一帧"才需要设备；用存盘帧时连设备都不需要。
         if (capture && context.Options.DryRun)
             problems.Add("capture=true 需要真跑会话（dry-run 不碰设备）；离线请用 screenshot=<帧路径>");
         if (capture && string.IsNullOrWhiteSpace(context.Options.Serial))
             problems.Add("capture=true 需要指定设备 serial");
-        string? screenshot = request.Input?["screenshot"]?.GetValue<string>();
         if (!string.IsNullOrWhiteSpace(screenshot) && !File.Exists(screenshot))
             problems.Add($"screenshot 文件不存在: {screenshot}");
         return problems;
