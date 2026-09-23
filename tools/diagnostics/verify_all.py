@@ -34,6 +34,14 @@ except Exception:
     pass
 
 # (脚本, 说明, 需要真机, 超时秒)
+# 为什么有三个 verify_*.py **不在这里**（别再来试一遍，第 149-150 轮已经试过）：
+#   * verify_all.py     —— 套件自身，不是一步；
+#   * verify_pages.py   —— **驱动**而不是自包含检查：需要调用方给 SEGMENTS 环境变量
+#                          （逐段页面清单），硬登记的话有设备的运行会直接 KeyError 崩掉；
+#   * verify_page.py    —— 全仓库（文档/脚本/README）**没有任何引用**，疑似被
+#                          verify_pages / regress_pages 取代。保留不动：删是一个决定，不是顺手做的事。
+# 另外：verify_map_ir.py 曾经也在这里之外，它因此烂了很久（判据把"跳过"当失败，永远红）。
+# **任何 verify_* 脚本都该在套件里跑，除非像上面那样写清为什么不在。**
 STEPS = [
     ('verify_architecture.py', '整体架构边界（宿主/数据/路径/禁止地图特例）', False, 120),
     ('regress_pages.py', '页面识别全量回归（产品导航器）', True, 1800),
