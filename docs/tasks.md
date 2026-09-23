@@ -338,3 +338,18 @@ def run(self):
 
 顺带查实：`alas.py` 里**没有** `mission` 方法（`periodic_plan` 返回 found=false），
 所以"任务"这个界面入口不对应独立的周期任务名，先别按它去做映射。
+
+#### 补：`reward_receive` / `reward_mission` 已读（下钻两层，未见花费）
+
+| 方法 | 看到什么 | 花费信号 |
+| --- | --- | --- |
+| `reward_receive(oil, coin, exp)` | `for _ in self.loop():` + `click_timer`（0.3s 间隔，"游戏反应没那么快"）按 flag 点领取按钮 | **无** |
+| `reward_mission(daily, weekly)` | `reward_mission_notice()` → `ui_goto(page_mission)` → `_reward_mission_all()` / `_reward_mission_weekly()` | **无** |
+
+即 `run → receive/mission` 这一层已确认没有 `buy` / `purchase` / `OilMaxed` / `quick_finish` / `COST`。
+
+**再深一层未读**：`reward_mission_notice()`、`_reward_mission_all()`、`_reward_mission_weekly()`
+（名字看都是"领"，但没读过就不写"确认无花费"）。所以准确的说法是：
+
+> **`reward` 已下钻两层未见花费路径；要把它作为执行半边第一个放开对象，
+> 还差把这三个最深的方法读掉。**第一次真跑仍要有人看着 —— 这条不变。
