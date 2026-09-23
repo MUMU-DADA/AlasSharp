@@ -349,7 +349,16 @@ internal static class RuntimeSelfCheck
                             if (got.Error is null || !got.Error.Contains(needle, StringComparison.Ordinal))
                                 problems.Add($"第{i + 1}个任务 的错误信息里没有 `{needle}`"
                                              + $"（实际：{got.Error ?? "null"}）");
-                        }                        if (want["error_kind"] is JsonNode wantKind)
+                        }                        // 证据**内容**也要能断言：CI/界面消费的是证据里的字段（如跳数、目标页），
+                        // 只断言"结论对"不够 —— 证据缺了字段，看报告的人照样看不到。
+                        if (want["evidence_contains"] is JsonArray wantEvidence)
+                            foreach (var needleNode in wantEvidence)
+                            {
+                                string needle = needleNode!.GetValue<string>();
+                                string text = got.Evidence?.ToJsonString() ?? "";
+                                if (!text.Contains(needle, StringComparison.Ordinal))
+                                    problems.Add($"第{i + 1}个任务 的证据里没有 `{needle}`");
+                            }                        if (want["error_kind"] is JsonNode wantKind)
                             Compare(want, "error_kind", RuntimeErrors.Name(got.ErrorKind),
                                     problems, $"第{i + 1}个任务");
                     }

@@ -9,7 +9,8 @@
    "expect": {
     "outcome": "succeeded",
     "host_start_count": 1,
-    "tasks": [ { "id": "n1", "outcome": "succeeded", "error_kind": "none" } ]
+    "tasks": [ { "id": "n1", "outcome": "succeeded", "error_kind": "none",
+                 "evidence_contains": ["page_c", "hops", "final_pages"] } ]
    }
   },
   {
