@@ -136,3 +136,40 @@ python tools\diagnostics\verify_architecture.py     # CLI 不复制业务状态�
   运行目录里的文件数是"工件数"的一部分，往里塞页面等于篡改证据；
 * **回归守着这两条**：`verify_report.py` 有"混进来的目录不算运行"反例；
   `verify_report_html.py` 有"生成视图不改动运行目录里的文件"不变量。
+
+## 十二、已知缺陷：断点文件会被"什么都没干的一次运行"清空
+
+**现状（读代码得到，2026-09-23）**：`TaskQueue.WriteState()` 每次都**重写** `state.json`，
+内容只包含**本次** `queue.Tasks` 里结论为 `Succeeded` / `DryRun` 的任务：
+
+```csharp
+var done = new JsonObject();
+foreach (var task in queue.Tasks)
+    if (task.Outcome is TaskOutcome.Succeeded or TaskOutcome.DryRun)
+        done[task.Id] = task.OutcomeName;
+File.WriteAllText(path, new JsonObject { ["completed"] = done, ... }.ToJsonString(...));
+```
+
+**后果（静默、且会浪费资源）**：
+
+| 次 | 发生了什么 | `state.json` 里剩什么 |
+| --- | --- | --- |
+| 第 1 次 | A 成功、B 失败 | `{A}` |
+| 第 2 次 `--resume` | A 被跳过、B 重试成功 | **`{B}` —— A 没了** |
+| 第 3 次 `--resume` | 读到的"已完成"只有 B | **A 被重新执行** |
+
+对战役批量域来说，"重新执行"就是**再打一遍、再花一次石油**。而这一切不会报错，
+只会在日志里表现为"这次怎么又多打了几个图"。
+
+**为什么会这样**：`completed` 是**累积语义**（"到目前为看已经做完的"），但写入时用的是
+**本次运行的切片**。第 109 轮我给 `--resume` 补断言时就撞上过这个语义不清楚的地方
+（那次我选择只断言"断点来源"，没断言跳过数量 —— 现在知道为什么数不对了）。
+
+**修法（下次做，别急着改）**：写入时**与上一次的断点合并**——
+`TaskQueue` 在被 `--resume` 唤起时已经知道上一份 `state.json`（`TaskQueueFile.LatestState`），
+把它的 `completed` 读进来做并集，再写新的；**不要清空**。
+配套回归：三次运行（成功 → 跳过 → 再 `--resume`）后，第一次成功的任务**仍被跳过**；
+以及"清空"这条负例（当前行为）应当变红。
+
+**为什么先记不做**：这属于会**花资源的路径**（改动影响哪些任务会被重新执行）。
+按本项目的规矩，改它要先有现场证据 + 回归；现在只有代码级证据，且我的上下文预算已尽。
