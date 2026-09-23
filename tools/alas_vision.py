@@ -2187,7 +2187,7 @@ def op_s3_run_plan(args):
         native_kwargs = dict(
             max_rounds=int(args.get('max_rounds') or 20)
             if args.get('repeat_until_cleared', True) else 1,
-            max_seconds=max_s, stop_after=args.get('stop_after'),
+            max_seconds=max_s, stop_after=args.get('stop_after'), withdraw_file=args.get('withdraw_file'),
             battle_count=args.get('battle_count'))
         if args.get('artifact_dir'):
             native_kwargs['artifact_dir'] = args['artifact_dir']

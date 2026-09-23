@@ -158,7 +158,14 @@ public sealed class CampaignBatchRunner
                     submarineFleet: run.SubmarineFleet,
                     clearAll: run.ClearAll,
                     serial: options.Serial,
-                    artifactsDir: _session.RunDirectory);
+                    artifactsDir: _session.RunDirectory,
+                    // 运行中请求撤退：**约定路径** `<运行目录>\withdraw.request` —— 文件出现即请求，
+                    // 宿主会在下一次战斗之前调用上游自己的 withdraw()，本局判 outcome=withdrawn。
+                    // 与 `--stop-file` 同一套习惯（文件出现即生效），但语义不同：
+                    // stop-file 是"停下队列"，这个是"让本局按玩家撤退结束"。
+                    withdrawFile: _session.RunDirectory is null
+                        ? null
+                        : Path.Combine(_session.RunDirectory, "withdraw.request"));
             }
             catch (Exception error)
             {

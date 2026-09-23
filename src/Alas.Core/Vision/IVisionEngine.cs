@@ -84,7 +84,7 @@ public interface IVisionEngine : IDisposable
                                        int maxRounds = 20, bool repeatUntilCleared = true,
                                        int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0,
                                        bool clearAll = false, string? serial = null,
-                                       string? artifactsDir = null);
+                                       string? artifactsDir = null, string? withdrawFile = null);
 }
 
 /// <summary>
@@ -249,7 +249,7 @@ public abstract class VisionEngineBase : IVisionEngine
                                               int maxRounds = 20, bool repeatUntilCleared = true,
                                               int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0,
                                               bool clearAll = false, string? serial = null,
-                                              string? artifactsDir = null)
+                                              string? artifactsDir = null, string? withdrawFile = null)
         => CallTyped<CampaignPlanResult>("s3_run_plan", new
         {
             chapter,
@@ -264,6 +264,11 @@ public abstract class VisionEngineBase : IVisionEngine
             clear_all = clearAll,
             serial,
             artifact_dir = artifactsDir,
+            // **运行中请求撤退**：这个文件一旦出现，宿主会在**下一次战斗之前**调用上游自己的
+            // `withdraw()`（挂钩见 `tools/s3_campaign_execution.py`），于是本局以
+            // `CampaignEnd('Withdraw')` 结束 —— 调用栈里有 `withdraw` 帧，合同据此判
+            // `outcome=withdrawn`。语义与既有的 `--stop-file` 一致：**文件出现即请求**。
+            withdraw_file = withdrawFile,
         });
 
     protected int NextId() => Interlocked.Increment(ref _nextId);

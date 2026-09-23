@@ -1,3 +1,4 @@
+import os
 """Invoke native Campaign.run() while observing outcomes and operation limits.
 
 The campaign retains ownership of entry, initialization, dispatch, scanning,
@@ -6,6 +7,8 @@ special run hooks and auto search. This adapter records existing calls only.
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+from module.logger import logger
 
 from s3_campaign_outcome import (
     classify_campaign_end, finalize_sortie_result, observe_battle_result,
@@ -18,7 +21,7 @@ class _ExecutionBoundary(Exception):
         super().__init__(reason)
 
 
-def run_native_campaign(inst, *, max_rounds=20, max_seconds=1500,
+def run_native_campaign(inst, *, max_rounds=20, max_seconds=1500, withdraw_file=None,
                         stop_after=None, battle_count=None, artifact_dir=None):
     from module.exception import CampaignEnd
 
@@ -86,8 +89,17 @@ def run_native_campaign(inst, *, max_rounds=20, max_seconds=1500,
             steps.append(step)
             operation_started = time.monotonic()
             try:
-                with observe_battle_result(inst) as evidence:
-                    value = original(*args, **kwargs)
+                if is_battle and withdraw_file and os.path.exists(withdraw_file):
+                    # 运行中请求撤退（请求文件出现即触发）—— 调用**上游自己的** withdraw()：
+                    # 它以 `raise CampaignEnd('Withdraw')` 收尾（module/map/map_operation.py:410），
+                    # 于是异常调用栈里有 `withdraw` 帧，合同的判据（s3_campaign_outcome.py:72）
+                    # 会判 outcome=withdrawn。挂钩点选"每次战斗之前"：那正是地图界面、可撤退的状态。
+                    logger.warning('Withdraw requested (file: %s)', withdraw_file)
+                    with observe_battle_result(inst) as evidence:
+                        inst.withdraw()
+                else:
+                    with observe_battle_result(inst) as evidence:
+                        value = original(*args, **kwargs)
             except CampaignEnd as error:
                 end = classify_campaign_end(error, evidence)
                 # An enclosing wrapper must not replace an inner withdrawal's
