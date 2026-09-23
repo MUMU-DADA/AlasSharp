@@ -100,7 +100,7 @@ public sealed class RunReport
                         if (outcome is "succeeded" or "dry_run") report.TasksSucceeded++;
                         else if (outcome == "skipped") report.TasksSkipped++;
                         else report.TasksFailed++;
-                        report.Items.Add(new JsonObject
+                        var item = new JsonObject
                         {
                             ["level"] = "task",
                             ["id"] = node?["id"]?.DeepClone(),
@@ -109,7 +109,15 @@ public sealed class RunReport
                             ["error_kind"] = node?["error_kind"]?.DeepClone(),
                             ["error"] = node?["error"]?.DeepClone(),
                             ["artifact"] = node?["artifact"]?.DeepClone(),
-                        });
+                        };
+                        if (node is JsonObject summary)
+                        {
+                            if (summary.ContainsKey("required"))
+                                item["required"] = summary["required"]?.DeepClone();
+                            if (summary.ContainsKey("input"))
+                                item["input"] = summary["input"]?.DeepClone();
+                        }
+                        report.Items.Add(item);
                         CheckArtifact(report, node?["artifact"]?.GetValue<string>());
                         if (outcome is not ("succeeded" or "dry_run" or "skipped"))
                             report.Findings.Add(new RunFinding("task_failed",
@@ -232,7 +240,18 @@ public sealed class RunReport
                 foreach (var item in report.Items)
                     if (item["level"]?.GetValue<string>() == "task"
                         && item["id"]?.GetValue<string>() == taskId)
+                    {
                         item["boundary_state"] = boundary?.DeepClone();
+                        // Older queue.json summaries omitted the request. Recover it only from
+                        // the matching task artifact; a missing artifact leaves it unknown.
+                        if (Path.GetFileName(item["artifact"]?.GetValue<string>()) == Path.GetFileName(path))
+                        {
+                            if (!item.ContainsKey("required") && document.ContainsKey("required"))
+                                item["required"] = document["required"]?.DeepClone();
+                            if (!item.ContainsKey("input") && document.ContainsKey("input"))
+                                item["input"] = document["input"]?.DeepClone();
+                        }
+                    }
             }
             catch (Exception error) when (IsJsonShapeError(error))
             {

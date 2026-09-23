@@ -157,7 +157,7 @@ public sealed class TaskQueue
         queue.ElapsedSeconds = Math.Round(watch.Elapsed.TotalSeconds, 1);
         Aggregate(queue);
         queue.StatePath = StatePath();
-        queue.IndexPath = WriteIndex(queue);
+        queue.IndexPath = WriteIndex(queue, requests);
         _session.Log.Info("queue", "任务队列结束", new Dictionary<string, object?>
         {
             ["outcome"] = queue.Outcome,
@@ -343,21 +343,27 @@ public sealed class TaskQueue
         });
     }
 
-    private string? WriteIndex(QueueResult queue)
+    private string? WriteIndex(QueueResult queue, IReadOnlyList<TaskRequest> requests)
     {
         if (_session.RunDirectory is null) return null;
         var tasks = new JsonArray();
-        foreach (var task in queue.Tasks)
+        for (int index = 0; index < queue.Tasks.Count; index++)
+        {
+            var task = queue.Tasks[index];
+            var request = requests[index];
             tasks.Add(new JsonObject
             {
                 ["id"] = task.Id,
                 ["kind"] = task.Kind,
+                ["required"] = request.Required,
+                ["input"] = request.Input?.DeepClone(),
                 ["outcome"] = task.OutcomeName,
                 ["error_kind"] = RuntimeErrors.Name(task.ErrorKind),
                 ["error"] = task.Error,
                 ["elapsed_s"] = task.ElapsedSeconds,
                 ["artifact"] = task.ArtifactPath,
             });
+        }
         return _session.WriteArtifact("queue.json", new JsonObject
         {
             ["outcome"] = queue.Outcome,

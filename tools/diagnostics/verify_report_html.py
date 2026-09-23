@@ -44,12 +44,13 @@ def run(*args, timeout=300):
 def build_run(tmpdir: Path):
     queue_file = tmpdir / 'queue.json'
     queue_file.write_text(json.dumps({'tasks': [
-        {'id': 'first', 'kind': 'campaign_batch', 'input': {'chapters': [CHAPTER]}},
+        {'id': 'first', 'kind': 'campaign_batch', 'required': True,
+         'input': {'chapters': [CHAPTER], 'max_rounds': 7}},
         {'id': 'second', 'kind': 'task_schedule', 'input': {'limit': 3}},
     ]}, ensure_ascii=False), encoding='utf-8')
     artifacts = tmpdir / 'artifacts'
-    run(EXE, 'queue', '--file', queue_file, '--artifacts', artifacts)
-    return artifacts
+    produced = run(EXE, 'queue', '--file', queue_file, '--artifacts', artifacts)
+    return artifacts, produced
 
 
 def data_face(artifacts: Path) -> dict:
@@ -83,12 +84,21 @@ def main() -> int:
         report = {
             'directory': str(run_dir),
             'items': [{'level': 'task', 'id': 'detail', 'kind': 'observe',
-                       'outcome': 'skipped', 'artifact': str(run_dir / 'old' / artifact.name)}],
+                       'outcome': 'skipped', 'required': True,
+                       'input': {'filter': {'marker': '<script>unsafe</script>'}, 'limit': 3},
+                       'artifact': str(run_dir / 'old' / artifact.name)}],
             'findings': [{'code': 'fixture', 'detail': '真实发现说明'}],
             'long_value': 'X' * 4200 + 'END_OF_REPORT',
         }
         detail_html = report_html.render(report)
+        task_section = detail_html.split('<h2 id="tasks">', 1)[1].split('</table>', 1)[0]
         detail_checks = [
+            ('完整任务输入在任务表中可查看',
+             '<th>输入</th>' in task_section and '查看输入' in task_section
+             and html_lib.escape('"marker": "<script>unsafe</script>"') in task_section
+             and html_lib.escape('"limit": 3') in task_section
+             and '<td>是</td>' in task_section,
+             '输入或 required 未在任务表显示'),
             ('搬迁后同名工件的嵌套证据可查看',
              '查看证据' in detail_html and html_lib.escape('"marker": "<script>unsafe</script>"') in detail_html,
              '嵌套证据缺失'),
@@ -109,7 +119,7 @@ def main() -> int:
         artifact.unlink()
         missing_html = report_html.render(report)
         detail_checks.append(('工件缺失时仍可查看报告',
-                              '工件不可用' in missing_html and 'detail' in missing_html,
+                              '工件不可用' in missing_html and '查看输入' in missing_html,
                               '缺工件状态未显示'))
         outside = Path(tmp) / 'task-private.json'
         outside.write_text(json.dumps({'evidence': {'private': 'OUTSIDE_RUN'}}), encoding='utf-8')
@@ -118,6 +128,12 @@ def main() -> int:
         detail_checks.append(('外部工件路径不会被内联',
                               'OUTSIDE_RUN' not in external_html and '工件不可用' in external_html,
                               '读入了运行目录以外的 JSON'))
+        report['items'][0].pop('input')
+        old_html = report_html.render(report)
+        old_task_section = old_html.split('<h2 id="tasks">', 1)[1].split('</table>', 1)[0]
+        detail_checks.append(('旧任务请求缺失时显示未记录',
+                              '未记录' in old_task_section and '查看输入' not in old_task_section,
+                              '缺失输入被误显示为默认值'))
         print('=== 逐任务证据 ===')
         for name, ok, detail in detail_checks:
             print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
@@ -126,9 +142,10 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix='alas-html-verify-') as tmp:
         tmpdir = Path(tmp)
-        artifacts = build_run(tmpdir)
+        artifacts, produced = build_run(tmpdir)
         if not list(artifacts.glob('*/queue.json')):
             print('**失败**：队列没产出工件')
+            print((produced.stdout or produced.stderr)[-1500:])
             return 1
         report = data_face(artifacts)
         # **单次运行的视图**要按运行目录生成（按根目录会得到索引页）—— 这里传运行目录，
@@ -174,6 +191,11 @@ def main() -> int:
         checks = [
             ('数据面里的任务/关卡/发现都在 HTML 里出现', not missing,
              f'缺：{missing[:5]}（共 {len(facts)} 条事实）'),
+            ('产品队列每项原始输入完整显示',
+             all(html_lib.escape(json.dumps(item['input'], ensure_ascii=False, indent=2))
+                 in html.split('<h2 id="tasks">', 1)[1].split('</table>', 1)[0]
+                 for item in report['items'] if item.get('level') == 'task'),
+             '任务表未显示完整 input'),
             ('HTML 非空且含标题', '运行报告' in html, f'长度={len(html)}'),
             ('队列结论出现', str(report.get('queue_outcome')) in html,
              f"queue_outcome={report.get('queue_outcome')}"),

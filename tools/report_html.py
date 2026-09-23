@@ -171,6 +171,13 @@ def evidence_detail(document) -> str:
     return f'<details><summary>查看证据</summary><pre>{payload}</pre></details>'
 
 
+def request_input(item: dict) -> str:
+    if 'input' not in item:
+        return '<span class="muted">未记录</span>'
+    payload = html.escape(json.dumps(item['input'], ensure_ascii=False, indent=2))
+    return f'<details><summary>查看输入</summary><pre>{payload}</pre></details>'
+
+
 def outcome_class(value) -> str:
     text = str(value)
     if text in ('cleared', 'succeeded', 'dry_run', 'ok'):
@@ -272,16 +279,21 @@ def render(report: dict) -> str:
     tasks = [i for i in items if i.get('level') == 'task']
     stages = [i for i in items if i.get('level') == 'stage']
     if tasks:
-        parts.append('<h2 id="tasks">任务</h2><div class="table-scroll"><table><tr><th>id</th><th>域</th><th>结论</th>'
-                     '<th>摘要</th><th>证据</th><th>错误分类</th><th>错误</th><th>边界快照</th></tr>')
+        parts.append('<h2 id="tasks">任务</h2><div class="table-scroll"><table><tr><th>id</th><th>域</th>'
+                     '<th>必需</th><th>输入</th><th>结论</th><th>摘要</th><th>证据</th>'
+                     '<th>错误分类</th><th>错误</th><th>边界快照</th></tr>')
         for item in tasks:
             boundary = item.get('boundary_state') or {}
             frame = '有' if boundary.get('available') else f'<span class="muted">无</span>'
             pages = boundary.get('pages')
             artifact = task_artifact(item.get('artifact'), run_directory)
+            required = ('是' if item.get('required') is True else
+                        '否' if item.get('required') is False else '未记录')
             parts.append(
                 f'<tr><td>{html.escape(str(item.get("id")))}</td>'
                 f'<td>{html.escape(str(item.get("kind")))}</td>'
+                f'<td>{required}</td>'
+                f'<td>{request_input(item)}</td>'
                 f'<td class="{outcome_class(item.get("outcome"))}">{html.escape(str(item.get("outcome")))}</td>'
                 f'<td class="muted">{html.escape(evidence_summary(artifact))}</td>'
                 f'<td>{evidence_detail(artifact)}</td>'

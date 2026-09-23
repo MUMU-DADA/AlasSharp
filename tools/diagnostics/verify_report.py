@@ -41,16 +41,97 @@ def run(args, timeout=300, cwd=None):
                           errors='replace', timeout=timeout, cwd=cwd)
 
 
+def verify_stub_request_visibility() -> int:
+    """Exercise queue artifacts and report loading with the existing offline stub host."""
+    import html
+    import report_html
+    from verify_runtime import dry_run_document
+
+    with TemporaryDirectory(prefix='alas-report-stub-') as tmp:
+        root = Path(tmp)
+        request = {'id': 'dry-rules', 'kind': 'campaign_batch', 'required': True,
+                   'input': {'chapters': [CHAPTER], 'max_rounds': 7,
+                             'stop_on_failure': False}}
+        fixture = root / 'fixture.json'
+        fixture.write_text(json.dumps({'cases': [{
+            'name': 'request-visibility', 'dry_run': True, 'artifacts': True,
+            'tasks': [{**request, 'documents': {CHAPTER: dry_run_document(CHAPTER)}}],
+        }]}, ensure_ascii=False), encoding='utf-8')
+        produced = run([str(EXE), 'selftest-runtime', '--fixture', str(fixture),
+                        '--workspace', str(root)])
+        runs = sorted(root.glob('queue-*/*'))
+        if produced.returncode != 0 or len(runs) != 1:
+            print('FAIL 离线替身队列未产出单次运行目录')
+            print(f'  runs={[path.name for path in runs]}')
+            print((produced.stdout or produced.stderr)[-1500:])
+            return 1
+        run_dir = runs[0]
+        queue = json.loads((run_dir / 'queue.json').read_text(encoding='utf-8'))
+        index_request = {key: queue['tasks'][0][key]
+                         for key in ('id', 'kind', 'required', 'input')}
+
+        def report_of(directory: Path, name: str) -> dict:
+            output = root / name
+            result = run([str(EXE), 'report', '--run', str(directory), '--json', str(output)])
+            if result.returncode != 0 or not output.is_file():
+                raise RuntimeError((result.stdout or result.stderr)[-1500:])
+            return json.loads(output.read_text(encoding='utf-8'))
+
+        report = report_of(run_dir, 'report.json')
+        task = next(item for item in report['items'] if item.get('level') == 'task')
+        old_dir = root / 'old-run'
+        shutil.copytree(run_dir, old_dir)
+        old_queue = old_dir / 'queue.json'
+        old_document = json.loads(old_queue.read_text(encoding='utf-8'))
+        old_summary = old_document['tasks'][0]
+        old_summary.pop('required')
+        old_summary.pop('input')
+        old_summary['artifact'] = str(old_dir / Path(old_summary['artifact']).name)
+        old_queue.write_text(json.dumps(old_document), encoding='utf-8')
+        old_task = next(item for item in report_of(old_dir, 'old-report.json')['items']
+                        if item.get('level') == 'task')
+        (old_dir / 'task-dry-rules.json').unlink()
+        missing_report = report_of(old_dir, 'missing-report.json')
+        missing_task = next(item for item in missing_report['items']
+                            if item.get('level') == 'task')
+        rendered_tasks = report_html.render(report).split('<h2 id="tasks">', 1)[1].split('</table>', 1)[0]
+        missing_tasks = report_html.render(missing_report).split('<h2 id="tasks">', 1)[1].split('</table>', 1)[0]
+        checks = [
+            ('队列摘要保留非默认请求', index_request == request),
+            ('报告保留完整输入', task.get('input') == request['input']
+             and task.get('required') is True),
+            ('旧队列从任务工件补读', old_task.get('input') == request['input']
+             and old_task.get('required') is True),
+            ('旧任务工件缺失时不补造输入',
+             'input' not in missing_task and 'required' not in missing_task
+             and any(f['code'] == 'missing_artifact' for f in missing_report['findings'])),
+            ('HTML 任务表保留完整非默认输入',
+             html.escape(json.dumps(request['input'], ensure_ascii=False, indent=2))
+             in rendered_tasks),
+            ('旧工件缺失时 HTML 显示未记录',
+             '未记录' in missing_tasks and '查看输入' not in missing_tasks),
+        ]
+        print('=== 离线替身宿主：任务请求可见性 ===')
+        for name, ok in checks:
+            print(f"  {'ok  ' if ok else 'FAIL'} {name}")
+        return 0 if all(ok for _, ok in checks) else 1
+
+
 def main() -> int:
     if not EXE.is_file():
         print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先运行 dotnet build）')
         return 1
+    if verify_stub_request_visibility() != 0:
+        return 1
+    if '--stub-only' in sys.argv:
+        return 0
 
     failures: list[str] = []
     with TemporaryDirectory(prefix='alas-report-') as tmp:
         tmpdir = Path(tmp)
-        tasks = [{'id': 'dry-rules', 'kind': 'campaign_batch',
-                  'input': {'chapters': [CHAPTER]}}]
+        tasks = [{'id': 'dry-rules', 'kind': 'campaign_batch', 'required': True,
+                  'input': {'chapters': [CHAPTER], 'max_rounds': 7,
+                            'stop_on_failure': False}}]
         frame = DATA / FRAME
         if frame.is_file():
             tasks.append({'id': 'state-now', 'kind': 'account_state',
@@ -69,6 +150,7 @@ def main() -> int:
         run_dirs = sorted(p for p in artifacts.glob('*') if p.is_dir())
         if not run_dirs:
             print('**失败**：没有产出运行目录')
+            print((produced.stdout or produced.stderr)[-1500:])
             return 1
         run_dir = run_dirs[-1]
         # 反例用的副本要在**任何改动之前**复制：否则第二个反例会读到第一个反例改坏的状态，
@@ -87,6 +169,9 @@ def main() -> int:
             print('**失败**：报告没有写出 --json')
             return 1
         report = json.loads(report_json.read_text(encoding='utf-8'))
+        queue_document = json.loads((run_dir / 'queue.json').read_text(encoding='utf-8'))
+        queue_requests = queue_document['tasks']
+        report_tasks = [item for item in report['items'] if item['level'] == 'task']
 
         checks = [
             ('任务数', report['totals']['tasks'] == len(tasks),
@@ -104,6 +189,17 @@ def main() -> int:
             ('有工件计数', report['files'] >= 3, f"files={report['files']}"),
             ('队列结论', report['queue_outcome'] in ('dry_run', 'succeeded', 'partial'),
              f"queue_outcome={report['queue_outcome']}"),
+            ('队列摘要逐任务保留完整请求',
+             all({key: item[key] for key in ('id', 'kind', 'required', 'input')} == task
+                 for item, task in zip(queue_requests, tasks))
+             and len(queue_requests) == len(tasks),
+             f"requests={queue_requests}"),
+            ('报告逐任务显示原始输入',
+             all(item.get('input') == task['input']
+                 and item.get('required') == task.get('required', False)
+                 for item, task in zip(report_tasks, tasks))
+             and len(report_tasks) == len(tasks),
+             f"items={report_tasks}"),
         ]
         if frame.is_file():
             checks.append(('账号状态任务成功',
@@ -135,6 +231,20 @@ def main() -> int:
             print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
             if not ok:
                 failures.append(f'{name}: {detail}')
+
+        replay_root = tmpdir / 'replay-artifacts'
+        replayed = run([str(EXE), 'queue', '--file', str(run_dir / 'queue.json'),
+                        '--artifacts', str(replay_root)])
+        replay_runs = sorted(p for p in replay_root.glob('*') if p.is_dir())
+        replay_requests = (json.loads((replay_runs[-1] / 'queue.json').read_text(encoding='utf-8'))['tasks']
+                           if replay_runs else [])
+        replay_ok = (replayed.returncode == 0 and len(replay_runs) == 1
+                     and all({key: item[key] for key in ('id', 'kind', 'required', 'input')} == task
+                             for item, task in zip(replay_requests, tasks))
+                     and len(replay_requests) == len(tasks))
+        print(f"  {'ok  ' if replay_ok else 'FAIL'} queue.json 回喂仍保留非默认输入")
+        if not replay_ok:
+            failures.append(f'queue.json 回喂丢失请求: rc={replayed.returncode} tasks={replay_requests}')
 
         # 合法 JSON 也可能含错误类型；报告应留 finding，不能直接抛异常。
         print()
