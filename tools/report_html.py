@@ -191,6 +191,18 @@ def render(report: dict) -> str:
     totals = report.get('totals') or {}
     items_all = report.get('items') or []
     failures = failures_of(items_all)
+    # 导航按**实际渲染了哪几节**生成：写死链接会在某节缺席时留下悬空锚点
+    #（实测：一份没有关卡的报告里 #stages 点了没反应）。
+    _levels = {item.get('level') for item in items_all}
+    nav_targets = [('failures', '失败与未通关')]
+    if 'task' in _levels:
+        nav_targets.append(('tasks', '任务'))
+    if 'stage' in _levels:
+        nav_targets.append(('stages', '关卡'))
+    nav_targets += [('findings', '发现'), ('raw', '原始数据面')]
+    nav_html = ('<div class="sub">跳到：'
+                + ' · '.join(f'<a href="#{anchor}">{label}</a>' for anchor, label in nav_targets)
+                + '</div>')
     parts = [
         '<!doctype html><meta charset="utf-8">',
         f'<title>运行报告 — {html.escape(str(report.get("run") or ""))}</title>',
@@ -198,12 +210,7 @@ def render(report: dict) -> str:
         f'<h1>运行报告</h1>',
         f'<div class="sub">{html.escape(str(report.get("run") or ""))}</div>',
         # 页首锚点：一次运行可能有几十个关卡，先给一条能跳的路（纯 HTML，无 JS）
-        '<div class="sub">跳到：'
-        '<a href="#failures">失败与未通关</a> · '
-        '<a href="#tasks">任务</a> · '
-        '<a href="#stages">关卡</a> · '
-        '<a href="#findings">发现</a> · '
-        '<a href="#raw">原始数据面</a></div>',
+        nav_html,
         '<div class="cards">',
         card('队列结论', report.get('queue_outcome') or '—'),
         card('批次结论', report.get('batch_outcome') or '—'),

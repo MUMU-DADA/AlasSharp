@@ -224,7 +224,12 @@ def main() -> int:
                 return text.split(f'<h2 id="{anchor}">', 1)[1].split('<h2', 1)[0]
 
             failures_section = section_of(bad_html, 'failures')
+            # 悬空锚点：页首每个 #x 链接，文档里都必须有 id="x"
+            import re as _re
+            linked = set(_re.findall(r'href="#([\w-]+)"', clean_html))
+            dangling = sorted(a for a in linked if f'id="{a}"' not in clean_html)
             interact_checks = [
+                ('页首没有悬空锚点', not dangling, f'悬空={dangling}'),
                 ('锚点齐全（失败/任务/关卡/发现/原始数据面）',
                  all(f'id="{anchor}"' in clean_html
                      for anchor in ('failures', 'tasks', 'stages', 'findings', 'raw')),
