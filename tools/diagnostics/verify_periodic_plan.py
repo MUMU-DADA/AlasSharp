@@ -231,6 +231,10 @@ def verify_native_dispatch(failures):
                  'confirm': 'no_such_task_zzz'},
                 {'task': 'reward', 'allow_actions': True, 'confirm': 'reward',
                  'overrides': []},
+                {'task': 'reward', 'allow_actions': True, 'confirm': 'reward',
+                 'expected_method': 'opsi_explore'},
+                {'task': 'reward', 'allow_actions': True, 'confirm': 'reward',
+                 'expected_scheduler_command': 'OpsiExplore'},
             ]
             for args in denied_cases:
                 configs_before, calls_before = len(state.configs), len(state.calls)
@@ -273,7 +277,9 @@ def verify_native_dispatch(failures):
                   device.config is original_device_config, f'{device.config!r}')
 
             opsi = call_op('periodic_run', {
-                'task': 'OpsiExplore', 'allow_actions': True, 'confirm': 'OpsiExplore'})
+                'task': 'OpsiExplore', 'allow_actions': True, 'confirm': 'OpsiExplore',
+                'expected_method': 'opsi_explore',
+                'expected_scheduler_command': 'OpsiExplore'})
             check(failures, 'OpsiExplore 走原生 opsi_explore（不是 run）',
                   opsi.get('decision') == 'ran' and opsi.get('native_success') is True
                   and ('opsi_explore',) in state.calls, f'{opsi} calls={state.calls}')
@@ -302,6 +308,22 @@ def verify_native_dispatch(failures):
                   false_result.get('decision') != 'ran'
                   and false_result.get('native_success') is False, f'{false_result}')
             check(failures, 'False 后恢复共享 device.config',
+                  device.config is original_device_config, f'{device.config!r}')
+
+            native_run = native_alas.AzurLaneAutoScript.run
+            try:
+                native_alas.AzurLaneAutoScript.run = lambda self, command: 'recoverable'
+                recoverable = call_op('periodic_run', {
+                    'task': 'OpsiExplore', 'allow_actions': True,
+                    'confirm': 'OpsiExplore', 'expected_method': 'opsi_explore',
+                    'expected_scheduler_command': 'OpsiExplore'})
+            finally:
+                native_alas.AzurLaneAutoScript.run = native_run
+            check(failures, '原生 dispatcher 返回 recoverable 不得算成功',
+                  recoverable.get('decision') == 'failed'
+                  and recoverable.get('native_success') is False
+                  and recoverable.get('ran') is True, f'{recoverable}')
+            check(failures, 'recoverable 后恢复共享 device.config',
                   device.config is original_device_config, f'{device.config!r}')
 
             state.mode = 'pre_dispatch_failure'

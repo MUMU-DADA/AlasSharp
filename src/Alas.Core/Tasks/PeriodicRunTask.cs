@@ -62,13 +62,19 @@ public sealed class PeriodicRunTask : ITaskRunner
     }
 
     public TaskResult Run(TaskRequest request, TaskContext context, CancellationToken token)
+        => RunWithKind(request, context, token, Kind);
+
+    internal static TaskResult RunWithKind(TaskRequest request, TaskContext context,
+                                           CancellationToken token, string kind,
+                                           string? expectedMethod = null,
+                                           string? expectedCommand = null)
     {
         string task = request.Input?["task"]?.GetValue<string>() ?? "";
         bool allowActions = request.Input?["allow_actions"]?.GetValue<bool>() ?? false;
         string confirm = request.Input?["confirm"]?.GetValue<string>() ?? "";
         JsonObject? overrides = request.Input?["overrides"] as JsonObject;
 
-        var result = new TaskResult { Id = request.Id, Kind = Kind };
+        var result = new TaskResult { Id = request.Id, Kind = kind };
         if (context.Options.DryRun || !context.Options.AllowActions)
         {
             result.Outcome = TaskOutcome.Refused;
@@ -95,6 +101,8 @@ public sealed class PeriodicRunTask : ITaskRunner
                 allow_actions = allowActions,
                 confirm,
                 overrides,
+                expected_method = expectedMethod,
+                expected_scheduler_command = expectedCommand,
             });
             result.Evidence = new JsonObject
             {

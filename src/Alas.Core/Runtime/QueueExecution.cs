@@ -39,6 +39,7 @@ public static class QueueExecution
             .Register(new CampaignBatchTask())
             .Register(new AccountStateTask())
             .Register(new OsStateTask())
+            .Register(new OsActionTask())
             .Register(new EventStateTask())
             .Register(new TaskCatalogTask())
             .Register(new NavigateTask())

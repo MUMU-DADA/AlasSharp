@@ -1101,6 +1101,14 @@ def op_periodic_run(args):
     if plan.get('found') is not True:
         out.update(decision='denied', reason='任务名在上游 alas.py 里找不到：%s' % task)
         return out
+    expected_method = args.get('expected_method')
+    if expected_method is not None and expected_method != plan['method']:
+        out.update(decision='denied', reason='上游调度目标与放行时核对的方法不一致')
+        return out
+    expected_command = args.get('expected_scheduler_command')
+    if expected_command is not None and expected_command != plan['scheduler_command']:
+        out.update(decision='denied', reason='上游调度目标与放行时核对的 Scheduler.Command 不一致')
+        return out
 
     command = plan['scheduler_command']
     method_name = plan['method']
@@ -1148,12 +1156,12 @@ def op_periodic_run(args):
         device.click_record_clear()
         out['ran'] = True
         native_success = runner.run(method_name)
-        out['native_success'] = bool(native_success)
-        if native_success:
+        out['native_success'] = native_success is True
+        if native_success is True:
             out['decision'] = 'ran'
         else:
             out['decision'] = 'failed'
-            out['error'] = '上游原生调度器返回 False'
+            out['error'] = '上游原生调度器未确认成功'
     except SystemExit as error:
         out['ran'] = bool(out.get('ran'))
         out['native_success'] = False

@@ -315,6 +315,7 @@ internal static class RuntimeSelfCheck
              .Register(new Alas.Tasks.NavigateTask())    // 小型导航环境（docs/runtime.md 第十五节）
              .Register(new Alas.Tasks.ObserveTask())
              .Register(new Alas.Tasks.PeriodicRunTask())
+             .Register(new Alas.Tasks.OsActionTask())
              .Register(new PreconditionFailureTask());
             if (node["resume_completed"] is JsonArray resumed)
                 foreach (var id in resumed)
@@ -342,6 +343,8 @@ internal static class RuntimeSelfCheck
         if (expect is not null)
         {
             Compare(expect, "outcome", queue.Outcome, problems);
+            if (expect["cleared"] is not null)
+                Compare(expect, "cleared", CampaignTasksCleared(queue), problems);
             Compare(expect, "host_start_count", 1, problems);
             Compare(expect, "device_configure_count", stub?.DeviceConfigureCalls ?? 0, problems);
             Compare(expect, "stopped_early", queue.StoppedEarly, problems);
@@ -434,7 +437,7 @@ internal static class RuntimeSelfCheck
             ["ok"] = problems.Count == 0,
             ["problems"] = new JsonArray(problems.Select(p => (JsonNode)JsonValue.Create(p)!).ToArray()),
             ["outcome"] = queue?.Outcome ?? "failed",
-            ["cleared"] = queue?.Succeeded ?? false,
+            ["cleared"] = CampaignTasksCleared(queue),
             // 运行目录给出来，Python 侧才能直接读工件做断言（例如边界快照）。
             ["run_directory"] = queue?.IndexPath is null ? null : Path.GetDirectoryName(queue.IndexPath),
             ["stopped_early"] = queue?.StoppedEarly ?? false,
@@ -554,6 +557,13 @@ internal static class RuntimeSelfCheck
         public Alas.Tasks.TaskResult Run(Alas.Tasks.TaskRequest request,
                                         Alas.Tasks.TaskContext context, CancellationToken token)
             => throw new InvalidOperationException("precondition failure must not run");
+    }
+
+    private static bool CampaignTasksCleared(Alas.Tasks.QueueResult? queue)
+    {
+        var campaigns = queue?.Tasks.Where(t => t.Kind == "campaign_batch").ToList();
+        return campaigns is { Count: > 0 } && campaigns.All(t =>
+            t.Succeeded && t.Evidence?["cleared"]?.GetValue<bool>() == true);
     }
 }
 

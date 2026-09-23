@@ -5,7 +5,7 @@
 | 主题 | 看哪节 |
 | --- | --- |
 | 通用任务模型与队列语义 | 模型 · 队列语义 |
-| 十类业务任务与通用任务 | 战役批量、账号状态、大世界探针、活动清点、周期任务清点/调度/勘察/放行/执行、配置读取；通用导航与观测 |
+| 十一类业务任务与通用任务 | 战役批量、账号状态、大世界探针/动作、活动清点、周期任务清点/调度/勘察/放行/执行、配置读取；通用导航与观测 |
 | 怎么跑 | 命令 |
 | 怎么验 | 验收矩阵 |
 | 还差什么 | 下一步与本域的缺口 |
@@ -242,7 +242,7 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 `map_detect`（`mode="os"`）与 `globe_detect`，不是 `s3_run_plan`。所以第三域同样**不需要**
 在 C# 里写地图逻辑，只需要按下面的形状接通用任务模型。
 
-**第一刀只做只读探针**（设备不在线时可完整验收），动作流程等设备上线再加：
+只读探针可由存盘帧离线验收；动作入口已有通用上游调度接线，但真机门槛仍受当前账号解锁状态限制：
 
 | 项 | 设计 |
 | --- | --- |
@@ -255,8 +255,21 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 | 离线验收 | `tools/diagnostics/verify_os_state.py`：用 `data/fixtures/os_map.png` 与 `os_globe_view.png` 跑队列任务，分别核对地图结果和上游球面单应性/坐标证据；缺夹具时显式跳过对应分支 |
 | 守卫 | 新增域名后 `verify_architecture.py` 会自动要求它在 `Program.cs` 注册（已有检查） |
 
-**大世界动作流程（海域选择、出击）尚未完成**：通用页面导航已有独立任务，
-大世界域的动作仍需自己的任务输入、结果和真实产品路径证据。
+`os_action` 是大世界域的动作任务：输入为上游任务名及 `allow_actions=true`、
+`confirm`（与任务名一致），可带当前任务绑定的 `overrides`。会话还必须以
+`--run --allow-actions` 启动。任务先用只读 `periodic_plan` 核对上游
+`Scheduler.Command` 映射为 `opsi_*` 原生方法；非大世界任务在执行前失败。
+随后复用 `periodic_run` 的双闸、完整配置绑定和 `AzurLaneAutoScript.run()`。
+宿主在构造对象前再次核对方法与 `Scheduler.Command` 均和勘察目标一致，
+不维护海域、地图或任务特例表。
+工件保留 `os_plan`、原生目标、`ran` 与 `native_success`；`succeeded` 仅表示原生调度器
+明确返回布尔值 `True`，`False` 或 `recoverable` 均记失败，且不能单独证明海域目标或战斗结算。离线 `verify_runtime.py` 覆盖目标约束、
+会话授权、目标分歧和结果工件；`verify_periodic_plan.py` 覆盖上游方法一致性联锁。
+`verify_os_action.py` 走真实 CLI 和上游只读解析，验证 dry-run 跳过及
+`reward` 作为非 OS 目标在设备配置前被拒绝；这两条都没有执行设备动作。
+
+**大世界动作闭环（海域选择、出击）尚未完成**：通用页面导航已有独立任务，
+但 `os_action` 仍缺真实产品路径证据，不能以离线替身代替真机验收。
 2026-09-23 真机队列从活动页请求 `navigate(to=page_os)`，退到战役菜单后连续点击上游
 `CAMPAIGN_MENU_GOTO_OS`，页面保持 `page_campaign_menu`；任务失败，后续 `account_state` 与
 `os_state` 按失败即停记为 `skipped`。现场截图显示“大型作战”入口带锁。
@@ -267,7 +280,7 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 
 - 账号状态 `capture=true` 与 `IN_MAP` 现场复核已有设备窗口记录，见 `handover-r0-r2.md` 第五节与第八节补充六。
 - 队列已有 CLI 入口和静态 HTML 证据视图；统一配置、任务和运行控制前端仍未交付。
-- 大世界目前为只读探针，当前账号的大型作战入口带锁；活动已有 A1、A2、A3 普通战役队列真机通关样本，其他活动章节及活动域完整动作流程仍需验证。
+- 大世界已有只读探针和动作任务的离线接线，当前账号的大型作战入口带锁，动作闭环未获真机验收；活动已有 A1、A2、A3 普通战役队列真机通关样本，其他活动章节及活动域完整动作流程仍需验证。
 - 周期任务已接通通用执行入口，reward 与 dorm 的原生调度有真机证据；dorm 本次没有收取点击，领取效果及其余执行路径不能据此视为已验证。
 - 观测已进入任务队列，完成离线故障/取消回归与只读真机抓帧/识页验证；`map=main` 仅有主界面零命中的现场负样本，地图内正样本及其他后端不据此外推。
 

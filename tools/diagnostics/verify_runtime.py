@@ -304,6 +304,7 @@ def build_queue_cases() -> list[dict]:
             ],
             'expect': {
                 'outcome': 'succeeded',
+                'cleared': True,
                 'host_start_count': 1,
                 'device_configure_count': 1,
                 'backend_calls': 5,          # 设备配置 1 + 每任务 2 次（边界快照 + s3_run_plan）
@@ -505,6 +506,99 @@ def build_queue_cases() -> list[dict]:
                 ],
                 'artifacts': ['queue.json', 'state.json',
                               'task-a_b.json', 'task-a_b-2.json', 'task-a_b-3.json'],
+            },
+        },
+        {
+            'name': 'os_action_native_dispatch_uses_upstream_target',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'tasks': [{'id': 'os', 'kind': 'os_action', 'input': {
+                'task': 'OpsiExplore', 'allow_actions': True, 'confirm': 'OpsiExplore'}}],
+            'stub_responses': {
+                'periodic_plan': [{'result': {
+                    'task': 'OpsiExplore', 'found': True,
+                    'scheduler_command': 'OpsiExplore', 'method': 'opsi_explore', 'lineno': 305}}],
+                'periodic_run': [{'result': {
+                    'task': 'OpsiExplore', 'decision': 'ran', 'confirm_matches': True,
+                    'target': {'module': 'alas', 'class': 'AzurLaneAutoScript',
+                               'scheduler_command': 'OpsiExplore', 'method': 'opsi_explore'},
+                    'constructed': True, 'ran': True, 'native_success': True}}]},
+            'expect': {
+                'outcome': 'succeeded', 'cleared': False, 'host_start_count': 1,
+                'device_configure_count': 1, 'backend_calls': 4, 'stopped_early': False,
+                'tasks': [{'id': 'os', 'outcome': 'succeeded',
+                           'evidence_equals': {'os_plan.method': 'opsi_explore',
+                                               'target.method': 'opsi_explore',
+                                               'native_success': True}}],
+            },
+        },
+        {
+            'name': 'os_action_rejects_non_os_before_native_dispatch',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'tasks': [{'id': 'os', 'kind': 'os_action', 'input': {
+                'task': 'reward', 'allow_actions': True, 'confirm': 'reward'}}],
+            'stub_responses': {
+                'periodic_plan': [{'result': {
+                    'task': 'reward', 'found': True,
+                    'scheduler_command': 'Reward', 'method': 'reward'}}],
+                'periodic_run': [{'error': 'non-OS task reached native dispatch'}]},
+            'expect': {
+                'outcome': 'failed', 'host_start_count': 1,
+                'device_configure_count': 1, 'backend_calls': 3, 'stopped_early': True,
+                'tasks': [{'id': 'os', 'outcome': 'failed', 'error_kind': 'internal',
+                           'error_contains': '不是大世界动作入口',
+                           'evidence_equals': {'os_plan.method': 'reward'}}],
+            },
+        },
+        {
+            'name': 'os_action_rejects_mismatched_dispatch_evidence',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'tasks': [{'id': 'os', 'kind': 'os_action', 'input': {
+                'task': 'OpsiExplore', 'allow_actions': True, 'confirm': 'OpsiExplore'}}],
+            'stub_responses': {
+                'periodic_plan': [{'result': {
+                    'task': 'OpsiExplore', 'found': True,
+                    'scheduler_command': 'OpsiExplore', 'method': 'opsi_explore'}}],
+                'periodic_run': [{'result': {
+                    'task': 'OpsiExplore', 'decision': 'ran', 'ran': True,
+                    'native_success': True, 'target': {'method': 'reward'}}}]},
+            'expect': {
+                'outcome': 'failed', 'host_start_count': 1,
+                'device_configure_count': 1, 'backend_calls': 4, 'stopped_early': True,
+                'tasks': [{'id': 'os', 'outcome': 'failed', 'error_kind': 'upstream_error',
+                           'error_contains': '目标不一致'}],
+            },
+        },
+        {
+            'name': 'os_action_rejects_mismatched_command_evidence',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'tasks': [{'id': 'os', 'kind': 'os_action', 'input': {
+                'task': 'OpsiExplore', 'allow_actions': True, 'confirm': 'OpsiExplore'}}],
+            'stub_responses': {
+                'periodic_plan': [{'result': {
+                    'task': 'OpsiExplore', 'found': True,
+                    'scheduler_command': 'OpsiExplore', 'method': 'opsi_explore'}}],
+                'periodic_run': [{'result': {
+                    'task': 'OpsiExplore', 'decision': 'ran', 'ran': True,
+                    'native_success': True,
+                    'target': {'method': 'opsi_explore', 'scheduler_command': 'Reward'}}}]},
+            'expect': {
+                'outcome': 'failed', 'host_start_count': 1,
+                'device_configure_count': 1, 'backend_calls': 4, 'stopped_early': True,
+                'tasks': [{'id': 'os', 'outcome': 'failed', 'error_kind': 'upstream_error',
+                           'error_contains': '目标不一致'}],
+            },
+        },
+        {
+            'name': 'os_action_requires_action_session',
+            'dry_run': True, 'allow_actions': False, 'serial': 'stub-1',
+            'tasks': [{'id': 'os', 'kind': 'os_action', 'input': {
+                'task': 'OpsiExplore', 'allow_actions': True, 'confirm': 'OpsiExplore'}}],
+            'stub_responses': {'periodic_plan': [{'error': 'unauthorized plan call'}]},
+            'expect': {
+                'outcome': 'partial', 'host_start_count': 1,
+                'device_configure_count': 0, 'backend_calls': 0, 'stopped_early': False,
+                'tasks': [{'id': 'os', 'outcome': 'skipped', 'error_kind': 'none',
+                           'error_contains': '会话未授权'}],
             },
         },
         {
