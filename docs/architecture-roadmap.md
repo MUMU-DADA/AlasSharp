@@ -123,7 +123,7 @@
 | 通用 | 页面导航 `navigate` | 动作 | `verify_runtime.py`、`navigate_cases.json` + `docs/queue-evidence.md` 的新队列入口往返/多轮真机样本 |
 | 通用 | 观测 `observe` | 只读设备任务 | `verify_runtime.py`、`observe_cases.json` + `docs/queue-evidence.md` 的 6 tick / 4 tick 新队列入口真机样本 |
 
-剩余**动作范围**包括大世界流程、活动出击除 A1/A2 样本外尚未验证的路径，以及周期任务尚未验证的执行路径；
+剩余**动作范围**包括大世界流程、活动出击除 A1/A2/A3 样本外尚未验证的路径，以及周期任务尚未验证的执行路径；
 逐域的四件套与边界见 `docs/tasks.md`（那份文档同时是本表的详细版）。
 
 ### R3：原生钩子与高频能力迁移
