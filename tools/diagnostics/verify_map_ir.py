@@ -309,7 +309,10 @@ def main():
     with open(doc, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
     print('报告: %s' % doc)
-    return 0 if (skipped == 0 and matched == len(results)) else 1
+    # 判据是**不匹配数为 0**，而不是'跳过数为 0'：跳过的样本是**显式**记 match=None 的
+    # （基类模块没有可对照的网格），把它当失败会让这条对照永远红。不匹配仍然一律失败。
+    mismatched = len(results) - matched - skipped
+    return 0 if mismatched == 0 else 1
 
 
 if __name__ == '__main__':
