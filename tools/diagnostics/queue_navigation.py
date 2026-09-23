@@ -16,7 +16,7 @@ def run_navigation(alashub, page, serial, *, adb=None, timeout=900,
         queue = Path(temp) / 'queue.json'
         queue.write_text(json.dumps({'tasks': [
             {'id': 'navigate', 'kind': 'navigate', 'required': True,
-             'input': {'to': page, 'max_hops': 8, 'rounds': 1}},
+             'input': {'to': page, 'rounds': 1}},
         ]}), encoding='utf-8')
         command = [str(alashub), 'queue', '--file', str(queue), '--run',
                    '--allow-actions', '--serial', serial,

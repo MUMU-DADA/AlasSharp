@@ -75,8 +75,9 @@ def shot():
 
 def goto(page):
     r = run_navigation(ALASHUB, page, SERIAL, adb=ADB)
-    hops = [l.strip() for l in (r.stdout or '').splitlines() if l.startswith('[hop')]
-    return r.returncode == 0, hops
+    navigation = [l.strip() for l in (r.stdout or '').splitlines()
+                  if l.startswith('[原生导航]') or l.startswith('[导航失败]')]
+    return r.returncode == 0, navigation
 
 
 def main():
@@ -105,21 +106,21 @@ def main():
             # 不可导航：先到它的"同屏兄弟"页，再要求它同时被检测到
             sibling = CO_DETECT.get(page)
             if sibling is None:
-                verdict, hops, pages = 'no-in-edge', [], shot()
+                verdict, navigation, pages = 'no-in-edge', [], shot()
             else:
-                ok, hops = goto(sibling)
+                ok, navigation = goto(sibling)
                 pages = shot()
                 verdict = 'ok' if (ok and page in pages) else 'co-detect-failed'
         else:
-            ok, hops = goto(page)
+            ok, navigation = goto(page)
             pages = shot()
             verdict = 'ok' if (ok and page in pages) else (
                 'goto-failed' if not ok else 'not-detected')
         print('[%2d/%d] %-22s %-16s %5.1fs  命中=%s'
               % (i, len(targets), page, verdict, time.time() - t0, pages))
-        for h in hops:
-            print('        %s' % h)
-        results.append({'page': page, 'verdict': verdict, 'hops': hops,
+        for entry in navigation:
+            print('        %s' % entry)
+        results.append({'page': page, 'verdict': verdict, 'navigation': navigation,
                         'observed': pages, 'no_in_edge': page in no_in,
                         'seconds': round(time.time() - t0, 1),
                         'navigation_entry': 'queue:navigate'})
@@ -183,13 +184,14 @@ def write_report(results, no_in, node_n, edge_n):
         '',
         '## 结果：%d / %d 通过' % (ok_n, len(results)),
         '',
-        '| 页面 | 结果 | 耗时 | 跳数 | 导航输出 |',
-        '| --- | --- | --- | --- | --- |',
+        '| 页面 | 结果 | 耗时 | 导航输出 |',
+        '| --- | --- | --- | --- |',
     ]
     for r in results:
-        lines.append('| `%s` | %s | %.1fs | %d | %s |'
-                     % (r['page'], r['verdict'], r['seconds'], len(r['hops']),
-                        '<br>'.join(h.replace('|', '/') for h in r['hops']) or '—'))
+        entries = r.get('navigation', r.get('hops', []))
+        lines.append('| `%s` | %s | %.1fs | %s |'
+                     % (r['page'], r['verdict'], r['seconds'],
+                        '<br>'.join(h.replace('|', '/') for h in entries) or '—'))
     lines += [
         '',
         '## 顺带发现：上游页面图里有"无入边"节点',

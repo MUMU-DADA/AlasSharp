@@ -798,8 +798,10 @@ Mission collect finished
 
 `ObserveTask` 只能由 `alashub queue --file` 调度。任务输入为
 `{"seconds":20,"tick_seconds":0.5,"map":"main"}`，`map` 可省略或为上游 `main`/`os` 模式；
-`navigate` 同样由队列以 `{"to":"page_campaign","max_hops":8,"rounds":1}` 输入调度。
-两者复用宿主抓帧、识页、地图识别或页面图，不维护第二份规则表。
+`navigate` 同样由队列以 `{"to":"page_campaign","rounds":1}` 输入调度。
+每段调用上游 `UI.ui_ensure()`；`rounds > 1` 时先回 `page_main` 再去目标，
+`max_hops` 已停用且输入时会拒绝。逐段证据只记录原生的到达、最终页面、状态变化、耗时及失败，
+不包含旧 C# 导航器的逐跳坐标。两者复用常驻会话与上游规则，不维护第二份页面表。
 
 ```json
 {"tasks":[{"id":"observe","kind":"observe","input":{"seconds":2,"tick_seconds":0.5}}]}

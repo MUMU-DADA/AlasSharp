@@ -1,0 +1,112 @@
+{
+  "cases": [
+    {
+      "name": "native_navigate_arrives",
+      "dry_run": false,
+      "allow_actions": true,
+      "serial": "stub-1",
+      "tasks": [{"id": "native", "kind": "navigate", "input": {"to": "page_c"}}],
+      "expect": {
+        "outcome": "succeeded", "backend_calls": 4,
+        "tasks": [{"id": "native", "outcome": "succeeded", "error_kind": "none",
+          "evidence_equals": {"success": true, "rounds_completed": 1, "final_page": "page_c"},
+          "evidence_contains": ["changed", "elapsed_ms"]}]
+      }
+    },
+    {
+      "name": "native_navigate_already_on_target",
+      "dry_run": false,
+      "allow_actions": true,
+      "serial": "stub-1",
+      "tasks": [{"id": "already", "kind": "navigate", "input": {"to": "page_a"}}],
+      "expect": {
+        "outcome": "succeeded",
+        "tasks": [{"id": "already", "outcome": "succeeded", "error_kind": "none",
+          "evidence_contains": ["\"changed\":false"]}]
+      }
+    },
+    {
+      "name": "native_navigate_unknown_target_skipped",
+      "dry_run": false,
+      "allow_actions": true,
+      "serial": "stub-1",
+      "tasks": [{"id": "unknown", "kind": "navigate", "input": {"to": "page_unknown"}}],
+      "expect": {"outcome": "partial", "backend_calls": 2,
+        "tasks": [{"id": "unknown", "outcome": "skipped", "error_kind": "none",
+          "error_contains": "上游可验证页面列表"}]}
+    },
+    {
+      "name": "native_navigate_requires_action_session",
+      "dry_run": true,
+      "allow_actions": false,
+      "tasks": [{"id": "blocked", "kind": "navigate", "input": {"to": "page_c"}}],
+      "expect": {"outcome": "partial", "backend_calls": 0,
+        "tasks": [{"id": "blocked", "outcome": "skipped", "error_contains": "--run --allow-actions"}]}
+    },
+    {
+      "name": "native_navigate_rejects_legacy_hop_limit",
+      "dry_run": false,
+      "allow_actions": true,
+      "serial": "stub-1",
+      "tasks": [{"id": "legacy", "kind": "navigate", "input": {"to": "page_c", "max_hops": 8}}],
+      "expect": {"outcome": "partial", "backend_calls": 1,
+        "tasks": [{"id": "legacy", "outcome": "skipped", "error_contains": "input.max_hops 已停用"}]}
+    },
+    {
+      "name": "native_navigate_failure_stops_queue",
+      "dry_run": false,
+      "allow_actions": true,
+      "serial": "stub-1",
+      "tasks": [
+        {"id": "inert", "kind": "navigate", "input": {"to": "page_dead"}},
+        {"id": "after", "kind": "navigate", "input": {"to": "page_c"}}
+      ],
+      "expect": {"outcome": "failed", "stopped_early": true,
+        "tasks": [
+          {"id": "inert", "outcome": "failed", "error_kind": "upstream_error",
+            "error_contains": "fixture inert entry", "evidence_equals": {"failure_phase": "to_target", "rounds_completed": 0}},
+          {"id": "after", "outcome": "skipped"}
+        ]}
+    },
+    {
+      "name": "native_navigate_rounds_reuse_session",
+      "dry_run": false,
+      "allow_actions": true,
+      "serial": "stub-1",
+      "tasks": [{"id": "rounds", "kind": "navigate", "input": {"to": "page_goal", "rounds": 3}}],
+      "expect": {"outcome": "succeeded", "host_start_count": 1, "device_configure_count": 1,
+        "backend_calls": 8,
+        "tasks": [{"id": "rounds", "outcome": "succeeded", "error_kind": "none",
+          "evidence_equals": {"rounds_requested": 3, "rounds_completed": 3, "final_page": "page_goal"},
+          "evidence_contains": ["return_to_main", "to_target"]}]}
+    },
+    {
+      "name": "native_navigate_later_round_failure",
+      "dry_run": false,
+      "allow_actions": true,
+      "serial": "stub-1",
+      "tasks": [{"id": "later", "kind": "navigate", "input": {"to": "page_goal", "rounds": 3}}],
+      "stub_responses": {
+        "ui_ensure": [
+          {"result": {"arrived": true, "final_page": "page_goal", "changed": true}},
+          {"result": {"arrived": false, "final_page": "page_goal", "error": "fixture later failure", "error_kind": "GameStuckError"}}
+        ]
+      },
+      "expect": {"outcome": "failed", "stopped_early": true,
+        "tasks": [{"id": "later", "outcome": "failed", "error_kind": "timeout",
+          "error_contains": "fixture later failure",
+          "evidence_equals": {"rounds_completed": 1, "failure_phase": "return_to_main"}}]}
+    },
+    {
+      "name": "native_navigate_cancel_at_leg_boundary",
+      "dry_run": false,
+      "allow_actions": true,
+      "serial": "stub-1",
+      "cancel_after_op": "ui_ensure",
+      "tasks": [{"id": "cancel", "kind": "navigate", "input": {"to": "page_goal", "rounds": 2}}],
+      "expect": {"outcome": "cancelled", "stopped_early": true, "backend_calls": 4,
+        "tasks": [{"id": "cancel", "outcome": "skipped", "error_kind": "cancelled",
+          "evidence_equals": {"rounds_completed": 0, "cancelled": true}}]}
+    }
+  ]
+}

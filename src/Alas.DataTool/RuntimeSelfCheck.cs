@@ -312,7 +312,7 @@ internal static class RuntimeSelfCheck
             {
                 StopOnFailure = stopOnFailure,
             }.Register(new Alas.Tasks.CampaignBatchTask())
-             .Register(new Alas.Tasks.NavigateTask())    // 小型导航环境（docs/runtime.md 第十五节）
+             .Register(new Alas.Tasks.NavigateTask())
              .Register(new Alas.Tasks.ObserveTask())
              .Register(new Alas.Tasks.PeriodicRunTask())
              .Register(new Alas.Tasks.OsActionTask())
@@ -656,6 +656,32 @@ internal sealed class StubVisionEngine : VisionEngineBase
             // 注意：这里的小图是**测试夹具**，不是第二份页面表 —— 产品路径永远用真上游图。
             case "ui_page_graph":
                 return NavigationGraphJson();
+            case "page_list":
+                string[] names = ["page_main", "page_a", "page_b", "page_c", "page_dead", "page_goal"];
+                return JsonSerializer.SerializeToNode(new
+                {
+                    pages = names.Select(name => new
+                    {
+                        page = name,
+                        check_button = $"ui/{name.ToUpperInvariant()}_CHECK",
+                    }),
+                    count = names.Length,
+                })!;
+            case "ui_ensure":
+                string destination = payload["destination"]?.GetValue<string>() ?? "";
+                bool arrived = destination != "page_dead";
+                bool changed = arrived && _currentPage != destination;
+                if (arrived) _currentPage = destination;
+                return new JsonObject
+                {
+                    ["destination"] = destination,
+                    ["arrived"] = arrived,
+                    ["final_page"] = _currentPage,
+                    ["changed"] = changed,
+                    ["elapsed_ms"] = 1.0,
+                    ["error"] = arrived ? null : "fixture inert entry",
+                    ["error_kind"] = arrived ? null : "DestinationNotVisible",
+                };
             case "page_current":
                 return new JsonObject { ["hit"] = new JsonArray(_currentPage) };
             case "button_match":

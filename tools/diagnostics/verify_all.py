@@ -61,6 +61,7 @@ STEPS = [
     ('../sync_all.py', '上游同步一致性（--verify：导出数据/素材与上游对齐）', False, 600),
     ('verify_device_engine.py', '设备引擎回归（后端可切换/抓图/点击，需设备在线）', True, 600),
     ('verify_device_capture_color.py', '设备抓帧 raw/普通路径像素通道一致（离线）', False, 120),
+    ('verify_native_ui_ensure.py', '上游原生页面导航宿主合同（动作门禁/复用设备/异常）', False, 120),
     ('verify_device_back.py', '导航返回键（上游设备接口与失败透传）', False, 120),
     ('device_smoke.py', '真机冒烟收口（当场抓帧 / IN_MAP 现场取值 / 有界战役冒烟）', True, 1800),
     ('verify_device_smoke.py', '真机冒烟证据审计（退出码/缺工件/报告异常/通关反例，无设备）', False, 120),

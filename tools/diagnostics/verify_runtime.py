@@ -721,10 +721,9 @@ def main() -> int:
 def verify_in_workspace(workspace: Path) -> int:
     cases = build_cases() + build_queue_cases()
     failures = []
-    # 小型导航环境的三条用例（替身宿主，离线）—— 规格见 docs/runtime.md 第十五节。
-    # 它们钉住两件事：导航任务的多跳/不可达行为，以及第 156 轮那句"入口可能未解锁"的诊断后缀。
+    # 原生 UI 导航合同的替身用例，不复制上游页面点击路径。
     diagnostics = Path(__file__).resolve().parent
-    navigate = json.loads((diagnostics / 'navigate_cases.json')
+    navigate = json.loads((diagnostics / 'native_navigate_cases.json')
                           .read_text(encoding='utf-8'))['cases']
     observe = json.loads((diagnostics / 'observe_cases.json')
                          .read_text(encoding='utf-8'))['cases']

@@ -54,10 +54,11 @@ def shot(path=PROBE):
 
 def goto(page):
     r = run_navigation(ALASHUB, page, SERIAL, adb=ADB)
-    hops = [l.strip() for l in (r.stdout or '').splitlines() if l.startswith('[hop')]
-    failure = [l.strip() for l in (r.stdout or '').splitlines() if l.startswith('[failure')]
-    path = [l.strip() for l in (r.stdout or '').splitlines() if l.startswith('[path')]
-    return r.returncode == 0, hops, failure, path
+    navigation = [l.strip() for l in (r.stdout or '').splitlines()
+                  if l.startswith('[原生导航]')]
+    failure = [l.strip() for l in (r.stdout or '').splitlines()
+               if l.startswith('[导航失败]')]
+    return r.returncode == 0, navigation, failure
 
 
 def main():
@@ -77,15 +78,15 @@ def main():
     results = []
     for i, page in enumerate(targets, 1):
         t0 = time.time()
-        ok, hops, failure, path = goto(page)
+        ok, navigation, failure = goto(page)
         pages = shot()
         arrived = page in pages
         verdict = 'ok' if (ok and arrived) else ('goto-failed' if not ok else 'not-detected')
         print('[%2d/%d] %-22s %-13s %5.1fs  arrived=%s'
               % (i, len(targets), page, verdict, time.time() - t0, pages))
-        for line in path + hops[:4] + failure:
+        for line in navigation[:4] + failure:
             print('        %s' % line)
-        results.append({'page': page, 'verdict': verdict, 'hops': hops,
+        results.append({'page': page, 'verdict': verdict, 'navigation': navigation,
                         'failure': failure, 'observed': pages,
                         'seconds': round(time.time() - t0, 1)})
         if verdict == 'ok':

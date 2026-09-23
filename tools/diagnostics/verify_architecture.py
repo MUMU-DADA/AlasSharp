@@ -382,6 +382,9 @@ def main() -> int:
         "导航任务只在队列入口注册": "DeviceCheck.RunGoto" not in program
                                    and "public static int RunGoto" not in read("src/Alas.DataTool/DeviceCheck.cs")
                                    and "new NavigateTask()" in read("src/Alas.Core/Runtime/QueueExecution.cs"),
+        "导航生产路径调用上游 UI": '"ui_ensure"' in read("src/Alas.Core/Tasks/NavigateTask.cs")
+                              and "PageNavigator(" not in read("src/Alas.Core/Tasks/NavigateTask.cs")
+                              and "ui.ui_ensure(destination" in read("tools/alas_vision.py"),
         # R2：任务域走通用任务模型，CLI 只解析队列文件（不解释任务内容）。
         "任务队列入口": "QueueExecution.RunFile" in program
                           and "TaskQueueFile.Parse" in read("src/Alas.Core/Runtime/QueueExecution.cs"),

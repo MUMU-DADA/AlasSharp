@@ -98,8 +98,8 @@ alashub report --artifacts <工件根目录>        # 取最新一次运行
 - 战役、观测与导航都复用常驻会话；观测和导航只能通过通用任务队列进入
   `ObserveTask` / `NavigateTask`。`run` 与 `goto` 只保留弃用提示，不能再各自解释任务输入、
   创建会话或驱动任务。
-- 导航遇到未建模画面时的返回键由宿主调用上游 `Device.adb_shell(['input', 'keyevent', '4'])`。
-  当前上游 `Device` 没有 `back()` 方法；该接口的成功和失败透传由 `verify_device_back.py` 覆盖。
+- 旧 C# `PageNavigator` 的未知画面返回键是迁移前行为；当前导航逐段调用上游
+  `UI.ui_ensure()`，由上游 `ui_goto` / `ui_additional` 处理页面与弹窗。
 
 本轮观测验收：离线运行时用例包含故障注入、旧帧隔离、输入校验、会话复用和取消；
 历史 `run` 兼容入口的真机记录为 4 tick、0 error，命中 `page_main` / `page_main_white`，
@@ -121,16 +121,23 @@ alashub queue --file observe.json --run --read-only-device --serial <device> --s
 
 ```json
 {"tasks":[{"id":"navigate","kind":"navigate","required":true,
-  "input":{"to":"page_campaign","max_hops":8,"rounds":1}}]}
+  "input":{"to":"page_campaign","rounds":1}}]}
 ```
 
 ```powershell
 alashub queue --file navigate.json --run --allow-actions --serial <device> --screenshot adb --control ADB
 ```
 
-导航沿用上游页面图、变体择优和未建模画面的返回自救；多回合、失败即停与取消都在核心任务中处理。
+导航的每段使用上游 `UI.ui_ensure()`，其页面图、识页、点击与附加界面处理均由上游执行。
+`rounds > 1` 时后续回合先返回 `page_main` 再前往目标；任务在段之间响应取消，原生段执行中不中断。
+`max_hops` 已停用，输入中出现即前置条件不满足。每段工件记录 `destination`、`arrived`、
+`final_page`、`changed` 和 `elapsed_ms`，不推造逐跳点击证据。
 默认设备 I/O 使用上游配置，显式 `--screenshot` / `--control` 优先，`--adb` 仅保留参数兼容。
-导航新队列入口已完成一次主界面到战役页往返及两轮战役页导航；脱敏证据见 `docs/queue-evidence.md`。未解锁的页面与其他导航路径仍须单独验证。
+迁移前队列入口曾完成主界面到战役页往返及两轮战役页导航；旧逐跳证据见 `docs/queue-evidence.md`，
+不能据此证明原生 `ui_ensure` 队列已完成相同路径。当前原生队列已在真机完成两轮战术页导航与返主界面；
+另一次请求 `page_os` 时设备进入海域，但上游未确认目标页并超时，任务如实失败。
+从海域请求 `page_main` 则经上游未知画面恢复返回成功。原始证据只保留在本地忽略目录，
+具体路径和边界见 `docs/navigation.md`；其他导航路径仍须单独验证。
 
 2026-09-23 战术页导航的首次真机队列在侧边功能面板失去识页结果。对同一静止画面重复抓帧时，
 `device_capture_set(raw=true)` 不能识别 `page_reward`，普通抓帧却能识别；连续约 13 秒的
@@ -149,7 +156,8 @@ raw 与普通路径。视觉宿主现直接复制后端 RGB 数组；非数组�
 
 ```powershell
 dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
-python tools\diagnostics\verify_runtime.py          # 50 例：会话 / 批次 / 队列 / 导航 / 观测
+python tools\diagnostics\verify_runtime.py          # 会话 / 批次 / 队列 / 原生导航 / 观测
+python tools\diagnostics\verify_native_ui_ensure.py # 上游 UI.ui_ensure 宿主桥接
 python tools\diagnostics\verify_device_capture_color.py # raw / 普通抓帧像素一致
 python tools\diagnostics\verify_report.py           # 报告读得出事实；缺工件/缺日志/目录不存在都会被指出
 python tools\diagnostics\verify_architecture.py     # CLI 不复制业务状态机
@@ -346,7 +354,11 @@ python tools\report_html.py <artifacts>                     # 产物：<artifact
 **所以处置顺序永远是**：先量（第 1 步），再看行为（第 2 步），最后才谈账号或代码；
 **不要**先去改素材、改坐标或放宽闸门 —— 那三者会把一个正确的实现改坏。
 
-## 十五、小型导航环境（**已实现**，第 160-161 轮；下面是规格与用例位置）
+## 十五、迁移前的小型导航环境（历史实现，第 160-161 轮）
+
+本节记录旧 `PageNavigator` 的替身与验收背景，不描述当前生产路径。当前任务调用
+`ui_ensure`，离线替身应回答原生段的 `arrived`、`final_page`、`changed`、`elapsed_ms` 与错误；
+旧跳数、点击坐标和返回自救断言不构成新路径的验收。
 
 **为什么现在写**：第 43 轮只写了目标（"替身宿主扩成小型导航环境"），没写清**替身要回答哪些 op、
 状态怎么迁移、以及它要撑起哪几条断言**。而它现在**同时服务两个需求**（所以优先级比当时更高）：

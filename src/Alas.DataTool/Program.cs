@@ -361,7 +361,7 @@ internal static class Program
             }
             if (command == "goto")
             {
-                return Fail("goto 已弃用：请把 navigate 的 to、max_hops、rounds 写入队列 JSON，"
+                return Fail("goto 已弃用：请把 navigate 的 to、rounds 写入队列 JSON，"
                             + "再使用 queue --file <队列.json> --run --allow-actions 执行");
             }
             if (command == "vision")
@@ -730,38 +730,25 @@ internal static class Program
         return flags;
     }
 
-    /// <summary>兼容 goto 的 hop/result 文本；只排版任务已保存的逐回合导航证据。</summary>
+    /// <summary>只排版原生 UI.ui_ensure 已保存的逐段导航证据。</summary>
     private static void PrintNavigationEvidence(System.Text.Json.Nodes.JsonObject evidence)
     {
-        static string Pages(System.Text.Json.Nodes.JsonNode? value)
-            => value is System.Text.Json.Nodes.JsonArray pages
-                ? string.Join(",", pages.Select(page => page?.GetValue<string>() ?? "")) : "";
-
         if (evidence["rounds"] is System.Text.Json.Nodes.JsonArray rounds)
             foreach (var round in rounds.OfType<System.Text.Json.Nodes.JsonObject>())
             {
                 foreach (string phase in new[] { "return_to_main", "to_target" })
                 {
                     if (round[phase] is not System.Text.Json.Nodes.JsonObject leg) continue;
-                    if (leg["hops"] is System.Text.Json.Nodes.JsonArray hops)
-                        foreach (var hop in hops.OfType<System.Text.Json.Nodes.JsonObject>())
-                            Console.WriteLine($"[hop {hop["Hop"]}   ] on={Pages(hop["OnPages"])} " +
-                                              $"click {hop["Button"]} score={hop["Score"]?.GetValue<double>():F4}" +
-                                              (hop["LowConfidence"]?.GetValue<bool>() == true ? "(低置信)" : "") +
-                                              $" at ({hop["ClickX"]},{hop["ClickY"]}) -> {Pages(hop["ArrivedPages"])}");
-                    Console.WriteLine($"[result  ] success={leg["success"]?.GetValue<bool>()} " +
-                                      $"final={Pages(leg["final_pages"])}");
-                    if (leg["failure"] is System.Text.Json.Nodes.JsonNode failure)
-                        Console.WriteLine($"[failure ] {failure}");
+                    Console.WriteLine($"[原生导航] phase={phase} destination={leg["destination"]} " +
+                                      $"arrived={leg["arrived"]} final={leg["final_page"]} " +
+                                      $"changed={leg["changed"]} elapsed_ms={leg["elapsed_ms"]}");
+                    if (leg["error"] is System.Text.Json.Nodes.JsonNode error)
+                        Console.WriteLine($"[导航失败] kind={leg["error_kind"]} {error}");
                 }
-                if (round["to_target"] is System.Text.Json.Nodes.JsonObject targetLeg)
-                    Console.WriteLine($"[round {round["round"]}   ] " +
-                                      $"{targetLeg["elapsed_ms"]?.GetValue<double>(),7:F0} ms " +
-                                      $"success={round["success"]?.GetValue<bool>()} " +
-                                      $"hops={targetLeg["hops"]?.AsArray().Count ?? 0}");
+                Console.WriteLine($"[回合    ] round={round["round"]} success={round["success"]}");
             }
         if (evidence["success"]?.GetValue<bool>() == true)
-            Console.WriteLine($"已到达 {evidence["target"]}（{evidence["hops"]?.AsArray().Count ?? 0} 跳）");
+            Console.WriteLine($"已到达 {evidence["target"]}（{evidence["rounds_completed"]}/{evidence["rounds_requested"]} 回合，最终页 {evidence["final_page"]}）");
     }
 
     /// <summary>任务队列报告：只排版，判定在 <see cref="Alas.Tasks.TaskQueue"/> 里做完了。</summary>

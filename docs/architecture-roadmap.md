@@ -65,22 +65,26 @@
 | 离线替身测试 | `alashub selftest-runtime` + `tools/diagnostics/verify_runtime.py` | 会话、批次、队列、导航与观测；替身用例不连接设备 |
 
 **已收敛的入口**：`queue --file` 以 `observe` 调用 `ObserveTask`，复用 `AlasSession` 抓帧、识页和可选地图识别；
-以 `navigate` 调用 `NavigateTask`，包装既有 `PageNavigator`；页面图运行时来自上游，
-选边和未知画面恢复仍由 C# 通用导航器实现，尚未完整覆盖上游 `UI.ui_goto` / `ui_additional` 语义。
-多回合、失败即停、设备错误和工件由任务处理；CLI 只解析公共运行参数、队列文件并排版。
+以 `navigate` 调用 `NavigateTask`，每段交给上游 `UI.ui_ensure()`；上游处理
+`UI.ui_goto` / `ui_additional`、页面图、识页和点击。任务处理动作授权、多回合、段间取消、
+失败即停与工件；CLI 只解析公共运行参数、队列文件并排版。
 导航必须通过会话动作授权；观测的只读设备会话不能升级成动作会话。`run` 与 `goto` 仅保留迁移提示。
-导航的多跳/不可达/自救及观测的计时/故障/取消都由替身验收。
+导航替身验证原生段的到达、失败和多回合边界；观测的计时/故障/取消由替身验收。
 
 **保留的边界**：战役取消在关卡边界生效；只读观测可在 tick 边界停止。
 已退役直接 CLI wrapper 的观测核心任务留有 2 秒窗口、4 tick、0 error、宿主/设备各初始化一次的历史记录；
-本次 `queue --file` 真机只读队列完成 `account_state` 与 6 tick 观测，导航队列完成主界面/战役页往返、两轮战役页导航与 4 tick 观测；两批都只初始化一次宿主和设备，脱敏队列/任务/断点/会话证据见 `docs/queue-evidence.md`。
+历史 `queue --file` 真机只读队列完成 `account_state` 与 6 tick 观测，旧 C# 导航队列完成主界面/战役页往返、两轮战役页导航与 4 tick 观测；两批都只初始化一次宿主和设备，脱敏队列/任务/断点/会话证据见 `docs/queue-evidence.md`。这些旧导航样本不证明原生 `ui_ensure` 队列的真机效果。
 `observe(map=main)` 另有主界面真机负样本：6 次地图检测、零命中、零错误；这不证明地图内正样本可识别。
-其他设备后端仍未由这些样本验证。导航迁移的替身用例另覆盖非法输入、设备错误及后续回合失败。
+其他设备后端仍未由这些样本验证。当前原生导航替身用例覆盖非法输入、原生错误及后续回合失败。
 战术页首次真机导航在 `page_reward` 识页处失败；同一静止画面 raw 抓帧空命中、普通抓帧命中，
 定位为宿主 raw 分支多余的颜色通道交换，已修复并补逐像素回归。修复后的五任务队列
 从功能面板回主页、导航到 `page_tactical`、实时抓帧、返回主页并再次抓帧，全部成功；
 宿主与设备各初始化一次，脱敏工件见 `tools/diagnostics/queue-evidence/20260923T203555/`。
 这证明当前账号可访问战术页且该导航往返有效，不证明周期 `tactical` 任务或其他页面导航。
+原生 `UI.ui_ensure()` 产品队列随后在真机完成两轮战术页导航和返主界面；
+请求 `page_os` 时设备进入海域，但上游未确认目标页并以 `GameStuckError` 结束；
+从海域请求 `page_main` 经上游未知画面恢复成功。详见 `docs/navigation.md`，
+这些结果不构成 OS 海域目标或战斗闭环验收。
 
 ### R2：任务域垂直切片
 
@@ -127,7 +131,7 @@
 | 8 | 周期任务放行判定（放不放） | 只读（**永不执行**） | `verify_periodic_plan.py`（四条路径 + executes 恒 False） |
 | 9 | 配置开关（授权前的花费开关留档） | 只读 | `verify_config_get.py`（独立对拍 + 缺失≠false） |
 | 10 | **周期任务执行**（执行环；产品路径 kind=periodic_run） | **动作**（会话授权 + 宿主两道闸 + 上游原生 dispatcher） | `verify_periodic_plan.py`（任务目录解析、绑定、跨调用形态、TaskEnd/False/SystemExit、设备恢复）+ 原生 dispatcher 的 `reward`、`dorm`、`tactical` 队列真机样本；`reward` 每日/每周有领取点击、无独立到账数量读数，`dorm` 与 `tactical` 的领取效果和其他域未覆盖 |
-| 通用 | 页面导航 `navigate` | 动作 | `verify_runtime.py`、`navigate_cases.json` + `docs/queue-evidence.md` 的新队列入口往返/多轮真机样本 |
+| 通用 | 页面导航 `navigate` | 动作 | `verify_runtime.py`、`native_navigate_cases.json`、`verify_native_ui_ensure.py`；旧队列记录见 `docs/queue-evidence.md`，不代表当前原生路径 |
 | 通用 | 观测 `observe` | 只读设备任务 | `verify_runtime.py`、`observe_cases.json` + `docs/queue-evidence.md` 的 6 tick / 4 tick 新队列入口真机样本 |
 
 剩余**动作范围**包括大世界流程、活动出击除 A1/A2/A3 样本外尚未验证的路径，以及周期任务尚未验证的执行路径；
@@ -473,7 +477,7 @@ NemuIpcError: Connection failed, please … / Emulator info incorrect
 | 章节 `Config` / `MAP` / 原生 `Campaign.run()` | ❌ 在上游 | — | **非候选**（生产战役必须继续走上游） |
 | 识图 / OCR | ❌ 上游语义 | 抓帧 0.35 s/帧、OCR ~10 ms/次；瓶颈在后端与设备，不在这一层 | 无可赢之处 |
 | 设备 I/O | ❌ 上游后端抽象 | 已量：换成 droidcast 只快 ~15%，nemu_ipc 直接不可用（附五） | **换配置的事，不是替换实现** |
-| 导航 | ❌ 页面图来自上游 | 已在 C# 侧消费（`PageNavigator`） | 不是"待替换"，是**已经这样**了 |
+| 导航 | ❌ 页面图与流程均来自上游 | `NavigateTask` 调用上游 `UI.ui_ensure()` | 保持上游语义，不迁移逐页面流程 |
 | 内存"省一点" | — | 引擎/设备层占 108 MB 且是**全局依赖**，只搬一项一分不省（附六） | 不成立 |
 | 跨语言开销"省一点" | — | 10 µs/次（附三） | 不成立 |
 

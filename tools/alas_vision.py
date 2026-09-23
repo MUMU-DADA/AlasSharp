@@ -3012,6 +3012,52 @@ def op_device_info(args):
     return out
 
 
+def op_ui_ensure(args):
+    """Use upstream UI navigation and its own page/additional handling."""
+    started = time.perf_counter()
+    destination_name = args.get('destination')
+    result = {'destination': destination_name, 'arrived': False,
+              'final_page': None, 'changed': None}
+
+    def finish():
+        result['elapsed_ms'] = round((time.perf_counter() - started) * 1000, 1)
+        return result
+
+    if args.get('allow_actions') is not True:
+        result.update(error='Explicit allow_actions=true required',
+                      error_kind='ActionNotAllowed')
+        return finish()
+
+    from module.ui.page import Page
+    destination = Page.all_pages.get(destination_name) if isinstance(destination_name, str) else None
+    if destination is None or destination.check_button is None:
+        result.update(error=f'Unknown or unverifiable destination: {destination_name}',
+                      error_kind='UnknownPage')
+        return finish()
+
+    ui = None
+    try:
+        from module.ui.ui import UI
+        device = _device_engine()
+        ui = UI(device.config, device)
+        changed = ui.ui_ensure(destination, skip_first_screenshot=False)
+        current = getattr(ui, 'ui_current', None)
+        result['changed'] = bool(changed)
+        result['final_page'] = getattr(current, 'name', None)
+        # ui_ensure/ui_goto already detected the destination on the current device frame.
+        result['arrived'] = bool(current == destination and ui.ui_page_appear(destination))
+        if not result['arrived']:
+            result.update(error='Destination not visible after native UI navigation',
+                          error_kind='DestinationNotVisible')
+    except Exception as e:
+        # ui_goto clears this on success, but leaves temporary parent links on failure.
+        Page.clear_connection()
+        result['final_page'] = getattr(getattr(ui, 'ui_current', None), 'name', None)
+        result.update(error=f'{type(e).__name__}: {e}', error_kind=type(e).__name__,
+                      traceback_tail=traceback.format_exc().splitlines()[-6:])
+    return finish()
+
+
 def op_device_screencap(args):
     """用引擎选定的后端截图到 `path`，返回耗时 —— 用于对比各后端（我们的瓶颈就在截图）。"""
     import time as _time
@@ -3304,6 +3350,7 @@ OPS = {
     'device_capture_set': op_device_capture_set,
     'device_configure': op_device_configure,
     'device_info': op_device_info,
+    'ui_ensure': op_ui_ensure,
     'device_screencap': op_device_screencap,
     'device_click': op_device_click,
     'device_swipe': op_device_swipe,
