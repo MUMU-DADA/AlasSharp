@@ -29,14 +29,13 @@ def main():
         ('战役队列有战后实时抓帧返页证据', any(
             r['cleared'] and r['queue_chain'] and r['post_campaign_page_verified']
             for r in archived))]
-    event = next(p for p in sources if json.loads(p.read_text(encoding='utf-8'))
-                 ['result']['chapter'].startswith('campaign.event_'))
-    event_record = audit_artifact(event)
-    checks.append(('活动章节真实抓帧返回活动页',
-                   event_record['verdict'] == 'consistent'
-                   and event_record['cleared']
-                   and event_record['queue_chain']
-                   and event_record['post_campaign_page_verified']))
+    events = [p for p in sources if json.loads(p.read_text(encoding='utf-8'))
+              ['result']['chapter'].startswith('campaign.event_')]
+    checks.append(('两个活动章节真实抓帧返回活动页', len(events) >= 2 and all(
+        (record := audit_artifact(path))['verdict'] == 'consistent'
+        and record['cleared'] and record['queue_chain']
+        and record['post_campaign_page_verified'] for path in events)))
+    event = events[0]
     source = next(p for p in sources if audit_artifact(p)['stage_withdrawal'])
     cases = (
         ('结果合同拒绝撤退伪装通关', source.name,
