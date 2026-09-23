@@ -76,7 +76,7 @@ def upstream_grid_fingerprint(MAP):
     """用**上游自己的 GridInfo.decode** 逐格解码，拼出与 C# 同格式的指纹。
 
     注意两点（都在 C# 侧照抄了）：上游 `decode` 先 `text.upper()`（所以 `Me` 等同 `ME`）；
-    `--` 不在表里 → 所有标志为假 → 指纹是 `.`。
+    `--` 不在表里 → 八个查表标志为假；指纹是 `.`，推导值仍按上游公式计算。
     """
     from module.map_detection.grid_info import GridInfo
 
@@ -223,7 +223,8 @@ def main():
         '- **字段摘要**：shape/map_data/weight/camera/spawn 等字段的规范化值 —— 防"差一/漏推导"；',
         '- **网格指纹**：用上游 `GridInfo.decode` 与 C# 的移植版**逐格**解码 map_data，'
         '把整张地图的语义压成一行比 —— 防 token 语义抄错（例如上游 `decode` 会先 '
-        '`text.upper()`，所以 `Me` 等同 `ME`；而 `--` 不在表里、所有标志为假）。',
+        '`text.upper()`，所以 `Me` 等同 `ME`；而 `--` 不在表里，八个查表标志为假，'
+        '推导值仍按上游公式计算）。',
         '',
         'IR 文件 %d 个，其中 `*_base.json` **基类模块 %d 个（不是章节，没有 MAP）**，'
         '真实章节 **%d** 个 —— 导出层把基类也当章节了，见下面的"顺带发现"。'
