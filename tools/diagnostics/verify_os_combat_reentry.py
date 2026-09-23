@@ -18,6 +18,7 @@ os.chdir(ENGINE)
 import alas_vision as vision  # noqa: E402
 from module.combat.assets import BATTLE_PREPARATION_WITH_OVERLAY  # noqa: E402
 from module.combat.combat import Combat as BaseCombat  # noqa: E402
+from module.os_combat.assets import SIREN_PREPARATION  # noqa: E402
 from module.os_combat.combat import Combat  # noqa: E402
 from module.os.map import OSMap  # noqa: E402
 from module.os.tasks.stronghold import OpsiStronghold  # noqa: E402
@@ -66,6 +67,18 @@ class OverlayState(State):
     def handle_combat_automation_confirm(self):
         self.confirm_calls += 1
         return self.confirm_result
+
+
+class SirenPreparationState(State):
+    def __init__(self, *, executing=False):
+        super().__init__(executing=executing)
+        self.siren_offsets = []
+
+    def appear(self, button, **kwargs):
+        if button is SIREN_PREPARATION:
+            self.siren_offsets.append(kwargs.get('offset'))
+            return kwargs.get('offset') == (20, 20)
+        return False
 
 
 class LoadingState(State):
@@ -140,6 +153,12 @@ def main():
     results.append(check('loading and preparation retain their original result',
                          patched(State(loading=True)) is True
                          and patched(State(preparation=True)) is True))
+    siren = SirenPreparationState()
+    results.append(check('native siren preparation retains its upstream offset',
+                         patched(siren) is True and siren.siren_offsets == [(20, 20)]))
+    siren_running = SirenPreparationState(executing=True)
+    results.append(check('executing combat precedes siren preparation',
+                         patched(siren_running) is True and not siren_running.siren_offsets))
     loading = LoadingState()
     results.append(check('loading precedes the running-combat detector',
                          patched(loading) is True and loading.executing_calls == 0))
