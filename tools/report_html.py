@@ -98,7 +98,7 @@ def render_index(target: Path, document: dict) -> str:
     rows = []
     for entry in document.get('runs') or []:
         name = Path(str(entry.get('directory') or '')).name
-        link = f'{name}/report.html'
+        link = f'views/{name}.html'
         rows.append(
             f'<tr><td><a href="{html.escape(link)}">{html.escape(name)}</a></td>'
             f'<td class="{outcome_class(entry.get("queue_outcome"))}">'
@@ -225,14 +225,19 @@ def main() -> int:
         index_path = out_path if out_path.name != 'report.html' else target / 'index.html'
         index_path.parent.mkdir(parents=True, exist_ok=True)
         index_path.write_text(render_index(target, document), encoding='utf-8')
+        # **页面写到 <root>/views/，不写进运行目录**：运行目录里的文件数是"工件数"的一部分，
+        # 往里塞生成物会篡改证据记录（实测过一次：工件数会从 3 变 4）。
+        views = target / 'views'
+        views.mkdir(exist_ok=True)
         made = 0
         for entry in document.get('runs') or []:
             run_dir = Path(str(entry.get('directory') or ''))
             if not run_dir.is_dir():
                 continue
-            (run_dir / 'report.html').write_text(render(build_report(run_dir)), encoding='utf-8')
+            (views / f'{run_dir.name}.html').write_text(
+                render(build_report(run_dir)), encoding='utf-8')
             made += 1
-        print(f'索引已写入: {index_path}（{made} 次运行各生成一页）')
+        print(f'索引已写入: {index_path}（{made} 次运行各生成一页，页面在 {views.name}/）')
         return 0
 
     report = build_report(target)

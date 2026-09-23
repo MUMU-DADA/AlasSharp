@@ -110,10 +110,18 @@ def main() -> int:
 
         print()
         print('=== 多次运行的索引页 ===')
+        # 生成前记下每个运行目录里的文件清单 —— 生成物**不许进运行目录**
+        # （运行目录里的文件数是"工件数"的一部分，往里塞页面等于篡改证据）
+        def run_dir_files():
+            return {p.name: sorted(f.name for f in p.iterdir() if f.is_file())
+                    for p in artifacts.glob('*') if p.is_dir()}
+
+        before_files = run_dir_files()
         index_proc, _ = render(artifacts, tmpdir / 'index.html')     # 根目录 → 索引
+        after_files = run_dir_files()
         index_path = tmpdir / 'index.html'
         index_html = index_path.read_text(encoding='utf-8') if index_path.is_file() else ''
-        per_run = sorted((p / 'report.html') for p in artifacts.glob('*') if p.is_dir())
+        per_run = sorted((artifacts / 'views').glob('*.html'))
         index_checks = [
             ('索引生成成功', index_proc.returncode == 0 and '运行列表' in index_html,
              f'rc={index_proc.returncode} len={len(index_html)}'),
@@ -124,6 +132,9 @@ def main() -> int:
             ('索引也无外部引用',
              not any(t in index_html for t in ('http://', 'https://', '<link', 'src=')),
              f'长度={len(index_html)}'),
+            # 不变量：生成视图**不改动运行目录**（工件数是证据的一部分）
+            ('生成视图不改动运行目录里的文件', before_files == after_files,
+             f'前={before_files} 后={after_files}'),
         ]
         for name, ok, detail in index_checks:
             print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
