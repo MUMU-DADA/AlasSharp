@@ -410,3 +410,23 @@ def run(self):
 `PURCHASE_POPUP` 这名字会让人以为在买通行证，看图才知道是关闭；
 而上游自己因为"素材含义随版本变"注释掉过同一素材的另一次点击 ——
 所以判"会不会花钱"时，优先级是：**模板图/调用点 > 素材名**。
+
+#### 补三：`dorm` 的花费**由配置决定**（读完调用链 + 查本机配置）
+
+调用链（读源码）：
+
+* `Dorm.run()`（`dorm.py:613`）→ `self.dorm_run(feed=…, collect=…, buy_furniture=self.config.BuyFurniture_Enable)`；
+* `dorm_run`（`:509`）里 `if buy_furniture: BuyFurniture(self.config, self.device).run()`（`:540-542`）；
+* `BuyFurniture` 本身是**独立的任务类**（`module/dorm/buy_furniture.py:22`），上游还给它单独的调度项。
+
+**所以判定的关键不是"dorm 危不危险"，而是"配置里开没开"** —— 这也是可离线查的：
+
+| 本机账号配置（`.runtime/engine/config/alas.json`） | 值 |
+| --- | --- |
+| `Dorm.Scheduler.Enable` | True |
+| `Dorm.BuyFurniture_Enable` |  |
+| `BuyFurniture.Scheduler.Enable` | （配置里没有 BuyFurniture 段） |
+
+**这条给"要不要放开某个周期任务"提供了通用检查姿势**：先读它的 `run()` 找到花费分支的**开关名**，
+再查本机配置里那个开关的值 —— 比在代码里逐行推"到底会不会走到"更快也更实在。
+`meowfficer/buy.py` 与 `research` 的付费项目同样适用这个姿势（尚未做）。
