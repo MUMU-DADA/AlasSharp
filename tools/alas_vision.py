@@ -1014,6 +1014,81 @@ def op_config_get(args):
         'checked': len(keys),
     }
 
+def op_periodic_run(args):
+    """周期任务的**执行**入口（两道闸 + 二次确认；真正的执行就在这里）。
+
+    为什么要两道闸（`docs/tasks.md` 的"周期任务的动作半边"）：查代码发现连"收委托"
+    都有花费路径（油满买食物），所以执行入口必须**按任务显式授权**，不能"授权一次全能跑"。
+
+      1. `allow_actions=true` —— 运行时的动作总开关；
+      2. `confirm` **与 `task` 完全一致** —— 防手滑、防脚本误传。
+
+    通过之后：先用 `op_periodic_plan` 查清"会去跑哪个类"（只报不判），再**构造并运行**它。
+    返回里如实给：判定、勘察结果、构造是否成功、运行耗时、以及上游返回值的摘要。
+
+    **不是**读一眼就完事：这一步会真的驱动游戏 —— 所以调用方必须明确知道自己在跑什么。
+    """
+    import time
+    task = str(args.get('task') or '').strip()
+    allow = bool(args.get('allow_actions'))
+    confirm = str(args.get('confirm') or '').strip()
+    out = {'task': task, 'allow_actions': allow, 'confirm_matches': confirm == task}
+    if not task:
+        out.update(decision='denied', reason='缺少 task（上游任务名，如 dorm）')
+        return out
+    if not allow:
+        out.update(decision='denied',
+                   reason='未授权：需要显式 allow_actions=true（周期任务可能消耗账号资源）')
+        return out
+    if confirm != task:
+        out.update(decision='denied',
+                   reason='二次确认不匹配：confirm 必须与 task 完全一致（收到 confirm=%r）' % confirm)
+        return out
+
+    plan = op_periodic_plan({'task': task})
+    out['plan'] = plan
+    if plan.get('found') is not True:
+        out.update(decision='denied', reason='任务名在上游 alas.py 里找不到：%s' % task)
+        return out
+
+    # 从勘察结果里取"从哪个模块导入哪个类"（不猜、不写死）
+    import importlib
+    import re as _re
+    target = None
+    for line in plan.get('imports') or []:
+        m = _re.match(r'from\s+([\w\.]+)\s+import\s+(\w+)', line)
+        if m and m.group(2)[:1].isupper():
+            target = (m.group(1), m.group(2))
+            break
+    if target is None:
+        out.update(decision='denied',
+                   reason='勘察里没有可用的类（alas.py 的该方法没有 from X import Y 形式的导入）')
+        return out
+    module_name, class_name = target
+    out['target'] = {'module': module_name, 'class': class_name}
+    started = time.time()
+    try:
+        module = importlib.import_module(module_name)
+        cls = getattr(module, class_name)
+        config = _azur_lane_config('alas')
+        device = _device_engine()
+        instance = cls(config=config, device=device)
+        out['constructed'] = True
+        value = instance.run()
+        out['ran'] = True
+        out['elapsed_s'] = round(time.time() - started, 1)
+        out['returned'] = (repr(value)[:300] if not isinstance(value, (str, int, float, bool, type(None)))
+                           else value)
+        out['decision'] = 'ran'
+    except Exception as error:
+        out['ran'] = False
+        out['elapsed_s'] = round(time.time() - started, 1)
+        out['decision'] = 'error'
+        out['error'] = f'{type(error).__name__}: {error}'
+        import traceback
+        out['traceback_tail'] = traceback.format_exc().strip().splitlines()[-8:]
+    return out
+
 def _asset_id_map():
     """id(Button 对象) -> '子模块/资产名'，实时扫描已导入的 module.*.assets。
 
@@ -3079,6 +3154,7 @@ OPS = {
     'task_schedule': op_task_schedule,
     'periodic_plan': op_periodic_plan,
     'periodic_preflight': op_periodic_preflight,
+    'periodic_run': op_periodic_run,
     'config_get': op_config_get,
     'ui_page_graph': op_ui_page_graph,
     'cached_rule_check': op_cached_rule_check,
