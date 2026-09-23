@@ -430,3 +430,15 @@ def run(self):
 **这条给"要不要放开某个周期任务"提供了通用检查姿势**：先读它的 `run()` 找到花费分支的**开关名**，
 再查本机配置里那个开关的值 —— 比在代码里逐行推"到底会不会走到"更快也更实在。
 `meowfficer/buy.py` 与 `research` 的付费项目同样适用这个姿势（尚未做）。
+
+#### 补四：更正补三里的两处说法（读 args.json 之后）
+
+| 我先前写的 | 实际 |
+| --- | --- |
+| "上游还给它单独的调度项"（指 `BuyFurniture`） | **不对**：`args.json` 里**没有** `BuyFurniture` 这个顶层任务；它是 **`Dorm` 任务下的一个分组**（`Dorm` 段的键是 `Scheduler / Dorm / BuyFurniture / Storage`）。所以配置路径是 `Dorm → BuyFurniture → Enable`，扁平键名才是 `BuyFurniture_Enable` |
+| 表格里 `Dorm.BuyFurniture_Enable = （空）` | 值**确实是空的/缺席**，但**空 ≠ false**：`alas.json` 里没写的字段会走**上游默认值**。默认值我**没读**（该看 `args.json` 的 `Dorm.BuyFurniture.Enable`），所以表格那一格只能当"本机没显式设置"，不能当"没开" |
+
+**教训**：我这次的错和上一轮 `PURCHASE_POPUP` 是**同一个毛病的两面** ——
+上一轮是"凭素材名猜行为"，这一轮是"凭'有个独立文件/类'猜它是个独立任务"。
+判配置时**以 `args.json` 的结构为准**（这也是第七节早就定下的：**扁平清单以 `args.json` 为准**），
+判行为时以模板图/调用点为准；名字与文件结构都只是线索，不是结论。
