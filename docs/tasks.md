@@ -622,3 +622,32 @@ Mission collect finished
 
 **结论**：执行入口对**不同域**都成立 —— 它只做三件事（两道闸 → 用勘察结果定位上游类 →
 构造并 `run()`），域差异全部由上游自己的类消费。**没有为任何域写专用分支。**
+
+#### 执行环的产品路径（`kind = "periodic_run"`，2026-09-23 真机验证）
+
+此前执行入口只有宿主 op（**只有进程外的诊断脚本能用**），产品路径是空的 ——
+队列/报告/前端只认 `ITaskRunner`，用户没有正规入口。现在补齐：
+
+```json
+{"id":"run","kind":"periodic_run",
+ "input":{"task":"reward","allow_actions":true,"confirm":"reward",
+          "overrides":{"BuyFurniture_Enable":true}}}
+```
+
+**真机验证（走队列，两条路径都验）**：
+
+```
+[任务] deny kind=periodic_run outcome=failed error_kind=internal
+       error=未授权：需要显式 allow_actions=true（周期任务可能消耗账号资源）
+[任务] run  kind=periodic_run outcome=succeeded elapsed=7s
+```
+
+即：**闸门在产品路径上也生效**（未授权的任务记 `failed` + 原因，不是"跳过"），放行后正常执行。
+
+**安全语义不另判一套**：两道闸与顺序由宿主 op 保证，并由静态守卫
+`periodic_run_gate_intact()` 检查（闸门必须在构造上游对象**之前**）；
+任务侧只把 `denied` 翻译成 `failed`、把上游异常翻译成 `upstream_error`。
+
+**`overrides` 的边界**：只作用于本次运行的配置对象（内存内），**不写回配置文件** ——
+用户的账号设置不会因为我们跑一次而被改动；但**上游任务自己会写调度状态**
+（如 `task_delay()`），那是上游既有行为。
