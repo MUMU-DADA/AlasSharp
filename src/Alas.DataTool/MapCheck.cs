@@ -89,10 +89,11 @@ internal static class MapCheck
         Console.WriteLine($"[mode   ] {mode}");
         Console.WriteLine($"[map    ] backend={map.Backend} detected={map.Detected} " +
                           $"grids={map.GridCount?.ToString() ?? "-"} " +
-                          $"reason={(map.Reason ?? "-")}");
-        if (!map.Detected && string.IsNullOrEmpty(map.Reason))
+                          $"reason={(map.Reason ?? "-")} load={map.Load} predict={map.Predict}");
+        string? mapError = map.ExecutionError;
+        if (mapError is not null)
         {
-            Console.WriteLine("[错误   ] 未检测到却没给出原因（负样本必须带原因）");
+            Console.WriteLine($"[错误   ] {mapError}");
             problems++;
         }
 
@@ -102,7 +103,8 @@ internal static class MapCheck
                 : "S2 产品路径验收通过（素材链 + 单应性往返 + 非地图负样本语义）")
             : $"S2 验收有 {problems} 处问题");
         // 识别结果 vs 关卡 IR 的交叉校验（C# 侧独立完成）
-        if (!string.IsNullOrEmpty(chapter) && map.Detected && !string.IsNullOrEmpty(dataDir))
+        if (!string.IsNullOrEmpty(chapter) && mapError is null && map.Detected
+            && !string.IsNullOrEmpty(dataDir))
             problems += CrossCheck(map, chapter, dataDir!);
         return problems == 0 ? 0 : 1;
     }

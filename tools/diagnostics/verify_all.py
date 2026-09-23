@@ -53,6 +53,7 @@ STEPS = [
     ('verify_positive_control.py', '合成正对照（页面 + Switch）', False, 600),
     ('verify_map_ir.py', 'S2 地图模型跨语言对照（C# 解析 vs 上游活对象）', False, 900),
     ('verify_map_detection.py', 'S2 地图识别（素材链/单应性/负样本）', False, 600),
+    ('verify_map_detect_failures.py', 'S2 地图检测故障分类与 OS 遮罩复位（离线）', False, 120),
     ('verify_product_map.py', 'S2 产品路径（alashub map + 关卡 IR 交叉校验）', False, 900),
     ('verify_config_export.py', '章节 Config 导出（继承/表达式/类型证据）', False, 300),
     ('verify_map_alignment.py', 'S2 偏移对齐（窗口 vs 地图，含活动图 9x8）', False, 600),

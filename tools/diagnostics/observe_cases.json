@@ -174,11 +174,108 @@
     "map_detect": [
      {
       "result": {
+       "load": "negative",
        "detected": false,
        "reason": "fixture is not a map"
       }
      }
     ]
+   }
+  },
+  {
+   "name": "observe_map_construct_failure_is_error",
+   "dry_run": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "tasks": [{"id": "map-construct", "kind": "observe",
+              "input": {"tick_seconds": 0.02, "seconds": 0.01, "map": "main"}}],
+   "stub_responses": {"map_detect": [{"result": {
+    "construct_error": "TypeError: injected constructor failure"
+   }}]},
+   "expect": {
+    "outcome": "failed", "host_start_count": 1,
+    "device_configure_count": 1, "stopped_early": true,
+    "tasks": [{"id": "map-construct", "outcome": "failed",
+      "error_kind": "upstream_error", "error_contains": "View 构造失败",
+      "evidence_equals": {"errors": 1, "map.attempts": 1,
+                          "map.errors": 1, "map.detected_hits": 0}}]
+   }
+  },
+  {
+   "name": "observe_map_load_failure_is_error",
+   "dry_run": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "tasks": [{"id": "map-load", "kind": "observe",
+              "input": {"tick_seconds": 0.02, "seconds": 0.01, "map": "main"}}],
+   "stub_responses": {"map_detect": [{"result": {
+    "load": "error", "detected": false, "reason": "TypeError: injected load failure"
+   }}]},
+   "expect": {
+    "outcome": "failed", "host_start_count": 1,
+    "device_configure_count": 1, "stopped_early": true,
+    "tasks": [{"id": "map-load", "outcome": "failed",
+      "error_kind": "upstream_error", "error_contains": "View.load 失败",
+      "evidence_equals": {"errors": 1, "map.attempts": 1,
+                          "map.errors": 1, "map.detected_hits": 0}}]
+   }
+  },
+  {
+   "name": "observe_map_predict_failure_is_error",
+   "dry_run": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "tasks": [{"id": "map-predict", "kind": "observe",
+              "input": {"tick_seconds": 0.02, "seconds": 0.01, "map": "main"}}],
+   "stub_responses": {"map_detect": [{"result": {
+    "load": "ok", "predict": "RuntimeError: injected predict failure",
+    "detected": false, "grid_count": 1, "reason": "RuntimeError: injected predict failure"
+   }}]},
+   "expect": {
+    "outcome": "failed", "host_start_count": 1,
+    "device_configure_count": 1, "stopped_early": true,
+    "tasks": [{"id": "map-predict", "outcome": "failed",
+      "error_kind": "upstream_error", "error_contains": "View.predict 失败",
+      "evidence_equals": {"errors": 1, "map.attempts": 1,
+                          "map.errors": 1, "map.detected_hits": 0}}]
+   }
+  },
+  {
+   "name": "os_state_map_negative_is_valid",
+   "dry_run": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "tasks": [{"id": "os-negative", "kind": "os_state", "input": {"capture": true}}],
+   "stub_responses": {"map_detect": [{"result": {
+    "load": "negative", "detected": false,
+    "reason": "MapDetectionError: No map grids found"
+   }}]},
+   "expect": {
+    "outcome": "succeeded", "host_start_count": 1,
+    "device_configure_count": 1, "stopped_early": false,
+    "tasks": [{"id": "os-negative", "outcome": "succeeded",
+      "error_kind": "none", "evidence_equals": {
+       "detected": false, "load": "negative",
+       "reason": "MapDetectionError: No map grids found"}}]
+   }
+  },
+  {
+   "name": "os_state_map_construct_failure_is_error",
+   "dry_run": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "tasks": [{"id": "os-construct", "kind": "os_state", "input": {"capture": true}}],
+   "stub_responses": {"map_detect": [{"result": {
+    "construct_error": "TypeError: injected constructor failure"
+   }}]},
+   "expect": {
+    "outcome": "failed", "host_start_count": 1,
+    "device_configure_count": 1, "stopped_early": true,
+    "tasks": [{"id": "os-construct", "outcome": "failed",
+      "error_kind": "upstream_error", "error_contains": "View 构造失败",
+      "evidence_equals": {
+       "detected": false,
+       "construct_error": "TypeError: injected constructor failure"}}]
    }
   },
   {

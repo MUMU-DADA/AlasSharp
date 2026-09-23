@@ -124,10 +124,21 @@ public sealed class OsStateTask : ITaskRunner
                 evidence["detected"] = detection.Detected;
                 evidence["in_map"] = detection.InMap;
                 evidence["backend"] = detection.Backend;
+                evidence["construct_error"] = detection.ConstructError;
+                evidence["load"] = detection.Load;
+                evidence["predict"] = detection.Predict;
                 evidence["grid_count"] = detection.GridCount;
                 evidence["center_loca"] = detection.CenterLoca is null ? null
                     : System.Text.Json.JsonSerializer.SerializeToNode(detection.CenterLoca);
                 evidence["reason"] = detection.Reason;
+                if (detection.ExecutionError is { } mapError)
+                {
+                    result.Outcome = TaskOutcome.Failed;
+                    result.ErrorKind = RuntimeErrorKind.UpstreamError;
+                    result.Error = $"map_detect 执行失败: {mapError}";
+                    result.Evidence = evidence;
+                    return result;
+                }
             }
         }
         catch (Exception error)

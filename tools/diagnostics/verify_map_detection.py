@@ -183,7 +183,16 @@ def main():
     #   负样本 = **非地图画面**（campaign 菜单那张 os_map.png）必须"未检出且给出原因"
     negative_targets = [m for m in results['map']
                         if 'os_map' in m.get('fixture', '') or 'menu' in m.get('fixture', '')]
-    negative_ok = all((not m.get('detected')) and m.get('reason')
+    def completed(m):
+        if m.get('construct_error'):
+            return False
+        if m.get('load') == 'negative':
+            return not m.get('detected') and bool(m.get('reason'))
+        return (m.get('load') == 'ok' and m.get('predict') == 'ok'
+                and (m.get('detected') or m.get('reason')))
+
+    process_ok = all(completed(m) for m in results['map'])
+    negative_ok = all(completed(m) and not m.get('detected')
                       for m in negative_targets) if negative_targets else None
     positive = [m for m in results['map'] if m.get('detected')]
     # 动画期/脏样本被检出与否不算判定项，但要在报告里如实列出
@@ -207,6 +216,8 @@ def main():
         '| 坐标往返自检 | %s | screen→globe→screen 误差 < 1e-6（同一变换的逆）' % ('✅' if rt_ok else '❌'),
         '| 非地图负样本 | %s | 非地图画面返回"未检测到 + 原因"，不崩 |'
         % ('✅' if negative_ok else ('—' if negative_ok is None else '❌')),
+        '| 检测过程 | %s | 构造、加载和预测错误不得当作正常未检出 |'
+        % ('✅' if process_ok else '❌'),
         '| 地图正样本 | %s | 需要真机地图画面（见下） |'
         % ('✅ %d 张检测到网格' % len(positive) if positive else '⏳ 缺正样本'),
         '| 检测 vs 关卡 IR | %s | 检出的格数/形状必须与该关卡声明的 map_data 一致 |'
@@ -258,10 +269,11 @@ def main():
     with open(os.path.join(DATA, 'map_detection_verify.json'), 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=2, default=str)
     print()
-    print('素材链=%s 大世界=%s 往返=%s 负样本=%s 正样本=%s'
-          % (asset_ok, globe_ok, rt_ok, negative_ok, len(positive)))
+    print('素材链=%s 大世界=%s 往返=%s 负样本=%s 检测过程=%s 正样本=%s'
+          % (asset_ok, globe_ok, rt_ok, negative_ok, process_ok, len(positive)))
     print('报告: %s' % out)
-    return 0 if (asset_ok and globe_ok and rt_ok) else 1
+    return 0 if (asset_ok and globe_ok and rt_ok and process_ok
+                 and negative_ok is not False) else 1
 
 
 if __name__ == '__main__':

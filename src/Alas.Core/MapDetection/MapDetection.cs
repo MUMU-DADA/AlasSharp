@@ -27,12 +27,13 @@ public sealed class MapDetectionAssets
 }
 
 /// <summary>
-/// 一次地图检测的结果。<see cref="Detected"/> 为 false 是**正常结果**（当前画面不是地图），
-/// <see cref="Reason"/> 保留上游给的原始原因，便于区分"画面不对"与"接线不对"。
+/// 一次地图检测的结果。<see cref="Detected"/> 为 false 可以是正常负样本，
+/// 调用方须先检查 <see cref="ExecutionError"/> 再消费识别结论。
 /// </summary>
 public sealed class MapDetectResult
 {
     [JsonPropertyName("backend")] public string? Backend { get; set; }
+    [JsonPropertyName("construct_error")] public string? ConstructError { get; set; }
     [JsonPropertyName("load")] public string? Load { get; set; }
     [JsonPropertyName("predict")] public string? Predict { get; set; }
     [JsonPropertyName("detected")] public bool Detected { get; set; }
@@ -55,6 +56,26 @@ public sealed class MapDetectResult
     [JsonPropertyName("right_edge")] public bool? RightEdge { get; set; }
     [JsonPropertyName("upper_edge")] public bool? UpperEdge { get; set; }
     [JsonPropertyName("lower_edge")] public bool? LowerEdge { get; set; }
+
+    [JsonIgnore]
+    public string? ExecutionError
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(ConstructError))
+                return $"View 构造失败: {ConstructError}";
+            if (Load == "negative")
+                return Detected ? "地图加载为负样本却标记为已检出"
+                    : string.IsNullOrWhiteSpace(Reason) ? "地图负样本缺少原因" : null;
+            if (Load != "ok")
+                return $"View.load 失败: {Reason ?? Load ?? "缺少加载状态"}";
+            if (Predict != "ok")
+                return $"View.predict 失败: {Predict ?? "缺少预测状态"}";
+            if (!Detected && string.IsNullOrWhiteSpace(Reason))
+                return "地图未检出却没有原因";
+            return null;
+        }
+    }
 }
 
 /// <summary>

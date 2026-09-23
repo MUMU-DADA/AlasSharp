@@ -2576,22 +2576,26 @@ def op_map_detect(args):
             v = view_mod.View(cfg)
     except Exception as e:
         out['construct_error'] = f'{type(e).__name__}: {e}'
+        if mode == 'os':
+            set_os_mask_mode(False)
         return out
     for name in ('left_edge', 'right_edge', 'upper_edge', 'lower_edge'):
         if hasattr(v, name):
             out[name] = bool(getattr(v, name))
-    # 上游语义：`load(image)` 自己负责找网格；**不是地图画面时它会抛
-    # MapDetectionError('No map grids found')** —— 那是正常的负样本信号，不是缺陷。
-    # 要把它与"接线错误"（少传参数、np.stack 报错之类）区分开，所以分类型捕。
-    import module.map_detection.utils as md_utils
+    # MapDetectionError 是上游识别不到网格的正常负样本；其他异常是执行错误。
     from module.map_detection.view import MapDetectionError
 
     try:
         v.load(image)
         out['load'] = 'ok'
         out['threshold_used'] = int(cfg.INTERNAL_LINES_HOUGHLINES_THRESHOLD)
-    except Exception as e:
+    except MapDetectionError as e:
         out['load'] = 'negative'
+        out['detected'] = False
+        out['reason'] = f'{type(e).__name__}: {e}'
+        return out
+    except Exception as e:
+        out['load'] = 'error'
         out['detected'] = False
         out['reason'] = f'{type(e).__name__}: {e}'
         return out
@@ -2603,6 +2607,11 @@ def op_map_detect(args):
             out['predict'] = 'ok'
         except Exception as e:
             out['predict'] = f'{type(e).__name__}: {e}'
+            out['detected'] = False
+            out['reason'] = out['predict']
+            grids = getattr(v, 'grids', None)
+            if isinstance(grids, dict):
+                out['grid_count'] = len(grids)
             return out
     for name in ('shape', 'center_loca', 'center_offset'):
         if hasattr(v, name):

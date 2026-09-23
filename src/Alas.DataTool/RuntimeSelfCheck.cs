@@ -314,6 +314,7 @@ internal static class RuntimeSelfCheck
             }.Register(new Alas.Tasks.CampaignBatchTask())
              .Register(new Alas.Tasks.NavigateTask())
              .Register(new Alas.Tasks.ObserveTask())
+             .Register(new Alas.Tasks.OsStateTask())
              .Register(new Alas.Tasks.PeriodicRunTask())
              .Register(new Alas.Tasks.OsActionTask())
              .Register(new PreconditionFailureTask());
@@ -703,6 +704,8 @@ internal sealed class StubVisionEngine : VisionEngineBase
                 return new JsonObject
                 {
                     ["backend"] = "upstream-stub",
+                    ["load"] = "ok",
+                    ["predict"] = "ok",
                     ["detected"] = true,
                     ["grid_count"] = payload["mode"]?.GetValue<string>() == "os" ? 18 : 24,
                     ["reason"] = null,

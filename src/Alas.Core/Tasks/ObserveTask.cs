@@ -230,8 +230,16 @@ public sealed class ObserveTask : ITaskRunner
                     {
                         var detected = context.Session.Vision.CallTyped<MapDetectResult>(
                             "map_detect", new { mode = mapMode });
-                        lastMapReason = detected.Reason;
-                        if (detected.Detected)
+                        var mapError = detected.ExecutionError;
+                        lastMapReason = mapError ?? detected.Reason;
+                        lastGridCount = null;
+                        if (mapError is not null)
+                        {
+                            mapErrors++;
+                            RecordError("map_detect", currentTick, mapError,
+                                        RuntimeErrorKind.UpstreamError);
+                        }
+                        else if (detected.Detected)
                         {
                             mapHits++;
                             lastGridCount = detected.GridCount;
@@ -241,6 +249,7 @@ public sealed class ObserveTask : ITaskRunner
                     {
                         mapErrors++;
                         lastMapReason = $"{error.GetType().Name}: {error.Message}";
+                        lastGridCount = null;
                         RecordError("map_detect", currentTick, error.Message,
                                     RuntimeErrors.Classify(error), error);
                     }
