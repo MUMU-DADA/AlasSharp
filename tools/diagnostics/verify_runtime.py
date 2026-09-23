@@ -596,6 +596,20 @@ def build_queue_cases() -> list[dict]:
                            'error_contains': 'overrides 必须是 JSON 对象'}],
             },
         },
+        {
+            'name': 'periodic_unknown_input_never_runs_defaults',
+            'dry_run': False, 'allow_actions': True, 'serial': 'stub-1',
+            'tasks': [{'id': 'periodic', 'kind': 'periodic_run', 'input': {
+                'task': 'freebies', 'allow_actions': True, 'confirm': 'freebies',
+                'override': {'Mail_DeleteCollected': False}}}],
+            'stub_responses': {'periodic_run': [{'error': 'unknown input reached host'}]},
+            'expect': {
+                'outcome': 'partial', 'host_start_count': 1,
+                'device_configure_count': 1, 'backend_calls': 1, 'stopped_early': False,
+                'tasks': [{'id': 'periodic', 'outcome': 'skipped', 'error_kind': 'none',
+                           'error_contains': 'input.override'}],
+            },
+        },
     ]
 
 

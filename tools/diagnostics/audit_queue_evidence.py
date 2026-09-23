@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ARCHIVE = Path(__file__).resolve().parent / 'queue-evidence'
 DOC = ROOT / 'docs' / 'queue-evidence.md'
 SCHEMA = 'queue-evidence/1'
-KINDS = {'account_state', 'observe', 'navigate', 'periodic_plan', 'periodic_run'}
+KINDS = {'account_state', 'observe', 'navigate', 'periodic_plan',
+         'periodic_preflight', 'periodic_run'}
 REDACTIONS = [
     'Absolute project paths replaced with <project>/relative paths; other absolute paths removed.',
     'Device serial and configured endpoint replaced with <device>.',
@@ -108,7 +109,7 @@ def frame_ok(shape):
     return isinstance(shape, list) and len(shape) == 3 and all(type(v) is int and v > 0 for v in shape)
 
 
-def task_proof(task, session, plan=None):
+def task_proof(task, session, plan=None, preflight=None):
     evidence, request, kind = task['evidence'], task['input'], task['kind']
     require(isinstance(evidence, dict) and isinstance(request, dict), 'missing task evidence/input')
     if kind == 'account_state':
@@ -168,9 +169,30 @@ def task_proof(task, session, plan=None):
                         and item['method'] and item['calls_run'] is True
                         and item['error'] is None for item in plans),
                 'periodic plan binding incomplete')
-        require(any(item['task'] == request['task'] for item in plans),
-                'requested periodic task absent from plan')
-        return f"上游绑定 {len(plans)} 项；请求 {request['task']} 已找到"
+        requested = request.get('tasks')
+        if requested is not None:
+            require(isinstance(requested, list) and requested
+                    and set(requested) == {item['task'] for item in plans},
+                    'requested periodic tasks differ from plan')
+        else:
+            requested = [request['task']]
+            require(any(item['task'] == requested[0] for item in plans),
+                    'requested periodic task absent from plan')
+        return f"上游绑定 {len(plans)} 项；请求 {', '.join(requested)} 已找到"
+    if kind == 'periodic_preflight':
+        name = request['task']
+        require(request.get('allow_actions') is True and request.get('confirm') == name
+                and evidence['task'] == name and evidence['allow_actions'] is True
+                and evidence['confirm_matches'] is True, 'periodic preflight input gates mismatch')
+        require(plan is not None and plan['task'] == name, 'periodic preflight lacks preceding plan')
+        binding = evidence['plan']
+        require(evidence['decision'] == 'allowed' and evidence['executes'] is False
+                and isinstance(evidence['reason'], str) and evidence['reason']
+                and binding['found'] is True
+                and binding['lineno'] == plan['lineno']
+                and binding['imports'] == plan['imports']
+                and binding['calls_run'] is True, 'periodic preflight binding mismatch')
+        return f"请求 {name} 已放行；executes=false；上游绑定一致"
     if kind == 'periodic_run':
         require(session['allow_actions'] is True and session['read_only_device'] is False,
                 'periodic action missing session authorization')
@@ -179,6 +201,9 @@ def task_proof(task, session, plan=None):
                 and evidence['task'] == name and evidence['allow_actions'] is True
                 and evidence['confirm_matches'] is True, 'periodic input gates mismatch')
         require(plan is not None and plan['task'] == name, 'periodic run lacks preceding plan')
+        if preflight is not None:
+            require(preflight['decision'] == 'allowed' and preflight['executes'] is False
+                    and preflight['task'] == name, 'periodic run preflight mismatch')
         target = evidence['target']
         require(target['module'] == 'alas' and target['class'] == 'AzurLaneAutoScript'
                 and target['scheduler_command'] == plan['scheduler_command']
@@ -264,7 +289,7 @@ def validate_run(files):
             'artifact log mismatch')
     require(set(files) == set(expected_names) | {'queue.json', 'state.json', 'session-log.jsonl'},
             'missing or unindexed task artifact')
-    previous, proofs, reference_session, plans = [], [], None, {}
+    previous, proofs, reference_session, plans, preflights = [], [], None, {}, {}
     for index, row in enumerate(entries):
         task = files[expected_names[index]]
         require(task['kind'] in KINDS, 'unsupported task kind')
@@ -293,7 +318,10 @@ def validate_run(files):
                 'task boundary order mismatch')
         if task['kind'] == 'periodic_plan':
             plans.update({item['task']: item for item in task['evidence']['plans']})
-        proof = task_proof(task, session, plans.get(task['input'].get('task')))
+        name = task['input'].get('task')
+        proof = task_proof(task, session, plans.get(name), preflights.get(name))
+        if task['kind'] == 'periodic_preflight':
+            preflights[name] = task['evidence']
         previous.append({key: task[key] for key in ('id', 'kind', 'required', 'input')})
         proofs.append({'id': task['id'], 'kind': task['kind'], 'proof': proof})
     return {'tasks': proofs, 'elapsed_s': queue['elapsed_s'], 'read_only_device': start['read_only_device'],
@@ -357,6 +385,7 @@ def report(facts):
              '归档保留原件和脱敏件 SHA-256。原件存在时还会验证原件校验和及可重复脱敏。',
              '离线检出只有脱敏件时只能验证归档完整性与交叉一致性，不能代替现场重跑。', '',
              '账号配置、设备标识和本机绝对路径已脱敏，截图与原始控制台日志留在忽略目录。',
+             '周期任务的 `native_success=true` 只证明原生调度返回，不证明资源实际到账。',
              '这些记录只覆盖表中实际执行的任务；不能证明未解锁功能、其他周期任务或战役通关。', '',
              '| 归档 | 会话 | 耗时 |', '| --- | --- | --- |']
     for fact in facts:

@@ -1,7 +1,7 @@
 # 真实队列脱敏工件
 
 仅保存真实 `queue` 入口产生的 `account_state`、`observe`、`navigate` 及带上游绑定勘察的
-`periodic_run` 成功队列。当前验证器明确拒绝战役任务，不将周期成功当成战役通关。
+`periodic_preflight` / `periodic_run` 成功队列。当前验证器明确拒绝战役任务，不将周期成功当成战役通关。
 每个目录包含队列、逐任务工件、断点和会话结构化日志；`archive.json` 保留项目相对来源、
 原件及脱敏件的 SHA-256 和脱敏范围。原始截图、控制台日志、账号配置与设备信息不入库。
 
@@ -18,3 +18,5 @@ python tools/diagnostics/audit_queue_evidence.py --archive-run data/<run>/artifa
 原件存在时验证其校验和及可重复脱敏；其他检出环境中只能核对已归档字节和各工件间的一致性，
 不会把原件缺失宣称成真机重跑。周期任务摘要只证明本次调度及返回结果，
 原始控制台点击日志留在本地；不能据此证明未解锁功能、其他周期域或战役通关。
+`freebies` 功勋邮件样本里上游日志写出 `Mail claim success: False`；归档中的
+`native_success=true` 只证明原生调度完成，不能证明功勋资源实际到账。

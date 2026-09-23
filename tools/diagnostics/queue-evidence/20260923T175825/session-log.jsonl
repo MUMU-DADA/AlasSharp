@@ -1,0 +1,18 @@
+{"time":"2026-09-23T17:58:25.899+08:00","level":"INFO","scope":"session","message":"识图宿主已启动","fields":{"repo":"<project>/.runtime/engine","dry_run":false,"allow_actions":true,"read_only_device":false,"host_start_ms":326.5}}
+{"time":"2026-09-23T17:58:25.936+08:00","level":"INFO","scope":"session","message":"设备后端已配置","fields":{"serial":"<device>","screenshot":"adb","control":"ADB","configured":"serial=<device>,screenshot=adb,control=ADB"}}
+{"time":"2026-09-23T17:58:25.939+08:00","level":"INFO","scope":"queue","message":"开始任务队列","fields":{"tasks":4,"kinds":"periodic_plan,periodic_preflight,periodic_run,account_state","dry_run":false,"artifacts":"<project>/data/mainline-device/current-freebies-merit/20260923T175825"}}
+{"time":"2026-09-23T17:58:25.950+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"freebies-plan","kind":"periodic_plan","pages":null,"in_map":null}}
+{"time":"2026-09-23T17:58:25.971+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/current-freebies-merit/20260923T175825/task-freebies-plan.json"}}
+{"time":"2026-09-23T17:58:25.973+08:00","level":"INFO","scope":"task","message":"periodic_plan:freebies-plan → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":0,"preconditions":0}}
+{"time":"2026-09-23T17:58:25.973+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"freebies-preflight","kind":"periodic_preflight","pages":null,"in_map":null}}
+{"time":"2026-09-23T17:58:25.984+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/current-freebies-merit/20260923T175825/task-freebies-preflight.json"}}
+{"time":"2026-09-23T17:58:25.984+08:00","level":"INFO","scope":"task","message":"periodic_preflight:freebies-preflight → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":0,"preconditions":0}}
+{"time":"2026-09-23T17:58:25.986+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"freebies-merit","kind":"periodic_run","pages":null,"in_map":null}}
+{"time":"2026-09-23T17:58:34.175+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/current-freebies-merit/20260923T175825/task-freebies-merit.json"}}
+{"time":"2026-09-23T17:58:34.176+08:00","level":"INFO","scope":"task","message":"periodic_run:freebies-merit → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":8.2,"preconditions":0}}
+{"time":"2026-09-23T17:58:34.177+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"after-freebies","kind":"account_state","pages":null,"in_map":null}}
+{"time":"2026-09-23T17:58:34.594+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/current-freebies-merit/20260923T175825/task-after-freebies.json"}}
+{"time":"2026-09-23T17:58:34.595+08:00","level":"INFO","scope":"task","message":"account_state:after-freebies → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":0.4,"preconditions":0}}
+{"time":"2026-09-23T17:58:34.596+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/current-freebies-merit/20260923T175825/queue.json"}}
+{"time":"2026-09-23T17:58:34.597+08:00","level":"INFO","scope":"queue","message":"任务队列结束","fields":{"outcome":"succeeded","tasks":4,"failed":0,"skipped":0,"elapsed_s":8.7}}
+{"time":"2026-09-23T17:58:34.774+08:00","level":"INFO","scope":"session","message":"识图宿主已释放","fields":{}}

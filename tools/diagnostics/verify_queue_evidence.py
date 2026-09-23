@@ -22,6 +22,8 @@ def main():
     observed = next(run for run in runs if any(t['kind'] == 'account_state' for t in run['queue.json']['tasks']))
     navigated = next(run for run in runs if any(t['kind'] == 'navigate' for t in run['queue.json']['tasks']))
     periodic = next(run for run in runs if any(t['kind'] == 'periodic_run' for t in run['queue.json']['tasks']))
+    preflight_run = next(run for run in runs if any(
+        t['kind'] == 'periodic_preflight' for t in run['queue.json']['tasks']))
     mapped = next(run for run in runs if any(
         run[audit.basename(row['artifact'])].get('evidence', {}).get('map_mode') == 'main'
         for row in run['queue.json']['tasks']))
@@ -47,6 +49,8 @@ def main():
     account_file = task_file(observed, 'account_state')
     plan_file = task_file(periodic, 'periodic_plan')
     periodic_file = task_file(periodic, 'periodic_run')
+    preflight_file = task_file(preflight_run, 'periodic_preflight')
+    targeted_plan_file = task_file(preflight_run, 'periodic_plan')
     mapped_file = task_file(mapped, 'observe')
     rounds_file = next(audit.basename(row['artifact']) for row in navigated['queue.json']['tasks']
                        if row['kind'] == 'navigate' and navigated[audit.basename(row['artifact'])]['input'].get('rounds') == 2)
@@ -104,6 +108,15 @@ def main():
     rejected('periodic native call did not succeed', periodic,
              lambda r: r[periodic_file]['evidence'].update(native_success=False),
              'native execution not proven')
+    rejected('periodic requested tasks differ from plan', preflight_run,
+             lambda r: r[targeted_plan_file]['evidence']['plans'][0].update(task='other'),
+             'requested periodic tasks differ from plan')
+    rejected('preflight must not execute', preflight_run,
+             lambda r: r[preflight_file]['evidence'].update(executes=True),
+             'periodic preflight binding mismatch')
+    rejected('preflight binding differs from plan', preflight_run,
+             lambda r: r[preflight_file]['evidence']['plan'].update(lineno=1),
+             'periodic preflight binding mismatch')
 
     with tempfile.TemporaryDirectory(prefix='queue-evidence-', dir=audit.ROOT / '.runtime') as tmp:
         folder = Path(tmp)

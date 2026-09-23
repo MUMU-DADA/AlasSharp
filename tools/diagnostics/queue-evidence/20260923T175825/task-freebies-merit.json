@@ -1,0 +1,53 @@
+{
+  "id": "freebies-merit",
+  "kind": "periodic_run",
+  "required": true,
+  "input": {
+    "task": "freebies",
+    "allow_actions": true,
+    "confirm": "freebies",
+    "overrides": {
+      "BattlePass_Collect": false,
+      "DataKey_Collect": false,
+      "SupplyPack_Collect": false,
+      "Mail_ClaimMerit": true,
+      "Mail_ClaimMaintenance": false,
+      "Mail_ClaimTradeLicense": false,
+      "Mail_DeleteCollected": false
+    }
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 8.2,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "task": "freebies",
+    "allow_actions": true,
+    "confirm_matches": true,
+    "decision": "ran",
+    "target": {
+      "module": "alas",
+      "class": "AzurLaneAutoScript",
+      "scheduler_command": "Freebies",
+      "method": "freebies"
+    },
+    "constructed": true,
+    "ran": true,
+    "native_success": true,
+    "elapsed_s": 8.2,
+    "returned": null,
+    "exit_code": null,
+    "reason": null,
+    "error": null,
+    "traceback_tail": []
+  }
+}

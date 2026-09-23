@@ -7,6 +7,7 @@
 离线检出只有脱敏件时只能验证归档完整性与交叉一致性，不能代替现场重跑。
 
 账号配置、设备标识和本机绝对路径已脱敏，截图与原始控制台日志留在忽略目录。
+周期任务的 `native_success=true` 只证明原生调度返回，不证明资源实际到账。
 这些记录只覆盖表中实际执行的任务；不能证明未解锁功能、其他周期任务或战役通关。
 
 | 归档 | 会话 | 耗时 |
@@ -17,6 +18,7 @@
 | `20260923T154407` | 只读设备；宿主 1 / 设备配置 1 | 5.5 秒 |
 | `20260923T155210` | 动作授权；宿主 1 / 设备配置 1 | 7.9 秒 |
 | `20260923T160321` | 动作授权；宿主 1 / 设备配置 1 | 10.6 秒 |
+| `20260923T175825` | 动作授权；宿主 1 / 设备配置 1 | 8.7 秒 |
 
 | 归档 / 任务 | 任务域 | 已核对事实 |
 | --- | --- | --- |
@@ -36,6 +38,10 @@
 | `20260923T155210/after-dorm` | `account_state` | 实时抓帧；页面 page_dorm；in_map=False |
 | `20260923T160321/to-event` | `navigate` | 目标 page_event；完成 1/1 轮；3 次跳转；最终 page_event |
 | `20260923T160321/event-state` | `account_state` | 实时抓帧；页面 page_event；in_map=False |
+| `20260923T175825/freebies-plan` | `periodic_plan` | 上游绑定 1 项；请求 freebies 已找到 |
+| `20260923T175825/freebies-preflight` | `periodic_preflight` | 请求 freebies 已放行；executes=false；上游绑定一致 |
+| `20260923T175825/freebies-merit` | `periodic_run` | 上游 AzurLaneAutoScript.freebies；decision=ran；native_success=true |
+| `20260923T175825/after-freebies` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
 
 来源目录（项目相对路径，原件不入库）：
 
@@ -45,3 +51,4 @@
 - `data/mainline-device/20260923T154407-observe_map/artifacts/20260923T154407`
 - `data/mainline-device/20260923T155210-dorm/artifacts/20260923T155210`
 - `data/mainline-device/20260923T160321-event_nav/artifacts/20260923T160321`
+- `data/mainline-device/current-freebies-merit/20260923T175825`

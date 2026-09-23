@@ -708,6 +708,16 @@ Mission collect finished
 **`overrides` 的边界**：只接受当前任务绑定的字段，并通过上游 `config.override()` 登记为对象生命期
 覆盖，不走字段赋值的自动持久化路径。**上游任务自己写调度状态**（如 `task_delay()` / `task_call()`）
 仍会更新配置，那是原生调度语义，适配器不会回滚整个配置文件。
+`periodic_run` 还会在任务前置校验中拒绝未知的顶层输入字段；例如把 `overrides`
+误写成 `override` 时任务不启动，避免按未覆盖的上游默认配置执行。
+
+2026-09-23 的 `freebies` 产品队列先勘察 `periodic_plan`、再由 `periodic_preflight`
+确认原生绑定与不执行判定，然后以本次 `overrides` 关闭战令、钥匙、礼包和删信，
+仅尝试功勋邮件领取。上游从活动页导航到邮件管理、选择功勋、点击批量领取与确认，
+返回主界面；队列记录 `decision=ran`、`native_success=true`，抓帧识别主页。
+但原始日志同时给出 `Mail claim success: False`，不能据调度成功声称功勋已到账。
+原始日志和设备工件保留在本地忽略目录 `data/mainline-device/current-freebies-merit/`；
+脱敏队列归档只证明前述调度与返页事实，不包含原始控制台点击日志。
 
 ## 通用观测任务（`observe`）
 

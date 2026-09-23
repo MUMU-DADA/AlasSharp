@@ -1,0 +1,45 @@
+{
+  "id": "freebies-plan",
+  "kind": "periodic_plan",
+  "required": true,
+  "input": {
+    "tasks": [
+      "freebies"
+    ]
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 0,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "count": 1,
+    "missing": [],
+    "plans": [
+      {
+        "task": "freebies",
+        "found": true,
+        "scheduler_command": "Freebies",
+        "method": "freebies",
+        "lineno": 236,
+        "imports": [
+          "from module.freebies.freebies import Freebies"
+        ],
+        "calls": [
+          "Freebies",
+          "run"
+        ],
+        "calls_run": true,
+        "error": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 8.7,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "freebies-plan",
+      "kind": "periodic_plan",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/current-freebies-merit/20260923T175825/task-freebies-plan.json"
+    },
+    {
+      "id": "freebies-preflight",
+      "kind": "periodic_preflight",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/current-freebies-merit/20260923T175825/task-freebies-preflight.json"
+    },
+    {
+      "id": "freebies-merit",
+      "kind": "periodic_run",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 8.2,
+      "artifact": "<project>/data/mainline-device/current-freebies-merit/20260923T175825/task-freebies-merit.json"
+    },
+    {
+      "id": "after-freebies",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/current-freebies-merit/20260923T175825/task-after-freebies.json"
+    }
+  ]
+}
