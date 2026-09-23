@@ -369,6 +369,17 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 成功记录。复跑只证明原生调度返回，未重新触发漏接管的长战斗，因此修复的真机战斗
 闭环仍待下一次可用目标验证。失败原件与复跑原件仅留在上述本地忽略目录。
 
+再次换号后，原生 `navigate(page_os)` 已点击大世界入口，却因 `OS_CHECK` 未命中而在
+约 185 秒后失败；后续两个只读任务按失败即停跳过。失败后留在本地的当前帧确实是海域：
+上游 OS 在图判据返回真，`alashub map --mode os` 从同帧检出 43 格，而上游
+`OS_CHECK` 仍未命中。直接从该海域启动 `OpsiStronghold` 时，上游 `os_init()` 报告
+`Already in os map`，随后 `zone_init()` 等待同一 `OS_CHECK` 并以 `GameStuckError`
+结束，未进入要塞目标或战斗；工件登记了调用栈和失败帧。两份已获取的上游源码与素材
+没有可直接同步的 `OS_CHECK` 更新。本次只证明该账号现场的顶栏判据失配，尚不能仅凭
+画面确认账号剧情进度或修复后的战斗闭环。两批原始工件与截图留在本地忽略目录
+`data/mainline-device/20260924-os-second-account/`；配置副作用均按运行前快照恢复并
+校验原字节一致，未加入页面或地图特例。
+
 ## 下一步与本域的缺口
 
 - 账号状态 `capture=true` 与 `IN_MAP` 现场复核已有设备窗口记录，见 `handover-r0-r2.md` 第五节与第八节补充六。
