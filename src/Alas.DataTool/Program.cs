@@ -807,7 +807,15 @@ internal static class Program
                                       $"grid_count={task.Evidence["grid_count"]} " +
                                       $"来源={task.Evidence["source"]}");
                 // 周期任务调度状态：报"总共几个任务、几个开着"（明细在工件里，不在这里刷屏）
-                if (task.Evidence["enabled_count"] is System.Text.Json.Nodes.JsonNode enabled)
+                // 配置开关：报"查了几个、几个 true/false/missing"（明细在工件里，不在这刷屏）
+                if (task.Evidence["checked"] is System.Text.Json.Nodes.JsonNode cfgChecked)
+                {
+                    int CountOf(string key)
+                        => task.Evidence[key] is System.Text.Json.Nodes.JsonArray array ? array.Count : 0;
+                    Console.WriteLine($"[任务证据] 查了={cfgChecked} true={CountOf("true_keys")} "
+                                      + $"false={CountOf("false_keys")} missing={CountOf("missing_keys")} "
+                                      + $"来源={task.Evidence["config_source"]}");
+                }                if (task.Evidence["enabled_count"] is System.Text.Json.Nodes.JsonNode enabled)
                     Console.WriteLine($"[任务证据] 任务={task.Evidence["task_count"]} 启用={enabled} " +
                                       $"无Scheduler={task.Evidence["no_scheduler_count"]} " +
                                       $"来源={task.Evidence["config_source"]}");

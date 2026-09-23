@@ -25,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / '.runtime' / 'engine' / 'config' / 'alas.json'
 EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+LAST_STDOUT = ''          # 上一任务的 CLI 输出：给'打印机没静默失效'这条断言用
 
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -40,10 +41,12 @@ def run_task(keys, timeout=300):
             {'id': 'cfg', 'kind': 'config_get', 'input': {'keys': keys}}]},
             ensure_ascii=False), encoding='utf-8')
         artifacts = Path(tmp) / 'artifacts'
-        subprocess.run([str(EXE), 'queue', '--file', str(queue_file),
+        proc = subprocess.run([str(EXE), 'queue', '--file', str(queue_file),
                         '--artifacts', str(artifacts)],
                        capture_output=True, text=True, encoding='utf-8',
                        errors='replace', timeout=timeout)
+        global LAST_STDOUT
+        LAST_STDOUT = proc.stdout or ''
         artifact = next(iter(sorted(artifacts.glob('*/task-*.json'))), None)
         if artifact is None:
             return None, {}, '没有工件'
@@ -100,6 +103,9 @@ def main() -> int:
          f"任务={evidence.get('false_keys')} 独立={sorted(expected_false)}"),
         ('missing_keys 与独立读一致', set(evidence.get('missing_keys') or []) == expected_missing,
          f"任务={evidence.get('missing_keys')} 独立={sorted(expected_missing)}"),
+        # 打印机会静默失效（键名一改这行就没了），所以连它一起断言
+        ('CLI 打出 [任务证据] 行', '[任务证据]' in LAST_STDOUT and '查了=' in LAST_STDOUT,
+         'stdout 里没有 [任务证据] 或 查了='),
         ('checked 等于请求的键数', evidence.get('checked') == len(keys),
          f"checked={evidence.get('checked')} 请求={len(keys)}"),
         # 核心语义：缺失**不能**被算成 false
