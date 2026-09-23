@@ -61,6 +61,7 @@ STEPS = [
     ('verify_runtime.py', 'R1 常驻运行时（会话只初始化一次 / 失败即停 / 取消 / 证据）', False, 300),
     ('verify_account_state.py', 'R2 账号状态域（只读状态任务 + 真机帧 + 临界判据留证）', False, 600),
     ('verify_stop.py', 'R4 停止任务（--stop-file 在任务边界生效 + 对照）', False, 300),
+    ('verify_report_html.py', 'R4 HTML 视图（不丢事实 / 单文件自足 / 缺工件也能看）', False, 600),
     ('verify_report.py', 'R2 运行报告（工件→结构化事实 + 证据完整性反例）', False, 600),
     ('verify_os_state.py', 'R2 大世界/海域只读探针（存盘帧；capture 前置条件口径）', False, 600),
     ('button_threshold_sweep.py', '判据临界扫描（重建 button-threshold-sweep.md）', False, 900),
