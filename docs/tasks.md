@@ -484,3 +484,25 @@ def run(self):
 
 **这一步的价值是"不再拿误报当依据"**：如果按粗筛表去放开 ``research``，会以为"没命中花费信号=安全"，
 而真相是"命中是误报、花费是任务性质"——**两次都错**。
+
+#### 花费路径：一页结论（**以此表为准**，下面几节是推导过程与证据）
+
+| 模块 | 类别 | 判定 | 依据 |
+| --- | --- | --- | --- |
+| `commission` | ① 默认路径就花 | 油满时会**买食物消耗油**（三次失败才 `RequestHumanTakeover`） | `commission.py:563/595-600` |
+| `dorm` | ② 配置门控 | **`Dorm.BuyFurniture.Enable`**（扁平键 `BuyFurniture_Enable`）为真才买家具；上游把 `BuyFurniture` 作为 **`Dorm` 下的分组**（不是独立任务） | `dorm.py:613/509/540-542`、`args.json` 结构 |
+| `meowfficer` | ② 配置门控 | **`Meowfficer_BuyAmount > 0`** 才买（上限 `BUY_MAX=15`，单价常量 `BUY_PRIZE=1500`） | `meowfficer.py:36/46/48`、`buy.py:186` |
+| `research` | ③ **任务性质就花** | 开始科研项目本身消耗资源；选哪个项目由上游预设/规则决定。**未逐项判定**（读项目数据与选择规则才能算"这次花多少"） | `research.py:164` 起 |
+| `freebies` | 不花（这条路径） | `handle_battle_pass_popup()` 点的是弹窗**关闭按钮**（模板图是深红 ✕） | 模板图 + `battle_pass.py:39/52/83` |
+| `reward` | 不花（已下钻四层） | `run → receive/mission → notice/all/weekly → collect` 全程无 `buy/purchase/OilMaxed/quick_finish/COST` | `reward.py` 各方法 |
+| `tactical` | 无命中 | 粗筛无信号 | 粗筛 |
+| `island` | 不是动作 | `DIC_ISLAND_RECIPE` 是**数据表**（含 `commission_cost` 字段） | `data.py:227-230` |
+
+**用这张表回答"某个周期任务能不能无人值守跑"**：
+
+* ①②类：查本机配置即可判定（①类无配置可挡）；
+* ③类：**不能**凭本表下结论 —— 要么读它的选择规则与项目数据，要么第一次跑时有人看着；
+* 其余：本表已判定不花，可直接按回归流程安排。
+
+**方法（可复用到别的任务域）**：先读 `run()` 找花费分支与其**开关名** → 查本机配置里那个开关的值 →
+判不出来时看**模板图/调用点**，**不要凭素材名或文件名下结论**（本文件里为此更正过三次）。
