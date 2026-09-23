@@ -251,6 +251,43 @@ def main() -> int:
                     failures.append(f'{name}: {detail}')
 
     print()
+    # ---- 反例：混进来的目录不算"一次运行"（否则 report --artifacts 会去读它并报误导性发现）
+    print()
+    print('=== 混进来的目录不算运行 ===')
+    import tempfile as _tf
+    _stray = Path(_tf.mkdtemp(prefix='alas-stray-'))   # 自己的临时目录：脚本里前面的 tmpdir 到这里已经清理了
+    stray_root = _stray / 'stray-artifacts'
+    stray_queue = _stray / 'stray-queue.json'
+    stray_queue.write_text(json.dumps({'tasks': [
+        {'id': 'only', 'kind': 'task_schedule', 'input': {'limit': 2}}]},
+        ensure_ascii=False), encoding='utf-8')
+    run([str(EXE), 'queue', '--file', str(stray_queue), '--artifacts', str(stray_root)])
+    # 造一个排序**在时间戳之后**的目录：修复前会被"取最近一次"选中
+    (stray_root / 'zzz-stray').mkdir(parents=True, exist_ok=True)
+    stray_json = _stray / 'stray-report.json'
+    run([str(EXE), 'report', '--artifacts', str(stray_root), '--json', str(stray_json)])
+    stray_report = json.loads(stray_json.read_text(encoding='utf-8'))
+    stray_runs = _stray / 'stray-runs.json'
+    run([str(EXE), 'runs', '--artifacts', str(stray_root), '--json', str(stray_runs)])
+    listed = json.loads(stray_runs.read_text(encoding='utf-8'))
+    stray_checks = [
+        ('report 取的是真运行（不是 zzz-stray）',
+         'zzz-stray' not in str(stray_report.get('run') or ''),
+         f"run={stray_report.get('run')}"),
+        ('结论仍是有证据的成功（没被误导成 log_missing）',
+         stray_report.get('queue_outcome') == 'succeeded'
+         and not [f for f in stray_report.get('findings') or []
+                  if f.get('code') == 'log_missing'],
+         f"outcome={stray_report.get('queue_outcome')} findings={stray_report.get('findings')}"),
+        ('runs 不把杂目录算成一次运行', listed.get('returned') == 1,
+         f"returned={listed.get('returned')} runs={[r.get('directory') for r in listed.get('runs') or []]}"),
+    ]
+    for name, ok, detail in stray_checks:
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+        if not ok:
+            failures.append(f'{name}: {detail}')
+
+    print()
     if failures:
         print(f'结果: FAIL（{len(failures)} 项）')
         for item in failures:

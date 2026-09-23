@@ -310,11 +310,25 @@ public sealed class RunReport
         };
     }
 
-    /// <summary>找工件根目录下**最新**的一次运行（按目录名，即时间戳）。</summary>
+    /// <summary>
+    /// 一个目录是不是**一次运行**：必须有自己的 `queue.json`（队列运行）或 `index.json`（单批运行）。
+    ///
+    /// 为什么要判：工件根目录下可能混进别的目录（例如生成的视图目录、手工建的临时目录），
+    /// 而这里取"最新一次"是按**目录名**排序的 —— 混进来的目录会被当成一次运行，
+    /// 表现为"读了它、于是报 log_missing 之类的**误导性发现**"（实测踩到过：
+    /// 视图目录 `views` 比时间戳目录排序靠后，`report --artifacts` 就去读它了）。
+    /// 判定口径必须**只有一处**，`report --artifacts` 与 `runs` 共用，否则两个命令会各认一套。
+    /// </summary>
+    public static bool IsRunDirectory(string directory)
+        => File.Exists(Path.Combine(directory, "queue.json"))
+           || File.Exists(Path.Combine(directory, "index.json"));
+
+    /// <summary>找工件根目录下**最新**的一次运行（按目录名，即时间戳；只认真正的运行目录）。</summary>
     public static string? LatestRun(string artifactsRoot)
     {
         if (!Directory.Exists(artifactsRoot)) return null;
         return Directory.GetDirectories(artifactsRoot)
+            .Where(IsRunDirectory)
             .OrderBy(d => Path.GetFileName(d), StringComparer.Ordinal)
             .LastOrDefault();
     }
@@ -329,6 +343,7 @@ public sealed class RunReport
         var runs = new JsonArray();
         var directories = Directory.Exists(artifactsRoot)
             ? Directory.GetDirectories(artifactsRoot)
+                .Where(IsRunDirectory)          // 与 LatestRun 同一口径：只认真正的运行目录
                 .OrderByDescending(d => Path.GetFileName(d), StringComparer.Ordinal)
                 .Take(Math.Max(1, limit))
             : Enumerable.Empty<string>();
