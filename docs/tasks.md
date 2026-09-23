@@ -313,6 +313,10 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 `in_map=true`、`backend=perspective`、43 格，队列成功；原始工件留在本地忽略目录
 `data/mainline-device/20260923T221841-os_state_only/`。这证明只读海域探针现场检出，
 不证明隐秘海域任务完成或战斗结算。
+`verify_product_map.py` 曾沿用未合并 `OSConfig` 时的 49 格快照，因而在当前
+上游完整配置下把同一张海域帧的 75 格误报为失败。产品路径验收现对同帧直接构造
+上游 `OSConfig + View(OSGrid)`，核对后端与格数，并要求必需夹具存在；
+该对照未覆盖 CLI 逐格坐标，也不证明 OS 动作闭环。
 
 ## 下一步与本域的缺口
 

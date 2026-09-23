@@ -9,6 +9,10 @@ C# 只负责动作授权、多回合、段间取消与工件；不按页面另�
 当前原生队列的真机结果如下。
 `changed` 是上游 `ui_ensure()` 的返回值；它为 `false` 时，
 `ui_get_current_page()` 仍可能已点击 Home 处理未知画面，不能据此断言没有设备动作。
+上游 `UI.ui_additional()` 还会调用 `handle_idle_page()`，用 `IDLE`、`IDLE_2`、
+`IDLE_3` 识别待机界面并点击 `REWARD_GOTO_MAIN`。本次 OS 失败队列的原生日志
+先记录 `UI additional: IDLE -> REWARD_GOTO_MAIN`，随后识别 `page_main` 并点击
+OS 入口；因此待机恢复已实际执行，后续超时属于 `page_os` 判据未确认海域画面。
 
 2026-09-23 新原生队列从主界面到 `page_tactical` 两轮、轮间返主界面及最终返页均成功，
 末帧 `account_state` 命中主界面；原始工件留在本地忽略目录
