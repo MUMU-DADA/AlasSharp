@@ -442,3 +442,21 @@ def run(self):
 上一轮是"凭素材名猜行为"，这一轮是"凭'有个独立文件/类'猜它是个独立任务"。
 判配置时**以 `args.json` 的结构为准**（这也是第七节早就定下的：**扁平清单以 `args.json` 为准**），
 判行为时以模板图/调用点为准；名字与文件结构都只是线索，不是结论。
+
+#### 补五：`meowfficer` 同样是**配置门控**（`Meowfficer_BuyAmount > 0` 才买）
+
+读源码：
+
+* `meowfficer.py:36` `if self.config.Meowfficer_BuyAmount <= 0 …` / `:46` `if … > 0 …` → 买不买由这个数值决定；
+* `:48` `self.meow_buy()` → `buy.py:15` 的 `MeowfficerBuy`，其中 `buy.py:186` `buy_amount = self.config.Meowfficer_BuyAmount`；
+* 常量：`BUY_MAX = 15`（数量上限）、`BUY_PRIZE = 1500`（单价，货币单位按上游口径）。
+
+本机配置（`config/alas.json`）：
+
+| 键 | 值 |
+| --- | --- |
+| `Meowfficer.BuyAmount` | （本机未显式设置 → 走上游默认值） |
+
+**这样"花费路径"的排查就有了一个可复用的结论形状**：`dorm` 与 `meowfficer` 都是
+**"数值/开关 > 0 / true 才花"**，而值在本机配置里，可离线查。
+剩下没判的只有 `research` 的付费项目（项目是否选到付费项，取决于它的选择规则，属于另一类判定）。
