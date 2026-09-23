@@ -56,14 +56,68 @@ pre { background: #fff; border: 1px solid #e3e6ea; border-radius: 8px;
 
 
 def build_report(target: Path) -> dict:
+    """取一次运行的报告 JSON。
+
+    **参数要按目标类型分开**（这里踩过）：`report --run <运行目录>` 针对**具体某次运行**，
+    `report --artifacts <根目录>` 只取**最近一次**。早先一律用 `--artifacts`，
+    在"根目录下只有一次运行"时碰巧对，多于一次时就会去读最近那次、把别的页也渲染成同一份。
+    """
+    selector = '--artifacts' if is_root(target) else '--run'
     with tempfile.TemporaryDirectory(prefix='alas-html-') as tmp:
         out = Path(tmp) / 'report.json'
-        proc = subprocess.run([str(EXE), 'report', '--artifacts', str(target), '--json', str(out)],
+        proc = subprocess.run([str(EXE), 'report', selector, str(target), '--json', str(out)],
                               capture_output=True, text=True, encoding='utf-8',
                               errors='replace', timeout=300)
         if not out.is_file():
             raise SystemExit(f'report 没产出 JSON（退出码={proc.returncode}）：{(proc.stdout or "")[-300:]}')
         return json.loads(out.read_text(encoding='utf-8'))
+
+
+def build_runs(target: Path) -> dict:
+    """artifacts 根目录下的**多次运行**列表（`alashub runs --json`）。"""
+    with tempfile.TemporaryDirectory(prefix='alas-html-') as tmp:
+        out = Path(tmp) / 'runs.json'
+        proc = subprocess.run([str(EXE), 'runs', '--artifacts', str(target), '--json', str(out)],
+                              capture_output=True, text=True, encoding='utf-8',
+                              errors='replace', timeout=300)
+        if not out.is_file():
+            raise SystemExit(f'runs 没产出 JSON（退出码={proc.returncode}）：{(proc.stdout or "")[-300:]}')
+        return json.loads(out.read_text(encoding='utf-8'))
+
+
+def is_root(target: Path) -> bool:
+    """是不是 artifacts 根目录（下面有多个运行目录）。"""
+    if (target / 'queue.json').is_file() or (target / 'index.json').is_file():
+        return False
+    return any((child / 'queue.json').is_file() or (child / 'index.json').is_file()
+               for child in target.iterdir() if child.is_dir())
+
+
+def render_index(target: Path, document: dict) -> str:
+    """多次运行的索引页：每行一次运行，链到各自的 report.html。"""
+    rows = []
+    for entry in document.get('runs') or []:
+        name = Path(str(entry.get('directory') or '')).name
+        link = f'{name}/report.html'
+        rows.append(
+            f'<tr><td><a href="{html.escape(link)}">{html.escape(name)}</a></td>'
+            f'<td class="{outcome_class(entry.get("queue_outcome"))}">'
+            f'{html.escape(str(entry.get("queue_outcome") or "—"))}</td>'
+            f'<td class="{outcome_class(entry.get("batch_outcome"))}">'
+            f'{html.escape(str(entry.get("batch_outcome") or "—"))}</td>'
+            f'<td>{html.escape(str(entry.get("tasks", "—")))}</td>'
+            f'<td>{html.escape(str(entry.get("stages", "—")))}</td>'
+            f'<td>{"✔" if entry.get("evidence_complete") else "✗"}</td></tr>')
+    return '\n'.join([
+        '<!doctype html><meta charset="utf-8">',
+        f'<title>运行列表 — {html.escape(target.name)}</title>',
+        f'<style>{STYLE}</style>',
+        '<h1>运行列表</h1>',
+        f'<div class="sub">{html.escape(str(target))} —— 共 {len(rows)} 次运行</div>',
+        '<table><tr><th>运行</th><th>队列</th><th>批次</th><th>任务</th><th>关卡</th>'
+        '<th>证据完整</th></tr>' + ''.join(rows) + '</table>',
+        '<div class="sub">点运行名进入该次的详细视图（每个页面都是单文件，可单独拷走）。</div>',
+    ])
 
 
 def outcome_class(value) -> str:
@@ -164,6 +218,23 @@ def main() -> int:
     target = Path(sys.argv[1]).resolve()
     out_path = Path(sys.argv[sys.argv.index('-o') + 1]).resolve() if '-o' in sys.argv \
         else target / 'report.html'
+
+    # artifacts 根目录（下面有多次运行）→ 生成索引页 + 每次运行各一页
+    if is_root(target):
+        document = build_runs(target)
+        index_path = out_path if out_path.name != 'report.html' else target / 'index.html'
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(render_index(target, document), encoding='utf-8')
+        made = 0
+        for entry in document.get('runs') or []:
+            run_dir = Path(str(entry.get('directory') or ''))
+            if not run_dir.is_dir():
+                continue
+            (run_dir / 'report.html').write_text(render(build_report(run_dir)), encoding='utf-8')
+            made += 1
+        print(f'索引已写入: {index_path}（{made} 次运行各生成一页）')
+        return 0
+
     report = build_report(target)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(render(report), encoding='utf-8')

@@ -73,7 +73,10 @@ def main() -> int:
             print('**失败**：队列没产出工件')
             return 1
         report = data_face(artifacts)
-        _, html = render(artifacts, tmpdir / 'view.html')
+        # **单次运行的视图**要按运行目录生成（按根目录会得到索引页）—— 这里传运行目录，
+        # "不丢事实"说的是**运行视图**不能丢事实。
+        run_dir = sorted(p for p in artifacts.glob('*') if p.is_dir())[-1]
+        _, html = render(run_dir, tmpdir / 'view.html')
 
         print('=== 不丢事实（界面 vs 数据面）===')
         facts = []
@@ -106,15 +109,36 @@ def main() -> int:
             failures.append(f'HTML 有外部引用: {external}')
 
         print()
+        print('=== 多次运行的索引页 ===')
+        index_proc, _ = render(artifacts, tmpdir / 'index.html')     # 根目录 → 索引
+        index_path = tmpdir / 'index.html'
+        index_html = index_path.read_text(encoding='utf-8') if index_path.is_file() else ''
+        per_run = sorted((p / 'report.html') for p in artifacts.glob('*') if p.is_dir())
+        index_checks = [
+            ('索引生成成功', index_proc.returncode == 0 and '运行列表' in index_html,
+             f'rc={index_proc.returncode} len={len(index_html)}'),
+            ('索引链到每次运行', all(p.name in index_html for p in per_run if p.is_file()),
+             f'页面={[str(p.name) for p in per_run]}'),
+            ('每次运行都生成了自己的页', all(p.is_file() and p.stat().st_size > 0 for p in per_run),
+             f'页面={[(str(p.name), p.is_file()) for p in per_run]}'),
+            ('索引也无外部引用',
+             not any(t in index_html for t in ('http://', 'https://', '<link', 'src=')),
+             f'长度={len(index_html)}'),
+        ]
+        for name, ok, detail in index_checks:
+            print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+            if not ok:
+                failures.append(f'{name}: {detail}')
+
+        print()
         print('=== 缺工件也能看 ===')
-        run_dir = sorted(p for p in artifacts.glob('*') if p.is_dir())[-1]
         stage_artifacts = sorted(run_dir.glob('sortie-*.json'))
         if not stage_artifacts:
             print('  [跳过] 这次运行没有关卡工件（dry-run 也可能没有）')
         else:
             stage_artifacts[0].unlink()
             broken_report = data_face(artifacts)
-            proc, broken_html = render(artifacts, tmpdir / 'broken.html')
+            proc, broken_html = render(run_dir, tmpdir / 'broken.html')   # 运行视图（根目录会得到索引页）
             codes = [f.get('code') for f in broken_report.get('findings') or []]
             broken_checks = [
                 ('删掉工件后仍能生成', proc.returncode == 0 and len(broken_html) > 0,
