@@ -68,6 +68,7 @@ STEPS = [
     ('r3_hook_shapes.py', 'R3 钩子形态分类（重建 r3-hook-shapes.md）', False, 300),
     ('r3_map_data_init.py', 'R3 第一项上游轨迹（map_data_init 逐章形态）', False, 300),
     ('r3_candidates.py', 'R3 候选排序（原生钩子覆盖，重建 r3-candidates.md）', False, 300),
+    ('verify_in_map_shim.py', 'IN_MAP 阈值垫片（上游判不出 / 垫片后判得出 / 没无脑放宽）', False, 300),
     ('verify_config_get.py', '配置开关域（独立对拍 + 缺失≠false + 空输入记 skipped）', False, 300),
     ('verify_periodic_plan.py', 'R2 周期任务勘察（独立对拍 + 边界 + 不 import 目标模块）', False, 300),
     ('verify_task_schedule.py', 'R2 周期任务调度状态（独立对拍 + 四种边界 + 只读保证）', False, 600),
