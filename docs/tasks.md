@@ -318,6 +318,20 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 上游 `OSConfig + View(OSGrid)`，核对后端与格数，并要求必需夹具存在；
 该对照未覆盖 CLI 逐格坐标，也不证明 OS 动作闭环。
 
+2026-09-24 再次从自然待机经原生导航进入 OS：`IDLE` 恢复成功，OS 入口点击后
+`navigate(page_os)` 仍因 `OS_CHECK` 未确认而在约 183 秒后失败。随后的独立只读
+`os_state(capture=true, detect=map)` 在同一现场返回 `in_map=true`、43 格，说明
+页面到达判据与海域在图判据出现分歧。`OpsiDaily` 放行检查通过；从已确认的海域启动
+原生 `opsi_daily()` 后，`os_init()` 报告 `Already in os map`，但 `zone_init()` 仍等待
+`OS_CHECK` 并触发 `GameStuckError`，任务记失败，没有每日目标或战斗结算证据。
+对这次上游保存的错误帧直接运行既有素材探针，`OS_CHECK` 模板分为 `-0.034`、
+颜色差为 `54.15`（上游颜色门槛为 `<10`）；本地运行上游与另一份上游源码的
+`OS_CHECK` 定义相同，国服素材 SHA-256 也相同。该证据支持当前客户端画面与
+上游素材判据不兼容，不能归因于 C# 导出或导航选边。
+上游错误处理更新了既有 `Restart` 调度的下次运行时间；原始日志与工件只留在本地忽略
+目录 `data/mainline-device/20260924-os-daily-attempt/`。本次未改写页面、素材或地图规则；
+要继续动作闭环，需先用上游规则与当前客户端画面定位 `OS_CHECK` 的通用兼容根因。
+
 ## 下一步与本域的缺口
 
 - 账号状态 `capture=true` 与 `IN_MAP` 现场复核已有设备窗口记录，见 `handover-r0-r2.md` 第五节与第八节补充六。
