@@ -17,6 +17,7 @@ os.chdir(ENGINE)
 import alas_vision as vision  # noqa: E402
 from module.combat.combat import Combat as BaseCombat  # noqa: E402
 from module.os_combat.combat import Combat  # noqa: E402
+from module.os.map import OSMap  # noqa: E402
 from module.os.tasks.stronghold import OpsiStronghold  # noqa: E402
 
 
@@ -43,6 +44,41 @@ class State:
         return False
 
 
+class DaemonState(State):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.combat_calls = 0
+        self.device = SimpleNamespace(stuck_record_clear=lambda: None)
+
+    def on_auto_search_battle_count_reset(self):
+        pass
+
+    def on_auto_search_battle_count_add(self):
+        pass
+
+    def hp_reset(self):
+        pass
+
+    def loop(self):
+        yield None
+
+    def handle_os_auto_search_map_option(self, **kwargs):
+        return False
+
+    def handle_retirement(self):
+        return False
+
+    def combat_appear(self):
+        return Combat.combat_appear(self)
+
+    def auto_search_combat(self, **kwargs):
+        self.combat_calls += 1
+        return True
+
+    def handle_map_event(self):
+        return False
+
+
 def check(label, passed):
     print(f'{"PASS" if passed else "FAIL"}: {label}')
     return passed
@@ -57,6 +93,14 @@ def main():
     results.append(check('native stronghold inherits the patched OS combat handler',
                          Combat in OpsiStronghold.__mro__
                          and OpsiStronghold.combat_appear is patched))
+    running = DaemonState(executing=True)
+    results.append(check('native auto-search daemon hands running combat to its handler',
+                         OSMap.os_auto_search_daemon(running) == 1
+                         and running.combat_calls == 1))
+    mapped = DaemonState(map_=True, executing=True)
+    results.append(check('native auto-search daemon does not enter combat from the map',
+                         OSMap.os_auto_search_daemon(mapped) == 0
+                         and mapped.combat_calls == 0))
     results.append(check('map remains excluded even with a pause-like control',
                          patched(State(map_=True, executing=True)) is False))
     results.append(check('loading and preparation retain their original result',
