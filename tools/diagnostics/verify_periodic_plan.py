@@ -23,6 +23,7 @@ import sys
 import tempfile
 import types
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / '.runtime' / 'engine'
@@ -140,6 +141,8 @@ def verify_native_dispatch(failures):
             state.task_calls.append(task)
 
     class FakeDevice:
+        package = 'offline.fixture'
+
         def __init__(self):
             self.config = original_device_config
 
@@ -154,10 +157,13 @@ def verify_native_dispatch(failures):
         def screenshot(self):
             state.screenshots += 1
 
+        def sleep(self, seconds):
+            state.calls.append(('device.sleep', seconds))
+
     device = FakeDevice()
 
     from module.config.config import TaskEnd
-    from module.exception import GameNotRunningError, RequestHumanTakeover
+    from module.exception import GameNotRunningError, GameStuckError, RequestHumanTakeover
 
     class FakeReward:
         def __init__(self, config, device):
@@ -169,6 +175,8 @@ def verify_native_dispatch(failures):
                 raise TaskEnd
             if state.mode == 'false':
                 raise GameNotRunningError('offline fixture')
+            if state.mode == 'stuck':
+                raise GameStuckError('offline fixture')
             if state.mode == 'system_exit':
                 raise RequestHumanTakeover
 
@@ -302,13 +310,33 @@ def verify_native_dispatch(failures):
                   f'{ended}')
 
             state.mode = 'false'
+            handlers_before = tuple(native_alas.logger.handlers)
             false_result = call_op('periodic_run', {
                 'task': 'reward', 'allow_actions': True, 'confirm': 'reward'})
             check(failures, '原生 dispatcher 返回 False 不得算成功',
                   false_result.get('decision') != 'ran'
                   and false_result.get('native_success') is False, f'{false_result}')
+            check(failures, '上游捕获的失败类型与脱敏调用栈进入工件',
+                  'GameNotRunningError' in (false_result.get('error') or '')
+                  and bool(false_result.get('traceback_tail'))
+                  and all('/' not in frame and '\\' not in frame
+                          for frame in false_result['traceback_tail']), f'{false_result}')
             check(failures, 'False 后恢复共享 device.config',
                   device.config is original_device_config, f'{device.config!r}')
+            check(failures, '原生失败监听器已移除',
+                  tuple(native_alas.logger.handlers) == handlers_before)
+
+            state.mode = 'stuck'
+            with patch.object(native_alas.AzurLaneAutoScript, 'save_error_log',
+                              lambda self: None):
+                stuck = call_op('periodic_run', {
+                    'task': 'reward', 'allow_actions': True, 'confirm': 'reward'})
+            check(failures, 'GameStuckError 由原生 run 返回 False 后仍可定位',
+                  stuck.get('decision') == 'failed'
+                  and 'GameStuckError' in (stuck.get('error') or '')
+                  and bool(stuck.get('traceback_tail'))
+                  and tuple(native_alas.logger.handlers) == handlers_before,
+                  f'{stuck}')
 
             native_run = native_alas.AzurLaneAutoScript.run
             try:

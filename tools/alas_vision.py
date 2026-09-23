@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import logging
 import os
 import sys
 import time
@@ -1065,6 +1066,23 @@ def op_config_get(args):
         'checked': len(keys),
     }
 
+class _LoggedNativeFailure(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.kind = None
+        self.traceback_tail = []
+
+    def emit(self, record):
+        error = record.msg if isinstance(record.msg, Exception) else sys.exc_info()[1]
+        if not isinstance(error, Exception):
+            return
+        self.kind = type(error).__name__
+        self.traceback_tail = [
+            f'{os.path.basename(frame.filename)}:{frame.lineno} {frame.name}'
+            for frame in traceback.extract_tb(error.__traceback__)[-8:]
+        ]
+
+
 def op_periodic_run(args):
     """周期任务的**执行**入口：复用上游任务目录和 AzurLaneAutoScript 调度。
 
@@ -1156,13 +1174,23 @@ def op_periodic_run(args):
         device.stuck_record_clear()
         device.click_record_clear()
         out['ran'] = True
-        native_success = runner.run(method_name)
+        from module.logger import logger
+        failure = _LoggedNativeFailure()
+        logger.addHandler(failure)
+        try:
+            native_success = runner.run(method_name)
+        finally:
+            logger.removeHandler(failure)
+            failure.close()
         out['native_success'] = native_success is True
         if native_success is True:
             out['decision'] = 'ran'
         else:
             out['decision'] = 'failed'
-            out['error'] = '上游原生调度器未确认成功'
+            out['error'] = ('上游原生调度器未确认成功'
+                            + (f'（已记录 {failure.kind}）' if failure.kind else ''))
+            if failure.traceback_tail:
+                out['traceback_tail'] = failure.traceback_tail
     except SystemExit as error:
         out['ran'] = bool(out.get('ran'))
         out['native_success'] = False
