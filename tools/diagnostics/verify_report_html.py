@@ -114,14 +114,15 @@ def main() -> int:
         # （运行目录里的文件数是"工件数"的一部分，往里塞页面等于篡改证据）
         def run_dir_files():
             return {p.name: sorted(f.name for f in p.iterdir() if f.is_file())
-                    for p in artifacts.glob('*') if p.is_dir()}
+                    for p in artifacts.glob('*') if p.is_dir()
+                    and ((p / 'queue.json').is_file() or (p / 'index.json').is_file())}
 
         before_files = run_dir_files()
         index_proc, _ = render(artifacts, tmpdir / 'index.html')     # 根目录 → 索引
         after_files = run_dir_files()
         index_path = tmpdir / 'index.html'
         index_html = index_path.read_text(encoding='utf-8') if index_path.is_file() else ''
-        per_run = sorted((artifacts / 'views').glob('*.html'))
+        per_run = sorted((artifacts.parent / (artifacts.name + '-views')).glob('*.html'))
         index_checks = [
             ('索引生成成功', index_proc.returncode == 0 and '运行列表' in index_html,
              f'rc={index_proc.returncode} len={len(index_html)}'),

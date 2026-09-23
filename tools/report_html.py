@@ -98,7 +98,7 @@ def render_index(target: Path, document: dict) -> str:
     rows = []
     for entry in document.get('runs') or []:
         name = Path(str(entry.get('directory') or '')).name
-        link = f'views/{name}.html'
+        link = f'../{target.name}-views/{name}.html'
         rows.append(
             f'<tr><td><a href="{html.escape(link)}">{html.escape(name)}</a></td>'
             f'<td class="{outcome_class(entry.get("queue_outcome"))}">'
@@ -227,7 +227,7 @@ def main() -> int:
         index_path.write_text(render_index(target, document), encoding='utf-8')
         # **页面写到 <root>/views/，不写进运行目录**：运行目录里的文件数是"工件数"的一部分，
         # 往里塞生成物会篡改证据记录（实测过一次：工件数会从 3 变 4）。
-        views = target / 'views'
+        views = target.parent / (target.name + '-views')   # 写到根目录之外：report --artifacts 会扫根目录的子目录取最近一次，views/ 放在里面会被当成一次运行（实测报 log_missing）
         views.mkdir(exist_ok=True)
         made = 0
         for entry in document.get('runs') or []:
