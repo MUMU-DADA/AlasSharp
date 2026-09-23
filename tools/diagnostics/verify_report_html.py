@@ -135,12 +135,21 @@ def main() -> int:
         after_files = run_dir_files()
         index_path = tmpdir / 'index.html'
         index_html = index_path.read_text(encoding='utf-8') if index_path.is_file() else ''
+        # 索引的数值要跟**数据面**（`runs --json`）比，不能拿渲染器自己的中间量比
+        index_json = tmpdir / 'index-runs.json'
+        run(EXE, 'runs', '--artifacts', artifacts, '--json', index_json)
+        index_runs = json.loads(index_json.read_text(encoding='utf-8')).get('runs') or []
         per_run = sorted((artifacts.parent / (artifacts.name + '-views')).glob('*.html'))
         index_checks = [
             ('索引生成成功', index_proc.returncode == 0 and '运行列表' in index_html,
              f'rc={index_proc.returncode} len={len(index_html)}'),
             ('索引链到每次运行', all(p.name in index_html for p in per_run if p.is_file()),
              f'页面={[str(p.name) for p in per_run]}'),
+            # 索引里的**数值**也要真的来自数据面（列名对不上时会静默显示成 "—"）
+            ('索引里的任务/关卡数与数据面一致',
+             all(f'>{entry.get("tasks")}<' in index_html and f'>{entry.get("stages")}<' in index_html
+                 for entry in index_runs),
+             f'runs={index_runs}'),
             ('每次运行都生成了自己的页', all(p.is_file() and p.stat().st_size > 0 for p in per_run),
              f'页面={[(str(p.name), p.is_file()) for p in per_run]}'),
             ('索引也无外部引用',
