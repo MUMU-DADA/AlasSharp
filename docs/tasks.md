@@ -711,6 +711,9 @@ Mission collect finished
 仍会更新配置，那是原生调度语义，适配器不会回滚整个配置文件。
 `periodic_run` 还会在任务前置校验中拒绝未知的顶层输入字段；例如把 `overrides`
 误写成 `override` 时任务不启动，避免按未覆盖的上游默认配置执行。
+宿主仅在设备点击记录清理完成、即将调用原生 dispatcher 时才标记 `ran=true`；
+清理阶段抛错必须保留 `decision=error`、`native_success=false`，且不能声称已执行。
+`verify_periodic_plan.py` 用通用的前置失败替身核对该工件语义和共享设备配置恢复。
 
 2026-09-23 的 `freebies` 产品队列先勘察 `periodic_plan`、再由 `periodic_preflight`
 确认原生绑定与不执行判定，然后以本次 `overrides` 关闭战令、钥匙、礼包和删信，

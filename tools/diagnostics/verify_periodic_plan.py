@@ -148,6 +148,8 @@ def verify_native_dispatch(failures):
 
         def click_record_clear(self):
             state.calls.append(('device.click_record_clear',))
+            if state.mode == 'pre_dispatch_failure':
+                raise RuntimeError('click history reset failed')
 
         def screenshot(self):
             state.screenshots += 1
@@ -300,6 +302,18 @@ def verify_native_dispatch(failures):
                   false_result.get('decision') != 'ran'
                   and false_result.get('native_success') is False, f'{false_result}')
             check(failures, 'False 后恢复共享 device.config',
+                  device.config is original_device_config, f'{device.config!r}')
+
+            state.mode = 'pre_dispatch_failure'
+            calls_before = len(state.calls)
+            pre_dispatch = call_op('periodic_run', {
+                'task': 'reward', 'allow_actions': True, 'confirm': 'reward'})
+            check(failures, '原生调用前失败不得声称已运行',
+                  pre_dispatch.get('decision') == 'error'
+                  and pre_dispatch.get('ran') is not True
+                  and pre_dispatch.get('native_success') is False
+                  and ('reward.run',) not in state.calls[calls_before:], f'{pre_dispatch}')
+            check(failures, '原生调用前失败后恢复共享 device.config',
                   device.config is original_device_config, f'{device.config!r}')
 
             state.mode = 'system_exit'

@@ -1144,9 +1144,9 @@ def op_periodic_run(args):
         runner.__dict__['config'] = config
         runner.__dict__['device'] = device
         out['constructed'] = True
-        out['ran'] = True
         device.stuck_record_clear()
         device.click_record_clear()
+        out['ran'] = True
         native_success = runner.run(method_name)
         out['native_success'] = bool(native_success)
         if native_success:
