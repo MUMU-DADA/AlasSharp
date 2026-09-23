@@ -124,6 +124,7 @@
 | 6 | 周期任务调度状态 | 只读 | `verify_task_schedule.py`（独立对拍 + 四种边界 + 只读保证） |
 | 7 | 周期任务勘察（跑谁） | 只读 | `verify_periodic_plan.py`（独立对拍 + 不 import 目标模块） |
 | 8 | 周期任务放行判定（放不放） | 只读（**永不执行**） | `verify_periodic_plan.py`（四条路径 + executes 恒 False） |
+| 9 | 配置开关（授权前的花费开关留档） | 只读 | `verify_config_get.py`（独立对拍 + 缺失≠false） |
 
 域的**动作部分**（活动出击、周期任务执行）仍需真机与账号授权，属 R2 的剩余项；
 逐域的四件套与边界见 `docs/tasks.md`（那份文档同时是本表的详细版）。
