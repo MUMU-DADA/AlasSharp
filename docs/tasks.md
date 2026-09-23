@@ -130,12 +130,13 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 筛选迟早会走偏。实测：`event_*` 匹配 879 章、其中计划完整 768 章（A 644 / B 124）；
 生成的 3 关队列 dry-run 全部跑通并逐任务落盘工件。
 
-真实产品路径已有两个已解锁活动样本 A1、A2：普通 `campaign_batch` 队列调用上游
+真实产品路径已有三个已解锁活动样本 A1、A2、A3：普通 `campaign_batch` 队列调用上游
 `CampaignRun.load_campaign()` 与原生 `Campaign.run()` 后获得 S 级成功结算，
 `sortie-result/1` 判为 `cleared` 且无违例；紧随其后的 `account_state(capture=true)`
 实时识别 `page_event`、`in_map=false`。六份脱敏工件及原件哈希见
-`tools/diagnostics/evidence/20260923T163008/` 与 `20260923T171026/`，由
-`audit_real_records.py` 逐关交叉核对。这只覆盖当前账号已解锁的两关，
+`tools/diagnostics/evidence/20260923T163008/`、`20260923T171026/` 与
+`20260923T180804/`，由 `audit_real_records.py` 逐关交叉核对。
+这只覆盖当前账号已解锁的三关，
 不能据此认定其他活动关或活动任务整体完成。
 
 > 纪律提醒：`plan-queue` 只做"翻译成任务"，**不新增判据**；队列里的任务默认 `required=false`

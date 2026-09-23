@@ -1,0 +1,27 @@
+{
+  "source_run": "data/mainline-device/current-event-a3-live/20260923T180804",
+  "product_base_commit": "5f87af9",
+  "entry": "alashub queue --file <input> --run --allow-actions",
+  "redactions": [
+    "absolute project paths replaced with <project> placeholders",
+    "device serial and configured endpoint replaced with <device>",
+    "account config and config_name replaced with <redacted-account-config>",
+    "raw console log and screenshots remain in local ignored directory"
+  ],
+  "source_files_sha256": {
+    "index.json": "a0d7562fc9bcb011530e58e35acf5c69e24f14a56a36bc774387fba36a7376b3",
+    "session-log.jsonl": "c863a4dc1e7d7c32eec003d5c13d8deaaafa0b65ac5dd1c91f203f08e8cb134f",
+    "queue.json": "74e18d1b6f8a44c9f8df93a39ca5c24efc0773cf6ca6cc64369ca3b577c64b4d",
+    "sortie-a3.json": "617dd4cf274531f00795f12f30f07793adf3d07857509545455bf820b8575049",
+    "task-after-event.json": "956ba212a6be599e117ebb0d29ec33fd7303f22abb29a2ac129b4521e9f556c9",
+    "task-event-a3.json": "e227afe801ef724533d4195ef4794fb851dbb505a83842849ea010b8187fd617"
+  },
+  "files": {
+    "index.json": "e35d95ac8bc95ce9b790e919e4edce7a59675b0fc507a583e0497d745157aa69",
+    "session-log.jsonl": "9e71777cf16cee059b62865647ddf3387de9305dfbba6be9037bb71a40fdfb6e",
+    "queue.json": "9c53b49b5d10250de8d31e56dd60303eeb17b956c8a2cc1ad84fddfb5cba3af9",
+    "sortie-a3.json": "a338c4ec0e01dc9fa8e8077e9ecd1eb7691a110e0cbb435dc389271a1c9a8f99",
+    "task-after-event.json": "93af1ad47ac732b76aad5bd0f6e47292ada76af18231004b4152a91d2e0c144d",
+    "task-event-a3.json": "cca82b0d3ed38321e517ccaa5954ff6c6a82e427c71cd699a6f97e5aab41c8b4"
+  }
+}

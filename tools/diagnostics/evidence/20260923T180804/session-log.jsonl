@@ -1,0 +1,17 @@
+{"time":"2026-09-23T18:08:04.618+08:00","level":"INFO","scope":"session","message":"识图宿主已启动","fields":{"repo":"<project>/.runtime/engine","dry_run":false,"allow_actions":true,"read_only_device":false,"host_start_ms":278.2}}
+{"time":"2026-09-23T18:08:04.654+08:00","level":"INFO","scope":"session","message":"设备后端已配置","fields":{"serial":"<device>","screenshot":"adb","control":"ADB","configured":"serial=<device>,screenshot=adb,control=ADB"}}
+{"time":"2026-09-23T18:08:04.656+08:00","level":"INFO","scope":"queue","message":"开始任务队列","fields":{"tasks":2,"kinds":"campaign_batch,account_state","dry_run":false,"artifacts":"<project>/data/mainline-device/current-event-a3-live/20260923T180804"}}
+{"time":"2026-09-23T18:08:04.669+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"event-a3","kind":"campaign_batch","pages":null,"in_map":null}}
+{"time":"2026-09-23T18:08:04.672+08:00","level":"INFO","scope":"batch","message":"开始批量任务","fields":{"chapters":1,"dry_run":false,"max_seconds":1200,"max_rounds":20,"artifacts":"<project>/data/mainline-device/current-event-a3-live/20260923T180804"}}
+{"time":"2026-09-23T18:12:39.674+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/current-event-a3-live/20260923T180804/sortie-a3.json"}}
+{"time":"2026-09-23T18:12:39.675+08:00","level":"INFO","scope":"stage","message":"合规 outcome=cleared cleared=True","fields":{"chapter":"campaign.event_20260908_cn.a3","stage":"a3","outcome":"cleared","cleared":true,"elapsed_s":275,"violations":0}}
+{"time":"2026-09-23T18:12:39.677+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/current-event-a3-live/20260923T180804/index.json"}}
+{"time":"2026-09-23T18:12:39.677+08:00","level":"INFO","scope":"batch","message":"批量任务结束","fields":{"outcome":"cleared","cleared":true,"stages":1,"failed":0,"elapsed_s":275}}
+{"time":"2026-09-23T18:12:39.680+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/current-event-a3-live/20260923T180804/task-event-a3.json"}}
+{"time":"2026-09-23T18:12:39.682+08:00","level":"INFO","scope":"task","message":"campaign_batch:event-a3 → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":275,"preconditions":0}}
+{"time":"2026-09-23T18:12:39.683+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"after-event","kind":"account_state","pages":null,"in_map":null}}
+{"time":"2026-09-23T18:12:40.195+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/current-event-a3-live/20260923T180804/task-after-event.json"}}
+{"time":"2026-09-23T18:12:40.196+08:00","level":"INFO","scope":"task","message":"account_state:after-event → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":0.5,"preconditions":0}}
+{"time":"2026-09-23T18:12:40.197+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/current-event-a3-live/20260923T180804/queue.json"}}
+{"time":"2026-09-23T18:12:40.198+08:00","level":"INFO","scope":"queue","message":"任务队列结束","fields":{"outcome":"succeeded","tasks":2,"failed":0,"skipped":0,"elapsed_s":275.5}}
+{"time":"2026-09-23T18:12:40.392+08:00","level":"INFO","scope":"session","message":"识图宿主已释放","fields":{}}

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import archive_real_run
 from audit_real_records import ARCHIVE, audit_archive, audit_artifact
 
 try:
@@ -31,7 +32,7 @@ def main():
             for r in archived))]
     events = [p for p in sources if json.loads(p.read_text(encoding='utf-8'))
               ['result']['chapter'].startswith('campaign.event_')]
-    checks.append(('两个活动章节真实抓帧返回活动页', len(events) >= 2 and all(
+    checks.append(('三个活动章节真实抓帧返回活动页', len(events) >= 3 and all(
         (record := audit_artifact(path))['verdict'] == 'consistent'
         and record['cleared'] and record['queue_chain']
         and record['post_campaign_page_verified'] for path in events)))
@@ -137,6 +138,29 @@ def main():
         log_path.write_text('\n'.join(json.dumps(row) for row in rows), encoding='utf-8')
         checks.append(('会话任务先后顺序被篡改',
                        audit_artifact(target / queued.name)['verdict'] == 'contradiction'))
+    with TemporaryDirectory(prefix='alas-archive-check-', dir=archive_real_run.ROOT / 'data') as tmp:
+        root = Path(tmp)
+        source_dir = root / 'source'
+        shutil.copytree(event.parent, source_dir)
+        (source_dir / 'archive.json').unlink()
+        output_root = root / 'archives'
+        output_root.mkdir()
+        previous_archive = archive_real_run.ARCHIVE
+        try:
+            archive_real_run.ARCHIVE = output_root
+            generated = archive_real_run.archive_run(source_dir, '5f87af9')
+            generated_records, generated_errors = audit_archive(generated)
+            checks.append(('新归档生成后可独立审计', not generated_errors and
+                           len(generated_records) == 1 and
+                           generated_records[0]['verdict'] == 'consistent'))
+            try:
+                archive_real_run.archive_run(source_dir, '5f87af9')
+                duplicate_rejected = False
+            except FileExistsError:
+                duplicate_rejected = True
+            checks.append(('现有归档不会被覆盖', duplicate_rejected))
+        finally:
+            archive_real_run.ARCHIVE = previous_archive
     for name, passed in checks:
         print(f'{"PASS" if passed else "FAIL"}: {name}')
     return 0 if all(passed for _, passed in checks) else 1

@@ -30,3 +30,11 @@
 `sortie-result/1` 裁决 `cleared=true` 且无违例，随后实时抓帧识别 `page_event`、`in_map=false`，
 章节关联一致。六份脱敏工件保留原件/副本 SHA-256；原始日志、截图和账号配置只留在忽略目录。
 A1、A2 是两个具体正样本，不代表活动域或其他章节已完成验收。
+
+`20260923T180804` 来自 `data/mainline-device/current-event-a3-live/20260923T180804`：
+通用 `campaign_batch` 队列真实执行已解锁的活动 A3，五轮战斗后取得 S 级成功结算；
+`sortie-result/1` 裁决 `cleared=true` 且无违例，随后同一队列实时抓帧识别
+`page_event`、`in_map=false`，章节关联一致。六份脱敏工件保留原件/副本 SHA-256；
+原始控制台日志、截图和账号配置只留在忽略目录。A3 是第三个独立正样本，
+不能据此认定其他活动章节或整个活动域完成验收。归档可由
+`archive_real_run.py` 从本地运行目录生成，并由 `audit_real_records.py` 复核。
