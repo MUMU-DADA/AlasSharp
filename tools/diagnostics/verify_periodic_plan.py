@@ -235,6 +235,8 @@ def verify_native_dispatch(failures):
             denied_cases = [
                 {'task': 'reward', 'confirm': 'reward'},
                 {'task': 'reward', 'allow_actions': True, 'confirm': 'research'},
+                {'task': 'research'},
+                {'task': 'research', 'allow_actions': True, 'confirm': 'reward'},
                 {'task': 'no_such_task_zzz', 'allow_actions': True,
                  'confirm': 'no_such_task_zzz'},
                 {'task': 'reward', 'allow_actions': True, 'confirm': 'reward',
@@ -532,6 +534,11 @@ def main() -> int:
                 'unknown': {'task': 'no_such_task_zzz', 'allow_actions': True,
                             'confirm': 'no_such_task_zzz'},
                 'allowed': {'task': 'reward', 'allow_actions': True, 'confirm': 'reward'},
+                'research-no-auth': {'task': 'research'},
+                'research-bad-confirm': {'task': 'research', 'allow_actions': True,
+                                         'confirm': 'reward'},
+                'research-allowed': {'task': 'research', 'allow_actions': True,
+                                     'confirm': 'research'},
             }
             queue_file = tmpdir / 'queue.json'
             queue_file.write_text(json.dumps({'tasks': [
@@ -539,6 +546,8 @@ def main() -> int:
                 for key, value in cases.items()] + [
                 # 执行入口也放进来：**只放未授权的那条** —— 它会被闸门挡下、不会真的执行
                 {'id': 'run-no-auth', 'kind': 'periodic_run', 'input': {'task': 'reward'}},
+                {'id': 'research-run-session-bypass', 'kind': 'periodic_run',
+                 'input': {'task': 'research', 'allow_actions': True, 'confirm': 'research'}},
                 # 队列 JSON 不能自行把默认 dry-run 会话升级成动作会话。即使任务输入的
                 # 两道宿主闸门都满足，会话没有 --run --allow-actions 仍必须在 C# 侧拒绝。
                 {'id': 'run-session-bypass', 'kind': 'periodic_run',
@@ -585,6 +594,17 @@ def main() -> int:
                 and (docs.get('run-session-bypass') or {}).get('boundary_state') is None
                 and not bypass_evidence,
                 f"outcome={bypass_outcome} evidence={bypass_evidence}"))
+            research_run = docs.get('research-run-session-bypass') or {}
+            research_evidence = research_run.get('evidence') or {}
+            gate_checks.append((
+                'research 默认 dry-run 会话在 native dispatcher 前拒绝',
+                research_run.get('outcome') == 'skipped'
+                and research_run.get('stop_reason') == 'precondition'
+                and research_run.get('boundary_state') is None
+                and not research_evidence,
+                f"outcome={research_run.get('outcome')} "
+                f"stop_reason={research_run.get('stop_reason')} "
+                f"evidence={research_evidence}"))
             required = docs.get('run-session-required') or {}
             gate_checks.append((
                 'required 任务会话未授权 → failed 但未开始执行',
@@ -610,12 +630,23 @@ def main() -> int:
                 gate_checks.append((f'{key} → failed 且 decision=denied',
                                     outcome == 'failed' and evidence.get('decision') == 'denied',
                                     f"outcome={outcome} decision={evidence.get('decision')}"))
+            for key in ('research-no-auth', 'research-bad-confirm'):
+                outcome, evidence = decision(key)
+                gate_checks.append((f'{key} → failed 且 decision=denied',
+                                    outcome == 'failed' and evidence.get('decision') == 'denied'
+                                    and evidence.get('executes') is False,
+                                    f"outcome={outcome} evidence={evidence}"))
             _, allowed_evidence = decision('allowed')
+            _, research_allowed_evidence = decision('research-allowed')
             gate_checks += [
                 ('两闸都过 → allowed',
                  allowed_evidence.get('decision') == 'allowed', f'{allowed_evidence}'),
+                ('research 两闸都过 → allowed 且不执行',
+                 research_allowed_evidence.get('decision') == 'allowed'
+                 and research_allowed_evidence.get('executes') is False,
+                 f'{research_allowed_evidence}'),
                 # 这条是**不变量**：这个 op/任务存在的前提就是它不驱动游戏
-                ('四条路径的 executes 全为 False（永不执行）',
+                ('所有放行路径的 executes 全为 False（永不执行）',
                  all((decision(k)[1].get('executes') is False) for k in cases),
                  f"{ {k: decision(k)[1].get('executes') for k in cases} }"),
                 ('放行时随附勘察结果（会跑哪个类）',
