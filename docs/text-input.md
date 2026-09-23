@@ -9,7 +9,7 @@
 
 | 步骤 | 结果 | 依据 |
 | --- | --- | --- |
-| enter ship detail | hit | EQUIPMENT_OPEN 0.9914（上游 ship_info_enter 的判据） |
+| enter ship detail | hit | EQUIPMENT_OPEN 0.9922（上游 ship_info_enter 的判据） |
 | open equipment code page | hit | EQUIPMENT_CODE_PAGE_CHECK 0.9978 |
 | type text into box | hit | 打入 'Alas123' 后输入框区域像素变化：{'crop': [0, 660, 1100, 714], 'diff_bbox': (16, 0, 145, 10), 'nonzero_px': 539, 'area_px': 59400}（截图 _code_box_after.png） |
 
