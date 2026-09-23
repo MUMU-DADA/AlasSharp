@@ -237,7 +237,8 @@
     "tasks": [{"id": "map-predict", "outcome": "failed",
       "error_kind": "upstream_error", "error_contains": "View.predict 失败",
       "evidence_equals": {"errors": 1, "map.attempts": 1,
-                          "map.errors": 1, "map.detected_hits": 0}}]
+                          "map.errors": 1, "map.detected_hits": 0,
+                          "map.last_grid_count": null}}]
    }
   },
   {
