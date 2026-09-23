@@ -639,6 +639,9 @@ def main() -> int:
                  'input': {'task': 'reward', 'allow_actions': 'false', 'confirm': 'reward'}},
                 {'id': 'preflight-invalid-confirm', 'kind': 'periodic_preflight',
                  'input': {'task': 'reward', 'allow_actions': True, 'confirm': 7}},
+                {'id': 'preflight-unknown-field', 'kind': 'periodic_preflight',
+                 'input': {'task': 'reward', 'allow_actions': True,
+                           'confirm': 'reward', 'extra': True}},
             ]}, ensure_ascii=False), encoding='utf-8')
             artifacts = tmpdir / 'artifacts'
             proc = subprocess.run([str(exe), 'queue', '--file', str(queue_file),
@@ -694,13 +697,16 @@ def main() -> int:
                 ('run-invalid-confirm', 'input.confirm'),
                 ('preflight-invalid-allow', 'input.allow_actions'),
                 ('preflight-invalid-confirm', 'input.confirm'),
+                ('preflight-unknown-field', 'input.extra'),
             ):
                 doc = docs.get(key) or {}
                 gate_checks.append((
-                    f'{key} → 输入类型前置条件失败',
+                    f'{key} → 输入字段前置条件失败',
                     doc.get('outcome') == 'skipped'
                     and doc.get('stop_reason') == 'precondition'
-                    and any(field in reason for reason in doc.get('unmet_preconditions') or []),
+                    and any(field in reason for reason in doc.get('unmet_preconditions') or [])
+                    and doc.get('boundary_state') is None
+                    and not doc.get('evidence'),
                     f"outcome={doc.get('outcome')} unmet={doc.get('unmet_preconditions')}"))
             for key in ('no-auth', 'bad-confirm', 'unknown'):
                 outcome, evidence = decision(key)

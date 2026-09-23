@@ -897,6 +897,9 @@ Mission collect finished
 默认 dry-run 或只读设备会话升级成动作会话。输入中的两道闸与顺序由宿主 op 保证，并由静态守卫
 `periodic_run_gate_intact()` 检查（闸门必须在构造上游对象**之前**）；
 `input.allow_actions` 只接受 JSON 布尔值 `true`，字符串 `"true"` 或 `"false"` 均不能授权。
+`periodic_preflight` 的任务输入只接受 `task`、`allow_actions`、`confirm`；未知字段和错误类型
+在前置条件阶段记为 `skipped`，不调用宿主。已正确输入但未通过两道闸仍记为 `failed`，
+保留宿主拒绝原因和 `executes=false` 的证据。
 任务侧将 `denied` 翻译成输入失败，将原生返回 `False`、`SystemExit` 和其他上游异常翻译成
 `upstream_error`；`TaskEnd` 继续由上游 dispatcher 视为正常完成。
 

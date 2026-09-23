@@ -18,11 +18,20 @@ namespace Alas.Tasks;
 /// </summary>
 public sealed class PeriodicPreflightTask : ITaskRunner
 {
+    private static readonly HashSet<string> InputFields = new(StringComparer.Ordinal)
+    {
+        "task", "allow_actions", "confirm",
+    };
+
     public string Kind => "periodic_preflight";
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskContext context)
     {
         var problems = new List<string>();
+        if (request.Input is not null)
+            foreach (var field in request.Input.Select(pair => pair.Key))
+                if (!InputFields.Contains(field))
+                    problems.Add($"未知周期任务放行字段: input.{field}");
         if (request.Input?["task"] is not JsonValue taskValue
             || !taskValue.TryGetValue<string>(out var task)
             || string.IsNullOrWhiteSpace(task))
