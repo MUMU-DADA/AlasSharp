@@ -123,7 +123,9 @@ AzurPilot 已有的通用执行态检查现用于宿主 OS 战斗入口，原帧
    任务绑定和原生 dispatcher，离线覆盖 reward / opsi / event；新队列入口已真实执行 `reward` 与
    `dorm` 的仅收取配置。`dorm` 到达宿舍并完成原生调度，但本次收取超时且无收取点击，不能证明资源领取成功。新增 `freebies` 队列样本以本次配置覆盖关闭战令、钥匙、礼包和删信，原生调度与返页完成；上游日志写明 `Mail claim success: False`，仍不能证明功勋实际领取。计划、放行、执行及返页的脱敏归档见 `tools/diagnostics/queue-evidence/20260923T175825/`。另一次 `reward` 产品队列关闭油、金币、经验领取后执行每日与每周任务奖励领取，原生日志有领取点击与奖励弹窗处理，两类列表最终均为 `MISSION_UNFINISH`；末帧在 `page_mission`，脱敏队列证据见 `tools/diagnostics/queue-evidence/20260923T200327/`，没有独立的到账数量读数。`tactical` 产品队列完成原生调度与返页，但四个训练位均为空，没有领取或补书动作，脱敏队列证据见 `tools/diagnostics/queue-evidence/20260923T204223/`；其余周期执行路径仍待逐域验证。
    新增 `meowfficer` 真机队列在关闭购猫与训练的本次覆盖下，经上游待机恢复和页面导航
-   完成 4 次据点杂务点击并返回猫窝页；脱敏队列见 `tools/diagnostics/queue-evidence/20260924T005953/`。
+   进入据点并返回猫窝页；脱敏队列 `tools/diagnostics/queue-evidence/20260924T005953/` 能证明的是
+   `periodic_run` 返回 `decision=ran`、`native_success=true`，以及随后 `account_state` 实时抓帧
+   识别到 `page_meowfficer`；据点杂务点击四次只见于本地忽略目录的原生日志，**归档工件本身没有点击计数**。
    尚无独立收益数量读数，其余周期执行路径仍待逐域验证。
 3. `docs/tasks.md` 记录了每域必须带的四件套；未满足门槛时不进入下一个域。
 
@@ -141,7 +143,7 @@ AzurPilot 已有的通用执行态检查现用于宿主 OS 战斗入口，原帧
 | 7 | 周期任务勘察（跑谁） | 只读 | `verify_periodic_plan.py`（独立对拍 + 不 import 目标模块） |
 | 8 | 周期任务放行判定（放不放） | 只读（**永不执行**） | `verify_periodic_plan.py`（四条路径 + executes 恒 False） |
 | 9 | 配置开关（授权前的花费开关留档） | 只读 | `verify_config_get.py`（独立对拍 + 缺失≠false） |
-| 10 | **周期任务执行**（执行环；产品路径 kind=periodic_run） | **动作**（会话授权 + 宿主两道闸 + 上游原生 dispatcher） | `verify_periodic_plan.py`（任务目录解析、绑定、跨调用形态、TaskEnd/False/SystemExit、设备恢复）+ 原生 dispatcher 的 `reward`、`dorm`、`tactical`、`meowfficer` 队列真机样本；猫窝据点有 4 次原生杂务点击，未独立核对收益数量；`dorm` 与 `tactical` 的领取效果和其他域未覆盖 |
+| 10 | **周期任务执行**（执行环；产品路径 kind=periodic_run） | **动作**（会话授权 + 宿主两道闸 + 上游原生 dispatcher） | `verify_periodic_plan.py`（任务目录解析、绑定、跨调用形态、TaskEnd/False/SystemExit、设备恢复）+ 原生 dispatcher 的 `reward`、`dorm`、`tactical`、`meowfficer` 队列真机样本；猫窝据点归档证明原生调度成功并返回猫窝页，4 次原生杂务点击仅存本地原生日志，未独立核对收益数量；`dorm` 与 `tactical` 的领取效果和其他域未覆盖 |
 | 通用 | 页面导航 `navigate` | 动作 | `verify_runtime.py`、`native_navigate_cases.json`、`verify_native_ui_ensure.py`；旧队列记录见 `docs/queue-evidence.md`，不代表当前原生路径 |
 | 通用 | 观测 `observe` | 只读设备任务 | `verify_runtime.py`、`observe_cases.json` + `docs/queue-evidence.md` 的 6 tick / 4 tick 新队列入口真机样本 |
 
