@@ -2452,15 +2452,17 @@ def op_map_detection_assets(args):
 def op_map_detect(args):
     """战役地图识别（S2 主路径）：`View.load(image)` → `predict()`。
 
-    返回检测出的网格规模与四边标志。**负样本也是有效证据**：不在地图上时应给出
-    "检测不到"，而不是崩掉或给出错误坐标。真机正样本要求"游戏停在地图上"
-    （出击之后的画面；大世界地图是免费的，但本账号 OS 未解锁）。
+    返回检测出的网格规模与四边标志。非地图画面是有效负样本。
     """
     import module.map_detection.view as view_mod
     image = _require_image()
     apply_numpy2_compat()
     apply_points_empty_compat()
+    mode = str(args.get('mode') or 'main')
     cfg = _map_config(args.get('chapter'))
+    if mode == 'os':
+        from module.os.config import OSConfig
+        cfg = cfg.merge(OSConfig())
     # 上游有两个检测后端（Homography / Perspective），由 config.DETECTION_BACKEND 选。
     # 允许显式指定：真机上出现过 homography 后端"找不到水平线/垂直线"而画面明明有网格，
     # 这时要能立刻对比另一个后端，而不是猜。
@@ -2469,8 +2471,10 @@ def op_map_detect(args):
     out = {'backend': str(getattr(cfg, 'DETECTION_BACKEND', ''))}
     # 作业海域（OS）的地图要用另一套遮罩：View(config, mode='os') 会切到
     # ASSETS.ui_mask_os_in_map（view.py:47-48），网格类也换成 OS 的。
-    mode = str(args.get('mode') or 'main')
     out['mode'] = mode
+    if mode == 'os':
+        from module.os_handler.enemy_searching import EnemySearchingHandler
+        out['in_map'] = bool(EnemySearchingHandler.is_in_map(_make_main_shim(image)))
     try:
         if mode == 'os':
             # OS 模式需要两半，缺一不可：
@@ -2589,6 +2593,10 @@ def op_map_detect(args):
         out['detected'] = False
         out['reason'] = ('检出网格但**没有任何船标志**（%s 格），判为非战场画面'
                          % out.get('grid_count'))
+
+    if mode == 'os' and not out['in_map']:
+        out['detected'] = False
+        out['reason'] = '上游 OSMap.is_in_map 判定当前画面不在海域地图'
 
     return out
 

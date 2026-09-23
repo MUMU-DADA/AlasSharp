@@ -277,7 +277,7 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 `reward` 作为非 OS 目标在设备配置前被拒绝；这两条都没有执行设备动作。
 
 **大世界动作闭环（海域选择、出击）尚未完成**：通用页面导航已有独立任务，
-但 `os_action` 仍缺真实产品路径证据，不能以离线替身代替真机验收。
+`os_action` 已有原生调度真机证据，但尚无海域目标完成及战斗结算证据。
 2026-09-23 旧账号真机队列从活动页请求 `navigate(to=page_os)`，退到战役菜单后连续点击上游
 `CAMPAIGN_MENU_GOTO_OS`，页面保持 `page_campaign_menu`；任务失败，后续 `account_state` 与
 `os_state` 按失败即停记为 `skipped`。现场截图显示“大型作战”入口带锁。
@@ -291,11 +291,34 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 只表示调用和设备抓帧完成，不能当成 OS 地图检出或动作闭环。原始工件位于本地忽略目录
 `data/mainline-device/20260923T212714-os_nav/`，配置运行后按原字节核对未变。
 
+同账号的 `os_action(OpsiObscure)` 真机队列完成导航、放行、原生调度和返后抓帧。
+上游 `os_init()` 在 NY City 识别区域、执行一次自动搜索；随后仓库检查显示
+`Storage_OBSCURE=0`，原生任务延后退出。`native_success=true` 证明原生调度完整返回，
+但本次没有隐秘海域目标或战斗结算，不能算作大世界动作闭环。队列和原生日志留在
+本地忽略目录 `data/mainline-device/20260923T213724-os_action_obscure/`；
+`alas.json` 运行后恢复原字节。`account_state.in_map=false` 使用普通战役 `IN_MAP`
+判据，不代表上游 `OSMap.is_in_map()` 为假；本次上游日志明确报告已在 OS 地图。
+
+随后从未知浮层启动 `OpsiObscure` 的队列，原生 UI 成功恢复主界面并进入真实海域，
+但在 `ui_goto(page_os)` 等待中触发上游 `GameStuckError`，`os_action` 记 `failed`，后续
+`os_state`、`account_state` 按失败即停跳过。失败工件与画面留在本地忽略目录
+`data/mainline-device/20260923T220727-os_native_from_unknown/`，配置恢复原字节。
+此例证明原生导航也可能在 OS 入口等待超时，不能据先前一次成功推断该路径稳定。
+
+只读 OS 探针原先没有合并上游 `OSConfig`，默认误用普通战役的 `homography`；
+仅改为原生 `perspective` 又会把菜单帧误检为海域。现按上游
+`OSCampaignRun.load_campaign()` 合并完整 `OSConfig`，并通过原生
+`EnemySearchingHandler.is_in_map()` 门控网格结论。离线正例 `os_live_2.png`、
+菜单与球面负例都通过 `verify_os_state.py`。真机 `os_state(capture=true)` 在海域帧返回
+`in_map=true`、`backend=perspective`、43 格，队列成功；原始工件留在本地忽略目录
+`data/mainline-device/20260923T221841-os_state_only/`。这证明只读海域探针现场检出，
+不证明隐秘海域任务完成或战斗结算。
+
 ## 下一步与本域的缺口
 
 - 账号状态 `capture=true` 与 `IN_MAP` 现场复核已有设备窗口记录，见 `handover-r0-r2.md` 第五节与第八节补充六。
 - 队列已有 CLI 入口和静态 HTML 证据视图；统一配置、任务和运行控制前端仍未交付。
-- 大世界已有只读探针和动作任务的离线接线；高等级账号已到达 `page_os`，但地图正样本及动作闭环未获真机验收。活动已有 A1、A2、A3 普通战役队列真机通关样本，其他活动章节及活动域完整动作流程仍需验证。
+- 大世界只读 OS 网格探针已有正负离线对拍和真机正样本；`OpsiObscure` 一次原生调度完成，另一次在 OS 入口超时失败，海域目标与战斗闭环仍未验收。活动已有 A1、A2、A3 普通战役队列真机通关样本，其他活动章节及活动域完整动作流程仍需验证。
 - 周期任务已接通通用执行入口；reward 的油/金币历史样本及每日/每周任务领取点击有真机证据，但没有独立到账数量读数；dorm 本次没有收取点击，领取效果及其余执行路径不能据此视为已验证。
 - 当前账号的 `page_tactical` 导航往返和实时识页已有五任务队列真机证据；周期 `tactical` 原生调度也已跑通，但训练位全空，尚无领取或补书效果证据。
 - 观测已进入任务队列，完成离线故障/取消回归与只读真机抓帧/识页验证；`map=main` 仅有主界面零命中的现场负样本，地图内正样本及其他后端不据此外推。

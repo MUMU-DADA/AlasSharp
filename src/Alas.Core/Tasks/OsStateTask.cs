@@ -122,6 +122,8 @@ public sealed class OsStateTask : ITaskRunner
                 var detection = context.Session.Vision.CallTyped<MapDetectResult>(
                     "map_detect", new { mode = "os" });
                 evidence["detected"] = detection.Detected;
+                evidence["in_map"] = detection.InMap;
+                evidence["backend"] = detection.Backend;
                 evidence["grid_count"] = detection.GridCount;
                 evidence["center_loca"] = detection.CenterLoca is null ? null
                     : System.Text.Json.JsonSerializer.SerializeToNode(detection.CenterLoca);

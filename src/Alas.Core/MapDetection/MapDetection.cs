@@ -36,6 +36,7 @@ public sealed class MapDetectResult
     [JsonPropertyName("load")] public string? Load { get; set; }
     [JsonPropertyName("predict")] public string? Predict { get; set; }
     [JsonPropertyName("detected")] public bool Detected { get; set; }
+    [JsonPropertyName("in_map")] public bool? InMap { get; set; }
     [JsonPropertyName("reason")] public string? Reason { get; set; }
     [JsonPropertyName("grid_count")] public int? GridCount { get; set; }
     /// <summary>检出网格的坐标（[x, y] 列表）：用来判断"格数为什么少于地图声明"。</summary>

@@ -65,7 +65,8 @@
 | 离线替身测试 | `alashub selftest-runtime` + `tools/diagnostics/verify_runtime.py` | 会话、批次、队列、导航与观测；替身用例不连接设备 |
 
 **已收敛的入口**：`queue --file` 以 `observe` 调用 `ObserveTask`，复用 `AlasSession` 抓帧、识页和可选地图识别；
-以 `navigate` 调用 `NavigateTask`，包装既有 `PageNavigator`，保持上游页面图和导航语义。
+以 `navigate` 调用 `NavigateTask`，包装既有 `PageNavigator`；页面图运行时来自上游，
+选边和未知画面恢复仍由 C# 通用导航器实现，尚未完整覆盖上游 `UI.ui_goto` / `ui_additional` 语义。
 多回合、失败即停、设备错误和工件由任务处理；CLI 只解析公共运行参数、队列文件并排版。
 导航必须通过会话动作授权；观测的只读设备会话不能升级成动作会话。`run` 与 `goto` 仅保留迁移提示。
 导航的多跳/不可达/自救及观测的计时/故障/取消都由替身验收。
@@ -104,7 +105,7 @@
 
 **R2 未完成**：
 
-1. 大世界已有只读探针和动作任务的离线接线；`os_action` 复用上游 `Scheduler.Command`、`opsi_*` 方法与原生 dispatcher，尚无真机动作成功证据。真机导航到 `page_os` 时当前账号的大型作战入口带锁，队列在 `navigate` 失败后跳过后续探针，原件见本地忽略目录 `data/mainline-device/20260923T170655-os_nav/`。活动清点与队列生成已有离线覆盖，普通战役队列另有已解锁活动 A1、A2、A3 的真实成功结算及战后 `page_event` 抓帧归档（`tools/diagnostics/evidence/20260923T163008/`、`20260923T171026/`、`20260923T180804/`）。`plan-queue --capture-after` 的 A1、A2 连续四任务真机复验也已成功，脱敏计划、双批次索引及逐关返页证据归档于 `tools/diagnostics/evidence/20260923T194236/`；修复前一次 A1 战后超时仍保留为失败。已验证的仍只有三个已解锁活动章节，不能覆盖其他活动章节或活动域完整动作流程，低等级账号的未解锁功能仍待验证。
+1. 大世界已有只读探针和动作任务接线；`os_action` 复用上游 `Scheduler.Command`、`opsi_*` 方法与原生 dispatcher。旧账号的 `page_os` 入口带锁，失败原件留在本地忽略目录 `data/mainline-device/20260923T170655-os_nav/`。高等级账号已两跳到达 `page_os`，随后 `OpsiObscure` 原生任务在 NY City 完成初始化与自动搜索；仓库没有隐秘海域坐标，任务延后退出。另一轮从未知浮层启动的原生 OS 任务进入真实海域后在 `ui_goto(page_os)` 等待超时，按失败记录。只读 OS 探针现合并上游 `OSConfig` 并使用原生在图判据，离线海域正例与菜单、球面负例通过；真机海域帧也检出 43 格。原件留在 `data/mainline-device/20260923T212714-os_nav/`、`20260923T213724-os_action_obscure/`、`20260923T220727-os_native_from_unknown/` 和 `20260923T221841-os_state_only/`。仍无海域目标或战斗结算闭环证据。活动清点与队列生成已有离线覆盖，普通战役队列另有已解锁活动 A1、A2、A3 的真实成功结算及战后 `page_event` 抓帧归档（`tools/diagnostics/evidence/20260923T163008/`、`20260923T171026/`、`20260923T180804/`）。`plan-queue --capture-after` 的 A1、A2 连续四任务真机复验也已成功，脱敏计划、双批次索引及逐关返页证据归档于 `tools/diagnostics/evidence/20260923T194236/`；修复前一次 A1 战后超时仍保留为失败。已验证的仍只有三个已解锁活动章节，不能覆盖其他活动章节或活动域完整动作流程。
 2. 账号状态当场抓帧和 `IN_MAP` 现场核对已有设备窗口记录（见交接文档第五节与第八节补充六）；
    周期任务执行已有 dorm/reward 两条历史真机路径；通用执行器现已改为复用上游 Scheduler.Command、
    任务绑定和原生 dispatcher，离线覆盖 reward / opsi / event；新队列入口已真实执行 `reward` 与
@@ -118,7 +119,7 @@
 | 1 | 战役批量 | 动作（真跑） | `verify_runtime.py`（队列语义 + 合同裁决 + 边界快照） |
 | 2 | 账号状态 | 只读 | `verify_account_state.py`（真机存档帧） |
 | 3 | 大世界/海域状态 | 只读探针 | `verify_os_state.py` |
-| 3a | 大世界/海域动作 | 动作任务，真机未验收 | `verify_runtime.py` 替身、`verify_periodic_plan.py` 目标校验、`verify_os_action.py` 真实 CLI 无设备拒绝路径 |
+| 3a | 大世界/海域动作 | 原生调度真机通过；海域目标与战斗闭环未验收 | `verify_runtime.py` 替身、`verify_periodic_plan.py` 目标校验、`verify_os_action.py` 真实 CLI 无设备拒绝路径；本地 `OpsiObscure` 真机工件 |
 | 4 | 活动章节清点 | 离线 | `verify_event_state.py`（含"清点→生成队列→可执行"闭环） |
 | 5 | 周期任务清点 | 离线 | `verify_task_catalog.py`（两个来源对拍） |
 | 6 | 周期任务调度状态 | 只读 | `verify_task_schedule.py`（独立对拍 + 四种边界 + 只读保证） |

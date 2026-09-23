@@ -11,8 +11,8 @@
    为什么要专门测接线：`selftest-runtime` 的用例直接往 `ResumeCompleted` 塞 id（单元路径），
    曾经因此漏掉"CLI 读的是本次运行目录、永远读不到断点"这个真实缺陷。
 
-"没检测到"（`detected=false`）是**有效状态**：可能这一帧不在海域里（夹具是球面/大世界帧）。
-所以断言的是"字段齐全、结论是跑通"，不是"必须 detected=true"。
+"没检测到"（`detected=false`）是**有效状态**，但海域实图与菜单负例
+必须分别检出和拒绝，防止配置后端变更导致误报。
 
 用法：
     python tools/diagnostics/verify_os_state.py
@@ -39,6 +39,7 @@ except Exception:
 EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
 FIXTURE = DATA / 'fixtures' / 'os_map.png'
 GLOBE_FIXTURE = DATA / 'fixtures' / 'os_globe_view.png'
+LIVE_FIXTURE = DATA / 'fixtures' / 'os_live_2.png'
 
 
 def main() -> int:
@@ -68,10 +69,17 @@ def main() -> int:
             {'id': 'os-empty-source', 'kind': 'os_state',
              'input': {'screenshot': ''}},
         ]
+        if LIVE_FIXTURE.is_file():
+            tasks.append({'id': 'os-live', 'kind': 'os_state',
+                          'input': {'screenshot': str(LIVE_FIXTURE.resolve())}})
+        else:
+            print(f'[跳过] 没有 {LIVE_FIXTURE.relative_to(ROOT)}；海域地图正例未验。')
         if GLOBE_FIXTURE.is_file():
             tasks.append({'id': 'os-globe', 'kind': 'os_state',
                           'input': {'screenshot': str(GLOBE_FIXTURE.resolve()),
                                     'detect': 'globe'}})
+            tasks.append({'id': 'os-globe-map', 'kind': 'os_state',
+                          'input': {'screenshot': str(GLOBE_FIXTURE.resolve())}})
         else:
             print(f'[跳过] 没有 {GLOBE_FIXTURE.relative_to(ROOT)}；globe 分支未验。')
         queue_file.write_text(json.dumps({'tasks': tasks}, ensure_ascii=False, indent=1),
@@ -112,12 +120,40 @@ def main() -> int:
              f"frame={evidence.get('frame')}"),
             ('证据带 detected 字段', 'detected' in evidence, '缺 detected'),
             ('证据带 grid_count 字段', 'grid_count' in evidence, '缺 grid_count'),
+            ('菜单负例被上游 OS 在图判据拒绝',
+             evidence.get('in_map') is False and evidence.get('detected') is False
+             and bool(evidence.get('reason')),
+             f"in_map={evidence.get('in_map')} detected={evidence.get('detected')}"),
+            ('OS 探针采用原生配置后端', evidence.get('backend') == 'perspective',
+             f"backend={evidence.get('backend')}"),
             ('队列结论 partial（成功与跳过并存）', queue_artifact['outcome'] == 'partial',
              f"outcome={queue_artifact['outcome']}"),
         ]
 
+        if LIVE_FIXTURE.is_file():
+            live_path = run_dir / 'task-os-live.json'
+            live_artifact = json.loads(live_path.read_text(encoding='utf-8')) \
+                if live_path.is_file() else {}
+            live = live_artifact.get('evidence') or {}
+            checks.append(('海域正例由上游判据确认且检出网格',
+                           live_artifact.get('outcome') == 'succeeded'
+                           and live.get('in_map') is True and live.get('detected') is True
+                           and (live.get('grid_count') or 0) > 0,
+                           f"in_map={live.get('in_map')} detected={live.get('detected')} "
+                           f"grids={live.get('grid_count')}"))
+
         globe_evidence = {}
         if GLOBE_FIXTURE.is_file():
+            globe_map_path = run_dir / 'task-os-globe-map.json'
+            globe_map_artifact = json.loads(globe_map_path.read_text(encoding='utf-8')) \
+                if globe_map_path.is_file() else {}
+            globe_map = globe_map_artifact.get('evidence') or {}
+            checks.append(('球面负例不算海域地图',
+                           globe_map_artifact.get('outcome') == 'succeeded'
+                           and globe_map.get('in_map') is False
+                           and globe_map.get('detected') is False,
+                           f"in_map={globe_map.get('in_map')} "
+                           f"detected={globe_map.get('detected')}"))
             globe_artifact_path = run_dir / 'task-os-globe.json'
             globe_artifact = json.loads(globe_artifact_path.read_text(encoding='utf-8')) \
                 if globe_artifact_path.is_file() else {}
