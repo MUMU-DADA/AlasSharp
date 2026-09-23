@@ -290,7 +290,7 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 - 队列已有 CLI 入口和静态 HTML 证据视图；统一配置、任务和运行控制前端仍未交付。
 - 大世界已有只读探针和动作任务的离线接线，当前账号的大型作战入口带锁，动作闭环未获真机验收；活动已有 A1、A2、A3 普通战役队列真机通关样本，其他活动章节及活动域完整动作流程仍需验证。
 - 周期任务已接通通用执行入口；reward 的油/金币历史样本及每日/每周任务领取点击有真机证据，但没有独立到账数量读数；dorm 本次没有收取点击，领取效果及其余执行路径不能据此视为已验证。
-- 当前账号的 `page_tactical` 导航往返和实时识页已有五任务队列真机证据；周期 `tactical` 执行及领取效果尚未验证。
+- 当前账号的 `page_tactical` 导航往返和实时识页已有五任务队列真机证据；周期 `tactical` 原生调度也已跑通，但训练位全空，尚无领取或补书效果证据。
 - 观测已进入任务队列，完成离线故障/取消回归与只读真机抓帧/识页验证；`map=main` 仅有主界面零命中的现场负样本，地图内正样本及其他后端不据此外推。
 
 ## 周期任务调度状态（第六个域，只读；已实现并验收）
@@ -716,6 +716,15 @@ Mission collect finished
 `data/mainline-device/current-reward-mission-*`。上游写入的下一次运行时间已按运行前配置原字节恢复。
 这证明当前已解锁账号能走完整的任务领取操作链；工件没有独立的奖励数量前后读数，
 不能据此声称具体资源到账数量，也不能外推其他周期任务。
+
+`tactical` 另以五任务产品队列完成前后抓帧、计划、放行与原生执行。
+`periodic_plan` 找到上游 `Tactical` 绑定，`periodic_preflight` 放行且不执行，
+`periodic_run` 返回 `decision=ran`、`native_success=true`；末帧为 `page_reward`。
+原生日志显示进入战术教室后四个训练位均为 `empty`，`Tactical finish: []`，
+并以 `No tactical running` 延后下次运行。因此这次只证明原生调度和返页，
+没有领取奖励或补书，也不能证明有学员时的执行效果。脱敏工件见
+`tools/diagnostics/queue-evidence/20260923T204223/`，原始日志和运行前配置仅在本地
+`data/mainline-device/current-tactical-native-*`；上游修改的下次运行时间已按原字节恢复。
 
 新队列入口还以 `dorm` 跑了仅收取配置：`Dorm_Feed=false`、`Dorm_Collect=true`、
 `BuyFurniture_Enable=false`。`periodic_plan` 找到上游 `Dorm` 绑定；`periodic_run` 经

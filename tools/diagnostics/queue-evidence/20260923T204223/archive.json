@@ -1,0 +1,30 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/current-tactical-native-artifacts/20260923T204223",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "3bf88ae0228ec9c963478310e0c9ac9048ffa3127abb9d969b3c8eaac78b0700",
+    "state.json": "f584ba8751053bc3ba7a5f5021037720841dff586e798d5fa5eaeb0b4ad78c5a",
+    "session-log.jsonl": "b857fae5ea2e91920fef4051602456ab9afa9d5bc7e5fcc09753137051bad1b9",
+    "task-after-tactical.json": "ee8c78b2a10d1af119f8e57e5c244fc46b952ef65151804d418b1b9d62e81af3",
+    "task-before-tactical.json": "5173a703bb5fb99e1042ab35ccceccf3bda5a2a9cf56dbbe3a72c5fdd74a5084",
+    "task-tactical-plan.json": "cccb171c6ceeb95b6a257480131bfc4cdbe0f5915df96369427892c82bd2ec64",
+    "task-tactical-preflight.json": "e1bd40f5d2ff94297ee2c15bf810b6b7779fd199b6aab8e2d7b35718178b2ebe",
+    "task-tactical-run.json": "4e2402b41f9ead0bca71a5bc91828cc5683a68d63a9629c5d65eecc5ce456501"
+  },
+  "files": {
+    "queue.json": "70bf15b4d40db11e3daa9b5b2795d2fcc43d69b2b86cc9d52a5ba027dd09ac80",
+    "state.json": "0cf062525368270f2a537392ebb9e6d542da60880e35f4ea42475dc9a3b01585",
+    "session-log.jsonl": "a513d971a8288bf71089a66f5655f39905f9436313a3b1cec7b24d8d7545b95e",
+    "task-after-tactical.json": "d0d42dd836a69769f0dba4abd32eb0076c720b169cfc98c1a084633efd5d9068",
+    "task-before-tactical.json": "004b3b7f32833c03afa879d88d200bc90916dcdc6d05c23a1c3bbec420885eba",
+    "task-tactical-plan.json": "3898e97e4de0f0b11177096a12090d7605b7321abd48463d029b11fb7309795c",
+    "task-tactical-preflight.json": "b04417ad375a139f3ffb66085a7a17304bdd298f0a4488e4a4411f69f4486a74",
+    "task-tactical-run.json": "70c27fa1f8c972b0e1617e4c8dad597e3a09cf98fe7b2a41e6a5607594e784ff"
+  }
+}

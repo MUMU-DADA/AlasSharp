@@ -1,0 +1,47 @@
+{
+  "id": "tactical-plan",
+  "kind": "periodic_plan",
+  "required": true,
+  "input": {
+    "tasks": [
+      "tactical"
+    ]
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 0,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "count": 1,
+    "missing": [],
+    "plans": [
+      {
+        "task": "tactical",
+        "found": true,
+        "scheduler_command": "Tactical",
+        "method": "tactical",
+        "lineno": 192,
+        "imports": [
+          "from module.tactical.tactical_class import RewardTacticalClass"
+        ],
+        "calls": [
+          "RewardTacticalClass",
+          "run"
+        ],
+        "calls_run": true,
+        "error": null
+      }
+    ]
+  }
+}

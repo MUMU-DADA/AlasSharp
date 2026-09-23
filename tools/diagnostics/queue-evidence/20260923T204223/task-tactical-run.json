@@ -1,0 +1,46 @@
+{
+  "id": "tactical-run",
+  "kind": "periodic_run",
+  "required": true,
+  "input": {
+    "task": "tactical",
+    "allow_actions": true,
+    "confirm": "tactical"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 4.2,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "task": "tactical",
+    "allow_actions": true,
+    "confirm_matches": true,
+    "decision": "ran",
+    "target": {
+      "module": "alas",
+      "class": "AzurLaneAutoScript",
+      "scheduler_command": "Tactical",
+      "method": "tactical"
+    },
+    "constructed": true,
+    "ran": true,
+    "native_success": true,
+    "elapsed_s": 4.1,
+    "returned": null,
+    "exit_code": null,
+    "reason": null,
+    "error": null,
+    "traceback_tail": []
+  }
+}

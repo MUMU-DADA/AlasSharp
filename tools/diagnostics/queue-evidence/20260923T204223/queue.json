@@ -1,0 +1,56 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 6.6,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "before-tactical",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 2.3,
+      "artifact": "<project>/data/mainline-device/current-tactical-native-artifacts/20260923T204223/task-before-tactical.json"
+    },
+    {
+      "id": "tactical-plan",
+      "kind": "periodic_plan",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/current-tactical-native-artifacts/20260923T204223/task-tactical-plan.json"
+    },
+    {
+      "id": "tactical-preflight",
+      "kind": "periodic_preflight",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/current-tactical-native-artifacts/20260923T204223/task-tactical-preflight.json"
+    },
+    {
+      "id": "tactical-run",
+      "kind": "periodic_run",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 4.2,
+      "artifact": "<project>/data/mainline-device/current-tactical-native-artifacts/20260923T204223/task-tactical-run.json"
+    },
+    {
+      "id": "after-tactical",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.1,
+      "artifact": "<project>/data/mainline-device/current-tactical-native-artifacts/20260923T204223/task-after-tactical.json"
+    }
+  ]
+}

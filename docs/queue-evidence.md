@@ -21,6 +21,7 @@
 | `20260923T175825` | 动作授权；宿主 1 / 设备配置 1 | 8.7 秒 |
 | `20260923T200327` | 动作授权；宿主 1 / 设备配置 1 | 22.9 秒 |
 | `20260923T203555` | 动作授权；宿主 1 / 设备配置 1 | 13.9 秒 |
+| `20260923T204223` | 动作授权；宿主 1 / 设备配置 1 | 6.6 秒 |
 
 | 归档 / 任务 | 任务域 | 已核对事实 |
 | --- | --- | --- |
@@ -54,6 +55,11 @@
 | `20260923T203555/at-tactical` | `account_state` | 实时抓帧；页面 page_tactical；in_map=False |
 | `20260923T203555/back-main` | `navigate` | 目标 page_main；完成 1/1 轮；1 次跳转；最终 page_main, page_main_white |
 | `20260923T203555/at-main` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
+| `20260923T204223/before-tactical` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
+| `20260923T204223/tactical-plan` | `periodic_plan` | 上游绑定 1 项；请求 tactical 已找到 |
+| `20260923T204223/tactical-preflight` | `periodic_preflight` | 请求 tactical 已放行；executes=false；上游绑定一致 |
+| `20260923T204223/tactical-run` | `periodic_run` | 上游 AzurLaneAutoScript.tactical；decision=ran；native_success=true |
+| `20260923T204223/after-tactical` | `account_state` | 实时抓帧；页面 page_reward；in_map=False |
 
 来源目录（项目相对路径，原件不入库）：
 
@@ -66,3 +72,4 @@
 - `data/mainline-device/current-freebies-merit/20260923T175825`
 - `data/mainline-device/current-reward-mission-artifacts/20260923T200327`
 - `data/mainline-device/current-tactical-access-retry-artifacts/20260923T203555`
+- `data/mainline-device/current-tactical-native-artifacts/20260923T204223`

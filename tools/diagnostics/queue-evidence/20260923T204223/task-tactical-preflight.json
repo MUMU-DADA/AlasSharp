@@ -1,0 +1,41 @@
+{
+  "id": "tactical-preflight",
+  "kind": "periodic_preflight",
+  "required": true,
+  "input": {
+    "task": "tactical",
+    "allow_actions": true,
+    "confirm": "tactical"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 0,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "task": "tactical",
+    "allow_actions": true,
+    "confirm_matches": true,
+    "executes": false,
+    "decision": "allowed",
+    "reason": "两道闸都通过；放行后将会执行：from module.tactical.tactical_class import RewardTacticalClass（alas.py 第 192 行）",
+    "plan": {
+      "found": true,
+      "lineno": 192,
+      "imports": [
+        "from module.tactical.tactical_class import RewardTacticalClass"
+      ],
+      "calls_run": true
+    }
+  }
+}
