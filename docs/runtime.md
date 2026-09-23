@@ -135,8 +135,11 @@ alashub queue --file navigate.json --run --allow-actions --serial <device> --scr
 2026-09-23 战术页导航的首次真机队列在侧边功能面板失去识页结果。对同一静止画面重复抓帧时，
 `device_capture_set(raw=true)` 不能识别 `page_reward`，普通抓帧却能识别；连续约 13 秒的
 raw 采样仍为空命中，排除瞬时动画。根因是视觉宿主在 raw 分支把截图后端已返回的颜色通道
-额外交换了一次。现已统一按后端返回像素保存，再由 `load_image` 读回；
-`verify_device_capture_color.py` 用带有非对称 RGB 通道的帧逐像素验证 raw 与普通路径。
+额外交换了一次。`verify_device_capture_color.py` 用带有非对称 RGB 通道的帧逐像素验证
+raw 与普通路径。视觉宿主现直接复制后端 RGB 数组；非数组帧仅在内存中按上游
+`load_image` 的 PNG 语义解码。
+此前每帧落盘到系统临时 PNG 且未清理，会留下原始设备画面；回归同时检查抓帧不在
+系统临时目录留下截图。每次抓帧前也会清除上一帧和来源标记，避免抓帧失败后继续误用旧画面。
 人工进入战术页后的只读抓帧先确认当前账号可访问该页。修复后的五任务产品队列
 从功能面板回主页、导航至 `page_tactical`、抓帧识页、返回主页并再次抓帧，五项均成功；
 宿主与设备各初始化一次。脱敏工件见 `tools/diagnostics/queue-evidence/20260923T203555/`。

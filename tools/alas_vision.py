@@ -3122,6 +3122,8 @@ def op_device_capture_set(args):
     `raw=True`（默认）直接调后端的原始实现，绕开 ALAS 的 0.3s 截图间隔节流。
     """
     import time as _time
+    _state['image'] = None
+    _state['image_path'] = None
     dev = _device_engine()
     raw = bool(args.get('raw', True))
     method = str(getattr(dev.config, 'Emulator_ScreenshotMethod', 'adb'))
@@ -3134,21 +3136,19 @@ def op_device_capture_set(args):
     cap_ms = (_time.time() - t0) * 1000
 
     # raw 直接调用配置的截图后端；普通路径还经过上游截图包装器。
-    # 通道顺序由后端决定，这里只为 cv2.imwrite 转成 BGR，确保 load_image 读回后
-    # 与后端返回的像素逐字节相同。再按 raw 交换一次会让 scrcpy 的 RGB 帧变成 BGR。
-    import tempfile
+    # 后端已确定通道顺序；直接保留 RGB 像素，不写入系统临时文件。
+    # 复制一份以免后续截图复用缓冲区时改动当前帧；其他图像类型在内存中解码。
+    from io import BytesIO
     import numpy as _np
-    import cv2 as _cv2
     from module.base.utils import load_image
-    fd, tmp = tempfile.mkstemp(suffix='.png')
-    os.close(fd)
     try:
         if isinstance(img, _np.ndarray) and img.ndim == 3 and img.shape[2] == 3:
-            _cv2.imwrite(tmp, _cv2.cvtColor(img, _cv2.COLOR_RGB2BGR))
+            _state['image'] = img.copy()
         else:
-            img.save(tmp)
-        _state['image'] = load_image(tmp)
-        _state['path'] = tmp
+            buffer = BytesIO()
+            img.save(buffer, format='PNG')
+            buffer.seek(0)
+            _state['image'] = load_image(buffer)
     except Exception as e:
         return {'error': f'{type(e).__name__}: {e}', 'capture_ms': round(cap_ms, 1)}
     return {'capture_ms': round(cap_ms, 1), 'method': method, 'raw': raw,
