@@ -96,6 +96,24 @@ def shims_all_called() -> list[str]:
     return []
 
 
+def withdraw_hook_present() -> list[str]:
+    """**运行中请求撤退**的挂钩必须还在 —— 它失效的方式是静默的。
+
+    语义：工件目录里出现 `withdraw.request` 时，宿主应在下一次战斗之前调用上游自己的
+    `withdraw()`，本局据此判 `outcome=withdrawn`（R0 的真机记录就是这么来的）。
+    如果哪天挂钩或路径约定被删除，请求文件会出现却**没人理** —— 没有报错，只是"撤退请求无效"。
+    """
+    problems = []
+    execution = ROOT / "tools" / "s3_campaign_execution.py"
+    if not execution.is_file() or "inst.withdraw()" not in execution.read_text(encoding="utf-8"):
+        problems.append("tools/s3_campaign_execution.py 里没有调用 inst.withdraw()："
+                        "运行中请求撤退会静默失效（文件出现却没人理）")
+    runner = ROOT / "src" / "Alas.Core" / "Runtime" / "CampaignBatchRunner.cs"
+    if not runner.is_file() or "withdraw.request" not in runner.read_text(encoding="utf-8"):
+        problems.append("CampaignBatchRunner 没有传 withdraw.request 路径："
+                        "请求文件的路径约定断了（同一类静默失效）")
+    return problems
+
 def task_domain_registration() -> list[str]:
     """每个任务域都必须在 CLI 里注册（否则队列只会报"没有注册运行器"然后失败）。
 
@@ -250,6 +268,7 @@ def main() -> int:
 
     problems.extend(contract_consistency())
     problems.extend(task_domain_registration())
+    problems.extend(withdraw_hook_present())
     problems.extend(campaign_shims_installed())
     problems.extend(shims_all_called())
     problems.extend(device_checklist_integrity())

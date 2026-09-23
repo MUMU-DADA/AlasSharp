@@ -243,7 +243,8 @@ class S3DryRunTests(unittest.TestCase):
                                             ('clear_stuck',), ('clear_click',),
                                             ('native', 'resolved entrance', 'hard')])
             state.native.assert_called_once_with(state.inst, max_rounds=7, max_seconds=321.0,
-                                                 stop_after='map_init', battle_count=4)
+                                                 stop_after='map_init', withdraw_file=None,
+                                                 battle_count=4)
             options = state.initialize.call_args.args[0]
             self.assertEqual((options['fleet1'], options['fleet2'], options['submarine_fleet']),
                              (3, 2, 1))
