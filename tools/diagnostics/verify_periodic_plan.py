@@ -83,6 +83,8 @@ def verify_native_dispatch(failures):
 
     mapping = [
         ('Reward', 'Reward', 'reward'), ('reward', 'Reward', 'reward'),
+        ('Dorm', 'Dorm', 'dorm'), ('dorm', 'Dorm', 'dorm'),
+        ('Freebies', 'Freebies', 'freebies'), ('freebies', 'Freebies', 'freebies'),
         ('OpsiExplore', 'OpsiExplore', 'opsi_explore'),
         ('opsi_explore', 'OpsiExplore', 'opsi_explore'),
         ('Event', 'Event', 'event'), ('event', 'Event', 'event'),
@@ -180,6 +182,20 @@ def verify_native_dispatch(failures):
             if state.mode == 'system_exit':
                 raise RequestHumanTakeover
 
+    class FakeRewardDorm:
+        def __init__(self, config, device):
+            state.calls.append(('dorm.construct', config.task.command, device is globals_device[0]))
+
+        def run(self):
+            state.calls.append(('dorm.run',))
+
+    class FakeFreebies:
+        def __init__(self, config, device):
+            state.calls.append(('freebies.construct', config.task.command, device is globals_device[0]))
+
+        def run(self):
+            state.calls.append(('freebies.run',))
+
     class FakeOSCampaignRun:
         def __init__(self, config, device):
             self.config = config
@@ -202,6 +218,8 @@ def verify_native_dispatch(failures):
     globals_device = [device]
     fake_modules = {
         'module.reward.reward': ('Reward', FakeReward),
+        'module.dorm.dorm': ('RewardDorm', FakeRewardDorm),
+        'module.freebies.freebies': ('Freebies', FakeFreebies),
         'module.campaign.os_run': ('OSCampaignRun', FakeOSCampaignRun),
         'module.campaign.run': ('CampaignRun', FakeCampaignRun),
     }
@@ -285,6 +303,30 @@ def verify_native_dispatch(failures):
                   config_file.read_bytes() == before, f'{config_file.read_bytes()!r}')
             check(failures, '成功后恢复共享 device.config',
                   device.config is original_device_config, f'{device.config!r}')
+
+            dorm = call_op('periodic_run', {
+                'task': 'dorm', 'allow_actions': True, 'confirm': 'dorm',
+                'overrides': {'BuyFurniture_Enable': False},
+            })
+            check(failures, 'Dorm 走原生 RewardDorm.run',
+                  dorm.get('decision') == 'ran'
+                  and dorm.get('native_success') is True
+                  and ('dorm.run',) in state.calls, f'{dorm} calls={state.calls}')
+            check(failures, 'Dorm 配置按 Scheduler Command 绑定并恢复设备配置',
+                  any(task == 'Dorm' for _, task, _ in state.configs)
+                  and device.config is original_device_config, f'{state.configs}')
+
+            freebies = call_op('periodic_run', {
+                'task': 'freebies', 'allow_actions': True, 'confirm': 'freebies',
+            })
+            check(failures, 'Freebies 走原生 Freebies.run',
+                  freebies.get('decision') == 'ran'
+                  and freebies.get('native_success') is True
+                  and ('freebies.run',) in state.calls,
+                  f'{freebies} calls={state.calls}')
+            check(failures, 'Freebies 配置按 Scheduler Command 绑定并恢复设备配置',
+                  any(task == 'Freebies' for _, task, _ in state.configs)
+                  and device.config is original_device_config, f'{state.configs}')
 
             opsi = call_op('periodic_run', {
                 'task': 'OpsiExplore', 'allow_actions': True, 'confirm': 'OpsiExplore',
@@ -513,6 +555,41 @@ def main() -> int:
                  'no_such_task_zzz' in str(bad_doc.get('error') or ''),
                  f"error={bad_doc.get('error')}"),
             ]
+
+            single = tmpdir / 'single.json'
+            single.write_text(json.dumps({'tasks': [
+                {'id': 'plan-single', 'kind': 'periodic_plan',
+                 'input': {'task': 'dorm'}}]}), encoding='utf-8')
+            single_doc = run_queue(single, tmpdir / 'art-single')
+            single_plans = (single_doc.get('evidence') or {}).get('plans') or []
+            task_checks.append((
+                '兼容单个 task 输入且只勘察请求任务',
+                single_doc.get('outcome') == 'succeeded'
+                and [plan.get('task') for plan in single_plans] == ['dorm'],
+                f"outcome={single_doc.get('outcome')} plans={single_plans}"))
+
+            invalid_inputs = {
+                'empty-array': {'tasks': []},
+                'wrong-type': {'tasks': 'commission'},
+                'empty-item': {'tasks': ['commission', '']},
+                'unknown-field': {'tasks': ['commission'], 'extra': True},
+                'both-task-shapes': {'task': 'dorm', 'tasks': ['dorm']},
+            }
+            for suffix, input_value in invalid_inputs.items():
+                invalid_queue = tmpdir / f'invalid-{suffix}.json'
+                invalid_queue.write_text(json.dumps({'tasks': [
+                    {'id': f'plan-invalid-{suffix}', 'kind': 'periodic_plan',
+                     'input': input_value}]}), encoding='utf-8')
+                invalid_doc = run_queue(invalid_queue, tmpdir / f'art-invalid-{suffix}')
+                task_checks.append((
+                    f'{suffix} 输入 → skipped 且不调用上游',
+                    invalid_doc.get('outcome') == 'skipped'
+                    and invalid_doc.get('error_kind') == 'none'
+                    and bool(invalid_doc.get('unmet_preconditions'))
+                    and not invalid_doc.get('evidence'),
+                    f"outcome={invalid_doc.get('outcome')} "
+                    f"preconditions={invalid_doc.get('unmet_preconditions')} "
+                    f"evidence={invalid_doc.get('evidence')}"))
             for name, ok, detail in task_checks:
                 print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
                 if not ok:

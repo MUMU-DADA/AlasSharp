@@ -21,16 +21,60 @@ namespace Alas.Tasks;
 public sealed class PeriodicPlanTask : ITaskRunner
 {
     private static readonly string[] DefaultTasks = { "commission", "research", "dorm", "reward" };
+    private static readonly HashSet<string> InputFields = new(StringComparer.Ordinal)
+    {
+        "task", "tasks",
+    };
 
     public string Kind => "periodic_plan";
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskContext context)
     {
-        var names = Requested(request);
         var problems = new List<string>();
-        if (names.Count == 0)
+        if (request.Input is not null)
+        {
+            foreach (var field in request.Input.Select(pair => pair.Key))
+                if (!InputFields.Contains(field))
+                    problems.Add($"未知周期任务勘察字段: input.{field}");
+        }
+
+        bool hasTask = request.Input?.ContainsKey("task") == true;
+        bool hasTasks = request.Input?.ContainsKey("tasks") == true;
+        if (hasTask && hasTasks)
+            problems.Add("input.task 与 input.tasks 不能同时提供");
+
+        if (hasTask)
+        {
+            if (request.Input!["task"] is not JsonValue value
+                || !value.TryGetValue<string>(out var name)
+                || string.IsNullOrWhiteSpace(name))
+                problems.Add("input.task 必须是非空字符串");
+            return problems;
+        }
+
+        if (!hasTasks)
+            return problems;
+
+        if (request.Input!["tasks"] is not JsonArray array)
+        {
+            problems.Add("input.tasks 必须是字符串数组");
+            return problems;
+        }
+
+        if (array.Count == 0)
+        {
             problems.Add("input.tasks 为空：至少要给一个上游任务名（如 commission），"
                          + "否则这一步没有任何信息量");
+            return problems;
+        }
+
+        for (int index = 0; index < array.Count; index++)
+        {
+            if (array[index] is not JsonValue value
+                || !value.TryGetValue<string>(out var name)
+                || string.IsNullOrWhiteSpace(name))
+                problems.Add($"input.tasks[{index}] 必须是非空字符串");
+        }
         return problems;
     }
 
@@ -100,9 +144,20 @@ public sealed class PeriodicPlanTask : ITaskRunner
 
     private static List<string> Requested(TaskRequest request)
     {
-        if (request.Input?["tasks"] is JsonArray array)
-            return array.Select(n => n?.GetValue<string>() ?? "")
-                .Where(n => n.Length > 0).ToList();
+        if (request.Input?.ContainsKey("task") == true)
+        {
+            if (request.Input["task"] is JsonValue value
+                && value.TryGetValue<string>(out var name)
+                && !string.IsNullOrWhiteSpace(name))
+                return new List<string> { name };
+            return new List<string>();
+        }
+        if (request.Input?.ContainsKey("tasks") == true)
+        {
+            if (request.Input["tasks"] is not JsonArray array)
+                return new List<string>();
+            return array.Select(n => n!.GetValue<string>()).ToList();
+        }
         return DefaultTasks.ToList();
     }
 }

@@ -238,7 +238,7 @@ CLI 的调用方生成不可执行队列。
 | 周期任务调度状态 | `verify_task_schedule.py` | 与独立读数对拍 + 四种边界（全禁用/全启用/缺段/配置不存在）+ **只读**（配置字节不变） |
 | 周期任务勘察与放行 | `verify_periodic_plan.py` | 勘察与独立读一致；四类边界；**不 import 目标模块**；放行判定四条路径 + **executes 恒 False**（永不执行） |
 | 配置开关（授权前留档） | `verify_config_get.py` | 与独立读数对拍；**缺失 ≠ false**；空输入记 skipped |
-| 周期任务执行（执行环） | `verify_periodic_plan.py` | 会话未授权 → 前置跳过（required 才失败）；已授权后按上游 Scheduler.Command 绑定配置并调用原生 dispatcher；reward / opsi / event、TaskEnd / False / SystemExit 与设备配置恢复均有离线回归；历史真机两域见下文 |
+| 周期任务执行（执行环） | `verify_periodic_plan.py` | 会话未授权 → 前置跳过（required 才失败）；已授权后按上游 Scheduler.Command 绑定配置并调用原生 dispatcher；reward / dorm / freebies / opsi / event、TaskEnd / False / SystemExit 与设备配置恢复均有离线回归；历史真机两域见下文 |
 | 运行报告 / 运行列表 | `verify_report.py` | 报告事实 + 3 个反例 + `runs` 同秒不覆盖 + 单批形态 |
 | 运行报告的 HTML 视图（R4 第一屏） | `verify_report_html.py` | 不丢事实（数据面里的事实都要出现在界面里）+ 单文件自足 + 缺工件也能看 |
 | 停止任务 | `verify_stop.py` | `--stop-file` 在任务边界生效；剩余任务记 skipped；无停止文件时照常跑完 |
@@ -247,6 +247,11 @@ CLI 的调用方生成不可执行队列。
 | CLI 摘要行（跨域） | `verify_cli_evidence.py` | 战役/账号状态/大世界三域的 `[任务证据]` 行必须真的打印（走队列路径；缺存档帧则显式跳过） |
 | IN_MAP 垫片（跨域） | `verify_in_map_shim.py` | 上游阈值判不出、垫片后判得出、且没有无脑放宽（用归档真机帧） |
 | 静态守卫 | `verify_architecture.py` | 生产路径、素材边界、词表一致、**每个域名必须注册**、真机清单的两处授权标注 |
+
+`periodic_plan` 的 `input.tasks` 若存在，必须是非空字符串数组；数组元素不得为空或为其他
+类型，且不接受未声明字段。已有队列也可用兼容的 `input.task` 指定一个任务，但不能与
+`tasks` 同时提供。输入错误在任务前置条件阶段记为 `skipped`，不会退回默认任务集或调用上游
+勘察；两种输入都省略才使用默认的常见任务名。
 
 ## 大世界/海域（第三个域，只读探针）
 
