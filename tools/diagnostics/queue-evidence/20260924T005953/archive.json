@@ -1,0 +1,28 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/20260924-meowfficer-probe/artifacts/20260924T005953",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "a7d2f977db43a4c6e9a08baf0a45dffafac9c967cc726ae34df181fc10e6edab",
+    "state.json": "2e30b28260fba443ea5d60eb6ff488326a6d862b908b517175ecd14a47f38baa",
+    "session-log.jsonl": "7124757e90e22046c541b6ea12ba836ca56f703014c33ae7d0ea2214abf8f6e4",
+    "task-after-meowfficer.json": "39d5d0c0eee84b92e9b693cf5400d30cf067cc7ee2b99cf18898973d83d7f40f",
+    "task-meowfficer-fort.json": "7aba8426aac0fb18b4b5f81663cd124f6ba57a11c78fb00a33ff8df6b7335c95",
+    "task-meowfficer-plan.json": "1f62216d6df90f1dc96d59c0489bc9349f1e6518a873f27f6543a4d81f1add78",
+    "task-meowfficer-preflight.json": "c75ef2e50977ea00fb9e3c37099fc4c40e7c45580fa8db5c5131d3c92bc5c3bc"
+  },
+  "files": {
+    "queue.json": "9eaf518ff88ffc0b0023a1060b9c2fdda0d00aea251eb1fb80262fc5b316b602",
+    "state.json": "9be5e386f860510053faa47ba44115aaa25913ae787cc7ca7ebce6ec57e23114",
+    "session-log.jsonl": "81d7a8c26c117b008ec68e582074eaa9557bd8fcb6d59a73e34c5caafa6a2534",
+    "task-after-meowfficer.json": "2a9919b5db0d0e66f9c12a69aae1713c9813bd2cef014c56534bf35dd77e607e",
+    "task-meowfficer-fort.json": "b1cae266120c165bdc536fb79adb36ea352f7098feb04134499f0e30bbd113ec",
+    "task-meowfficer-plan.json": "2b6d6f544a37f5356f24b47bab3788ad6d794f67ebbe5130f1b8e834eb3f9141",
+    "task-meowfficer-preflight.json": "a976acf8fa766d17be31064b33f55e73dac31083fa58ee376083fe013af3a9d6"
+  }
+}

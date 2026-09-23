@@ -1,0 +1,47 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 19.3,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "meowfficer-plan",
+      "kind": "periodic_plan",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/20260924-meowfficer-probe/artifacts/20260924T005953/task-meowfficer-plan.json"
+    },
+    {
+      "id": "meowfficer-preflight",
+      "kind": "periodic_preflight",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/20260924-meowfficer-probe/artifacts/20260924T005953/task-meowfficer-preflight.json"
+    },
+    {
+      "id": "meowfficer-fort",
+      "kind": "periodic_run",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 18.8,
+      "artifact": "<project>/data/mainline-device/20260924-meowfficer-probe/artifacts/20260924T005953/task-meowfficer-fort.json"
+    },
+    {
+      "id": "after-meowfficer",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/20260924-meowfficer-probe/artifacts/20260924T005953/task-after-meowfficer.json"
+    }
+  ]
+}

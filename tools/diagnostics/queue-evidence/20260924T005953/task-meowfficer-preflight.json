@@ -1,0 +1,39 @@
+{
+  "id": "meowfficer-preflight",
+  "kind": "periodic_preflight",
+  "required": true,
+  "input": {
+    "task": "meowfficer",
+    "allow_actions": true,
+    "confirm": "meowfficer"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 0,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "task": "meowfficer",
+    "allow_actions": true,
+    "confirm_matches": true,
+    "executes": false,
+    "decision": "allowed",
+    "reason": "两道闸都通过；放行后将会执行：from module.meowfficer.meowfficer import RewardMeowfficer（alas.py 第 200 行）",
+    "plan": {
+      "found": true,
+      "lineno": 200,
+      "imports": [
+        "from module.meowfficer.meowfficer import RewardMeowfficer"
+      ],
+      "calls_run": true
+    }
+  }
+}

@@ -555,7 +555,8 @@ def run(self):
 
 **这条给"要不要放开某个周期任务"提供了通用检查姿势**：先读它的 `run()` 找到花费分支的**开关名**，
 再查本机配置里那个开关的值 —— 比在代码里逐行推"到底会不会走到"更快也更实在。
-`meowfficer/buy.py` 与 `research` 的付费项目同样适用这个姿势（尚未做）。
+`meowfficer/buy.py` 与 `research` 的付费项目同样适用这个姿势；`meowfficer` 的
+配置门控分析见下文补五，`research` 尚未完成对应产品验证。
 
 #### 补四：更正补三里的两处说法（读 args.json 之后）
 
@@ -800,6 +801,18 @@ Mission collect finished
 原件留在忽略目录 `data/mainline-device/20260923T155210-dorm`；脱敏工件见
 `docs/queue-evidence.md`。本次上游写入的调度时间在探针结束后按运行前配置原字节恢复。
 历史家具币不足不代表当前仍不足，不能用它推断开启 `BuyFurniture_Enable` 不会消费资源。
+
+`meowfficer` 又以四任务产品队列完成上游原生据点杂务路径。此次通过本次任务的
+`overrides` 将购买数设为 0、溢出购买设为 -1、训练关闭，只保留据点杂务；
+`periodic_plan` 与 `periodic_preflight` 核对到 `Scheduler.Command=Meowfficer`，
+`periodic_run` 返回 `decision=ran`、`native_success=true`。原生日志显示从自然待机经
+`IDLE -> REWARD_GOTO_MAIN` 返回主界面，沿上游页面图进入 `page_meowfficer`，
+随后进入 `MEOWFFICER_FORT` 并点击 `MEOWFFICER_FORT_CHORE` 四次，最后返回猫窝页；
+后续 `account_state(capture=true)` 实时识别到 `page_meowfficer`。脱敏结构化工件见
+`tools/diagnostics/queue-evidence/20260924T005953/`；原始点击日志和运行前配置仅留在
+本地忽略目录 `data/mainline-device/20260924-meowfficer-probe/`。上游仅改动
+`Meowfficer.Scheduler.NextRun`，探针后已按运行前配置原字节恢复。此例证明杂务动作
+确实执行，但没有独立的经验值或资源前后读数，不能声称具体收益数量。
 
 当前产品路径先检查会话授权：会话未授权记前置条件不满足，
 非 required 任务为 `skipped`、required 任务为 `failed`；两者都没有开始执行。
