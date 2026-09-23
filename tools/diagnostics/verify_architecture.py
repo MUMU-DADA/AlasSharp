@@ -114,6 +114,41 @@ def withdraw_hook_present() -> list[str]:
                         "请求文件的路径约定断了（同一类静默失效）")
     return problems
 
+def periodic_run_gate_intact() -> list[str]:
+    """执行入口（`op_periodic_run`）必须**先过两道闸、再构造/运行上游对象**。
+
+    为什么值得静态守：这是"**不许在未授权时花钱**"这条承诺的落点。
+    失效方式同样是静默的 —— 谁把闸门挪到构造之后、或删掉其中一个，
+    代码照样能跑（甚至更"顺"），而代价是**未授权的账号操作**。
+
+    判据不看措辞、看**顺序**：两道闸的判断必须出现在 `cls(config=` 之前。
+    """
+    path = ROOT / "tools" / "alas_vision.py"
+    if not path.is_file():
+        return ["缺少 tools/alas_vision.py"]
+    text = path.read_text(encoding="utf-8")
+    start = text.find("def op_periodic_run(")
+    if start < 0:
+        return ["`op_periodic_run` 不存在（执行入口没了？）"]
+    rest = text[start:]
+    end = rest.find("\ndef ")
+    body = rest if end < 0 else rest[:end]
+
+    problems = []
+    construct_at = body.find("cls(config=")
+    if construct_at < 0:
+        problems.append("`op_periodic_run` 里没有构造上游对象的语句（行为变了？）")
+        return problems
+    for marker, why in (("if not allow:", "allow_actions 闸"),
+                        ("if confirm != task:", "二次确认闸")):
+        at = body.find(marker)
+        if at < 0:
+            problems.append(f"`op_periodic_run` 缺少{why}（{marker}）—— 未授权的账号操作会畅通无阻")
+        elif at > construct_at:
+            problems.append(f"`op_periodic_run` 的{why}在**构造对象之后**才检查 —— 顺序错了，"
+                            "等于没闸（对象已经建起来、很可能已经动了设备）")
+    return problems
+
 def task_domain_registration() -> list[str]:
     """每个任务域都必须在 CLI 里注册（否则队列只会报"没有注册运行器"然后失败）。
 
@@ -269,6 +304,7 @@ def main() -> int:
     problems.extend(contract_consistency())
     problems.extend(task_domain_registration())
     problems.extend(withdraw_hook_present())
+    problems.extend(periodic_run_gate_intact())
     problems.extend(campaign_shims_installed())
     problems.extend(shims_all_called())
     problems.extend(device_checklist_integrity())
