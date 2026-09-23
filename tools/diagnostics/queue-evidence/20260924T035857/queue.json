@@ -1,0 +1,20 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 5.5,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "observe-os",
+      "kind": "observe",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 5.5,
+      "artifact": "<project>/.runtime/agent-comms/20260924-r2-os-observe/artifacts/20260924T035857/task-observe-os.json"
+    }
+  ]
+}

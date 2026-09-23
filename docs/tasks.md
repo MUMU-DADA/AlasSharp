@@ -410,7 +410,7 @@ OS 动作验收。只读复盘可用 `python tools/diagnostics/oneoff/probe_os_e
 - 大世界只读 OS 网格探针已有正负离线对拍和真机正样本；已通关账号的 OS 原生导航与调度通过，`OpsiStronghold` 长战斗后的漏接管已有通用上游修复与离线回归，但自动化结算闭环仍未验收。活动已有 A1、A2、A3 普通战役队列真机通关样本，其他活动章节及活动域完整动作流程仍需验证。
 - 周期任务已接通通用执行入口；reward 的油/金币历史样本及每日/每周任务领取点击有真机证据，但没有独立到账数量读数；dorm 本次没有收取点击，领取效果及其余执行路径不能据此视为已验证。
 - 当前账号的 `page_tactical` 导航往返和实时识页已有五任务队列真机证据；周期 `tactical` 原生调度也已跑通，但训练位全空，尚无领取或补书效果证据。
-- 观测已进入任务队列，完成离线故障/取消回归与只读真机抓帧/识页验证；`map=main` 仅有主界面零命中的现场负样本，地图内正样本及其他后端不据此外推。
+- 观测已进入任务队列，完成离线故障/取消回归与只读真机抓帧/识页验证；`map=os` 有海域 4/4 命中的现场正样本，`map=main` 仍只有主界面零命中的负样本，主战役地图内正样本及其他设备截图后端不据此外推。
 
 ## 周期任务调度状态（第六个域，只读；已实现并验收）
 
@@ -916,5 +916,5 @@ alashub queue --file observe.json --run --read-only-device --serial <device> --s
 队列入口要求设备已配置，dry-run 的前置条件不满足时记 `Skipped`；`required` 决定其是否导致队列失败。
 观测可在 tick 边界停止，故障必须留在任务证据中。其离线验收由 `observe_cases.json` 与
 `verify_runtime.py` 覆盖。历史 `run` 兼容入口的只读真机记录为 4 tick、0 error，命中
-`page_main` / `page_main_white`，宿主/设备各初始化一次。新队列入口已分别完成 6 tick 和导航后的 4 tick 真机观测；脱敏交叉审计见 `docs/queue-evidence.md`。
+`page_main` / `page_main_white`，宿主/设备各初始化一次。新队列入口已分别完成 6 tick 和导航后的 4 tick 真机观测。当前未通关大世界的账号在海域运行 `observe(map=os)` 只读队列，4 次抓帧与 4 次上游地图检测均成功，最后检出 43 格、错误 0；页面命中为空，未执行自律、导航或战斗。原件留在本地忽略目录 `data/mainline-device/20260924-observe-os/`，配置按运行前快照恢复并核对原字节。脱敏交叉审计见 `docs/queue-evidence.md`。
 原始现场工件在忽略目录 `data/progress-audit-observe/20260923T105409`，未入库，原配置已恢复。

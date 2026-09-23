@@ -1,0 +1,9 @@
+{"time":"2026-09-24T03:58:57.721+08:00","level":"INFO","scope":"session","message":"识图宿主已启动","fields":{"repo":"<project>/.runtime/engine","dry_run":false,"allow_actions":false,"read_only_device":true,"host_start_ms":366.9}}
+{"time":"2026-09-24T03:58:57.763+08:00","level":"INFO","scope":"session","message":"设备后端已配置","fields":{"serial":"<device>","screenshot":"adb","control":"ADB","configured":"serial=<device>,screenshot=adb,control=ADB"}}
+{"time":"2026-09-24T03:58:57.765+08:00","level":"INFO","scope":"queue","message":"开始任务队列","fields":{"tasks":1,"kinds":"observe","dry_run":false,"artifacts":"<project>/.runtime/agent-comms/20260924-r2-os-observe/artifacts/20260924T035857"}}
+{"time":"2026-09-24T03:58:57.778+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"observe-os","kind":"observe","pages":null,"in_map":null}}
+{"time":"2026-09-24T03:59:03.235+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/.runtime/agent-comms/20260924-r2-os-observe/artifacts/20260924T035857/task-observe-os.json"}}
+{"time":"2026-09-24T03:59:03.238+08:00","level":"INFO","scope":"task","message":"observe:observe-os → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":5.5,"preconditions":0}}
+{"time":"2026-09-24T03:59:03.240+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/.runtime/agent-comms/20260924-r2-os-observe/artifacts/20260924T035857/queue.json"}}
+{"time":"2026-09-24T03:59:03.240+08:00","level":"INFO","scope":"queue","message":"任务队列结束","fields":{"outcome":"succeeded","tasks":1,"failed":0,"skipped":0,"elapsed_s":5.5}}
+{"time":"2026-09-24T03:59:03.451+08:00","level":"INFO","scope":"session","message":"识图宿主已释放","fields":{}}

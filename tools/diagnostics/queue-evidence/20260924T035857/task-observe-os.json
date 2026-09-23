@@ -1,0 +1,104 @@
+{
+  "id": "observe-os",
+  "kind": "observe",
+  "required": true,
+  "input": {
+    "seconds": 3,
+    "tick_seconds": 0.5,
+    "map": "os"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 5.5,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "tick_seconds": 0.5,
+    "requested_seconds": 3,
+    "map_mode": "os",
+    "read_only": true,
+    "warmup": {
+      "ok": true,
+      "capture_ms": 424.7,
+      "elapsed_ms": 2393.398,
+      "method": "adb",
+      "raw": true,
+      "shape": [
+        720,
+        1280,
+        3
+      ],
+      "error": null
+    },
+    "ticks": 4,
+    "errors": 0,
+    "error_details": [],
+    "elapsed_seconds": 3.05,
+    "cancelled": false,
+    "pages": [],
+    "pages_tick": 4,
+    "page_hits": {},
+    "page_errors": [],
+    "capture": {
+      "attempts": 4,
+      "succeeded": 4,
+      "failed": 0,
+      "method": "adb",
+      "shape": [
+        720,
+        1280,
+        3
+      ],
+      "timing_ms": {
+        "count": 4,
+        "median": 404,
+        "p25": 403.6,
+        "p75": 406.3,
+        "max": 406.3
+      }
+    },
+    "page_detection": {
+      "attempts": 4,
+      "failed": 0,
+      "skipped_capture_failed": 0,
+      "timing_ms": {
+        "count": 4,
+        "median": 21.888,
+        "p25": 21.303,
+        "p75": 150.908,
+        "max": 150.908
+      }
+    },
+    "tick_interval_ms": {
+      "count": 4,
+      "median": 569.955,
+      "p25": 566.688,
+      "p75": 1348.049,
+      "max": 1348.049
+    },
+    "map": {
+      "mode": "os",
+      "attempts": 4,
+      "detected_hits": 4,
+      "errors": 0,
+      "skipped_capture_failed": 0,
+      "last_grid_count": 43,
+      "last_reason": null,
+      "timing_ms": {
+        "count": 4,
+        "median": 141.168,
+        "p25": 140.917,
+        "p75": 791.289,
+        "max": 791.289
+      }
+    }
+  }
+}

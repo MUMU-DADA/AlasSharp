@@ -74,7 +74,7 @@
 **保留的边界**：战役取消在关卡边界生效；只读观测可在 tick 边界停止。
 已退役直接 CLI wrapper 的观测核心任务留有 2 秒窗口、4 tick、0 error、宿主/设备各初始化一次的历史记录；
 历史 `queue --file` 真机只读队列完成 `account_state` 与 6 tick 观测，旧 C# 导航队列完成主界面/战役页往返、两轮战役页导航与 4 tick 观测；两批都只初始化一次宿主和设备，脱敏队列/任务/断点/会话证据见 `docs/queue-evidence.md`。这些旧导航样本不证明原生 `ui_ensure` 队列的真机效果。
-`observe(map=main)` 另有主界面真机负样本：6 次地图检测、零命中、零错误；这不证明地图内正样本可识别。
+`observe(map=main)` 另有主界面真机负样本：6 次地图检测、零命中、零错误；这不证明主战役地图内正样本可识别。`observe(map=os)` 在当前海域完成 4 次只读抓帧与 4 次上游地图检出，最后一次为 43 格、零错误；它不证明大世界动作或战斗结算。
 其他设备后端仍未由这些样本验证。当前原生导航替身用例覆盖非法输入、原生错误及后续回合失败。
 战术页首次真机导航在 `page_reward` 识页处失败；同一静止画面 raw 抓帧空命中、普通抓帧命中，
 定位为宿主 raw 分支多余的颜色通道交换，已修复并补逐像素回归。修复后的五任务队列
@@ -145,7 +145,7 @@ AzurPilot 已有的通用执行态检查现用于宿主 OS 战斗入口，原帧
 | 9 | 配置开关（授权前的花费开关留档） | 只读 | `verify_config_get.py`（独立对拍 + 缺失≠false） |
 | 10 | **周期任务执行**（执行环；产品路径 kind=periodic_run） | **动作**（会话授权 + 宿主两道闸 + 上游原生 dispatcher） | `verify_periodic_plan.py`（任务目录解析、绑定、跨调用形态、TaskEnd/False/SystemExit、设备恢复）+ 原生 dispatcher 的 `reward`、`dorm`、`tactical`、`meowfficer` 队列真机样本；猫窝据点归档证明原生调度成功并返回猫窝页，4 次原生杂务点击仅存本地原生日志，未独立核对收益数量；`dorm` 与 `tactical` 的领取效果和其他域未覆盖 |
 | 通用 | 页面导航 `navigate` | 动作 | `verify_runtime.py`、`native_navigate_cases.json`、`verify_native_ui_ensure.py`；旧队列记录见 `docs/queue-evidence.md`，不代表当前原生路径 |
-| 通用 | 观测 `observe` | 只读设备任务 | `verify_runtime.py`、`observe_cases.json` + `docs/queue-evidence.md` 的 6 tick / 4 tick 新队列入口真机样本 |
+| 通用 | 观测 `observe` | 只读设备任务 | `verify_runtime.py`、`observe_cases.json` + `docs/queue-evidence.md` 的 6 tick / 4 tick 常规观测及 4 tick OS 地图正样本 |
 
 剩余**动作范围**包括大世界流程、活动出击除 A1/A2/A3 样本外尚未验证的路径，以及周期任务尚未验证的执行路径；
 逐域的四件套与边界见 `docs/tasks.md`（那份文档同时是本表的详细版）。
