@@ -187,6 +187,62 @@ def main() -> int:
                 if not ok:
                     failures.append(f'{name}: {detail}')
 
+    # ---- 交互第 1、2 级（页首锚点 / 失败优先区块）：纯生成期结构，可离线断言
+    print()
+    print('=== 交互第 1、2 级（锚点 + 失败优先区块）===')
+    if not EXE.is_file() or not GENERATOR.is_file():
+        print('[跳过] 缺 alashub 或渲染器')
+    else:
+        with tempfile.TemporaryDirectory(prefix='alas-html-interact-') as tmp:
+            tmpdir = Path(tmp)
+            # 1) 一次**没有失败**的运行 → 区块应明确写"无"
+            clean_root = tmpdir / 'clean'
+            clean_queue = tmpdir / 'clean.json'
+            clean_queue.write_text(json.dumps({'tasks': [
+                {'id': 'ok-task', 'kind': 'campaign_batch',
+                 'input': {'chapters': [CHAPTER]}}]}, ensure_ascii=False), encoding='utf-8')
+            run(EXE, 'queue', '--file', clean_queue, '--artifacts', clean_root)
+            clean_run = sorted(p for p in clean_root.glob('*') if p.is_dir())[-1]
+            _, clean_html = render(clean_run, tmpdir / 'clean.html')
+
+            # 2) 一次**有失败**的运行（未授权的放行判定 → failed）→ 区块只列失败项
+            bad_root = tmpdir / 'bad'
+            bad_queue = tmpdir / 'bad.json'
+            bad_queue.write_text(json.dumps({'tasks': [
+                {'id': 'will-fail', 'kind': 'periodic_preflight',
+                 'input': {'task': 'reward'}},
+                {'id': 'will-pass', 'kind': 'task_schedule',
+                 'input': {'limit': 2}}]}, ensure_ascii=False), encoding='utf-8')
+            run(EXE, 'queue', '--file', bad_queue, '--artifacts', bad_root,
+                '--continue-on-error')
+            bad_run = sorted(p for p in bad_root.glob('*') if p.is_dir())[-1]
+            _, bad_html = render(bad_run, tmpdir / 'bad.html')
+
+            def section_of(text: str, anchor: str) -> str:
+                if f'id="{anchor}"' not in text:
+                    return ''
+                return text.split(f'<h2 id="{anchor}">', 1)[1].split('<h2', 1)[0]
+
+            failures_section = section_of(bad_html, 'failures')
+            interact_checks = [
+                ('锚点齐全（失败/任务/关卡/发现/原始数据面）',
+                 all(f'id="{anchor}"' in clean_html
+                     for anchor in ('failures', 'tasks', 'stages', 'findings', 'raw')),
+                 f"缺={[a for a in ('failures', 'tasks', 'stages', 'findings', 'raw') if f'id=\"{a}\"' not in clean_html]}"),
+                ('页首有跳转链接', '跳到：' in clean_html and '#failures' in clean_html,
+                 '没有"跳到："或 #failures 链接'),
+                ('无失败时区块写明"无"',
+                 '没有失败项' in section_of(clean_html, 'failures'),
+                 f"区块内容={section_of(clean_html, 'failures')[:80]!r}"),
+                ('有失败时区块**只**列失败项',
+                 'will-fail' in failures_section and 'will-pass' not in failures_section,
+                 f"区块={failures_section[:200]!r}"),
+            ]
+            for name, ok, detail in interact_checks:
+                print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+                if not ok:
+                    failures.append(f'{name}: {detail}')
+
     print()
     if failures:
         print(f'结果: FAIL（{len(failures)} 项）')

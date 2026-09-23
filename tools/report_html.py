@@ -159,16 +159,21 @@ def card(key: str, value) -> str:
 
 
 def failures_of(items: list) -> list:
-    """失败与未通关的条目：任务侧看结论，关卡侧看 cleared。
+    """失败与未通关的条目：**按结论判，不按"有没有通关"判**。
 
-    为什么要有它：打开一份报告的第一诉求是"哪儿出问题了"，而不是从头读完几十行。
-    纯生成期过滤，不需要运行时筛选（见 `docs/runtime.md` 第十三节的交互路线）。
+    判据是被测试逼出来的：起初写的是"关卡侧看 `cleared` 是否 false"，于是**dry-run 的关卡
+    全被列成失败**（dry-run 本来就不会通关）—— 这违反本项目的一条硬规矩：
+    **"没跑"与"跑失败"必须分开**（`AGENTS.md` 任务域边界）。
+    所以这里只收失败类结论：failed / error / incomplete / defeated / ended_unknown / withdrawn
+    （撤退是真实事件，值得摆出来）；dry_run / skipped 一律不算。
     """
+    bad = ('failed', 'error', 'incomplete', 'defeated', 'ended_unknown', 'withdrawn')
     out = []
     for item in items:
-        if item.get('level') == 'task' and str(item.get('outcome')) in ('failed', 'error'):
+        outcome = str(item.get('outcome'))
+        if item.get('level') == 'task' and outcome in ('failed', 'error'):
             out.append(item)
-        elif item.get('level') == 'stage' and not item.get('cleared'):
+        elif item.get('level') == 'stage' and outcome in bad:
             out.append(item)
     return out
 
