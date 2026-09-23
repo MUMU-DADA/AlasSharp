@@ -300,7 +300,8 @@ internal static class RuntimeSelfCheck
             var runner = new Alas.Tasks.TaskQueue(session)
             {
                 StopOnFailure = stopOnFailure,
-            }.Register(new Alas.Tasks.CampaignBatchTask());
+            }.Register(new Alas.Tasks.CampaignBatchTask())
+             .Register(new Alas.Tasks.NavigateTask());   // 小型导航环境（docs/runtime.md 第十五节）
             if (node["resume_completed"] is JsonArray resumed)
                 foreach (var id in resumed)
                     runner.ResumeCompleted.Add(id!.GetValue<string>());
@@ -341,7 +342,14 @@ internal static class RuntimeSelfCheck
                         var got = queue.Tasks[i];
                         Compare(want, "id", got.Id, problems, $"第{i + 1}个任务");
                         Compare(want, "outcome", got.OutcomeName, problems, $"第{i + 1}个任务");
-                        if (want["error_kind"] is JsonNode wantKind)
+                        // 失败**文案**也要能断言：第 156 轮那句"入口可能未解锁"的诊断后缀就靠它钉住
+                        if (want["error_contains"] is JsonNode wantError)
+                        {
+                            string needle = wantError.GetValue<string>();
+                            if (got.Error is null || !got.Error.Contains(needle, StringComparison.Ordinal))
+                                problems.Add($"第{i + 1}个任务 的错误信息里没有 `{needle}`"
+                                             + $"（实际：{got.Error ?? "null"}）");
+                        }                        if (want["error_kind"] is JsonNode wantKind)
                             Compare(want, "error_kind", RuntimeErrors.Name(got.ErrorKind),
                                     problems, $"第{i + 1}个任务");
                     }
@@ -598,11 +606,15 @@ internal sealed class StubVisionEngine : VisionEngineBase
 
     private static JsonObject NavigationGraphJson()
     {
+        // **所有出现在边上的页都要成为节点**（含只作为目标的页）——
+        // 第一版只按 From 分组，于是 page_c / page_dead 不是节点，
+        // 导航任务的前置条件直接判"目标页不在图里"→ skipped（用例当场抓出来）。
+        var names = NavEdges.SelectMany(e => new[] { e.From, e.To }).Distinct().ToList();
         var nodes = new JsonArray();
-        foreach (var group in NavEdges.GroupBy(e => e.From))
+        foreach (var name in names)
         {
             var links = new JsonArray();
-            foreach (var edge in group)
+            foreach (var edge in NavEdges.Where(e => e.From == name))
                 links.Add(new JsonObject
                 {
                     ["to"] = edge.To,
@@ -611,15 +623,15 @@ internal sealed class StubVisionEngine : VisionEngineBase
                 });
             nodes.Add(new JsonObject
             {
-                ["name"] = group.Key,
-                ["check"] = $"ui/{group.Key.ToUpperInvariant()}_CHECK",
+                ["name"] = name,
+                ["check"] = $"ui/{name.ToUpperInvariant()}_CHECK",
                 ["links"] = links,
             });
         }
         return new JsonObject
         {
             ["nodes"] = nodes,
-            ["node_count"] = NavEdges.Select(e => e.From).Distinct().Count(),
+            ["node_count"] = names.Count,
             ["edge_count"] = NavEdges.Length,
         };
     }

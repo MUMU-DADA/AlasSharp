@@ -456,6 +456,11 @@ def main() -> int:
     cases = build_cases() + build_queue_cases()
     failures = []
     with TemporaryDirectory(prefix='alas-runtime-') as tmp:
+        # 小型导航环境的三条用例（替身宿主，离线）—— 规格见 docs/runtime.md 第十五节。
+        # 它们钉住两件事：导航任务的多跳/不可达行为，以及第 156 轮那句"入口可能未解锁"的诊断后缀。
+        navigate = json.loads((Path(__file__).resolve().parent / 'navigate_cases.json')
+                              .read_text(encoding='utf-8'))['cases']
+        cases = list(cases) + navigate
         fixture = Path(tmp) / 'runtime-cases.json'
         fixture.write_text(json.dumps({'cases': cases}, ensure_ascii=False, indent=1),
                            encoding='utf-8')

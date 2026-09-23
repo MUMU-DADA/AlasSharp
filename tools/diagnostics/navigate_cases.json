@@ -1,0 +1,40 @@
+{
+ "_comment": "小型导航环境的三条用例（替身宿主，离线）。规格见 docs/runtime.md 第十五节；由 verify_runtime.py 并入它的夹具。",
+ "cases": [
+  {
+   "name": "navigate_to_c_succeeds",
+   "tasks": [
+    { "id": "n1", "kind": "navigate", "input": { "to": "page_c" } }
+   ],
+   "expect": {
+    "outcome": "succeeded",
+    "host_start_count": 1,
+    "tasks": [ { "id": "n1", "outcome": "succeeded", "error_kind": "none" } ]
+   }
+  },
+  {
+   "name": "navigate_to_dead_reports_inert_entry",
+   "tasks": [
+    { "id": "n2", "kind": "navigate", "input": { "to": "page_dead" } }
+   ],
+   "expect": {
+    "outcome": "failed",
+    "tasks": [
+     { "id": "n2", "outcome": "failed", "error_kind": "none",
+       "error_contains": "入口可能未解锁" }
+    ]
+   }
+  },
+  {
+   "name": "navigate_unknown_target_is_skipped",
+   "tasks": [
+    { "id": "n3", "kind": "navigate", "input": { "to": "page_no_such" } }
+   ],
+   "expect": {
+    "outcome": "partial",
+    "backend_calls": 1,
+    "tasks": [ { "id": "n3", "outcome": "skipped", "error_kind": "none" } ]
+   }
+  }
+ ]
+}
