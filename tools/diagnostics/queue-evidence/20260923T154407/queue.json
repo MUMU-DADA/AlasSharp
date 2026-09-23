@@ -1,0 +1,29 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 5.5,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "live-state",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 2.3,
+      "artifact": "<project>/data/mainline-device/20260923T154407-observe_map/artifacts/20260923T154407/task-live-state.json"
+    },
+    {
+      "id": "observe-map",
+      "kind": "observe",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 3.2,
+      "artifact": "<project>/data/mainline-device/20260923T154407-observe_map/artifacts/20260923T154407/task-observe-map.json"
+    }
+  ]
+}

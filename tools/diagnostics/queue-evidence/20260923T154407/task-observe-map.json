@@ -1,0 +1,112 @@
+{
+  "id": "observe-map",
+  "kind": "observe",
+  "required": true,
+  "input": {
+    "seconds": 3,
+    "tick_seconds": 0.5,
+    "map": "main"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 3.2,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "tick_seconds": 0.5,
+    "requested_seconds": 3,
+    "map_mode": "main",
+    "read_only": true,
+    "warmup": {
+      "ok": true,
+      "capture_ms": 124.4,
+      "elapsed_ms": 175.463,
+      "method": "scrcpy",
+      "raw": true,
+      "shape": [
+        720,
+        1280,
+        3
+      ],
+      "error": null
+    },
+    "ticks": 6,
+    "errors": 0,
+    "error_details": [],
+    "elapsed_seconds": 3.001,
+    "cancelled": false,
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "pages_tick": 6,
+    "page_hits": {
+      "page_main": 6,
+      "page_main_white": 6
+    },
+    "page_errors": [],
+    "capture": {
+      "attempts": 6,
+      "succeeded": 6,
+      "failed": 0,
+      "method": "scrcpy",
+      "shape": [
+        720,
+        1280,
+        3
+      ],
+      "timing_ms": {
+        "count": 6,
+        "median": 12.1,
+        "p25": 10.2,
+        "p75": 12.3,
+        "max": 113.8
+      }
+    },
+    "page_detection": {
+      "attempts": 6,
+      "failed": 0,
+      "skipped_capture_failed": 0,
+      "timing_ms": {
+        "count": 6,
+        "median": 19.617,
+        "p25": 19.005,
+        "p75": 19.899,
+        "max": 21.468
+      }
+    },
+    "tick_interval_ms": {
+      "count": 6,
+      "median": 504.464,
+      "p25": 495.374,
+      "p75": 504.58,
+      "max": 770.334
+    },
+    "map": {
+      "mode": "main",
+      "attempts": 6,
+      "detected_hits": 0,
+      "errors": 0,
+      "skipped_capture_failed": 0,
+      "last_grid_count": null,
+      "last_reason": "MapDetectionError: No vertical line detected",
+      "timing_ms": {
+        "count": 6,
+        "median": 59.402,
+        "p25": 59.171,
+        "p75": 60.082,
+        "max": 590.102
+      }
+    }
+  }
+}

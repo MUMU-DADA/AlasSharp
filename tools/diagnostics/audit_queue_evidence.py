@@ -145,10 +145,20 @@ def task_proof(task, session, plan=None):
         require(evidence.get('map_mode') == request.get('map'), 'observe map mode mismatch')
         if evidence.get('map_mode') is not None:
             mapping = evidence['map']
-            require(mapping['attempts'] == ticks == mapping['timing_ms']['count']
+            require(mapping['mode'] == evidence['map_mode']
+                    and mapping['attempts'] == ticks == mapping['timing_ms']['count']
                     and mapping['errors'] == mapping['skipped_capture_failed'] == 0,
                     'observe map counts mismatch')
-        return f"{ticks} tick；抓帧 {capture['succeeded']}/{capture['attempts']}；错误 0；{evidence['elapsed_seconds']} 秒"
+            require(type(mapping['detected_hits']) is int
+                    and 0 <= mapping['detected_hits'] <= ticks
+                    and (mapping['last_grid_count'] is None
+                         or type(mapping['last_grid_count']) is int and mapping['last_grid_count'] >= 0),
+                    'observe map hits mismatch')
+            map_proof = f"；地图 {mapping['mode']} 命中 {mapping['detected_hits']}/{ticks}"
+        else:
+            map_proof = ''
+        return (f"{ticks} tick；抓帧 {capture['succeeded']}/{capture['attempts']}；错误 0；"
+                f"{evidence['elapsed_seconds']} 秒{map_proof}")
     if kind == 'periodic_plan':
         plans = evidence['plans']
         require(evidence['missing'] == [] and evidence['count'] == len(plans) > 0,

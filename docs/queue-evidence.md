@@ -14,6 +14,7 @@
 | `20260923T144841` | 只读设备；宿主 1 / 设备配置 1 | 6.4 秒 |
 | `20260923T144906` | 动作授权；宿主 1 / 设备配置 1 | 21.4 秒 |
 | `20260923T145245` | 动作授权；宿主 1 / 设备配置 1 | 7.7 秒 |
+| `20260923T154407` | 只读设备；宿主 1 / 设备配置 1 | 5.5 秒 |
 
 | 归档 / 任务 | 任务域 | 已核对事实 |
 | --- | --- | --- |
@@ -26,9 +27,12 @@
 | `20260923T145245/reward-plan` | `periodic_plan` | 上游绑定 4 项；请求 reward 已找到 |
 | `20260923T145245/reward` | `periodic_run` | 上游 AzurLaneAutoScript.reward；decision=ran；native_success=true |
 | `20260923T145245/after-reward` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
+| `20260923T154407/live-state` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
+| `20260923T154407/observe-map` | `observe` | 6 tick；抓帧 6/6；错误 0；3.001 秒；地图 main 命中 0/6 |
 
 来源目录（项目相对路径，原件不入库）：
 
 - `data/mainline-device/20260923T144841-observe/artifacts/20260923T144841`
 - `data/mainline-device/20260923T144905-navigate/artifacts/20260923T144906`
 - `data/mainline-device/20260923T145244-reward/artifacts/20260923T145245`
+- `data/mainline-device/20260923T154407-observe_map/artifacts/20260923T154407`

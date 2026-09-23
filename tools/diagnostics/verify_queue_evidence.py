@@ -22,6 +22,9 @@ def main():
     observed = next(run for run in runs if any(t['kind'] == 'account_state' for t in run['queue.json']['tasks']))
     navigated = next(run for run in runs if any(t['kind'] == 'navigate' for t in run['queue.json']['tasks']))
     periodic = next(run for run in runs if any(t['kind'] == 'periodic_run' for t in run['queue.json']['tasks']))
+    mapped = next(run for run in runs if any(
+        run[audit.basename(row['artifact'])].get('evidence', {}).get('map_mode') == 'main'
+        for row in run['queue.json']['tasks']))
     checks = ['real archives + generated report']
 
     def rejected(name, run, change, expected):
@@ -44,6 +47,7 @@ def main():
     account_file = task_file(observed, 'account_state')
     plan_file = task_file(periodic, 'periodic_plan')
     periodic_file = task_file(periodic, 'periodic_run')
+    mapped_file = task_file(mapped, 'observe')
     rounds_file = next(audit.basename(row['artifact']) for row in navigated['queue.json']['tasks']
                        if row['kind'] == 'navigate' and navigated[audit.basename(row['artifact'])]['input'].get('rounds') == 2)
     rejected('missing task', observed, lambda r: r.pop(observed_file), 'missing or unindexed')
@@ -53,6 +57,10 @@ def main():
              lambda r: r[observed_file]['evidence']['capture'].update(attempts=7), 'counts mismatch')
     rejected('short observation', observed,
              lambda r: r[observed_file]['evidence'].update(elapsed_seconds=0.1), 'duration mismatch')
+    rejected('map mode differs from request', mapped,
+             lambda r: r[mapped_file]['evidence']['map'].update(mode='os'), 'observe map counts mismatch')
+    rejected('map hits exceed attempts', mapped,
+             lambda r: r[mapped_file]['evidence']['map'].update(detected_hits=7), 'observe map hits mismatch')
     rejected('account uses stored frame', observed,
              lambda r: r[account_file]['evidence'].update(source='screenshot_load'), 'capture provenance')
     rejected('account detected no page', observed,
