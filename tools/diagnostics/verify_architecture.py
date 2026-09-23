@@ -72,6 +72,30 @@ def campaign_shims_installed() -> list[str]:
     return []
 
 
+def shims_all_called() -> list[str]:
+    """每个 `apply_*` 垫片**都得有人在调**（不只是定义在那里）。
+
+    上一节只管战役入口那七个；这一节推广成一般性质：**"定义着但没人调"就是死代码**，
+    而它失效的方式恰恰是静默的（`IN_MAP` 那次：阈值差 0.19，真机白等 62 秒）。
+
+    判据：对每个 `def apply_*`，在**非 def 行**里必须能找到它的调用。
+    """
+    path = ROOT / "tools" / "alas_vision.py"
+    if not path.is_file():
+        return ["缺少 tools/alas_vision.py"]
+    lines = path.read_text(encoding="utf-8").splitlines()
+    defined = [line[len("def "):].split("(")[0].strip()
+               for line in lines if line.startswith("def apply_")]
+    if not defined:
+        return ["alas_vision.py 里一个 apply_* 垫片都没有（全被删了？）"]
+    calls = "\n".join(line for line in lines if not line.startswith("def "))
+    unused = [name for name in defined if f"{name}(" not in calls]
+    if unused:
+        return [f"这些垫片定义了但**没人调用**：{unused}"
+                "（垫片没人调不会报错，只会在真机上静默失效）"]
+    return []
+
+
 def task_domain_registration() -> list[str]:
     """每个任务域都必须在 CLI 里注册（否则队列只会报"没有注册运行器"然后失败）。
 
@@ -227,6 +251,7 @@ def main() -> int:
     problems.extend(contract_consistency())
     problems.extend(task_domain_registration())
     problems.extend(campaign_shims_installed())
+    problems.extend(shims_all_called())
     problems.extend(device_checklist_integrity())
 
     roadmap = read("docs/architecture-roadmap.md")
