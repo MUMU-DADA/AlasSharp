@@ -78,6 +78,7 @@ STEPS = [
     ('r3_map_data_init.py', 'R3 第一项上游轨迹（map_data_init 逐章形态）', False, 300),
     ('r3_candidates.py', 'R3 候选排序（原生钩子覆盖，重建 r3-candidates.md）', False, 300),
     ('verify_in_map_shim.py', 'IN_MAP 阈值垫片（上游判不出 / 垫片后判得出 / 没无脑放宽）', False, 300),
+    ('verify_device_backends.py', '截图后端对照(须过三条成功判据; 耗时只在帧有效时计入)', True, 900),
     ('verify_cli_errors.py', 'CLI 错误路径与退出码契约（0/1/2 三档 + 文案可读）', False, 600),
     ('verify_cli_evidence.py', 'CLI [任务证据] 行（战役/账号状态/大世界三域）', False, 600),
     ('verify_config_get.py', '配置开关域（独立对拍 + 缺失≠false + 空输入记 skipped）', False, 300),
