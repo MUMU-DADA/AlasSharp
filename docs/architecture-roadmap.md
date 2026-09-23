@@ -184,7 +184,7 @@
 | **区分成功与撤退** | 任务结论 + `error_kind` 如实分类：撤退/战败/说不清 → `error_kind=none`（"跑了但没通关"），只有真的报错才 `upstream_error` | `verify_runtime.py` 的 `queue_withdrawn_is_failed_without_error_kind` |
 | 无设备 dry-run | 全套离线验收不需要设备；`device_smoke.py` 在没有设备时显式跳过 | `verify_all.py --docs-only`（1.7 分钟，0 步异常） |
 
-**界面已做出第一屏（静态单文件 HTML，见 `tools/report_html.py` 与 `verify_report_html.py`：不丢事实 / 单文件自足 / 缺工件也能看）；交互与框架选型仍未做**：路线的意思是"前端读取结构化运行时模型"，而模型（`report --json`、`queue.json`、
+**界面已做出第一屏（静态单文件 HTML，见 `tools/report_html.py` 与 `verify_report_html.py`：不丢事实 / 单文件自足 / 缺工件也能看）；交互已做 1-3 级、第 4 级按需；框架选型已决定"暂不引入"（见文末附二）**：路线的意思是"前端读取结构化运行时模型"，而模型（`report --json`、`queue.json`、
 `state.json`、生成式文档）已经就绪；选型与实现在 R1/R2 稳定、且能真机演示之后再谈 —— 现在没有设备，
 做出来也无法验收。
 
