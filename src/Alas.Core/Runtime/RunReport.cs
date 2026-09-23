@@ -422,12 +422,13 @@ public sealed class RunReport
     /// </summary>
     public static JsonObject Summarize(string artifactsRoot, int limit)
     {
+        if (limit <= 0) throw new ArgumentOutOfRangeException(nameof(limit), "运行列表上限必须为正整数");
         var runs = new JsonArray();
         var directories = Directory.Exists(artifactsRoot)
             ? Directory.GetDirectories(artifactsRoot)
                 .Where(IsRunDirectory)          // 与 LatestRun 同一口径：只认真正的运行目录
                 .OrderByDescending(d => Path.GetFileName(d), StringComparer.Ordinal)
-                .Take(Math.Max(1, limit))
+                .Take(limit)
             : Enumerable.Empty<string>();
         foreach (var directory in directories)
         {

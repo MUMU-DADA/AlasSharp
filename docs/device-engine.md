@@ -135,6 +135,9 @@ DeviceController 暴露 CaptureViaEngine() / ConfigureEngineDevice()；
 alashub capture --adb <adb> --serial 127.0.0.1:16384 --screenshot droidcast --control ADB --repeat 3
 `
 
+`capture --repeat` 必须是正整数；零、负数、非数字或缺值在设备初始化前按输入错误拒绝。
+`CaptureCheck.Run` 的直接调用也拒绝非正数，不会再把 `0` 静默抬成一次截图。
+
 意义：**换截图/输入后端不改 C# 代码**（只改 --screenshot / --control），
 这正是"设备 I/O 走宿主"（方案 A）要的效果。
 

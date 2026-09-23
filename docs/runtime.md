@@ -66,7 +66,11 @@ CLI（`alashub campaign`）现在只做三件事：解析参数 → `AlasSession
 ```powershell
 alashub report --run <运行目录> [--json <报告.json>]
 alashub report --artifacts <工件根目录>        # 取最新一次运行
+alashub runs --artifacts <工件根目录> [--limit 10] [--json <列表.json>]
 ```
+
+`runs --limit` 必须是正整数；缺值、无效数值和未知参数按输入错误返回 2，不会静默改成
+1 或默认 10。`RunReport.Summarize` 的直接调用也执行同一范围约束。
 
 报告做两件事，都是**只读**（不跑游戏、不改工件、不重判通关）：
 

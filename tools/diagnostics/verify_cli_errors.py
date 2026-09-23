@@ -339,6 +339,66 @@ def main() -> int:
                        and 'queue --file' in observation_out and not run_artifacts.exists(),
                        f'rc={observation.returncode} artifacts={run_artifacts.exists()}'))
 
+        # 报告列表只读，但坏 limit 不能被抬成 1 或退回默认值。
+        runs_root = tmpdir / 'runs-input'
+        for stamp in ('20260101000000', '20260101000001', '20260101000002'):
+            run_dir = runs_root / stamp
+            run_dir.mkdir(parents=True)
+            (run_dir / 'queue.json').write_text(
+                json.dumps({'outcome': 'dry_run', 'dry_run': True, 'tasks': []}),
+                encoding='utf-8')
+        runs_json = tmpdir / 'runs-valid.json'
+        valid_runs = run(EXE, 'runs', '--artifacts', str(runs_root),
+                         '--limit', '2', '--json', str(runs_json))
+        valid_runs_data = (json.loads(runs_json.read_text(encoding='utf-8'))
+                           if runs_json.is_file() else {})
+        checks.append(('runs 有效上限只列指定条数',
+                       valid_runs.returncode == 0 and valid_runs_data.get('returned') == 2,
+                       f'rc={valid_runs.returncode} returned={valid_runs_data.get("returned")}'))
+        for name, tail, error in (
+            ('zero', ('--limit', '0'), '--limit 必须为正整数'),
+            ('negative', ('--limit', '-3'), '--limit 必须为正整数'),
+            ('non-number', ('--limit', 'abc'), '--limit 必须为正整数'),
+            ('missing-limit', ('--limit',), '--limit 缺少参数值'),
+            ('missing-artifacts', ('--artifacts', '--limit', '2'), '--artifacts 缺少参数值'),
+            ('unknown', ('--bogus',), 'runs 未知参数'),
+        ):
+            result = run(EXE, 'runs', '--artifacts', str(runs_root), *tail)
+            output = (result.stdout or '') + (result.stderr or '')
+            checks.append((f'runs {name} → 输入错误',
+                           result.returncode == 2 and error in output,
+                           f'rc={result.returncode} out={output[-150:]!r}'))
+
+        # capture 的坏 repeat 必须在设备/宿主初始化之前拒绝；这里没有可用设备。
+        for name, tail, error in (
+            ('zero', ('--repeat', '0'), '--repeat 必须为正整数'),
+            ('negative', ('--repeat', '-2'), '--repeat 必须为正整数'),
+            ('non-number', ('--repeat', 'abc'), '--repeat 必须为正整数'),
+            ('missing', ('--repeat',), '--repeat 缺少参数值'),
+            ('unknown', ('--bogus',), 'capture 未知参数'),
+        ):
+            result = run(EXE, 'capture', '--adb', 'offline-adb',
+                         '--serial', 'offline-device', *tail, timeout=30)
+            output = (result.stdout or '') + (result.stderr or '')
+            checks.append((f'capture {name} → 不接触设备',
+                           result.returncode == 2 and error in output
+                           and '[device' not in output and '[engine' not in output,
+                           f'rc={result.returncode} out={output[-150:]!r}'))
+
+        for name, tail, error in (
+            ('zero', ('--limit', '0'), '--limit 必须为正整数'),
+            ('negative', ('--limit', '-2'), '--limit 必须为正整数'),
+            ('non-number', ('--limit', 'abc'), '--limit 必须为正整数'),
+            ('missing', ('--limit',), '--limit 缺少参数值'),
+            ('unknown', ('--bogus',), 'vision 未知参数'),
+        ):
+            result = run(EXE, 'vision', *tail, timeout=30)
+            output = (result.stdout or '') + (result.stderr or '')
+            checks.append((f'vision {name} → 宿主启动前拒绝',
+                           result.returncode == 2 and error in output
+                           and '启动耗时' not in output,
+                           f'rc={result.returncode} out={output[-150:]!r}'))
+
     print('=== CLI 错误路径与退出码契约 ===')
     for name, ok, detail in checks:
         print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))

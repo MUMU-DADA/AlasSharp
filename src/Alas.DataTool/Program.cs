@@ -161,25 +161,25 @@ internal static class Program
                     switch (args[i])
                     {
                         case "--folder-prefix":
-                            prefix = RequirePlanQueueValue(args, ref i, "--folder-prefix");
+                            prefix = RequireOptionValue(args, ref i, "--folder-prefix");
                             break;
                         case "--out":
-                            outPath = RequirePlanQueueValue(args, ref i, "--out");
+                            outPath = RequireOptionValue(args, ref i, "--out");
                             break;
                         case "--limit":
-                            limit = ParsePositivePlanQueueInt(args, ref i, "--limit");
+                            limit = ParsePositiveIntOption(args, ref i, "--limit");
                             break;
                         case "--max-rounds":
-                            maxRounds = ParsePositivePlanQueueInt(args, ref i, "--max-rounds");
+                            maxRounds = ParsePositiveIntOption(args, ref i, "--max-rounds");
                             break;
                         case "--max-seconds":
-                            maxSeconds = ParsePositivePlanQueueDouble(args, ref i, "--max-seconds");
+                            maxSeconds = ParsePositiveDoubleOption(args, ref i, "--max-seconds");
                             break;
                         // 全局路径参数已在入口预解析；这里仍要消费它们，避免被
                         // plan-queue 的专用参数校验误报为未知参数。
                         case "--data":
                         case "--repo":
-                            RequirePlanQueueValue(args, ref i, args[i]);
+                            RequireOptionValue(args, ref i, args[i]);
                             break;
                         case "--only-complete":
                             onlyComplete = true;
@@ -220,11 +220,26 @@ internal static class Program
                 // R4 数据面：列出工件根目录下最近的运行（摘要），详情用 report --run。
                 string runsRoot = Path.Combine(dataDir, "runs"), runsJson = "";
                 int runsLimit = 10;
-                for (int i = 1; i < args.Length - 1; i++)
+                for (int i = 1; i < args.Length; i++)
                 {
-                    if (args[i] == "--artifacts") runsRoot = args[i + 1];
-                    if (args[i] == "--json") runsJson = args[i + 1];
-                    if (args[i] == "--limit" && int.TryParse(args[i + 1], out int n)) runsLimit = n;
+                    switch (args[i])
+                    {
+                        case "--artifacts":
+                            runsRoot = RequireOptionValue(args, ref i, "--artifacts");
+                            break;
+                        case "--json":
+                            runsJson = RequireOptionValue(args, ref i, "--json");
+                            break;
+                        case "--limit":
+                            runsLimit = ParsePositiveIntOption(args, ref i, "--limit");
+                            break;
+                        case "--data":
+                        case "--repo":
+                            RequireOptionValue(args, ref i, args[i]);
+                            break;
+                        default:
+                            throw new ArgumentException($"runs 未知参数: {args[i]}");
+                    }
                 }
                 var summary = Alas.Runtime.RunReport.Summarize(runsRoot, runsLimit);
                 Console.WriteLine($"[运行列表] {summary["artifacts_root"]}（存在={summary["exists"]}，"
@@ -317,13 +332,32 @@ internal static class Program
                 string toolsDir5 = paths.ToolsDirectory;
                 string? capAdb = null, capSerial = null, capShot = "scrcpy", capCtrl = "MaaTouch";
                 int capRepeat = 3;
-                for (int i = 1; i < args.Length - 1; i++)
+                for (int i = 1; i < args.Length; i++)
                 {
-                    if (args[i] == "--adb") capAdb = args[i + 1];
-                    if (args[i] == "--serial") capSerial = args[i + 1];
-                    if (args[i] == "--screenshot") capShot = args[i + 1];
-                    if (args[i] == "--control") capCtrl = args[i + 1];
-                    if (args[i] == "--repeat" && int.TryParse(args[i + 1], out int n)) capRepeat = n;
+                    switch (args[i])
+                    {
+                        case "--adb":
+                            capAdb = RequireOptionValue(args, ref i, "--adb");
+                            break;
+                        case "--serial":
+                            capSerial = RequireOptionValue(args, ref i, "--serial");
+                            break;
+                        case "--screenshot":
+                            capShot = RequireOptionValue(args, ref i, "--screenshot");
+                            break;
+                        case "--control":
+                            capCtrl = RequireOptionValue(args, ref i, "--control");
+                            break;
+                        case "--repeat":
+                            capRepeat = ParsePositiveIntOption(args, ref i, "--repeat");
+                            break;
+                        case "--repo":
+                        case "--data":
+                            RequireOptionValue(args, ref i, args[i]);
+                            break;
+                        default:
+                            throw new ArgumentException($"capture 未知参数: {args[i]}");
+                    }
                 }
                 if (capAdb is null || capSerial is null)
                 {
@@ -393,10 +427,26 @@ internal static class Program
                 fixture ??= Path.Combine(dataDir, "fixtures", "imaging.json");
                 int limit = 200;
                 string mode = Environment.GetEnvironmentVariable("ALAS_VISION_MODE") ?? "worker";
-                for (int i = 1; i < args.Length - 1; i++)
+                for (int i = 1; i < args.Length; i++)
                 {
-                    if (args[i] == "--limit" && int.TryParse(args[i + 1], out int n)) limit = n;
-                    if (args[i] == "--mode") mode = args[i + 1];
+                    switch (args[i])
+                    {
+                        case "--limit":
+                            limit = ParsePositiveIntOption(args, ref i, "--limit");
+                            break;
+                        case "--mode":
+                            mode = RequireOptionValue(args, ref i, "--mode");
+                            break;
+                        case "--fixture":
+                            fixture = RequireOptionValue(args, ref i, "--fixture");
+                            break;
+                        case "--data":
+                        case "--repo":
+                            RequireOptionValue(args, ref i, args[i]);
+                            break;
+                        default:
+                            throw new ArgumentException($"vision 未知参数: {args[i]}");
+                    }
                 }
                 // bin/Release/net10.0 -> csharp/tools
                 string toolsDir = paths.ToolsDirectory;
@@ -427,16 +477,16 @@ internal static class Program
         return 2;
     }
 
-    private static string RequirePlanQueueValue(string[] args, ref int index, string option)
+    private static string RequireOptionValue(string[] args, ref int index, string option)
     {
         if (index + 1 >= args.Length || args[index + 1].StartsWith("--", StringComparison.Ordinal))
             throw new ArgumentException($"{option} 缺少参数值");
         return args[++index];
     }
 
-    private static int ParsePositivePlanQueueInt(string[] args, ref int index, string option)
+    private static int ParsePositiveIntOption(string[] args, ref int index, string option)
     {
-        string value = RequirePlanQueueValue(args, ref index, option);
+        string value = RequireOptionValue(args, ref index, option);
         if (!int.TryParse(value, System.Globalization.NumberStyles.Integer,
                           System.Globalization.CultureInfo.InvariantCulture, out int parsed)
             || parsed <= 0)
@@ -444,9 +494,9 @@ internal static class Program
         return parsed;
     }
 
-    private static double ParsePositivePlanQueueDouble(string[] args, ref int index, string option)
+    private static double ParsePositiveDoubleOption(string[] args, ref int index, string option)
     {
-        string value = RequirePlanQueueValue(args, ref index, option);
+        string value = RequireOptionValue(args, ref index, option);
         if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
                              System.Globalization.CultureInfo.InvariantCulture, out double parsed)
             || !double.IsFinite(parsed) || parsed <= 0)

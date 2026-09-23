@@ -33,6 +33,7 @@ internal static class VisionCheck
 
     public static int Run(string fixturePath, string forkDir, string toolsDir, int limit, string mode)
     {
+        if (limit <= 0) throw new ArgumentOutOfRangeException(nameof(limit), "用例上限必须为正整数");
         if (!File.Exists(fixturePath))
             return Fail($"基准不存在: {fixturePath}\n先跑 tools/make_imaging_fixture.py");
 

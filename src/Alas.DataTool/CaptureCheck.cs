@@ -19,6 +19,7 @@ internal static class CaptureCheck
     public static int Run(string adbPath, string serial, string forkDir, string toolsDir,
                           string screenshot = "adb", string control = "ADB", int repeat = 3)
     {
+        if (repeat <= 0) throw new ArgumentOutOfRangeException(nameof(repeat), "截图次数必须为正整数");
         using IVisionEngine vision = InProcessVisionEngine.StartFromAlasFork(forkDir, toolsDir);
         var adb = new ProcessAdbTransport(adbPath);
         var device = new DeviceController(adb, vision, serial);
@@ -44,7 +45,7 @@ internal static class CaptureCheck
         // B 路：引擎截图（多次取中位）
         var times = new List<double>();
         string hits = "";
-        for (int i = 0; i < Math.Max(repeat, 1); i++)
+        for (int i = 0; i < repeat; i++)
         {
             var r = device.CaptureViaEngine(raw: true);
             if (r.Error is not null)

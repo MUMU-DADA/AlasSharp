@@ -217,6 +217,8 @@ dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
 & $py tools\make_imaging_fixture.py --repo $alas
 .\src\Alas.DataTool\bin\Release\net10.0\alashub.exe vision --repo $alas
 
+# 可选 --limit N；N 必须是正整数，输入错误在启动宿主前拒绝
+
 # 4) 查看某个关卡被理解成了什么
 .\src\Alas.DataTool\bin\Release\net10.0\alashub.exe show campaign_main/campaign_1_1.py
 ```
