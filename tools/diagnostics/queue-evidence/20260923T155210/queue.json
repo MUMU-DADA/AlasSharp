@@ -1,0 +1,38 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 7.9,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "dorm-plan",
+      "kind": "periodic_plan",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/20260923T155210-dorm/artifacts/20260923T155210/task-dorm-plan.json"
+    },
+    {
+      "id": "dorm",
+      "kind": "periodic_run",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 7.4,
+      "artifact": "<project>/data/mainline-device/20260923T155210-dorm/artifacts/20260923T155210/task-dorm.json"
+    },
+    {
+      "id": "after-dorm",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/20260923T155210-dorm/artifacts/20260923T155210/task-after-dorm.json"
+    }
+  ]
+}

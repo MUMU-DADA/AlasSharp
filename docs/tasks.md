@@ -254,7 +254,7 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 - 账号状态 `capture=true` 与 `IN_MAP` 现场复核已有设备窗口记录，见 `handover-r0-r2.md` 第五节与第八节补充六。
 - 队列已有 CLI 入口和静态 HTML 证据视图；统一配置、任务和运行控制前端仍未交付。
 - 大世界目前为只读探针，活动为清点/生成队列；完整动作流程仍需各域自己的真实产品路径验证。
-- 周期任务已接通通用执行入口，dorm/reward 有真机证据；其余执行路径不能据此视为已验证。
+- 周期任务已接通通用执行入口，reward 与 dorm 的原生调度有真机证据；dorm 本次没有收取点击，领取效果及其余执行路径不能据此视为已验证。
 - 观测已进入任务队列，完成离线故障/取消回归与只读真机抓帧/识页验证；`map=main` 仅有主界面零命中的现场负样本，地图内正样本及其他后端不据此外推。
 
 ## 周期任务调度状态（第六个域，只读；已实现并验收）
@@ -670,6 +670,17 @@ Mission collect finished
 本机原始日志、配置前后快照在忽略目录 `data/mainline-device/20260923T145244-reward`，
 脱敏队列、逐任务、断点和会话证据见 `docs/queue-evidence.md`，账号配置已按原始字节恢复；
 点击 OIL/COIN 的控制台原件没有入库，归档只证明结构化调度与返回结果。此样本不证明其他周期域可运行。
+
+新队列入口还以 `dorm` 跑了仅收取配置：`Dorm_Feed=false`、`Dorm_Collect=true`、
+`BuyFurniture_Enable=false`。`periodic_plan` 找到上游 `Dorm` 绑定；`periodic_run` 经
+`AzurLaneAutoScript.dorm` 返回 `decision=ran`、`native_success=true`；后续实时抓帧识别到
+`page_dorm`。原始控制台日志显示从主页进入宿舍、进入 `DORM COLLECT`，随后上游报告
+`Dorm collect timeout`，未记录 `DORM_QUICK_COLLECT` 点击；OCR 读到宿舍舰船 `0/2`。
+因此只验证了原生调度、宿舍导航与空宿舍状态下的返回，**没有证明实际领取资源**。
+原件留在忽略目录 `data/mainline-device/20260923T155210-dorm`；脱敏工件见
+`docs/queue-evidence.md`。本次上游写入的调度时间在探针结束后按运行前配置原字节恢复。
+历史家具币不足不代表当前仍不足，不能用它推断开启 `BuyFurniture_Enable` 不会消费资源。
+
 当前产品路径先检查会话授权：会话未授权记前置条件不满足，
 非 required 任务为 `skipped`、required 任务为 `failed`；两者都没有开始执行。
 已授权会话中，宿主返回的 `denied` 仍带原因及 `constructed`/`ran` 证据。

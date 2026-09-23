@@ -102,7 +102,8 @@
 1. 大世界目前是只读探针；活动目前是清点与队列生成。完整动作流程仍需逐域接通并提供真实产品路径证据。
 2. 账号状态当场抓帧和 `IN_MAP` 现场核对已有设备窗口记录（见交接文档第五节与第八节补充六）；
    周期任务执行已有 dorm/reward 两条历史真机路径；通用执行器现已改为复用上游 Scheduler.Command、
-   任务绑定和原生 dispatcher，离线覆盖 reward / opsi / event；新队列入口已真实执行 `reward` 一次，其余周期执行路径仍待逐域验证。
+   任务绑定和原生 dispatcher，离线覆盖 reward / opsi / event；新队列入口已真实执行 `reward` 与
+   `dorm` 的仅收取配置。`dorm` 到达宿舍并完成原生调度，但本次收取超时且无收取点击，不能证明资源领取成功；其余周期执行路径仍待逐域验证。
 3. `docs/tasks.md` 记录了每域必须带的四件套；未满足门槛时不进入下一个域。
 
 **实现与验证清单（十类业务任务，另有通用导航与观测）**：
@@ -118,7 +119,7 @@
 | 7 | 周期任务勘察（跑谁） | 只读 | `verify_periodic_plan.py`（独立对拍 + 不 import 目标模块） |
 | 8 | 周期任务放行判定（放不放） | 只读（**永不执行**） | `verify_periodic_plan.py`（四条路径 + executes 恒 False） |
 | 9 | 配置开关（授权前的花费开关留档） | 只读 | `verify_config_get.py`（独立对拍 + 缺失≠false） |
-| 10 | **周期任务执行**（执行环；产品路径 kind=periodic_run） | **动作**（会话授权 + 宿主两道闸 + 上游原生 dispatcher） | `verify_periodic_plan.py`（任务目录解析、绑定、跨调用形态、TaskEnd/False/SystemExit、设备恢复）+ 原生 dispatcher 的 `reward` 队列真机样本；其他域未覆盖 |
+| 10 | **周期任务执行**（执行环；产品路径 kind=periodic_run） | **动作**（会话授权 + 宿主两道闸 + 上游原生 dispatcher） | `verify_periodic_plan.py`（任务目录解析、绑定、跨调用形态、TaskEnd/False/SystemExit、设备恢复）+ 原生 dispatcher 的 `reward` 与 `dorm` 队列真机样本；`dorm` 的资源领取效果和其他域未覆盖 |
 | 通用 | 页面导航 `navigate` | 动作 | `verify_runtime.py`、`navigate_cases.json` + `docs/queue-evidence.md` 的新队列入口往返/多轮真机样本 |
 | 通用 | 观测 `observe` | 只读设备任务 | `verify_runtime.py`、`observe_cases.json` + `docs/queue-evidence.md` 的 6 tick / 4 tick 新队列入口真机样本 |
 

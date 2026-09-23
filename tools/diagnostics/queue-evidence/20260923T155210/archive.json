@@ -1,0 +1,26 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/20260923T155210-dorm/artifacts/20260923T155210",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "4c7919c9370cf21d65b382c5991fe522c25aa86c33a64ef24d9cf82901896991",
+    "state.json": "41a96194ec939ec67f7be47c9a5142847822d271a1978aafcb5cf100808aa900",
+    "session-log.jsonl": "26eeb2365f31b50bcdc294fbaf07d462012b979ce345906b1d32fcc35d759159",
+    "task-after-dorm.json": "6268ab397ec264705e12fcb0b42d4545a3c5e3e652847649996145011caadb0e",
+    "task-dorm-plan.json": "fadaed3e3e27a9623cecf9fd4146f923d8eb3bacd7e8295048e347eed2088608",
+    "task-dorm.json": "25f39118cb047d660b238b89b4e19c822da89aaa1e056c5200d3eade91485588"
+  },
+  "files": {
+    "queue.json": "624d1063a3caea46b58138f3cc21aa39addb9d1aab0074111bca3422bfd1f354",
+    "state.json": "1a771c396270fbdd23b3aedda8eac0d25e155bef3efc3c2495afd41439b8458b",
+    "session-log.jsonl": "c8e2f9ae3696b52400d8cd21912b4a0058fc55fe0ae4e2d750f2c84d5e52b8e4",
+    "task-after-dorm.json": "cba4c1f5a7b71907470355d5105417f8f1cb8b0e130315b6beedae62a635d3e5",
+    "task-dorm-plan.json": "6559aba21d6d59346648e730202cbeaf8ac6333648acea731a6da168fabad5e3",
+    "task-dorm.json": "db2cca56fd4f15207494409ebf70a7dd736edabdd92e9e58f703be1a1deb6cc5"
+  }
+}
