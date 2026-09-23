@@ -926,6 +926,55 @@ def op_periodic_plan(args):
     }
 
 
+def op_periodic_preflight(args):
+    """周期任务执行的**放行判定**（两道闸），**不执行任何游戏动作**。
+
+    为什么先做闸门而不是执行（`docs/tasks.md`"周期任务的动作半边"）：查代码发现连"收委托"
+    都有花费路径（油满买食物），所以执行入口必须是**按任务显式授权**，不能"授权一次全能跑"。
+    闸门可以先做好、先测好，执行留到有真实授权时再接 —— 风险面先被钉住。
+
+    两道闸（缺一不放行）：
+      1. `allow_actions=true` —— 运行时的动作总开关；
+      2. `confirm` **与 `task` 完全一致** —— 防手滑、防脚本误传（"要跑 reward" 就得把
+         reward 写两遍，而不是点一下"同意"）。
+
+    返回 `decision`（allowed / denied）、`reason`，以及**勘察结果**（会去跑哪个类、哪一行）——
+    即"放行了的话将要去跑什么"必须随放行一起被看见。
+    **本 op 永不执行**：`executes` 恒为 false；真正的执行是另一个 op 的职责。
+    """
+    task = str(args.get('task') or '').strip()
+    allow_actions = bool(args.get('allow_actions'))
+    confirm = str(args.get('confirm') or '').strip()
+
+    out = {'task': task, 'allow_actions': allow_actions, 'confirm_matches': confirm == task,
+           'executes': False,
+           'note': '本 op 只做放行判定与勘察，不执行任何游戏动作；执行由单独的 op 负责'}
+    if not task:
+        out['decision'] = 'denied'
+        out['reason'] = '缺少 task（上游任务名，如 reward）'
+        return out
+    if not allow_actions:
+        out['decision'] = 'denied'
+        out['reason'] = '未授权：需要显式 allow_actions=true（周期任务可能消耗账号资源）'
+        return out
+    if confirm != task:
+        out['decision'] = 'denied'
+        out['reason'] = '二次确认不匹配：confirm 必须与 task 完全一致（收到 confirm=%r，task=%r）' % (
+            confirm, task)
+        return out
+
+    plan = op_periodic_plan({'task': task})
+    out['plan'] = plan
+    if plan.get('found') is not True:
+        out['decision'] = 'denied'
+        out['reason'] = f'任务名在上游 alas.py 里找不到：{task}'
+        return out
+    out['decision'] = 'allowed'
+    out['reason'] = ('两道闸都通过；放行后将会执行：' + '; '.join(plan.get('imports') or [])
+                     + f"（alas.py 第 {plan.get('lineno')} 行）")
+    return out
+
+
 def _asset_id_map():
     """id(Button 对象) -> '子模块/资产名'，实时扫描已导入的 module.*.assets。
 
@@ -2990,6 +3039,7 @@ OPS = {
     'task_catalog': op_task_catalog,
     'task_schedule': op_task_schedule,
     'periodic_plan': op_periodic_plan,
+    'periodic_preflight': op_periodic_preflight,
     'ui_page_graph': op_ui_page_graph,
     'cached_rule_check': op_cached_rule_check,
     'page_positive_control': op_page_positive_control,
