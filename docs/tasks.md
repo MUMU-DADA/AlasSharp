@@ -564,3 +564,38 @@ def run(self):
   "家具币不足"、购买未完成 —— 那属于**账号资源状态**，不是功能缺陷；
 * 因此结论词应当是能表达"跑到了、但结果由资源状态决定"的那种，而不是简单的 succeeded/failed；
   证据里要留下"走到了哪一步"（复用 `periodic_plan` 的勘察输出 + 运行期步骤）。
+
+#### 执行环：第一次真机跑（2026-09-23，按本人给的验收口径）
+
+**结论：购买家具闭环成立**（走到"发起购买"即算，家具币不足属账号资源状态）。
+
+调用与结果：
+
+```
+op_periodic_run(task="dorm", allow_actions=true, confirm="dorm",
+                overrides={"BuyFurniture_Enable": true})
+→ decision=ran  target={module.dorm.dorm, RewardDorm}
+  constructed=True  ran=True  elapsed_s=13.6
+```
+
+上游日志（真机）里的关键行：
+
+```
+There is a time-limited furniture available
+[OCR_DORM_FURNITURE_COIN] 144
+Click ( 935,  643) @ DORM_FURNITURE_BUY_ALL          ← **发起了购买**
+[OCR_DORM_FURNITURE_PRICE] 1360
+Not enough furniture coin, purchase is over          ← 144 < 1360，游戏侧中止
+Fallback to dorm_page
+```
+
+**三条如实说明**：
+
+1. **配置没有被我们改写**：`overrides` 只作用于本次构造出来的 config 对象（内存内），
+   磁盘上的 `config/alas.json` 不含我们打开的开关 —— 但**上游任务自己会写调度状态**
+   （`RewardDorm` 运行完调用 `config.task_delay()`，日志里可见
+   `Save config ./config/alas.json, Alas.Scheduler.NextRun=…`），这是上游既有行为；
+2. **本次只跑到"发起购买"**：因为家具币不足，购买未完成 —— 这正是本人口径认可的结果；
+   要在资源充足时看完整购买（含确认弹窗与返回），需账号有足够家具币；
+3. **执行入口的两道闸已验**（未授权/确认不匹配/任务名不存在/缺 task → 全部 denied 且未发生任何执行），
+   真机跑通的是"两闸都通过"的那条路径。

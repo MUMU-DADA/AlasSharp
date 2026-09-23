@@ -1070,7 +1070,12 @@ def op_periodic_run(args):
     try:
         module = importlib.import_module(module_name)
         cls = getattr(module, class_name)
-        config = _azur_lane_config('alas')
+        from module.config.config import AzurLaneConfig
+        config = AzurLaneConfig('alas')
+        # **内存内覆盖**：调用方可以只为这一次运行改配置（如打开 BuyFurniture_Enable），
+        # **不写回配置文件** —— 用户的账号设置不因为我们跑一次而被改动。
+        for key, value in (args.get('overrides') or {}).items():
+            setattr(config, key, value)
         device = _device_engine()
         instance = cls(config=config, device=device)
         out['constructed'] = True
