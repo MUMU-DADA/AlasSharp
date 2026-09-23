@@ -1184,6 +1184,8 @@ def op_periodic_run(args):
         failure = _LoggedNativeFailure()
         logger.addHandler(failure)
         try:
+            if method_name.startswith('opsi_'):
+                apply_os_combat_reentry_compat()
             native_success = runner.run(method_name)
         finally:
             logger.removeHandler(failure)
@@ -1727,6 +1729,30 @@ def apply_auto_search_skip_compat():
 
         setattr(cls, 'handle_auto_search', _handle_auto_search)
         cls._alas_autosearch_compat = True
+
+
+def apply_os_combat_reentry_compat():
+    """Restore AzurPilot's OS auto-search handoff when combat starts between screenshots.
+
+    The ALAS host only checks loading and preparation in combat_appear(); AzurPilot
+    commit 257bef255d also checks is_combat_executing(). Keep the original checks
+    and map exclusion, then use that detector for the missed transition.
+    """
+    from module.os_combat.combat import Combat as OSCombat
+
+    if getattr(OSCombat, '_alas_combat_reentry_compat', False):
+        return
+    original = OSCombat.combat_appear
+
+    def combat_appear(self):
+        if original(self):
+            return True
+        if self.is_in_map():
+            return False
+        return bool(self.is_combat_executing())
+
+    OSCombat.combat_appear = combat_appear
+    OSCombat._alas_combat_reentry_compat = True
 
 
 def apply_fleet_bar_compat():

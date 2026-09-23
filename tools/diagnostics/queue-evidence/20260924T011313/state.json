@@ -1,0 +1,126 @@
+{
+  "completed": {
+    "enter-os": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_os",
+          "rounds": 1
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "os-map": {
+      "identity": {
+        "kind": "os_state",
+        "required": true,
+        "input": {
+          "capture": true,
+          "detect": "map"
+        },
+        "preceding_tasks": [
+          {
+            "id": "enter-os",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_os",
+              "rounds": 1
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "os-page": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "enter-os",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_os",
+              "rounds": 1
+            }
+          },
+          {
+            "id": "os-map",
+            "kind": "os_state",
+            "required": true,
+            "input": {
+              "capture": true,
+              "detect": "map"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-24T01:13:24+08:00"
+}

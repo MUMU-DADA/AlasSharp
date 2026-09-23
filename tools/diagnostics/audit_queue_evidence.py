@@ -2,8 +2,8 @@
 """Read real queue artifacts, archive redacted copies, and derive their evidence report.
 
 This never starts a host or touches a device. Only completed successful account_state,
-observe, navigate and planned periodic execution queues are supported; failed runs remain local and
-cannot be made into a success record by supplying a completion label.
+observe, navigate, OS state and planned native execution queues are supported; failed runs remain
+local and cannot be made into a success record by supplying a completion label.
 """
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ARCHIVE = Path(__file__).resolve().parent / 'queue-evidence'
 DOC = ROOT / 'docs' / 'queue-evidence.md'
 SCHEMA = 'queue-evidence/1'
-KINDS = {'account_state', 'observe', 'navigate', 'periodic_plan',
-         'periodic_preflight', 'periodic_run'}
+KINDS = {'account_state', 'observe', 'navigate', 'os_state', 'os_action',
+         'periodic_plan', 'periodic_preflight', 'periodic_run'}
 REDACTIONS = [
     'Absolute project paths replaced with <project>/relative paths; other absolute paths removed.',
     'Device serial and configured endpoint replaced with <device>.',
@@ -122,6 +122,20 @@ def task_proof(task, session, plan=None, preflight=None):
                 and isinstance(evidence.get('server'), str) and evidence['server'],
                 'account_state page evidence missing or failed')
         return f"实时抓帧；页面 {', '.join(evidence['pages']) or '未识别'}；in_map={evidence['in_map']}"
+    if kind == 'os_state':
+        frame = evidence.get('frame', {})
+        require(request.get('capture') is True and request.get('detect', 'map') == 'map'
+                and evidence.get('source') == 'device_capture' and evidence.get('mode') == 'os'
+                and evidence.get('detect') == 'map' and frame_ok(frame.get('shape', []))
+                and frame.get('error') is None, 'os state lacks device map capture')
+        require(evidence.get('detected') is True and evidence.get('in_map') is True
+                and evidence.get('backend') in {'perspective', 'homography'}
+                and type(evidence.get('grid_count')) is int and evidence['grid_count'] > 0
+                and isinstance(evidence.get('center_loca'), list)
+                and len(evidence['center_loca']) == 2
+                and all(type(v) is int for v in evidence['center_loca'])
+                and evidence.get('reason') is None, 'os state does not prove a detected map')
+        return f"实时海域抓帧；上游在图；{evidence['grid_count']} 格；{evidence['backend']}"
     if kind == 'observe':
         ticks, capture, page = evidence['ticks'], evidence['capture'], evidence['page_detection']
         require(type(ticks) is int and ticks > 0, 'observe requires positive ticks')
@@ -166,8 +180,13 @@ def task_proof(task, session, plan=None, preflight=None):
                 'periodic plan missing bindings')
         require(len({item['task'] for item in plans}) == len(plans)
                 and all(item['found'] is True and item['scheduler_command']
-                        and item['method'] and item['calls_run'] is True
-                        and item['error'] is None for item in plans),
+                        and item['method'] and item['error'] is None
+                        and ((not item['method'].startswith('opsi_')
+                              and item['calls_run'] is True)
+                             or (item['method'].startswith('opsi_')
+                                 and item['calls_run'] is False
+                                 and any('OSCampaignRun' in source for source in item['imports'])))
+                        for item in plans),
                 'periodic plan binding incomplete')
         requested = request.get('tasks')
         if requested is not None:
@@ -191,9 +210,9 @@ def task_proof(task, session, plan=None, preflight=None):
                 and binding['found'] is True
                 and binding['lineno'] == plan['lineno']
                 and binding['imports'] == plan['imports']
-                and binding['calls_run'] is True, 'periodic preflight binding mismatch')
+                and binding['calls_run'] == plan['calls_run'], 'periodic preflight binding mismatch')
         return f"请求 {name} 已放行；executes=false；上游绑定一致"
-    if kind == 'periodic_run':
+    if kind in {'periodic_run', 'os_action'}:
         require(session['allow_actions'] is True and session['read_only_device'] is False,
                 'periodic action missing session authorization')
         name = request['task']
@@ -208,14 +227,42 @@ def task_proof(task, session, plan=None, preflight=None):
         require(target['module'] == 'alas' and target['class'] == 'AzurLaneAutoScript'
                 and target['scheduler_command'] == plan['scheduler_command']
                 and target['method'] == plan['method'], 'periodic native dispatcher binding mismatch')
+        if kind == 'os_action':
+            os_plan = evidence.get('os_plan', {})
+            require(target['method'].startswith('opsi_')
+                    and os_plan.get('task') == name and os_plan.get('found') is True
+                    and os_plan.get('scheduler_command') == target['scheduler_command']
+                    and os_plan.get('method') == target['method']
+                    and os_plan.get('lineno') == plan['lineno']
+                    and os_plan.get('error') is None, 'os action plan/native binding mismatch')
         require(evidence['decision'] == 'ran' and evidence['constructed'] is True
                 and evidence['ran'] is True and evidence['native_success'] is True
                 and evidence['error'] is None and evidence['reason'] is None
                 and evidence['traceback_tail'] == [], 'periodic native execution not proven')
-        return f"上游 {target['class']}.{target['method']}；decision=ran；native_success=true"
+        proof = f"上游 {target['class']}.{target['method']}；decision=ran；native_success=true"
+        return proof + ('；仅证明原生调度返回' if kind == 'os_action' else '')
     require(kind == 'navigate', 'unsupported task kind')
     require(session['allow_actions'] is True and session['read_only_device'] is False,
             'navigate missing action authorization')
+    if 'final_page' in evidence:
+        target, count = request['to'], request.get('rounds', 1)
+        require(type(count) is int and count > 0 and evidence['target'] == target
+                and evidence['rounds_requested'] == count == evidence['rounds_completed']
+                == len(evidence['rounds']) and evidence['success'] is True
+                and evidence['final_page'] == target, 'native navigation target or rounds mismatch')
+        for index, round_ in enumerate(evidence['rounds'], 1):
+            require(round_.get('round') == index and round_.get('success') is True,
+                    'native navigation round mismatch')
+            legs = [('return_to_main', 'page_main')] if index > 1 else []
+            legs.append(('to_target', target))
+            for leg_name, destination in legs:
+                leg = round_.get(leg_name, {})
+                require(leg.get('destination') == destination and leg.get('arrived') is True
+                        and leg.get('final_page') == destination
+                        and leg.get('error') is None and leg.get('error_kind') is None
+                        and type(leg.get('elapsed_ms')) in (int, float)
+                        and leg['elapsed_ms'] >= 0, 'native navigation arrival mismatch')
+        return f"上游原生导航到 {target}；完成 {count}/{count} 轮；最终 {evidence['final_page']}"
     target, count = request['to'], request.get('rounds', 1)
     require(type(count) is int and count > 0 and evidence['target'] == target
             and evidence['rounds_requested'] == count == evidence['rounds_completed']

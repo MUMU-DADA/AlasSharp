@@ -1,0 +1,47 @@
+{
+  "id": "daily-after",
+  "kind": "os_state",
+  "required": true,
+  "input": {
+    "capture": true,
+    "detect": "map"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 0.5,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "mode": "os",
+    "detect": "map",
+    "source": "device_capture",
+    "frame": {
+      "capture_ms": 367.1,
+      "method": "scrcpy",
+      "raw": true,
+      "shape": [
+        720,
+        1280,
+        3
+      ],
+      "error": null
+    },
+    "detected": true,
+    "in_map": true,
+    "backend": "perspective",
+    "grid_count": 47,
+    "center_loca": [
+      4,
+      2
+    ],
+    "reason": null
+  }
+}

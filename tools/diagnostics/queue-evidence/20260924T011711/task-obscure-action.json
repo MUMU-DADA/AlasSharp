@@ -1,0 +1,55 @@
+{
+  "id": "obscure-action",
+  "kind": "os_action",
+  "required": true,
+  "input": {
+    "task": "OpsiObscure",
+    "allow_actions": true,
+    "confirm": "OpsiObscure"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 8.3,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "task": "OpsiObscure",
+    "allow_actions": true,
+    "confirm_matches": true,
+    "decision": "ran",
+    "target": {
+      "module": "alas",
+      "class": "AzurLaneAutoScript",
+      "scheduler_command": "OpsiObscure",
+      "method": "opsi_obscure"
+    },
+    "constructed": true,
+    "ran": true,
+    "native_success": true,
+    "elapsed_s": 8.3,
+    "returned": null,
+    "exit_code": null,
+    "reason": null,
+    "error": null,
+    "traceback_tail": [],
+    "native_error_dir": null,
+    "native_error_log": null,
+    "failure_frames": [],
+    "os_plan": {
+      "task": "OpsiObscure",
+      "found": true,
+      "scheduler_command": "OpsiObscure",
+      "method": "opsi_obscure",
+      "lineno": 321,
+      "error": null
+    }
+  }
+}

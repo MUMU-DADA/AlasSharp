@@ -1,0 +1,26 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/20260924-os-cleared-account/entry-artifacts/20260924T011313",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "e0439ed4f7df4c44a61354abf4a6b61231e4c16c2efea613fc03bdfba2cdb523",
+    "state.json": "f723abedb28f56d793e827da3f4928a497c3187741b4db153e6555038bbd52fa",
+    "session-log.jsonl": "20cecc09f1f567cd15329ff14415594b61ca59dc7d37160aa1dd5f60485f86e1",
+    "task-enter-os.json": "e8a2712c8c4e7c9442eea5071defc598b53e90ea3c8ca0cbf19d8c6495f51ed2",
+    "task-os-map.json": "c7cf4a9591f2c472fd3e2631261cdd113d1d012bb86ebf8eab75f9ad43e845a3",
+    "task-os-page.json": "c45320871e1753100b875b247a0c794bec2546e3b77f82e9f14c37e2f1ed2b3e"
+  },
+  "files": {
+    "queue.json": "cc284f1eeb805340a2e0dab0f0d4541471aab3755799e336d8ac839abac57974",
+    "state.json": "3d1c494382f1a712c0b98f39ed14fa8aaa24b387cf2563e93361e4b07c38ca74",
+    "session-log.jsonl": "49a880b8708b8558f44048467652439e980034c43360f8312c02e397fbf0b4cc",
+    "task-enter-os.json": "b6a4c3d16420fcfaf54202e594c2da04ce882624b8b285d708eee3ab99a2e45f",
+    "task-os-map.json": "e0789678a3cd4c4984da755526958d0e6d0f235fcde3b0c4ff2f202abae9ac37",
+    "task-os-page.json": "0663d21c30443d28a977fdbd200eff9c7a7f05751965ccdbf7308aa8bc5636fd"
+  }
+}

@@ -23,6 +23,9 @@
 | `20260923T203555` | 动作授权；宿主 1 / 设备配置 1 | 13.9 秒 |
 | `20260923T204223` | 动作授权；宿主 1 / 设备配置 1 | 6.6 秒 |
 | `20260924T005953` | 动作授权；宿主 1 / 设备配置 1 | 19.3 秒 |
+| `20260924T011313` | 动作授权；宿主 1 / 设备配置 1 | 10.9 秒 |
+| `20260924T011513` | 动作授权；宿主 1 / 设备配置 1 | 16.7 秒 |
+| `20260924T011711` | 动作授权；宿主 1 / 设备配置 1 | 8.9 秒 |
 
 | 归档 / 任务 | 任务域 | 已核对事实 |
 | --- | --- | --- |
@@ -65,6 +68,17 @@
 | `20260924T005953/meowfficer-preflight` | `periodic_preflight` | 请求 meowfficer 已放行；executes=false；上游绑定一致 |
 | `20260924T005953/meowfficer-fort` | `periodic_run` | 上游 AzurLaneAutoScript.meowfficer；decision=ran；native_success=true |
 | `20260924T005953/after-meowfficer` | `account_state` | 实时抓帧；页面 page_meowfficer；in_map=False |
+| `20260924T011313/enter-os` | `navigate` | 上游原生导航到 page_os；完成 1/1 轮；最终 page_os |
+| `20260924T011313/os-map` | `os_state` | 实时海域抓帧；上游在图；47 格；perspective |
+| `20260924T011313/os-page` | `account_state` | 实时抓帧；页面 page_os；in_map=False |
+| `20260924T011513/daily-plan` | `periodic_plan` | 上游绑定 1 项；请求 OpsiDaily 已找到 |
+| `20260924T011513/daily-preflight` | `periodic_preflight` | 请求 OpsiDaily 已放行；executes=false；上游绑定一致 |
+| `20260924T011513/daily-action` | `os_action` | 上游 AzurLaneAutoScript.opsi_daily；decision=ran；native_success=true；仅证明原生调度返回 |
+| `20260924T011513/daily-after` | `os_state` | 实时海域抓帧；上游在图；47 格；perspective |
+| `20260924T011711/obscure-plan` | `periodic_plan` | 上游绑定 1 项；请求 OpsiObscure 已找到 |
+| `20260924T011711/obscure-preflight` | `periodic_preflight` | 请求 OpsiObscure 已放行；executes=false；上游绑定一致 |
+| `20260924T011711/obscure-action` | `os_action` | 上游 AzurLaneAutoScript.opsi_obscure；decision=ran；native_success=true；仅证明原生调度返回 |
+| `20260924T011711/obscure-after` | `os_state` | 实时海域抓帧；上游在图；47 格；perspective |
 
 来源目录（项目相对路径，原件不入库）：
 
@@ -79,3 +93,6 @@
 - `data/mainline-device/current-tactical-access-retry-artifacts/20260923T203555`
 - `data/mainline-device/current-tactical-native-artifacts/20260923T204223`
 - `data/mainline-device/20260924-meowfficer-probe/artifacts/20260924T005953`
+- `data/mainline-device/20260924-os-cleared-account/entry-artifacts/20260924T011313`
+- `data/mainline-device/20260924-os-cleared-account/daily-artifacts/20260924T011513`
+- `data/mainline-device/20260924-os-cleared-account/obscure-artifacts/20260924T011711`

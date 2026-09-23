@@ -109,6 +109,14 @@
 
 **R2 未完成**：
 
+已通关大世界的账号现可经原生导航进入海域，实时网格探针检出 47 格；
+`OpsiDaily` 与 `OpsiObscure` 原生调度返回，但当时无每日目标且隐秘海域库存为零。
+`OpsiStronghold` 首轮实际长战斗后，原生任务在仍处于 BOSS 战时因漏接管报错；
+AzurPilot 已有的通用执行态检查现用于宿主 OS 战斗入口，原帧与状态回归通过。
+用户确认账号侧要塞完成，复跑也找不到可清理的要塞；复跑没有重现战斗，
+所以自动化结算闭环仍缺真机正例。原件留在本地忽略目录
+`data/mainline-device/20260924-os-cleared-account/`，细节见 `docs/tasks.md`。
+
 1. 大世界已有只读探针和动作任务接线；`os_action` 复用上游 `Scheduler.Command`、`opsi_*` 方法与原生 dispatcher。旧账号的 `page_os` 入口带锁，失败原件留在本地忽略目录 `data/mainline-device/20260923T170655-os_nav/`。高等级账号已两跳到达 `page_os`，随后 `OpsiObscure` 原生任务在 NY City 完成初始化与自动搜索；仓库没有隐秘海域坐标，任务延后退出。另一轮从未知浮层启动的原生 OS 任务进入真实海域后在 `ui_goto(page_os)` 等待超时，按失败记录。只读 OS 探针现合并上游 `OSConfig` 并使用原生在图判据，离线海域正例与菜单、球面负例通过；真机海域帧也检出 43 格。原件留在 `data/mainline-device/20260923T212714-os_nav/`、`20260923T213724-os_action_obscure/`、`20260923T220727-os_native_from_unknown/` 和 `20260923T221841-os_state_only/`。仍无海域目标或战斗结算闭环证据。活动清点与队列生成已有离线覆盖，普通战役队列另有已解锁活动 A1、A2、A3 的真实成功结算及战后 `page_event` 抓帧归档（`tools/diagnostics/evidence/20260923T163008/`、`20260923T171026/`、`20260923T180804/`）。`plan-queue --capture-after` 的 A1、A2 连续四任务真机复验也已成功，脱敏计划、双批次索引及逐关返页证据归档于 `tools/diagnostics/evidence/20260923T194236/`；修复前一次 A1 战后超时仍保留为失败。已验证的仍只有三个已解锁活动章节，不能覆盖其他活动章节或活动域完整动作流程。
 2. 账号状态当场抓帧和 `IN_MAP` 现场核对已有设备窗口记录（见交接文档第五节与第八节补充六）；
    周期任务执行已有 dorm/reward 两条历史真机路径；通用执行器现已改为复用上游 Scheduler.Command、

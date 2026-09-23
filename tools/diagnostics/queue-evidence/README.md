@@ -1,7 +1,8 @@
 # 真实队列脱敏工件
 
-仅保存真实 `queue` 入口产生的 `account_state`、`observe`、`navigate` 及带上游绑定勘察的
-`periodic_preflight` / `periodic_run` 成功队列。当前验证器明确拒绝战役任务，不将周期成功当成战役通关。
+仅保存真实 `queue` 入口产生的 `account_state`、`observe`、`navigate`、海域状态及带上游绑定勘察的
+`periodic_preflight` / `periodic_run` / `os_action` 成功队列。当前验证器明确拒绝战役任务，
+不将原生调度成功当成海域目标、战斗结算或战役通关。
 每个目录包含队列、逐任务工件、断点和会话结构化日志；`archive.json` 保留项目相对来源、
 原件及脱敏件的 SHA-256 和脱敏范围。原始截图、控制台日志、账号配置与设备信息不入库。
 

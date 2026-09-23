@@ -1,0 +1,47 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 8.9,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "obscure-plan",
+      "kind": "periodic_plan",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/20260924-os-cleared-account/obscure-artifacts/20260924T011711/task-obscure-plan.json"
+    },
+    {
+      "id": "obscure-preflight",
+      "kind": "periodic_preflight",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/20260924-os-cleared-account/obscure-artifacts/20260924T011711/task-obscure-preflight.json"
+    },
+    {
+      "id": "obscure-action",
+      "kind": "os_action",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 8.3,
+      "artifact": "<project>/data/mainline-device/20260924-os-cleared-account/obscure-artifacts/20260924T011711/task-obscure-action.json"
+    },
+    {
+      "id": "obscure-after",
+      "kind": "os_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.5,
+      "artifact": "<project>/data/mainline-device/20260924-os-cleared-account/obscure-artifacts/20260924T011711/task-obscure-after.json"
+    }
+  ]
+}

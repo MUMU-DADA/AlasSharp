@@ -21,7 +21,11 @@ def main():
     runs = [audit.load_run(p.parent) for p in archives]
     observed = next(run for run in runs if any(t['kind'] == 'account_state' for t in run['queue.json']['tasks']))
     navigated = next(run for run in runs if any(t['kind'] == 'navigate' for t in run['queue.json']['tasks']))
+    native_navigation = next(run for run in runs if any(
+        row['kind'] == 'navigate' and 'final_page' in run[audit.basename(row['artifact'])]['evidence']
+        for row in run['queue.json']['tasks']))
     periodic = next(run for run in runs if any(t['kind'] == 'periodic_run' for t in run['queue.json']['tasks']))
+    os_run = next(run for run in runs if any(t['kind'] == 'os_action' for t in run['queue.json']['tasks']))
     preflight_run = next(run for run in runs if any(
         t['kind'] == 'periodic_preflight' for t in run['queue.json']['tasks']))
     mapped = next(run for run in runs if any(
@@ -46,6 +50,10 @@ def main():
 
     observed_file = task_file(observed, 'observe')
     navigation_file = task_file(navigated, 'navigate')
+    native_navigation_file = task_file(native_navigation, 'navigate')
+    os_state_file = task_file(native_navigation, 'os_state')
+    os_action_file = task_file(os_run, 'os_action')
+    os_plan_file = task_file(os_run, 'periodic_plan')
     account_file = task_file(observed, 'account_state')
     plan_file = task_file(periodic, 'periodic_plan')
     periodic_file = task_file(periodic, 'periodic_run')
@@ -80,6 +88,15 @@ def main():
              'hops do not prove arrival')
     rejected('missing second round return', navigated,
              lambda r: r[rounds_file]['evidence']['rounds'][1].pop('return_to_main'), 'return_to_main')
+    rejected('native navigation did not arrive', native_navigation,
+             lambda r: r[native_navigation_file]['evidence']['rounds'][0]['to_target'].update(arrived=False),
+             'native navigation arrival mismatch')
+    rejected('native navigation final page differs', native_navigation,
+             lambda r: r[native_navigation_file]['evidence'].update(final_page='page_main'),
+             'native navigation target or rounds mismatch')
+    rejected('os state lost map detection', native_navigation,
+             lambda r: r[os_state_file]['evidence'].update(in_map=False),
+             'os state does not prove a detected map')
     rejected('session count differs', observed,
              lambda r: r['queue.json'].update(host_start_count=2), 'session counts')
     rejected('host log removed', observed,
@@ -107,6 +124,18 @@ def main():
              'periodic input gates mismatch')
     rejected('periodic native call did not succeed', periodic,
              lambda r: r[periodic_file]['evidence'].update(native_success=False),
+             'native execution not proven')
+    rejected('os plan has wrong call shape', os_run,
+             lambda r: r[os_plan_file]['evidence']['plans'][0].update(calls_run=True),
+             'periodic plan binding incomplete')
+    rejected('os dispatcher differs from plan', os_run,
+             lambda r: r[os_action_file]['evidence']['target'].update(method='opsi_other'),
+             'native dispatcher binding mismatch')
+    rejected('os task gate differs from dispatcher', os_run,
+             lambda r: r[os_action_file]['evidence']['os_plan'].update(method='opsi_other'),
+             'os action plan/native binding mismatch')
+    rejected('os native call did not succeed', os_run,
+             lambda r: r[os_action_file]['evidence'].update(native_success=False),
              'native execution not proven')
     rejected('periodic requested tasks differ from plan', preflight_run,
              lambda r: r[targeted_plan_file]['evidence']['plans'][0].update(task='other'),

@@ -84,6 +84,7 @@ STEPS = [
     ('verify_report.py', 'R2 运行报告（工件→结构化事实 + 证据完整性反例）', False, 600),
     ('verify_os_state.py', 'R2 大世界/海域只读探针（存盘帧；capture 前置条件口径）', False, 600),
     ('verify_os_action.py', 'R2 大世界动作入口（真实 CLI dry-run 拒绝动作并留工件）', False, 300),
+    ('verify_os_combat_reentry.py', 'R2 大世界自动寻敌跳过准备画面后重新接管战斗', False, 120),
     ('button_threshold_sweep.py', '判据临界扫描（重建 button-threshold-sweep.md）', False, 900),
     ('r3_hook_shapes.py', 'R3 钩子形态分类（重建 r3-hook-shapes.md）', False, 300),
     ('r3_map_data_init.py', 'R3 第一项上游轨迹（map_data_init 逐章形态）', False, 300),

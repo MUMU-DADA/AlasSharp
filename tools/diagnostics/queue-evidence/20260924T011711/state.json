@@ -1,0 +1,195 @@
+{
+  "completed": {
+    "obscure-plan": {
+      "identity": {
+        "kind": "periodic_plan",
+        "required": true,
+        "input": {
+          "tasks": [
+            "OpsiObscure"
+          ]
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "obscure-preflight": {
+      "identity": {
+        "kind": "periodic_preflight",
+        "required": true,
+        "input": {
+          "task": "OpsiObscure",
+          "allow_actions": true,
+          "confirm": "OpsiObscure"
+        },
+        "preceding_tasks": [
+          {
+            "id": "obscure-plan",
+            "kind": "periodic_plan",
+            "required": true,
+            "input": {
+              "tasks": [
+                "OpsiObscure"
+              ]
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "obscure-action": {
+      "identity": {
+        "kind": "os_action",
+        "required": true,
+        "input": {
+          "task": "OpsiObscure",
+          "allow_actions": true,
+          "confirm": "OpsiObscure"
+        },
+        "preceding_tasks": [
+          {
+            "id": "obscure-plan",
+            "kind": "periodic_plan",
+            "required": true,
+            "input": {
+              "tasks": [
+                "OpsiObscure"
+              ]
+            }
+          },
+          {
+            "id": "obscure-preflight",
+            "kind": "periodic_preflight",
+            "required": true,
+            "input": {
+              "task": "OpsiObscure",
+              "allow_actions": true,
+              "confirm": "OpsiObscure"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "obscure-after": {
+      "identity": {
+        "kind": "os_state",
+        "required": true,
+        "input": {
+          "capture": true,
+          "detect": "map"
+        },
+        "preceding_tasks": [
+          {
+            "id": "obscure-plan",
+            "kind": "periodic_plan",
+            "required": true,
+            "input": {
+              "tasks": [
+                "OpsiObscure"
+              ]
+            }
+          },
+          {
+            "id": "obscure-preflight",
+            "kind": "periodic_preflight",
+            "required": true,
+            "input": {
+              "task": "OpsiObscure",
+              "allow_actions": true,
+              "confirm": "OpsiObscure"
+            }
+          },
+          {
+            "id": "obscure-action",
+            "kind": "os_action",
+            "required": true,
+            "input": {
+              "task": "OpsiObscure",
+              "allow_actions": true,
+              "confirm": "OpsiObscure"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-24T01:17:20+08:00"
+}

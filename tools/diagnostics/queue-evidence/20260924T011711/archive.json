@@ -1,0 +1,28 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/20260924-os-cleared-account/obscure-artifacts/20260924T011711",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "274d1227ba49860118ba77bb596ae3c8c4fc0631f10d3d3a57b208a1c54eb65d",
+    "state.json": "b32165f4216bc64cb90acc1a1c77886f896bfcf1caa8db76ce22a03f950f1800",
+    "session-log.jsonl": "90b1d1e70f8914f3561f0958829b73350b0b4da1daa749ee203204bcdc8ce722",
+    "task-obscure-action.json": "610aa7f2515f3ab19987b1305e2ffb1327e661718fbabbdb1c60f58da2d174d4",
+    "task-obscure-after.json": "288a60c03f8a34d0909f877c46b29c1db80e46082607dbde148556274fa19f0f",
+    "task-obscure-plan.json": "f09002e8045270aff36da713bde95f0edc26419ea3d2f44a80c409652061ab0f",
+    "task-obscure-preflight.json": "6c2c339588f87b0da02901c15d84c001f1f73b26900391a0a2b74b280e47509d"
+  },
+  "files": {
+    "queue.json": "0993d4c92981f56e820e364b92b05414a0092793efb699c00303380c15995ded",
+    "state.json": "58a2b852361153b931609cbf5ca51c99eff1930d9ee1898a50be0edbfbcbabd5",
+    "session-log.jsonl": "cd08bc091cd24cb3e940f04aba1a0c38440505617ed1a9ca9075c0b456c3d1e2",
+    "task-obscure-action.json": "6a38e0ad1cae7e57c748f22ea33005b28df6c4f0d86db74ba6930067a913100f",
+    "task-obscure-after.json": "334049ed49728a9292eb4f751b351c81176f9a0560849345a2ad24d0ba2df71b",
+    "task-obscure-plan.json": "2c2125380531d7ffbd871cde52d7ecc304886dbe94320a7504076e012f23e87c",
+    "task-obscure-preflight.json": "1caa4633bdfac00d328dc36d66230aaf71f8b194998638cad85a612448035c19"
+  }
+}

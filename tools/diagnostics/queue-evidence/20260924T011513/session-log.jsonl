@@ -1,0 +1,18 @@
+{"time":"2026-09-24T01:15:13.691+08:00","level":"INFO","scope":"session","message":"识图宿主已启动","fields":{"repo":"<project>/.runtime/engine","dry_run":false,"allow_actions":true,"read_only_device":false,"host_start_ms":337.8}}
+{"time":"2026-09-24T01:15:13.737+08:00","level":"INFO","scope":"session","message":"设备后端已配置","fields":{"serial":"<device>","screenshot":"scrcpy","control":"MaaTouch","configured":"serial=<device>,screenshot=scrcpy,control=MaaTouch"}}
+{"time":"2026-09-24T01:15:13.741+08:00","level":"INFO","scope":"queue","message":"开始任务队列","fields":{"tasks":4,"kinds":"periodic_plan,periodic_preflight,os_action,os_state","dry_run":false,"artifacts":"<project>/data/mainline-device/20260924-os-cleared-account/daily-artifacts/20260924T011513"}}
+{"time":"2026-09-24T01:15:13.754+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"daily-plan","kind":"periodic_plan","pages":null,"in_map":null}}
+{"time":"2026-09-24T01:15:13.780+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260924-os-cleared-account/daily-artifacts/20260924T011513/task-daily-plan.json"}}
+{"time":"2026-09-24T01:15:13.783+08:00","level":"INFO","scope":"task","message":"periodic_plan:daily-plan → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":0,"preconditions":0}}
+{"time":"2026-09-24T01:15:13.784+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"daily-preflight","kind":"periodic_preflight","pages":null,"in_map":null}}
+{"time":"2026-09-24T01:15:13.797+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260924-os-cleared-account/daily-artifacts/20260924T011513/task-daily-preflight.json"}}
+{"time":"2026-09-24T01:15:13.798+08:00","level":"INFO","scope":"task","message":"periodic_preflight:daily-preflight → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":0,"preconditions":0}}
+{"time":"2026-09-24T01:15:13.800+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"daily-action","kind":"os_action","pages":null,"in_map":null}}
+{"time":"2026-09-24T01:15:29.907+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260924-os-cleared-account/daily-artifacts/20260924T011513/task-daily-action.json"}}
+{"time":"2026-09-24T01:15:29.908+08:00","level":"INFO","scope":"task","message":"os_action:daily-action → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":16.1,"preconditions":0}}
+{"time":"2026-09-24T01:15:29.908+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"daily-after","kind":"os_state","pages":null,"in_map":null}}
+{"time":"2026-09-24T01:15:30.458+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260924-os-cleared-account/daily-artifacts/20260924T011513/task-daily-after.json"}}
+{"time":"2026-09-24T01:15:30.459+08:00","level":"INFO","scope":"task","message":"os_state:daily-after → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":0.5,"preconditions":0}}
+{"time":"2026-09-24T01:15:30.461+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260924-os-cleared-account/daily-artifacts/20260924T011513/queue.json"}}
+{"time":"2026-09-24T01:15:30.461+08:00","level":"INFO","scope":"queue","message":"任务队列结束","fields":{"outcome":"succeeded","tasks":4,"failed":0,"skipped":0,"elapsed_s":16.7}}
+{"time":"2026-09-24T01:15:30.683+08:00","level":"INFO","scope":"session","message":"识图宿主已释放","fields":{}}
