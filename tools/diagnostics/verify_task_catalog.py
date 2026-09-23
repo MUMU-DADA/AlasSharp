@@ -105,7 +105,10 @@ def main() -> int:
                 document = json.loads(task_artifact.read_text(encoding='utf-8'))
                 evidence = document.get('evidence') or {}
                 expected_tasks = set(json.loads(args_json.read_text(encoding='utf-8')).keys())
+                # 打印机会静默失效（键名一改这行就没了），所以连它一起断言 —— 与第 143 轮给配置开关域做的一样
                 task_checks = [
+                    ('CLI 打出 [任务证据] 行', '[任务证据]' in (executed.stdout or '')
+                     and '分组来源=' in (executed.stdout or ''), 'stdout 里没有 [任务证据] 或 分组来源='),
                     ('任务结论 succeeded', document.get('outcome') == 'succeeded',
                      f"outcome={document.get('outcome')} error={document.get('error')}"),
                     ('任务数与独立数一致', evidence.get('task_count') == len(expected_tasks),

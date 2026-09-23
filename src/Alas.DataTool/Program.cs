@@ -815,7 +815,11 @@ internal static class Program
                     Console.WriteLine($"[任务证据] 查了={cfgChecked} true={CountOf("true_keys")} "
                                       + $"false={CountOf("false_keys")} missing={CountOf("missing_keys")} "
                                       + $"来源={task.Evidence["config_source"]}");
-                }                if (task.Evidence["enabled_count"] is System.Text.Json.Nodes.JsonNode enabled)
+                }                // 周期任务清点：报"读到多少个任务、两个来源是哪一份"（明细在工件里）
+                if (task.Evidence["task_count"] is System.Text.Json.Nodes.JsonNode catalogCount)
+                    Console.WriteLine($"[任务证据] 任务={catalogCount} "
+                                      + $"分组来源={task.Evidence["group_source"]} "
+                                      + $"清单来源={task.Evidence["task_source"]}");                if (task.Evidence["enabled_count"] is System.Text.Json.Nodes.JsonNode enabled)
                     Console.WriteLine($"[任务证据] 任务={task.Evidence["task_count"]} 启用={enabled} " +
                                       $"无Scheduler={task.Evidence["no_scheduler_count"]} " +
                                       $"来源={task.Evidence["config_source"]}");
