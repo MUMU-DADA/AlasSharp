@@ -437,6 +437,10 @@ OS 动作验收。只读复盘可用 `python tools/diagnostics/oneoff/probe_os_e
 | 离线验收 | 新增 `verify_task_schedule.py`：用**真配置**跑一次，断言任务数 = args.json 里的任务数、启用集合与配置里的 `Enable` 一致；再用**构造的假配置**（临时目录 + 一份手写配置）验证边界：全禁用 / 全启用 / 缺 `Scheduler` 段 三种情形都有明确输出而不是崩 |
 | 真机相关性 | 无（这是纯配置面）；但它是"跑周期任务"的前置：先能列出要跑什么，再谈怎么跑 |
 
+`task_schedule` 只接受声明的 `only_enabled`（布尔）、`limit`（1 到 `int.MaxValue` 的整数）和
+`config_path`（非空字符串或 `null`）。未知字段和错误类型在前置条件阶段记为 `skipped`，不会
+启动宿主；配置文件不存在仍由宿主如实返回 `Failed`，因为那是环境错误。
+
 **注意两条边界**（写在这里免得下一轮又踩）：
 
 1. **只读**：`Scheduler` 的 `NextRun` 是上游调度器写进去的，本域只**报**不改 —— 要改调度得走上游自己的配置入口；

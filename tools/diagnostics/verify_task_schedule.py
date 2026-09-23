@@ -36,14 +36,18 @@ except Exception:
     pass
 
 
-def run_task(config_path: str, only_enabled: bool = False) -> dict:
+def run_task(config_path: str, only_enabled: bool = False,
+             input_value: dict | None = None) -> dict:
     """跑一次队列任务，返回它的 evidence（或错误信息）。"""
     with tempfile.TemporaryDirectory(prefix='alas-sched-') as tmp:
+        task_input = (dict(input_value) if input_value is not None else {
+            'only_enabled': only_enabled, 'limit': 200,
+            'config_path': config_path,
+        })
         queue_file = Path(tmp) / 'queue.json'
         queue_file.write_text(json.dumps({'tasks': [{
             'id': 'sched', 'kind': 'task_schedule',
-            'input': {'only_enabled': only_enabled, 'limit': 200,
-                      'config_path': config_path}}]}, ensure_ascii=False), encoding='utf-8')
+            'input': task_input}]}, ensure_ascii=False), encoding='utf-8')
         artifacts = Path(tmp) / 'artifacts'
         proc = subprocess.run([str(EXE), 'queue', '--file', str(queue_file),
                                '--artifacts', str(artifacts)],
@@ -55,6 +59,8 @@ def run_task(config_path: str, only_enabled: bool = False) -> dict:
         document = json.loads(artifact.read_text(encoding='utf-8'))
         evidence = document.get('evidence') or {}
         evidence['_outcome'] = document.get('outcome')
+        evidence['_error_kind'] = document.get('error_kind')
+        evidence['_unmet_preconditions'] = document.get('unmet_preconditions') or []
         evidence['_stdout'] = proc.stdout or ''   # CLI 输出也带回来: 好断言 [任务证据] 行确实打出来了
         evidence['_error'] = document.get('error')
         return evidence
@@ -106,6 +112,29 @@ def main() -> int:
         print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
         if not ok:
             failures.append(f'{name}: {detail}')
+
+    invalid_inputs = {
+        'unknown-field': {'only_enabled': True, 'limit': 200,
+                          'config_path': str(CONFIG), 'extra': True},
+        'only-enabled-type': {'only_enabled': 'true', 'limit': 200,
+                              'config_path': str(CONFIG)},
+        'limit-zero': {'only_enabled': True, 'limit': 0,
+                       'config_path': str(CONFIG)},
+        'limit-fraction': {'only_enabled': True, 'limit': 1.5,
+                           'config_path': str(CONFIG)},
+        'config-path-type': {'only_enabled': True, 'limit': 200,
+                             'config_path': 7},
+    }
+    for name, input_value in invalid_inputs.items():
+        invalid = run_task(str(CONFIG), input_value=input_value)
+        ok = (invalid.get('_outcome') == 'skipped'
+              and invalid.get('_error_kind') == 'none'
+              and bool(invalid.get('_unmet_preconditions'))
+              and not invalid.get('task_count'))
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}: outcome={invalid.get('_outcome')} "
+              f"preconditions={invalid.get('_unmet_preconditions')}")
+        if not ok:
+            failures.append(f'{name}: invalid input reached task_schedule: {invalid}')
 
     # ---- 边界：用构造的假配置走同一条代码路径
     print()

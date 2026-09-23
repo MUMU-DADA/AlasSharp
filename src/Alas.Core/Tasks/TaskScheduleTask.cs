@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Alas.Runtime;
@@ -20,10 +21,44 @@ namespace Alas.Tasks;
 /// </summary>
 public sealed class TaskScheduleTask : ITaskRunner
 {
+    private static readonly HashSet<string> InputFields = new(StringComparer.Ordinal)
+    {
+        "only_enabled", "limit", "config_path",
+    };
+
     public string Kind => "task_schedule";
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskContext context)
-        => Array.Empty<string>();      // 配置缺失属环境问题，由 op 报错 → Failed
+    {
+        var problems = new List<string>();
+        if (request.Input is not null)
+            foreach (var field in request.Input.Select(pair => pair.Key))
+                if (!InputFields.Contains(field))
+                    problems.Add($"未知周期调度输入字段: input.{field}");
+
+        if (request.Input?.ContainsKey("only_enabled") == true
+            && (request.Input["only_enabled"] is not JsonValue onlyEnabled
+                || !onlyEnabled.TryGetValue<bool>(out _)))
+            problems.Add("input.only_enabled 必须是 JSON 布尔值");
+
+        if (request.Input?.ContainsKey("limit") == true)
+        {
+            var limit = request.Input["limit"];
+            if (limit?.GetValueKind() != System.Text.Json.JsonValueKind.Number
+                || !TryLimit(limit, out _))
+                problems.Add($"input.limit 必须是 1 到 {int.MaxValue} 的整数数值");
+        }
+
+        if (request.Input?.ContainsKey("config_path") == true
+            && request.Input["config_path"] is not null
+            && (request.Input["config_path"] is not JsonValue configPath
+                || !configPath.TryGetValue<string>(out var path)
+                || string.IsNullOrWhiteSpace(path)))
+            problems.Add("input.config_path 必须是非空字符串或 null");
+
+        // 配置缺失属环境问题，由 op 报错 → Failed；这里不把它误标为 skipped。
+        return problems;
+    }
 
     public TaskResult Run(TaskRequest request, TaskContext context, CancellationToken token)
     {
@@ -89,6 +124,20 @@ public sealed class TaskScheduleTask : ITaskRunner
             result.Error = wrapped.Message;
         }
         return result;
+    }
+
+    private static bool TryLimit(JsonNode node, out int limit)
+    {
+        limit = 0;
+        try
+        {
+            double value = node.Deserialize<double>();
+            if (!double.IsFinite(value) || value < 1 || value > int.MaxValue
+                || value != Math.Truncate(value)) return false;
+            limit = (int)value;
+            return true;
+        }
+        catch (JsonException) { return false; }
     }
 }
 
