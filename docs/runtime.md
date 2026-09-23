@@ -46,12 +46,20 @@ CLI（`alashub campaign`）现在只做三件事：解析参数 → `AlasSession
 ```
 <--artifacts 目录>/<运行时间戳>/
   index.json            批次总表：每关结论、失败原因、宿主/设备初始化次数、是否提前停止
+  index-2.json          同一队列的第二个战役批次（后续依次编号）
   sortie-<关卡>.json    单关：合同裁决 + 完整结果文档（失败关与被跳过的关也有一份）
   session-log.jsonl     结构化日志（每行一条，含 scope/level/fields）
 ```
 
 失败帧仍然由上游侧写在同一个运行目录里（`failure_frame` 指向它），
 因此"结果 → 步骤 → 调用栈 → 现场帧"整条链在**一个目录**里闭合。
+队列里多次运行战役批次时，各批索引和单关文件必须互不覆盖；任务证据中的
+`index_artifact` 指向本任务的批次索引，报告汇总所有批次并核对引用。
+多个批次结论不一致时，报告的单值 `batch_outcome` 记为 `mixed`，逐任务结论仍以
+任务工件里的 `evidence.batch_outcome` 为准。
+项目相对的 `--artifacts`、`--resume-state` 和 `--stop-file` 在宿主启动前
+固定到调用方工作目录，避免宿主切换当前目录后读写到另一处。
+`verify_artifact_paths.py` 覆盖这三个相对路径入口。
 
 ## 六、运行报告（工件的只读汇总）
 
@@ -71,6 +79,7 @@ alashub report --artifacts <工件根目录>        # 取最新一次运行
 | `missing_artifact` | 引用的工件不存在（证据链断了） |
 | `relocated_artifact` | 工件随运行目录搬迁（同名文件就在本目录，不算缺失） |
 | `unreadable_artifact` | 工件读不出来 / 日志里有非 JSON 行 |
+| `duplicate_batch_index` | 多个战役任务引用同一个批次索引，证据关联不完整 |
 | `log_missing` | 缺 `session-log.jsonl` |
 | `task_failed` / `task_skipped` / `stage_not_cleared` / `batch_failed` | 运行本身的失败项 |
 | `contract_violation` | 单关结果没过结果合同（从 `sortie-*.json` 里读出来） |

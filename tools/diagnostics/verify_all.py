@@ -74,6 +74,7 @@ STEPS = [
     ('audit_queue_evidence.py', '真实队列工件交叉核对（重建 queue-evidence.md）', False, 120),
     ('verify_queue_evidence.py', '队列证据反例（缺工件/校验和/时长/目标页/会话/断点）', False, 120),
     ('verify_runtime.py', 'R1 常驻运行时（会话只初始化一次 / 失败即停 / 取消 / 证据）', False, 300),
+    ('verify_artifact_paths.py', 'R1 相对工件、断点和停止文件路径', False, 300),
     ('verify_account_state.py', 'R2 账号状态域（只读状态任务 + 真机帧 + 临界判据留证）', False, 600),
     ('verify_stop.py', 'R4 停止任务（--stop-file 在任务边界生效 + 对照）', False, 300),
     ('verify_report_html.py', 'R4 HTML 视图（不丢事实 / 单文件自足 / 缺工件也能看）', False, 600),

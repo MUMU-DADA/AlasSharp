@@ -68,6 +68,7 @@ public sealed class AlasSession : IDisposable
                                     SessionLog? log = null)
     {
         options.Validate();
+        options.ResolveArtifactsDirectory();
         log ??= new SessionLog();
         factory ??= DefaultFactory;
         var started = System.Diagnostics.Stopwatch.StartNew();

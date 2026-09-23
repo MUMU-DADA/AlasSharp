@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Alas.Core;
 using Alas.Runtime;
@@ -24,11 +25,35 @@ namespace Alas.Tasks;
 /// </summary>
 public sealed class EventStateTask : ITaskRunner
 {
+    private static readonly HashSet<string> InputFields = new(StringComparer.Ordinal)
+    {
+        "folder_prefix", "only_complete", "limit",
+    };
+
     public string Kind => "event_state";
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskContext context)
     {
         var problems = new List<string>();
+        if (request.Input is not null)
+            foreach (var field in request.Input.Select(pair => pair.Key))
+                if (!InputFields.Contains(field)) problems.Add($"未知活动输入字段: input.{field}");
+        if (request.Input?.ContainsKey("folder_prefix") == true
+            && (request.Input["folder_prefix"] is not JsonValue prefix
+                || !prefix.TryGetValue<string>(out var value)
+                || string.IsNullOrWhiteSpace(value)))
+            problems.Add("input.folder_prefix 必须是非空目录前缀字符串");
+        if (request.Input?.ContainsKey("only_complete") == true
+            && (request.Input["only_complete"] is not JsonValue onlyComplete
+                || !onlyComplete.TryGetValue<bool>(out _)))
+            problems.Add("input.only_complete 必须是 JSON 布尔值");
+        if (request.Input?.ContainsKey("limit") == true)
+        {
+            var limit = request.Input["limit"];
+            if (limit?.GetValueKind() != JsonValueKind.Number
+                || !TryLimit(limit, out _))
+                problems.Add($"input.limit 必须是 1 到 {int.MaxValue} 的整数数值");
+        }
         string data = context.Options.DataDirectory;
         if (string.IsNullOrWhiteSpace(data))
             problems.Add("会话没有配置 DataDirectory（离线章节清点需要上游数据契约目录）");
@@ -108,7 +133,7 @@ public sealed class EventStateTask : ITaskRunner
         {
             token.ThrowIfCancellationRequested();
             total++;
-            if (!Folder(entry.Source).Contains(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!Folder(entry.Source).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
             if (onlyComplete && !entry.PlanComplete) continue;
             matched.Add(entry);
         }
@@ -139,4 +164,18 @@ public sealed class EventStateTask : ITaskRunner
            && node.GetValueKind() is System.Text.Json.JsonValueKind.True
               or System.Text.Json.JsonValueKind.False
             ? node.GetValue<bool>() : null;
+
+    private static bool TryLimit(JsonNode node, out int limit)
+    {
+        limit = 0;
+        try
+        {
+            double value = node.Deserialize<double>();
+            if (!double.IsFinite(value) || value < 1 || value > int.MaxValue
+                || value != Math.Truncate(value)) return false;
+            limit = (int)value;
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
 }

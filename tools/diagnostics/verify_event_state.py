@@ -41,6 +41,11 @@ INDEX = DATA / 'campaign_index.json'
 PREFIX = 'event_'
 
 
+def folder(source):
+    parts = str(source).replace('\\', '/').split('/')
+    return parts[-2] if len(parts) >= 2 else str(source)
+
+
 def load_index_chapters():
     """从契约里取出章节列表（兼容两种结构：顶层 chapters，或 catalog.campaign.chapters）。"""
     document = json.loads(INDEX.read_text(encoding='utf-8'))
@@ -67,7 +72,7 @@ def main() -> int:
         return 0
 
     chapters = load_index_chapters()
-    expected = [c for c in chapters if PREFIX in str(c.get('source', ''))]
+    expected = [c for c in chapters if folder(c.get('source', '')).lower().startswith(PREFIX)]
     expected_complete = [c for c in expected if c.get('plan_complete') is True]
     expected_tiers = {}
     for chapter in expected:
@@ -86,6 +91,16 @@ def main() -> int:
              'input': {'folder_prefix': PREFIX, 'only_complete': True, 'limit': 5}},
             {'id': 'events-none', 'kind': 'event_state',
              'input': {'folder_prefix': 'no_such_prefix_zzz'}},
+            {'id': 'events-suffix', 'kind': 'event_state',
+             'input': {'folder_prefix': '20260908_cn'}},
+            {'id': 'events-invalid-prefix', 'kind': 'event_state',
+             'input': {'folder_prefix': ''}},
+            {'id': 'events-invalid-limit', 'kind': 'event_state',
+             'input': {'limit': 0}},
+            {'id': 'events-invalid-bool', 'kind': 'event_state',
+             'input': {'only_complete': 'true'}},
+            {'id': 'events-unknown-field', 'kind': 'event_state',
+             'input': {'max_rounds': 3}},
         ]}, ensure_ascii=False, indent=1), encoding='utf-8')
         artifacts = tmpdir / 'artifacts'
         proc = subprocess.run([str(EXE), 'queue', '--file', str(queue_file),
@@ -115,6 +130,7 @@ def main() -> int:
         all_events = evidence('events-all')
         complete_events = evidence('events-complete')
         none_events = evidence('events-none')
+        suffix_events = evidence('events-suffix')
 
         checks = [
             ('章节总数一致', all_events.get('chapters_total') == len(chapters),
@@ -134,7 +150,18 @@ def main() -> int:
              f"listed={all_events.get('listed')}"),
             ('没匹配到也算成功（有效状态）', none_events.get('matched') == 0,
              f"matched={none_events.get('matched')}"),
+            ('目录筛选遵守前缀语义', suffix_events.get('matched') == 0,
+             f"matched={suffix_events.get('matched')}"),
         ]
+        for task_id in ('events-invalid-prefix', 'events-invalid-limit',
+                        'events-invalid-bool', 'events-unknown-field'):
+            path = run_dir / f'task-{task_id}.json'
+            row = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+            checks.append((f'{task_id} 由前置条件跳过',
+                           row.get('outcome') == 'skipped'
+                           and row.get('error_kind') == 'none'
+                           and bool(row.get('unmet_preconditions')),
+                           f"outcome={row.get('outcome')} error={row.get('error')}"))
         for name, ok, detail in checks:
             print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
             if not ok:

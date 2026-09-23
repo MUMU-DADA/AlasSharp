@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -35,9 +36,9 @@ CHAPTER = 'campaign.campaign_main.campaign_2_1'
 FRAME = '_boss122.png'          # 真机地图帧（账号状态任务用）
 
 
-def run(args, timeout=300):
+def run(args, timeout=300, cwd=None):
     return subprocess.run(args, capture_output=True, text=True, encoding='utf-8',
-                          errors='replace', timeout=timeout)
+                          errors='replace', timeout=timeout, cwd=cwd)
 
 
 def main() -> int:
@@ -245,6 +246,118 @@ def main() -> int:
             print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
             if not ok:
                 failures.append(f'{name}: {detail}')
+
+        # 同一队列可连续执行相同章节；每个批次及单关证据都必须保留。
+        print()
+        print('=== 多战役任务与相对工件目录 ===')
+        multi_queue = tmpdir / 'multi-queue.json'
+        multi_queue.write_text(json.dumps({'tasks': [
+            {'id': 'first-batch', 'kind': 'campaign_batch', 'input': {'chapters': [CHAPTER]}},
+            {'id': 'second-batch', 'kind': 'campaign_batch', 'input': {'chapters': [CHAPTER]}},
+        ]}), encoding='utf-8')
+        multi_root = tmpdir / 'multi-artifacts'
+        relative_root = os.path.relpath(multi_root, ROOT)
+        multi_result = run([str(EXE), 'queue', '--file', str(multi_queue),
+                            '--artifacts', relative_root], cwd=ROOT)
+        multi_runs = sorted(p for p in multi_root.glob('*') if p.is_dir())
+        if multi_result.returncode != 0 or len(multi_runs) != 1:
+            failures.append('相对路径多战役队列未在预期目录产出运行目录')
+            print(f'  FAIL queue rc={multi_result.returncode} runs={multi_runs}')
+        else:
+            multi_dir = multi_runs[0]
+            indexes = [multi_dir / name for name in ('index.json', 'index-2.json')]
+            tasks_docs = [multi_dir / name for name in
+                          ('task-first-batch.json', 'task-second-batch.json')]
+            multi_report_path = tmpdir / 'multi-report.json'
+            run([str(EXE), 'report', '--run', str(multi_dir), '--json', str(multi_report_path)])
+            multi_report = json.loads(multi_report_path.read_text(encoding='utf-8'))
+            index_docs = [json.loads(p.read_text(encoding='utf-8')) for p in indexes if p.is_file()]
+            task_docs = [json.loads(p.read_text(encoding='utf-8')) for p in tasks_docs if p.is_file()]
+            sortie_refs = [stage['artifact'] for doc in index_docs for stage in doc['stages']]
+            index_refs = [doc['evidence']['index_artifact'] for doc in task_docs]
+            multi_checks = [
+                ('两份批次索引', len(index_docs) == 2, f'indexes={[p.name for p in indexes if p.is_file()]}'),
+                ('两个任务各自引用索引', len(index_refs) == 2
+                 and len(set(index_refs)) == 2
+                 and {Path(p).name for p in index_refs} == {'index.json', 'index-2.json'},
+                 f'refs={index_refs}'),
+                ('两份单关工件没有覆盖', len(sortie_refs) == 2
+                 and len(set(sortie_refs)) == 2
+                 and all(Path(p).is_file() for p in sortie_refs),
+                 f'sorties={sortie_refs}'),
+                ('报告汇总两关', multi_report['totals']['stages'] == 2,
+                 f"stages={multi_report['totals']['stages']}"),
+                ('多批次证据完整', multi_report['evidence_complete'] is True,
+                 f"findings={[f['code'] for f in multi_report['findings']]}"),
+            ]
+            for name, ok, detail in multi_checks:
+                print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  <- {detail}'))
+                if not ok:
+                    failures.append(f'{name}: {detail}')
+
+            # 任务引用丢失的索引必须让报告标明证据缺口。
+            missing_index = tmpdir / 'multi-missing-index'
+            shutil.copytree(multi_dir, missing_index)
+            task_path = missing_index / 'task-second-batch.json'
+            task_doc = json.loads(task_path.read_text(encoding='utf-8'))
+            task_doc['evidence']['index_artifact'] = str(missing_index / 'index-2.json')
+            task_path.write_text(json.dumps(task_doc), encoding='utf-8')
+            (missing_index / 'index-2.json').unlink()
+            missing_report_path = tmpdir / 'multi-missing-report.json'
+            run([str(EXE), 'report', '--run', str(missing_index),
+                 '--json', str(missing_report_path)])
+            missing_report = json.loads(missing_report_path.read_text(encoding='utf-8'))
+            missing_codes = [f['code'] for f in missing_report['findings']]
+            ok = 'missing_artifact' in missing_codes and not missing_report['evidence_complete']
+            print(f"  {'ok  ' if ok else 'FAIL'} 缺失索引引用")
+            if not ok:
+                failures.append(f'缺失索引引用未被识别: {missing_codes}')
+
+            damaged_index = tmpdir / 'multi-damaged-index'
+            shutil.copytree(multi_dir, damaged_index)
+            (damaged_index / 'index-2.json').write_text('{"stages":[42]}', encoding='utf-8')
+            damaged_report_path = tmpdir / 'multi-damaged-report.json'
+            run([str(EXE), 'report', '--run', str(damaged_index),
+                 '--json', str(damaged_report_path)])
+            damaged_report = json.loads(damaged_report_path.read_text(encoding='utf-8'))
+            damaged_codes = [f['code'] for f in damaged_report['findings']]
+            ok = ('unreadable_artifact' in damaged_codes
+                  and not damaged_report['evidence_complete'])
+            print(f"  {'ok  ' if ok else 'FAIL'} 损坏第二份索引")
+            if not ok:
+                failures.append(f'损坏第二份索引未被识别: {damaged_codes}')
+
+            duplicate_index = tmpdir / 'multi-duplicate-index'
+            shutil.copytree(multi_dir, duplicate_index)
+            duplicate_task = duplicate_index / 'task-second-batch.json'
+            duplicate_doc = json.loads(duplicate_task.read_text(encoding='utf-8'))
+            duplicate_doc['evidence']['index_artifact'] = index_refs[0]
+            duplicate_task.write_text(json.dumps(duplicate_doc), encoding='utf-8')
+            duplicate_report_path = tmpdir / 'multi-duplicate-report.json'
+            run([str(EXE), 'report', '--run', str(duplicate_index),
+                 '--json', str(duplicate_report_path)])
+            duplicate_report = json.loads(duplicate_report_path.read_text(encoding='utf-8'))
+            duplicate_codes = [f['code'] for f in duplicate_report['findings']]
+            ok = ('duplicate_batch_index' in duplicate_codes
+                  and not duplicate_report['evidence_complete'])
+            print(f"  {'ok  ' if ok else 'FAIL'} 重复索引引用")
+            if not ok:
+                failures.append(f'重复索引引用未被识别: {duplicate_codes}')
+
+            mixed_batch = tmpdir / 'multi-mixed-batch'
+            shutil.copytree(multi_dir, mixed_batch)
+            changed_index = mixed_batch / 'index-2.json'
+            changed_doc = json.loads(changed_index.read_text(encoding='utf-8'))
+            changed_doc['outcome'] = 'error'
+            changed_index.write_text(json.dumps(changed_doc), encoding='utf-8')
+            mixed_report_path = tmpdir / 'multi-mixed-report.json'
+            run([str(EXE), 'report', '--run', str(mixed_batch),
+                 '--json', str(mixed_report_path)])
+            mixed_report = json.loads(mixed_report_path.read_text(encoding='utf-8'))
+            ok = mixed_report['batch_outcome'] == 'mixed'
+            print(f"  {'ok  ' if ok else 'FAIL'} 不同批次结论摘要")
+            if not ok:
+                failures.append(f'不同批次结论被覆盖: {mixed_report["batch_outcome"]}')
 
         # ---- 单批命令的工件形态（没有 queue.json/state.json）：报告同样要读得全
         print()

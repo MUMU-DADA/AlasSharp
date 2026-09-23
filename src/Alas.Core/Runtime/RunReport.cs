@@ -52,7 +52,7 @@ public sealed class RunReport
     public bool HasFailures => Findings.Any(f => f.Code is "task_failed" or "stage_not_cleared"
         or "contract_violation" or "batch_failed");
     public bool EvidenceComplete => !Findings.Any(f => f.Code is "missing_artifact"
-        or "unreadable_artifact" or "no_artifacts" or "log_missing");
+        or "unreadable_artifact" or "no_artifacts" or "log_missing" or "duplicate_batch_index");
 
     /// <summary>从工件目录构建报告。<paramref name="directory"/> 必须是**运行目录**本身。</summary>
     public static RunReport Build(string directory)
@@ -130,17 +130,23 @@ public sealed class RunReport
             }
         }
 
-        // ---- 批次层（`index.json`，`campaign` 命令或队列里的战役任务都会写）
-        string batchPath = Path.Combine(report.RunDirectory, "index.json");
-        var batch = ReadJson(report, batchPath);
-        if (batch is not null)
+        // 单批沿用 index.json；同一队列的后续战役写 index-2.json 等独立索引。
+        var batchPaths = Directory.GetFiles(report.RunDirectory, "index*.json")
+            .Select(path => (path, number: BatchIndexNumber(Path.GetFileName(path))))
+            .Where(item => item.number > 0)
+            .OrderBy(item => item.number);
+        foreach (var (batchPath, _) in batchPaths)
         {
+            var batch = ReadJson(report, batchPath);
+            if (batch is null) continue;
             try
             {
                 if (batch["stages"] is not JsonArray batchStages ||
                     batchStages.Any(node => node is not JsonObject))
                     throw new JsonException("index.stages 必须是对象数组");
-                report.BatchOutcome = batch["outcome"]?.GetValue<string>();
+                string? outcome = batch["outcome"]?.GetValue<string>();
+                report.BatchOutcome = report.BatchOutcome is null ? outcome
+                    : report.BatchOutcome == outcome ? report.BatchOutcome : "mixed";
                 report.DryRun |= batch["dry_run"]?.GetValue<bool>() ?? false;
                 // 单批命令（`alashub campaign`）没有 queue.json：宿主/设备的初始化次数要**回头从
                 // index.json 取**，否则数据面上是 `?`，而"宿主只起一次"正是 R1 门槛要看的东西。
@@ -157,6 +163,7 @@ public sealed class RunReport
                         report.Items.Add(new JsonObject
                         {
                             ["level"] = "stage",
+                            ["batch_index"] = batchPath,
                             ["chapter"] = node?["chapter"]?.DeepClone(),
                             ["stage"] = node?["stage"]?.DeepClone(),
                             ["outcome"] = node?["outcome"]?.DeepClone(),
@@ -202,12 +209,22 @@ public sealed class RunReport
         // ---- 任务边界的只读状态快照（写在 `task-*.json` 里，R2 的"跨任务复位"证据）
         // 为什么报告要读它：快照不落到数据面，前端就看不到"这个任务是从什么画面开始的" ——
         // 而那正是判断"跨任务复位了没有"的依据。读了就顺手统计"有几个任务在边界上拿到了帧"。
+        var claimedIndexes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in files.Where(f => Path.GetFileName(f).StartsWith("task-", StringComparison.Ordinal)))
         {
             var document = ReadJson(report, path);
             try
             {
                 if (document?["id"]?.GetValue<string>() is not string taskId) continue;
+                if (document["evidence"] is JsonObject evidence
+                    && evidence["index_artifact"] is JsonNode indexArtifact)
+                {
+                    string indexPath = indexArtifact.GetValue<string>();
+                    CheckArtifact(report, indexPath);
+                    if (!claimedIndexes.Add(Path.GetFileName(indexPath)))
+                        report.Findings.Add(new RunFinding("duplicate_batch_index",
+                            $"多个战役任务引用同一批次索引: {Path.GetFileName(indexPath)}", path));
+                }
                 var boundary = document["boundary_state"] as JsonObject;
                 report.Boundaries[taskId] = boundary;
                 if (boundary?["available"]?.GetValue<bool>() == true) report.BoundariesWithFrame++;
@@ -308,6 +325,17 @@ public sealed class RunReport
 
     private static bool IsJsonShapeError(Exception error)
         => error is JsonException or InvalidOperationException or FormatException or ArgumentException;
+
+    private static int BatchIndexNumber(string name)
+    {
+        if (name == "index.json") return 1;
+        if (name.StartsWith("index-", StringComparison.Ordinal)
+            && name.EndsWith(".json", StringComparison.Ordinal)
+            && int.TryParse(name.AsSpan(6, name.Length - 11), out int number)
+            && number >= 2)
+            return number;
+        return 0;
+    }
 
     private static void MarkUnreadable(RunReport report, string path, Exception error)
         => report.Findings.Add(new RunFinding("unreadable_artifact",

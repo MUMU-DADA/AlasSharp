@@ -21,6 +21,9 @@ public static class QueueExecution
                                                CancellationToken token = default)
     {
         var requests = TaskQueueFile.Parse(File.ReadAllText(queueFile));
+        options.ResolveArtifactsDirectory();
+        if (resumeState is not null) resumeState = Path.GetFullPath(resumeState);
+        string? stopPath = stopFile is null ? null : Path.GetFullPath(stopFile);
         if (resumeState is not null && !resume)
             throw new ArgumentException("--resume-state 需要同时指定 --resume");
         if (resumeState is not null && !File.Exists(resumeState))
@@ -49,7 +52,6 @@ public static class QueueExecution
         foreach (var id in completed) queue.ResumeCompleted.Add(id);
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
-        string? stopPath = stopFile is null ? null : Path.GetFullPath(stopFile);
         int stopFileTriggered = 0;
         void CheckStopFile()
         {

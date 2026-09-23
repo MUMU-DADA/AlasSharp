@@ -103,6 +103,7 @@ public sealed class CampaignBatchRunner
         var options = _session.Options;
         var run = settings ?? CampaignRunSettings.From(options);
         var batch = new CampaignBatchResult { DryRun = options.DryRun };
+        string indexName = NextIndexName();
         var watch = System.Diagnostics.Stopwatch.StartNew();
         _session.Log.Info("batch", "开始批量任务", new Dictionary<string, object?>
         {
@@ -211,7 +212,7 @@ public sealed class CampaignBatchRunner
                 LogStage(stage);
             }
         Aggregate(batch);
-        batch.IndexPath = WriteIndex(batch);
+        batch.IndexPath = WriteIndex(batch, indexName);
         _session.Log.Info("batch", "批量任务结束", new Dictionary<string, object?>
         {
             ["outcome"] = batch.Outcome,
@@ -319,11 +320,15 @@ public sealed class CampaignBatchRunner
         string name = $"sortie-{label}.json";
         // 两关的 `stage` 标签撞名时（活动章节确实可能都叫 a1）绝不能互相覆盖 ——
         // 覆盖等于把先跑那关的证据丢了，而且事后看不出来。
-        if (!_artifactNames.Add(name))
+        if (_artifactNames.Contains(name) || File.Exists(Path.Combine(_session.RunDirectory, name)))
         {
             name = $"sortie-{label}-{stage.Chapter.Split('.').Last()}.json";
-            _artifactNames.Add(name);
         }
+        string candidate = name;
+        for (int suffix = 2; _artifactNames.Contains(name)
+             || File.Exists(Path.Combine(_session.RunDirectory, name)); suffix++)
+            name = $"{Path.GetFileNameWithoutExtension(candidate)}-{suffix}.json";
+        _artifactNames.Add(name);
         return _session.WriteArtifact(name, document);
     }
 
@@ -339,7 +344,17 @@ public sealed class CampaignBatchRunner
         return chapter.Split('.').Last().Replace('/', '_');
     }
 
-    private string? WriteIndex(CampaignBatchResult batch)
+    private string NextIndexName()
+    {
+        if (_session.RunDirectory is null) return "index.json";
+        for (int number = 1; ; number++)
+        {
+            string name = number == 1 ? "index.json" : $"index-{number}.json";
+            if (!File.Exists(Path.Combine(_session.RunDirectory, name))) return name;
+        }
+    }
+
+    private string? WriteIndex(CampaignBatchResult batch, string name)
     {
         if (_session.RunDirectory is null) return null;
         var stages = new JsonArray();
@@ -373,6 +388,6 @@ public sealed class CampaignBatchRunner
             ["device_configure_count"] = _session.DeviceConfigureCount,
             ["stages"] = stages,
         };
-        return _session.WriteArtifact("index.json", index);
+        return _session.WriteArtifact(name, index);
     }
 }

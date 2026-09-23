@@ -40,6 +40,13 @@ public sealed class SessionOptions
     /// <summary>证据落盘根目录；为空表示不落盘（失败帧仍会落到宿主默认目录）。</summary>
     public string? ArtifactsDirectory { get; set; }
 
+    /// <summary>在宿主可能改变进程工作目录之前固定调用方指定的工件根目录。</summary>
+    public void ResolveArtifactsDirectory()
+    {
+        if (ArtifactsDirectory is not null)
+            ArtifactsDirectory = Path.GetFullPath(ArtifactsDirectory);
+    }
+
     /// <summary>跑之前把参数校验成"可执行"或抛出 —— 不允许带着半截配置启动宿主。</summary>
     public void Validate()
     {
