@@ -66,9 +66,9 @@ CHECKLIST = [
      '最佳变体、是否在屏、相似度 —— 真机踩过：同一份失败列表里混着"账号门禁"与"判据认不出"两类根因'),
     ('控件规则 + 控制原语 + 文本输入',
      r'python tools\diagnostics\verify_primitives.py（原语，安全）',
-     '**控件规则那一条不要无人值守跑**：`verify_controls.py` 为了到「出击前阵型/潜艇面板」'
-     '可能进入出击流程（消耗石油、影响账号），项目既有记录里明确标着"需本人同意"；'
-     '`verify_text_input.py` 会往装备码输入框打字。原语（返回键/长按/滑动）安全，可随时跑'),
+     '**控件规则：跑之前要知道它会走到哪一层**。`verify_controls.py` 经产品路径 `alashub goto page_campaign`'
+     '再点 `handler/STRATEGY_OPEN` —— 进入战役图的阵型/潜艇面板（**离「出击」只差一步，但它不会开战**：脚本第 31 行起有红线，命中即拒绝点击，注释写明「开战会消耗石油、确认不可逆」）。所以它既不是"无人值守随便跑"，也不像我先前写的"会进入出击流程"那样重 —— 以此条为准。'
+     '`verify_text_input.py` 会往装备码输入框打字（已跑通 3/3）；原语（返回键/长按/滑动）已跑通 4/4，安全。'),
     ('用新运行时跑一次**真机通关**（R2 的真实路径证据）',
      r'alashub campaign campaign.campaign_main.campaign_1_1 --run --allow-actions --artifacts runs\  '
      r'（或 device_smoke 的第 3 项）',
