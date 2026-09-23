@@ -234,6 +234,7 @@ def main() -> int:
                  all(f'id="{anchor}"' in clean_html
                      for anchor in ('failures', 'tasks', 'stages', 'findings', 'raw')),
                  f"缺={[a for a in ('failures', 'tasks', 'stages', 'findings', 'raw') if f'id=\"{a}\"' not in clean_html]}"),
+                ('原始数据面默认折叠（<details>，零 JS）', '<details' in clean_html and '<summary>' in clean_html, '没有 details/summary'),
                 ('页首有跳转链接', '跳到：' in clean_html and '#failures' in clean_html,
                  '没有"跳到："或 #failures 链接'),
                 ('无失败时区块写明"无"',

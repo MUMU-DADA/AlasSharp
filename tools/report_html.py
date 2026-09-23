@@ -278,8 +278,13 @@ def render(report: dict) -> str:
     else:
         parts.append('<div class="sub">无（证据链完整、没有失败项）</div>')
 
-    parts.append('<h2 id="raw">原始数据面</h2><pre>' +
-                 html.escape(json.dumps(report, ensure_ascii=False, indent=1)[:4000]) + '</pre>')
+    # 原始数据面默认**折叠**（第 3 级交互：纯 HTML 的 <details>，零 JS）。
+    # `id="raw"` 放在 details 上，页首锚点照样能跳过来并展开这一块。
+    parts.append('<h2>原始数据面</h2>')
+    parts.append(
+        '<details id="raw"><summary>展开原始 report JSON（证据原文）</summary><pre>'
+        + html.escape(json.dumps(report, ensure_ascii=False, indent=1)[:4000])
+        + '</pre></details>')
     return '\n'.join(parts)
 
 
