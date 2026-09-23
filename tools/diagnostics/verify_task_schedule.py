@@ -55,6 +55,7 @@ def run_task(config_path: str, only_enabled: bool = False) -> dict:
         document = json.loads(artifact.read_text(encoding='utf-8'))
         evidence = document.get('evidence') or {}
         evidence['_outcome'] = document.get('outcome')
+        evidence['_stdout'] = proc.stdout or ''   # CLI 输出也带回来: 好断言 [任务证据] 行确实打出来了
         evidence['_error'] = document.get('error')
         return evidence
 
@@ -99,6 +100,7 @@ def main() -> int:
         ('列出的都是启用项', all(e.get('enable') is True for e in real.get('listed') or []),
          f"listed={real.get('listed')[:3]}"),
         ('只读：配置字节不变', before == after, f'{before[:12]} → {after[:12]}'),
+        ('CLI 打出 [任务证据] 行（键名改掉会静默消失）', '[任务证据]' in real.get('_stdout', '') and '启用=' in real.get('_stdout', ''), 'stdout 里没有 [任务证据] 或 启用='),
     ]
     for name, ok, detail in checks:
         print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
