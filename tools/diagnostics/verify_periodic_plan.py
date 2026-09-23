@@ -125,7 +125,7 @@ def main() -> int:
                  'input': {'tasks': ['commission', 'no_such_task_zzz']}}]}), encoding='utf-8')
 
             def run_queue(queue_file: Path, artifacts: Path):
-                subprocess.run([str(exe), 'queue', '--file', str(queue_file),
+                proc = subprocess.run([str(exe), 'queue', '--file', str(queue_file),
                                 '--artifacts', str(artifacts)],
                                capture_output=True, text=True, encoding='utf-8',
                                errors='replace', timeout=300)
@@ -178,9 +178,12 @@ def main() -> int:
             queue_file = tmpdir / 'queue.json'
             queue_file.write_text(json.dumps({'tasks': [
                 {'id': key, 'kind': 'periodic_preflight', 'input': value}
-                for key, value in cases.items()]}, ensure_ascii=False), encoding='utf-8')
+                for key, value in cases.items()] + [
+                # 执行入口也放进来：**只放未授权的那条** —— 它会被闸门挡下、不会真的执行
+                {'id': 'run-no-auth', 'kind': 'periodic_run', 'input': {'task': 'reward'}},
+            ]}, ensure_ascii=False), encoding='utf-8')
             artifacts = tmpdir / 'artifacts'
-            subprocess.run([str(exe), 'queue', '--file', str(queue_file),
+            proc = subprocess.run([str(exe), 'queue', '--file', str(queue_file),
                             '--artifacts', str(artifacts), '--continue-on-error'],
                            capture_output=True, text=True, encoding='utf-8',
                            errors='replace', timeout=300)
@@ -194,6 +197,14 @@ def main() -> int:
                 return (docs.get(key) or {}).get('outcome'), evidence
 
             gate_checks = []
+            # 执行入口的可见性与结论：拒绝时 CLI 也要打出 [任务证据] 行（第 194 轮加的那行）
+            run_outcome = (docs.get('run-no-auth') or {}).get('outcome')
+            gate_checks.append((
+                'periodic_run 未授权 → failed 且 CLI 打出判定行',
+                run_outcome == 'failed'
+                and '[任务证据]' in (proc.stdout or '')
+                and '判定=denied' in (proc.stdout or ''),
+                f"outcome={run_outcome} stdout 含判定行={'判定=denied' in (proc.stdout or '')}"))
             for key in ('no-auth', 'bad-confirm', 'unknown'):
                 outcome, evidence = decision(key)
                 gate_checks.append((f'{key} → failed 且 decision=denied',
