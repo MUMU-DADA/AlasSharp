@@ -335,3 +335,42 @@ python tools\report_html.py <artifacts>                     # 产物：<artifact
 
 **要不要给单批路径也加 `[任务证据]`**：不加。单批路径的 `[合同]` 已经覆盖结论，
 再打一份摘要只会让两条输出互相漂移（这一夜的老问题：**副本必然漂移**）。
+
+## 十七、运行中请求撤退（`withdraw.request`）
+
+**用法**：跑战役时，在**运行目录**里创建一个名为 `withdraw.request` 的文件即可（内容随意）：
+
+```powershell
+alashub campaign campaign.campaign_main.campaign_1_1 --run --allow-actions --artifacts runs\demo
+# 另开一个终端（运行目录在 artifacts 下，名字是时间戳）：
+New-Item -ItemType File runs\demo\<时间戳>\withdraw.request
+```
+
+**语义**：文件出现即请求。宿主在**下一次战斗之前**（那时正是地图界面、可撤退的状态）
+调用**上游自己的** `withdraw()`，本局以 `CampaignEnd('Withdraw')` 结束，
+合同据此判 `outcome=withdrawn`、`cleared=False`（**撤退不是通关**）。
+
+与 `--stop-file` 的区别：`--stop-file` 是"停下队列"（在任务边界生效），
+`withdraw.request` 是"让**本局**按玩家撤退结束"（在战斗边界生效）。
+
+**为什么这样实现**（`tools/s3_campaign_execution.py` 的挂钩）：
+
+* 挂钩点选"每次战斗之前" —— 那是唯一既在地图界面、又不与上游的出击循环抢时间的位置；
+* 调用上游的 `withdraw()` 而不是自己点按钮 —— 它的收尾是 `raise CampaignEnd('Withdraw')`
+  （`module/map/map_operation.py:410`），于是异常调用栈里有 `withdraw` 帧，
+  正好命中合同既有的判据（`tools/s3_campaign_outcome.py:72`）。**没有新写一套撤退逻辑。**
+
+**真机证据（2026-09-23，1-1）**：战斗 1 打到一半时创建请求文件 →
+
+```
+step=execute_a_battle round=2 outcome=withdrawn
+step=withdraw outcome=withdrawn
+[结算证据] withdrawn=True  rank=-  combat_status=False  stage_observed=True
+[合同]     合规 outcome=withdrawn cleared=False
+[批次]     outcome=withdrawn 原因=关卡未通过: withdrawn
+```
+
+这是 R0 需要的"**本局撤退判 `withdrawn`**"真机记录（合同七个结论至此都有真机覆盖）。
+
+**防线**：`verify_architecture.py` 的 `withdraw_hook_present()` 断言挂钩与路径约定都还在 ——
+它们失效的方式是静默的（请求文件出现却没人理，不报错、不失败）。
