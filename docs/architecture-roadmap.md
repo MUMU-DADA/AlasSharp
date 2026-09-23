@@ -377,3 +377,34 @@ R5 的门槛之一是"**性能基准**（替换后不慢于宿主路径，含冷
 
 **在 1-3 完成之前**：不改默认配置、不据此下任何性能结论。
 判据仍按本节开头那条：只有"抓帧均值 ≤0.15 s **且**控制通道正常 **且** 帧验证为真"才建议切换。
+
+### ⚠️ 附五更正（2026-09-23，同日验证）：`nemu_ipc` 的 7 ms **是失败路径**，不能改默认
+
+对上一小节的"待验证"做了验证，结论是**否掉那个数**：
+
+```
+=== nemu_ipc ===  配置 ok=True（device_configure 不报错）
+NemuIpcError: Connection failed, please … / Emulator info incorrect
+  第1次 4506.2 ms   返回键=[]   error=RequestHumanTakeover: …
+  第2次    7.6 ms   返回键=[]   error=RequestHumanTakeover: …
+  第3次    6.9 ms   返回键=[]   error=RequestHumanTakeover: …
+  _state['image'] is None ?  True          ← **一帧都没有**
+
+=== adb ===（对照）
+  第1次 437.1 ms   返回键=['capture_ms','method','raw','shape']  error=None
+  _state['image'] is None ?  False         ← 帧有效
+```
+
+**所以那"稳态 7 ms"是抓帧失败的耗时**（`RequestHumanTakeover`，帧为空），
+**不是 45 倍加速**。`device_configure` 会照单接受这个后端（`ok=True`），错误要到真抓帧才暴露 ——
+如果按那个数去改默认，结果是**每一帧都拿不到**（所有依赖画面的判断全线失效），比"慢"糟糕得多。
+
+**由此得到一条要写进纪律的判据**：
+
+> **耗时要与"成功判据"一起看。** 只测时间的基准会把"快速失败"记成"性能优异"。
+> 本次的验证手段很便宜：看 op 返回里有没有 `error`、返回键是否含 `capture_ms/shape`、
+> 以及 `_state['image']` 是否真的被写入。
+
+**修正后的默认建议**：仍是 `adb`（唯一验证过"抓帧成功 + 帧有效"的后端）。
+`droidcast` 的 319 ms **尚未验证帧有效性**（同一批测量里只看了耗时）—— 要它进候选，
+先按上面三条验一遍。`nemu_ipc` 在本机**不可用**（连接失败），除非修好连接否则不必再测。
