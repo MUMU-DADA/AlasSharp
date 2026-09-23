@@ -86,6 +86,10 @@ public static class TaskQueueFile
         string exclude = excludeDirectory is null
             ? "" : Path.GetFullPath(excludeDirectory).TrimEnd(Path.DirectorySeparatorChar);
         foreach (var directory in Directory.GetDirectories(artifactsRoot)
+                     // 与 `report` / `runs` 同一口径：只认真正的运行目录。否则一个手工备份目录
+                     // 或拷贝出来的旧运行目录（里面也带 state.json）会把 `--resume` 引到别的运行上，
+                     // 表现为"跳过了一批其实没跑过的任务"——静默跳过正是最难查的那种错。
+                     .Where(Alas.Runtime.RunReport.IsRunDirectory)
                      .OrderByDescending(d => Path.GetFileName(d), StringComparer.Ordinal))
         {
             if (exclude.Length > 0 &&
