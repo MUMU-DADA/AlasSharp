@@ -37,7 +37,7 @@ except KeyError:
 SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
 PROBE = os.path.join(HERE, '..', 'data', '_probe.png')
 ALASHUB = os.environ.get('ALASHUB', os.path.join(
-    HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net8.0', 'alashub.exe'))
+    HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe'))
 PROGRESS = os.path.join(HERE, '..', 'docs', 'page-verification.json')
 # 图里**没有入边**的页面不可能是导航目标 —— 它们是同一张画面的另一种状态（皮肤变体）
 # 或浮层：page_main_white（新版主界面皮肤，与 page_main 同屏）、page_channel（临时浮层）、

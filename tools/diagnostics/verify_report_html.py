@@ -26,7 +26,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[2]
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
 GENERATOR = ROOT / 'tools' / 'report_html.py'
 CHAPTER = 'campaign.campaign_main.campaign_2_1'
 

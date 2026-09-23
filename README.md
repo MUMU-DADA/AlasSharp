@@ -195,7 +195,11 @@ docs/                   验收记录（如 page-verification.md：页面识别�
 
 ## 快速开始
 
-需要：.NET 8 SDK、一份 ALAS 仓库（含 Python 环境）。
+需要：.NET 10 SDK、一份 ALAS 仓库（含 Python 环境）。NuGet 还原包固定存放在项目内
+`.runtime/nuget/packages`（不入库）。无法访问 nuget.org 时，先把所需 `.nupkg` 放入
+`.runtime/nuget/source`，再将 `NuGet.config.example` 复制为本地 `NuGet.config`。
+当前 .NET 10 还原清单只包含 ImageSharp 2.1.8；已有 `.nupkg` 可从本机 NuGet
+缓存复制到上述离线源。不要把包文件或本机 NuGet 配置提交到 Git。
 
 ```powershell
 $alas = "..\source project\AzurLaneAutoScript"   # 你的 ALAS 仓库路径
@@ -207,14 +211,14 @@ $py   = "$alas\.venv\Scripts\python.exe"
 # 2) 双向校验
 & $py tools\verify_export.py --repo $alas
 dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
-.\src\Alas.DataTool\bin\Release\net8.0\alashub.exe verify
+.\src\Alas.DataTool\bin\Release\net10.0\alashub.exe verify
 
 # 3) 识图桥接验收
 & $py tools\make_imaging_fixture.py --repo $alas
-.\src\Alas.DataTool\bin\Release\net8.0\alashub.exe vision --repo $alas
+.\src\Alas.DataTool\bin\Release\net10.0\alashub.exe vision --repo $alas
 
 # 4) 查看某个关卡被理解成了什么
-.\src\Alas.DataTool\bin\Release\net8.0\alashub.exe show campaign_main/campaign_1_1.py
+.\src\Alas.DataTool\bin\Release\net10.0\alashub.exe show campaign_main/campaign_1_1.py
 ```
 
 `alashub` 子命令：`verify` / `list` / `show` / `imaging` / `matching` / `vision` /
@@ -438,7 +442,7 @@ IR JSON 目前用于规则元数据和校验；完整执行读取的是上游生
 ## 环境限制（本机实测，供排障参考）
 
 - **NuGet / PyPI 均不通**（`SSL connection could not be established`）。离线还原见
-  `NuGet.config.example`；离线包缓存里**没有 Python.NET**。
+  `NuGet.config.example`；项目内缓存当前**没有 Python.NET**。
 - 因此进程内嵌入**没有用 Python.NET**，而是直接 P/Invoke CPython 的 C API
   （`python314.dll` 本机自带，用到的 8 个函数全部导出）。这条路的可行性已实测：
   `alashub vision --mode inproc` 通过全部 80 例。

@@ -36,7 +36,7 @@ try:
 except Exception:
     pass
 
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
 FIXTURE = DATA / 'fixtures' / 'os_map.png'
 GLOBE_FIXTURE = DATA / 'fixtures' / 'os_globe_view.png'
 

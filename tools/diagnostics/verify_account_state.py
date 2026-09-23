@@ -34,7 +34,7 @@ try:
 except Exception:
     pass
 
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
 IN_MAP_THRESHOLD = 10.0          # 上游 `appear(button, threshold=10)` 的默认值
 BORDERLINE = (8.0, 14.0)         # 记录下来供真机复核的临界区间
 

@@ -39,7 +39,7 @@ from s3_campaign_execution import run_native_campaign       # noqa: E402
 from s3_campaign_outcome import finalize_sortie_result      # noqa: E402
 from s3_stub_campaign import FakeScreenCampaign, NativeRunCampaign  # noqa: E402
 
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
 # 规则词表里的"真跑过一仗"步骤：手工正例要按生产形态带上它。
 BATTLE_STEP = {'step': 'execute_a_battle', 'round': 1, 'ms': 12.0}
 

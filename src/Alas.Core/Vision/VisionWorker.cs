@@ -216,7 +216,7 @@ public sealed class VisionWorker : VisionEngineBase
 
     private static string DefaultWorkerScript()
     {
-        // bin/Release/net8.0 -> 回到 csharp/tools/
+        // bin/Release/net10.0 -> 回到 csharp/tools/
         string baseDir = AppContext.BaseDirectory;
         return Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
                                              "tools", "vision_worker.py"));

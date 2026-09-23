@@ -382,7 +382,7 @@ def main() -> int:
     # ---- 任务侧：走队列（产品路径），断言结论与证据；输入有错必须 failed 而不是"部分成功"
     print()
     print('=== 任务侧（kind = periodic_plan，走队列）===')
-    exe = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+    exe = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
     if not exe.is_file():
         print(f'[跳过] 未构建 {exe.relative_to(ROOT)}（先 dotnet build）—— 任务侧未验。')
     else:

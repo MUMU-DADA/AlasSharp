@@ -26,7 +26,7 @@ ADB = os.environ['STUB_ADB']
 SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
 PROBE = os.path.join(HERE, '..', 'data', '_probe.png')
 ALASHUB = os.environ.get('ALASHUB', os.path.join(
-    HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net8.0', 'alashub.exe'))
+    HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe'))
 PROGRESS = os.path.join(HERE, '..', 'docs', 'page-verification.json')
 
 # 岛屿相关按要求跳过（page_island 与 9 个 island 子页都不在列表里）

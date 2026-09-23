@@ -30,7 +30,7 @@ try:
 except Exception:
     pass
 
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
 CHAPTER = 'campaign.campaign_main.campaign_2_1'
 FRAME = '_boss122.png'          # 真机地图帧（账号状态任务用）
 

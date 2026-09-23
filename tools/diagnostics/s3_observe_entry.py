@@ -34,7 +34,7 @@ except Exception:
     pass
 
 ADB = os.environ.get('STUB_ADB', '')
-ALASHUB = os.path.join(ROOT, 'src', 'Alas.DataTool', 'bin', 'Release', 'net8.0', 'alashub.exe')
+ALASHUB = os.path.join(ROOT, 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe')
 
 DRIVER = r'''
 import json, sys, time

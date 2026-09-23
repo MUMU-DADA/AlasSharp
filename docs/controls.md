@@ -103,6 +103,6 @@
 
 ```powershell
 $env:STUB_ADB = "<adb.exe>"
-$env:ALASHUB  = "src/Alas.DataTool/bin/Release/net8.0/alashub.exe"
+$env:ALASHUB  = "src/Alas.DataTool/bin/Release/net10.0/alashub.exe"
 python tools/diagnostics/verify_controls.py
 ```

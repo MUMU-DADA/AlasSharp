@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / '.runtime' / 'engine'
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
 ARGS_JSON = ENGINE / 'module' / 'config' / 'argument' / 'args.json'
 CONFIG = ENGINE / 'config' / 'alas.json'
 

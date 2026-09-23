@@ -82,7 +82,7 @@ def main() -> int:
     # 都对着同一份上游数据，才能把"任务报的数对不对"钉死。
     print()
     print('=== C# 任务路径（队列里的 task_catalog）===')
-    exe = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net8.0' / 'alashub.exe'
+    exe = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
     if not exe.is_file():
         print(f'[跳过] 未构建 {exe.relative_to(ROOT)}（先 dotnet build）—— 任务路径未验。')
     else:

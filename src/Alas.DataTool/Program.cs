@@ -367,7 +367,7 @@ internal static class Program
                     if (args[i] == "--limit" && int.TryParse(args[i + 1], out int n)) limit = n;
                     if (args[i] == "--mode") mode = args[i + 1];
                 }
-                // bin/Release/net8.0 -> csharp/tools
+                // bin/Release/net10.0 -> csharp/tools
                 string toolsDir = paths.ToolsDirectory;
                 return VisionCheck.Run(fixture, repoDir, toolsDir, limit, mode);
             }

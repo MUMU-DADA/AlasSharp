@@ -29,7 +29,7 @@ ADB = os.environ['STUB_ADB']
 SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
 PROBE = os.path.join(HERE, '..', 'data', '_probe.png')
 ALASHUB = os.environ.get('ALASHUB', os.path.join(
-    HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net8.0', 'alashub.exe'))
+    HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe'))
 # 红线关键词：命中即拒绝点击。开战会消耗石油、"确认"不可逆 ——
 # 用户授权里明确排除了这两类，所以做成**代码级守卫**，而不是靠"记得别点"。
 # 注意 RETIRE 本身不在列表里：用户明确授权"可以打开退役弹窗、不点确认"，
@@ -574,7 +574,7 @@ def build_doc():
         '',
         '```powershell',
         '$env:STUB_ADB = "<adb.exe>"',
-        '$env:ALASHUB  = "src/Alas.DataTool/bin/Release/net8.0/alashub.exe"',
+        '$env:ALASHUB  = "src/Alas.DataTool/bin/Release/net10.0/alashub.exe"',
         'python tools/diagnostics/verify_controls.py',
         '```',
         '',

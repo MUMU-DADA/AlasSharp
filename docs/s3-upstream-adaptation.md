@@ -87,13 +87,13 @@ IR JSON 是身份、计划摘要和校验信息，**当前不是独立 JSON 战�
 
 ```powershell
 # 仅查看本章的上游导出规则，不连接设备
-.\src\Alas.DataTool\bin\Release\net8.0\alashub.exe campaign campaign.campaign_main.campaign_1_4
+.\src\Alas.DataTool\bin\Release\net10.0\alashub.exe campaign campaign.campaign_main.campaign_1_4
 
 # 原生上游完整出击，默认最多 20 场战斗
-.\src\Alas.DataTool\bin\Release\net8.0\alashub.exe campaign campaign.campaign_main.campaign_1_4 --run --allow-actions
+.\src\Alas.DataTool\bin\Release\net10.0\alashub.exe campaign campaign.campaign_main.campaign_1_4 --run --allow-actions
 
 # 上游全清分支：清完小怪再打 BOSS
-.\src\Alas.DataTool\bin\Release\net8.0\alashub.exe campaign campaign.campaign_main.campaign_2_1 --run --allow-actions --clear-all
+.\src\Alas.DataTool\bin\Release\net10.0\alashub.exe campaign campaign.campaign_main.campaign_2_1 --run --allow-actions --clear-all
 ```
 
 `--max-seconds` 默认 1500 秒，在上游操作边界检查，不强制打断正在执行的战斗。

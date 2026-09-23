@@ -244,7 +244,7 @@ class NativeRunTests(unittest.TestCase):
 class CliArgumentTests(unittest.TestCase):
     def test_final_run_flag_is_enforced_before_runtime_starts(self):
         import subprocess
-        exe = os.path.join(ROOT, 'src', 'Alas.DataTool', 'bin', 'Release', 'net8.0', 'alashub.exe')
+        exe = os.path.join(ROOT, 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe')
         if not os.path.exists(exe):
             self.skipTest('build Release first to verify the CLI')
         result = subprocess.run([exe, 'campaign', 'campaign.campaign_main.campaign_2_1', '--run'],
