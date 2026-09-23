@@ -381,3 +381,24 @@ R4 的交互（筛选/展开）与框架选型；R5 评估；周期任务执行�
 
 工作区 `README.md`（三件待决）→ 本页（速览 + 十节）→ `docs/runtime.md`（运行时 / 三处根因 / 界面用法）
 → `docs/tasks.md`（八个域 + 执行环设计 + 花费路径粗筛）→ `docs/architecture-roadmap.md`（阶段与门槛）。
+
+## 十一、控件回归里 5 项 `blocked` 的逐条状态（第 151 轮，从 `data/controls_verify.json` 读出）
+
+先前只在清单里写着"5 项还没验到"，太笼统。逐条读出来之后，它们**分成两类，且都不是素材问题**：
+
+| 条目 | 规则 | 原因 | 结论 |
+| --- | --- | --- | --- |
+| `page_meowfficer` | `SWITCH_LOCK` | **页面不可达**（看到的页是 `page_dormmenu`） | 与页面回归 29/34 同一个根因：入口不在主界面（在宿舍菜单），账号也受限 |
+| `page_os` | `SCROLL_STORAGE` | **页面不可达**（看到的是 `page_campaign_menu`） | 同上：入口在战役菜单深处 |
+| `page_os` | `STRATEGIC_SEARCH_SCROLL` | **页面不可达** | 同上 |
+| `retire_dialog` | `<confident-guard>` | 护栏放弃：`RETIRE_APPEAR_1` 实测 0.118 | **故意不验的项**（退役确认弹窗，别为了凑数去点） |
+| `page_campaign#strategy` | `<confident-guard>` | 护栏放弃：`STRATEGY_OPEN` 实测 0.330 | **已由证据结案**：同一台设备的真机地图帧上该素材模板分 **1.000** → 是画面/时机没到，不是素材不匹配（见第十节 B 类与 `probe_asset_match.py`） |
+
+**所以这 5 项的正确读法**：
+
+* 3 项 = **同一个"入口不在主界面/账号受限"的现实**（与页面回归的归因一致，不是新增问题）；
+* 1 项 = **刻意不验**（不可逆操作前的确认弹窗）；
+* 1 项 = **已结案**（护栏当时没看到目标，而素材本身匹配）。
+
+**要真正"验到"这 3 项需要什么**：把画面走到宿舍菜单/战役菜单深处（`page_meowfficer`、`page_os`），
+并按 `probe_asset_match.py` 的方式确认素材与屏幕；这是设备侧的活，不是配置或代码问题。
