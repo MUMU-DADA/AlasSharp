@@ -21,11 +21,18 @@ public static class TaskQueuePlanner
                                                          int maxRounds, double maxSeconds,
                                                          bool dryRun, bool captureAfter = false)
     {
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), limit, "limit 必须为正整数");
+        if (maxRounds <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxRounds), maxRounds, "maxRounds 必须为正整数");
+        if (!double.IsFinite(maxSeconds) || maxSeconds <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxSeconds), maxSeconds, "maxSeconds 必须为有限正数");
+
         var catalog = UpstreamData.Catalog.Open(dataDirectory);
         var matched = EventStateTask.Select(catalog, prefix, onlyComplete, default, out int total);
         var selected = matched
             .OrderBy(e => e.Source, StringComparer.Ordinal)
-            .Take(Math.Max(1, limit))
+            .Take(limit)
             .ToList();
 
         var tasks = new JsonArray();

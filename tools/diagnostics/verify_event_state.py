@@ -223,6 +223,36 @@ def main() -> int:
                                     and captured_tasks[i + 1]['required'] is True
                                     and captured_tasks[i + 1]['id'] == captured_tasks[i]['id'] + ':post'
                                     for i in (0, 2)), f'tasks={captured_tasks}'))
+            captured_document = (json.loads(captured_out.read_text(encoding='utf-8'))
+                                 if captured.returncode == 0 and captured_out.is_file() else {})
+            plan_checks.append(('capture-after 默认 dry-run 保持 dry_run 且抓帧任务需授权',
+                                captured_document.get('dry_run') is True
+                                and captured_document.get('capture_after') is True
+                                and all(t.get('required') is True for t in captured_tasks[1::2]),
+                                f"dry_run={captured_document.get('dry_run')} "
+                                f"capture_after={captured_document.get('capture_after')}"))
+
+            # 规划参数必须在 CLI 边界拒绝无效值；否则 `Math.Max(1, limit)` 会把
+            # "不要生成任务" 静默变成一关，0/负数的轮次和时间也会写入不可执行队列。
+            invalid_cases = [
+                ('limit=0', ['--limit', '0'], 'limit'),
+                ('limit<0', ['--limit', '-2'], 'limit'),
+                ('limit 非数字', ['--limit', 'nope'], 'limit'),
+                ('max-rounds=0', ['--max-rounds', '0'], 'max-rounds'),
+                ('max-seconds=0', ['--max-seconds', '0'], 'max-seconds'),
+                ('max-seconds 非数字', ['--max-seconds', 'nope'], 'max-seconds'),
+            ]
+            for name, option_args, option in invalid_cases:
+                invalid_out = tmpdir / f'invalid-{name.replace("=", "-").replace("<", "lt").replace(" ", "-")}.json'
+                invalid = subprocess.run(
+                    [str(EXE), 'plan-queue', '--data', str(DATA), '--out', str(invalid_out),
+                     '--only-complete', *option_args],
+                    capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=120)
+                combined = (invalid.stdout or '') + (invalid.stderr or '')
+                plan_checks.append((f'拒绝无效 {name}',
+                                    invalid.returncode == 2 and not invalid_out.exists()
+                                    and option in combined,
+                                    f'退出码={invalid.returncode} 输出={combined[-240:]}'))
         for name, ok, detail in plan_checks:
             print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
             if not ok:

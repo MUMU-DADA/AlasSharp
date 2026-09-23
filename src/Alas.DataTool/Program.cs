@@ -156,19 +156,43 @@ internal static class Program
                 string prefix = "event_", outPath = ""; bool onlyComplete = false, dryRun = true;
                 bool captureAfter = false;
                 int limit = 5, maxRounds = 20; double maxSeconds = 1500;
-                for (int i = 1; i < args.Length - 1; i++)
+                for (int i = 1; i < args.Length; i++)
                 {
-                    if (args[i] == "--folder-prefix") prefix = args[i + 1];
-                    if (args[i] == "--out") outPath = args[i + 1];
-                    if (args[i] == "--limit" && int.TryParse(args[i + 1], out int n)) limit = n;
-                    if (args[i] == "--max-rounds" && int.TryParse(args[i + 1], out int mr)) maxRounds = mr;
-                    if (args[i] == "--max-seconds" && double.TryParse(args[i + 1], out double ms)) maxSeconds = ms;
-                }
-                foreach (var a in args)
-                {
-                    if (a == "--only-complete") onlyComplete = true;
-                    if (a == "--run") dryRun = false;
-                    if (a == "--capture-after") captureAfter = true;
+                    switch (args[i])
+                    {
+                        case "--folder-prefix":
+                            prefix = RequirePlanQueueValue(args, ref i, "--folder-prefix");
+                            break;
+                        case "--out":
+                            outPath = RequirePlanQueueValue(args, ref i, "--out");
+                            break;
+                        case "--limit":
+                            limit = ParsePositivePlanQueueInt(args, ref i, "--limit");
+                            break;
+                        case "--max-rounds":
+                            maxRounds = ParsePositivePlanQueueInt(args, ref i, "--max-rounds");
+                            break;
+                        case "--max-seconds":
+                            maxSeconds = ParsePositivePlanQueueDouble(args, ref i, "--max-seconds");
+                            break;
+                        // 全局路径参数已在入口预解析；这里仍要消费它们，避免被
+                        // plan-queue 的专用参数校验误报为未知参数。
+                        case "--data":
+                        case "--repo":
+                            RequirePlanQueueValue(args, ref i, args[i]);
+                            break;
+                        case "--only-complete":
+                            onlyComplete = true;
+                            break;
+                        case "--run":
+                            dryRun = false;
+                            break;
+                        case "--capture-after":
+                            captureAfter = true;
+                            break;
+                        default:
+                            throw new ArgumentException($"plan-queue 未知参数: {args[i]}");
+                    }
                 }
                 if (outPath.Length == 0)
                 {
@@ -401,6 +425,33 @@ internal static class Program
     {
         Console.Error.WriteLine(message);
         return 2;
+    }
+
+    private static string RequirePlanQueueValue(string[] args, ref int index, string option)
+    {
+        if (index + 1 >= args.Length || args[index + 1].StartsWith("--", StringComparison.Ordinal))
+            throw new ArgumentException($"{option} 缺少参数值");
+        return args[++index];
+    }
+
+    private static int ParsePositivePlanQueueInt(string[] args, ref int index, string option)
+    {
+        string value = RequirePlanQueueValue(args, ref index, option);
+        if (!int.TryParse(value, System.Globalization.NumberStyles.Integer,
+                          System.Globalization.CultureInfo.InvariantCulture, out int parsed)
+            || parsed <= 0)
+            throw new ArgumentException($"{option} 必须为正整数: {value}");
+        return parsed;
+    }
+
+    private static double ParsePositivePlanQueueDouble(string[] args, ref int index, string option)
+    {
+        string value = RequirePlanQueueValue(args, ref index, option);
+        if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
+                             System.Globalization.CultureInfo.InvariantCulture, out double parsed)
+            || !double.IsFinite(parsed) || parsed <= 0)
+            throw new ArgumentException($"{option} 必须为有限正数: {value}");
+        return parsed;
     }
 
     // ------------------------------------------------------------------ verify
