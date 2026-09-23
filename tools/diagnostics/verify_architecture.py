@@ -34,6 +34,44 @@ def _csharp_array(text: str, declaration: str) -> str:
     return match.group(1) if match else ""
 
 
+def campaign_shims_installed() -> list[str]:
+    """`op_s3_campaign_init` 里那批兼容垫片**必须还在被调用**。
+
+    为什么单独守它：垫片（`apply_*_compat`）是"少一行调用就静默失效"的东西 ——
+    代码看着还在、函数也还在，只是没人调了。而症状要到**真机**上才暴露
+    （`IN_MAP` 那次就是：阈值差 0.19，真机白等 62 秒后 `GameStuckError`）。
+
+    只用**字面扫描**：把 `op_s3_campaign_init` 的函数体切出来，要求这几个调用都在里面。
+    谁要删或挪走其中一个，这里就会红 —— 于是改动进入审阅视野，而不是等到下一次真机运行。
+    """
+    path = ROOT / "tools" / "alas_vision.py"
+    if not path.is_file():
+        return ["缺少 tools/alas_vision.py"]
+    text = path.read_text(encoding="utf-8")
+    marker = "def op_s3_campaign_init"
+    start = text.find(marker)
+    if start < 0:
+        return [f"`{marker}` 不存在（战役入口没了？）"]
+    rest = text[start + len(marker):]
+    # 切到下一个顶层 def 为止
+    end = rest.find("\ndef ")
+    body = rest if end < 0 else rest[:end]
+    required = (
+        "apply_numpy2_compat()",
+        "apply_points_empty_compat()",
+        "apply_fleet_bar_compat()",
+        "apply_auto_search_skip_compat()",
+        "apply_boss_icon_color_compat()",
+        "apply_in_map_threshold_compat()",
+        "apply_withdraw_trace_compat()",
+    )
+    missing = [call for call in required if call not in body]
+    if missing:
+        return [f"`op_s3_campaign_init` 里少了垫片调用：{missing}"
+                "（垫片少一行调用不会报错，只会在真机上静默失效）"]
+    return []
+
+
 def task_domain_registration() -> list[str]:
     """每个任务域都必须在 CLI 里注册（否则队列只会报"没有注册运行器"然后失败）。
 
@@ -188,6 +226,7 @@ def main() -> int:
 
     problems.extend(contract_consistency())
     problems.extend(task_domain_registration())
+    problems.extend(campaign_shims_installed())
     problems.extend(device_checklist_integrity())
 
     roadmap = read("docs/architecture-roadmap.md")
