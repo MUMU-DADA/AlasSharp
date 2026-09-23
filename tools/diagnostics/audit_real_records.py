@@ -379,13 +379,19 @@ def audit_queue_chain(directory: Path, sortie_name: str, result: dict, index: di
                 observed = next_task.get('evidence') or {}
                 shape = frame.get('shape')
                 campaign = observed.get('campaign') or {}
+                allowed_pages = {'page_campaign'}
+                # Event chapters can return to their dedicated event page.
+                # Keep the page rule generic by chapter family, never by a
+                # specific event/map identifier.
+                if str(result.get('chapter', '')).startswith('campaign.event_'):
+                    allowed_pages.add('page_event')
                 page_verified = (next_task.get('outcome') == 'succeeded'
                                  and observed.get('source') == 'device_capture'
                                  and frame.get('available') is True
                                  and isinstance(shape, list) and len(shape) == 3
                                  and all(type(size) is int and size > 0 for size in shape)
                                  and observed.get('page_errors') == []
-                                 and 'page_campaign' in (observed.get('pages') or [])
+                                 and bool(allowed_pages & set(observed.get('pages') or []))
                                  and observed.get('in_map') is False
                                  and campaign.get('chapter') == result.get('chapter'))
                 if not page_verified:

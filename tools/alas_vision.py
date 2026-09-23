@@ -3069,7 +3069,7 @@ def op_device_swipe(args):
 def op_device_back(args):
     dev = _device_engine()
     try:
-        dev.back()
+        dev.adb_shell(['input', 'keyevent', '4'])
         return {'ok': True}
     except Exception as e:
         return {'ok': False, 'error': f'{type(e).__name__}: {e}'}

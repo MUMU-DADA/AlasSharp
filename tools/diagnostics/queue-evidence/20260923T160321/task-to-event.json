@@ -1,0 +1,143 @@
+{
+  "id": "to-event",
+  "kind": "navigate",
+  "required": true,
+  "input": {
+    "to": "page_event",
+    "max_hops": 8
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 9.7,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "target": "page_event",
+    "max_hops": 8,
+    "rounds_requested": 1,
+    "rounds_completed": 1,
+    "rounds": [
+      {
+        "round": 1,
+        "success": true,
+        "to_target": {
+          "target": "page_event",
+          "success": true,
+          "final_pages": [
+            "page_event"
+          ],
+          "hops": [
+            {
+              "Hop": 0,
+              "OnPages": [],
+              "Target": "page_event",
+              "Button": "<BACK 自救>",
+              "Score": 0,
+              "ClickX": 0,
+              "ClickY": 0,
+              "ArrivedPages": [
+                "page_main",
+                "page_main_white"
+              ],
+              "LowConfidence": true
+            },
+            {
+              "Hop": 2,
+              "OnPages": [
+                "page_main"
+              ],
+              "Target": "page_event",
+              "Button": "ui_white/MAIN_GOTO_CAMPAIGN_WHITE",
+              "Score": 0.948838,
+              "ClickX": 1192,
+              "ClickY": 508,
+              "ArrivedPages": [
+                "page_campaign_menu"
+              ],
+              "LowConfidence": false
+            },
+            {
+              "Hop": 3,
+              "OnPages": [
+                "page_campaign_menu"
+              ],
+              "Target": "page_event",
+              "Button": "ui/CAMPAIGN_MENU_GOTO_EVENT",
+              "Score": 0.996772,
+              "ClickX": 755,
+              "ClickY": 222,
+              "ArrivedPages": [
+                "page_event"
+              ],
+              "LowConfidence": false
+            }
+          ],
+          "failure": null,
+          "graph_nodes": 53,
+          "graph_edges": 127,
+          "elapsed_ms": 9649.752
+        }
+      }
+    ],
+    "hops": [
+      {
+        "Hop": 0,
+        "OnPages": [],
+        "Target": "page_event",
+        "Button": "<BACK 自救>",
+        "Score": 0,
+        "ClickX": 0,
+        "ClickY": 0,
+        "ArrivedPages": [
+          "page_main",
+          "page_main_white"
+        ],
+        "LowConfidence": true
+      },
+      {
+        "Hop": 2,
+        "OnPages": [
+          "page_main"
+        ],
+        "Target": "page_event",
+        "Button": "ui_white/MAIN_GOTO_CAMPAIGN_WHITE",
+        "Score": 0.948838,
+        "ClickX": 1192,
+        "ClickY": 508,
+        "ArrivedPages": [
+          "page_campaign_menu"
+        ],
+        "LowConfidence": false
+      },
+      {
+        "Hop": 3,
+        "OnPages": [
+          "page_campaign_menu"
+        ],
+        "Target": "page_event",
+        "Button": "ui/CAMPAIGN_MENU_GOTO_EVENT",
+        "Score": 0.996772,
+        "ClickX": 755,
+        "ClickY": 222,
+        "ArrivedPages": [
+          "page_event"
+        ],
+        "LowConfidence": false
+      }
+    ],
+    "final_pages": [
+      "page_event"
+    ],
+    "success": true,
+    "graph_nodes": 53,
+    "graph_edges": 127
+  }
+}

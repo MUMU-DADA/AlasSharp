@@ -130,6 +130,13 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 筛选迟早会走偏。实测：`event_*` 匹配 879 章、其中计划完整 768 章（A 644 / B 124）；
 生成的 3 关队列 dry-run 全部跑通并逐任务落盘工件。
 
+真实产品路径另有一个已解锁活动 A1 样本：普通 `campaign_batch` 队列调用上游
+`CampaignRun.load_campaign()` 与原生 `Campaign.run()` 后获得 S 级成功结算，
+`sortie-result/1` 判为 `cleared` 且无违例；紧随其后的 `account_state(capture=true)`
+实时识别 `page_event`、`in_map=false`。六份脱敏工件及原件哈希见
+`tools/diagnostics/evidence/20260923T163008/`，由 `audit_real_records.py` 交叉核对。
+这只覆盖当前账号已解锁的 A1，不能据此认定其他活动关或活动任务整体完成。
+
 > 纪律提醒：`plan-queue` 只做"翻译成任务"，**不新增判据**；队列里的任务默认 `required=false`
 > （一个活动关跑不动不该把整条队列停掉），但失败仍按"失败即停"停下，要跑完请显式
 > `--continue-on-error`。
@@ -253,7 +260,7 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 
 - 账号状态 `capture=true` 与 `IN_MAP` 现场复核已有设备窗口记录，见 `handover-r0-r2.md` 第五节与第八节补充六。
 - 队列已有 CLI 入口和静态 HTML 证据视图；统一配置、任务和运行控制前端仍未交付。
-- 大世界目前为只读探针，活动为清点/生成队列；完整动作流程仍需各域自己的真实产品路径验证。
+- 大世界目前为只读探针；活动已有 A1 普通战役队列真机通关样本，其他活动章节及活动域完整动作流程仍需验证。
 - 周期任务已接通通用执行入口，reward 与 dorm 的原生调度有真机证据；dorm 本次没有收取点击，领取效果及其余执行路径不能据此视为已验证。
 - 观测已进入任务队列，完成离线故障/取消回归与只读真机抓帧/识页验证；`map=main` 仅有主界面零命中的现场负样本，地图内正样本及其他后端不据此外推。
 

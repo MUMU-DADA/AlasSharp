@@ -1,0 +1,29 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 181.3,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "event-a1",
+      "kind": "campaign_batch",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 181,
+      "artifact": "<project>/data/mainline-device/20260923T163007-event_campaign/artifacts/20260923T163008/task-event-a1.json"
+    },
+    {
+      "id": "after-event",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.2,
+      "artifact": "<project>/data/mainline-device/20260923T163007-event_campaign/artifacts/20260923T163008/task-after-event.json"
+    }
+  ]
+}

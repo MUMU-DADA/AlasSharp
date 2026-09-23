@@ -83,6 +83,13 @@ IR JSON 是身份、计划摘要和校验信息，**当前不是独立 JSON 战�
 上述四条成功结算证据继续保留；`verify_real_records.py` 覆盖篡改、文件缺失、dry-run 冒充真机、
 包装/索引/会话与结果分歧，合同与架构检查继续执行。
 
+同日活动 A1 的通用 `campaign_batch` 取得成功结算，随后实时抓帧返回 `page_event`；
+证据审计按章节族接受活动页，并保持抓帧、离图和章节关联条件。原始设备材料仍在本地忽略目录，
+脱敏归档与反例见 `tools/diagnostics/evidence/20260923T163008/` 和 `verify_real_records.py`。
+共享导航的返回键兼容改为上游 `Device.adb_shell(['input', 'keyevent', '4'])`，因为当前上游
+`Device` 不提供 `back()`；仅改变返回键调用，章节配置、地图规则和原生 `Campaign.run()` 未变。
+`verify_device_back.py` 覆盖调用与失败透传，A1 只证明这一已解锁关卡，不能外推活动域全覆盖。
+
 ## 使用
 
 ```powershell

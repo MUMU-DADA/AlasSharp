@@ -16,6 +16,7 @@
 | `20260923T145245` | 动作授权；宿主 1 / 设备配置 1 | 7.7 秒 |
 | `20260923T154407` | 只读设备；宿主 1 / 设备配置 1 | 5.5 秒 |
 | `20260923T155210` | 动作授权；宿主 1 / 设备配置 1 | 7.9 秒 |
+| `20260923T160321` | 动作授权；宿主 1 / 设备配置 1 | 10.6 秒 |
 
 | 归档 / 任务 | 任务域 | 已核对事实 |
 | --- | --- | --- |
@@ -33,6 +34,8 @@
 | `20260923T155210/dorm-plan` | `periodic_plan` | 上游绑定 4 项；请求 dorm 已找到 |
 | `20260923T155210/dorm` | `periodic_run` | 上游 AzurLaneAutoScript.dorm；decision=ran；native_success=true |
 | `20260923T155210/after-dorm` | `account_state` | 实时抓帧；页面 page_dorm；in_map=False |
+| `20260923T160321/to-event` | `navigate` | 目标 page_event；完成 1/1 轮；3 次跳转；最终 page_event |
+| `20260923T160321/event-state` | `account_state` | 实时抓帧；页面 page_event；in_map=False |
 
 来源目录（项目相对路径，原件不入库）：
 
@@ -41,3 +44,4 @@
 - `data/mainline-device/20260923T145244-reward/artifacts/20260923T145245`
 - `data/mainline-device/20260923T154407-observe_map/artifacts/20260923T154407`
 - `data/mainline-device/20260923T155210-dorm/artifacts/20260923T155210`
+- `data/mainline-device/20260923T160321-event_nav/artifacts/20260923T160321`

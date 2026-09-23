@@ -1,0 +1,29 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 10.6,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "to-event",
+      "kind": "navigate",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 9.7,
+      "artifact": "<project>/data/mainline-device/20260923T160321-event_nav/artifacts/20260923T160321/task-to-event.json"
+    },
+    {
+      "id": "event-state",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.1,
+      "artifact": "<project>/data/mainline-device/20260923T160321-event_nav/artifacts/20260923T160321/task-event-state.json"
+    }
+  ]
+}

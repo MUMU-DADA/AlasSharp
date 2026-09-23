@@ -89,6 +89,8 @@ alashub report --artifacts <工件根目录>        # 取最新一次运行
 - 战役、观测与导航都复用常驻会话；观测和导航只能通过通用任务队列进入
   `ObserveTask` / `NavigateTask`。`run` 与 `goto` 只保留弃用提示，不能再各自解释任务输入、
   创建会话或驱动任务。
+- 导航遇到未建模画面时的返回键由宿主调用上游 `Device.adb_shell(['input', 'keyevent', '4'])`。
+  当前上游 `Device` 没有 `back()` 方法；该接口的成功和失败透传由 `verify_device_back.py` 覆盖。
 
 本轮观测验收：离线运行时用例包含故障注入、旧帧隔离、输入校验、会话复用和取消；
 历史 `run` 兼容入口的真机记录为 4 tick、0 error，命中 `page_main` / `page_main_white`，

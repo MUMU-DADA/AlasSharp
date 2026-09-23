@@ -29,6 +29,14 @@ def main():
         ('战役队列有战后实时抓帧返页证据', any(
             r['cleared'] and r['queue_chain'] and r['post_campaign_page_verified']
             for r in archived))]
+    event = next(p for p in sources if json.loads(p.read_text(encoding='utf-8'))
+                 ['result']['chapter'].startswith('campaign.event_'))
+    event_record = audit_artifact(event)
+    checks.append(('活动章节真实抓帧返回活动页',
+                   event_record['verdict'] == 'consistent'
+                   and event_record['cleared']
+                   and event_record['queue_chain']
+                   and event_record['post_campaign_page_verified']))
     source = next(p for p in sources if audit_artifact(p)['stage_withdrawal'])
     cases = (
         ('结果合同拒绝撤退伪装通关', source.name,
@@ -80,6 +88,28 @@ def main():
             path.write_text(json.dumps(value), encoding='utf-8')
             checks.append((name, audit_artifact(target / queued.name)['verdict'] == 'contradiction'))
             checks.append((name + '：归档校验和发现修改', bool(audit_archive(target)[1])))
+        event_cases = (
+            ('活动战后错误页面', lambda d: d['evidence'].update(pages=['page_main'])),
+            ('活动战后仍在地图内', lambda d: d['evidence'].update(in_map=True)),
+            ('活动战后章节关联错误', lambda d: d['evidence']['campaign'].update(chapter='campaign.other')),
+        )
+        for i, (name, mutate) in enumerate(event_cases):
+            target = Path(tmp) / f'event-{i}'
+            shutil.copytree(event.parent, target)
+            path = target / 'task-after-event.json'
+            value = json.loads(path.read_text(encoding='utf-8'))
+            mutate(value)
+            path.write_text(json.dumps(value), encoding='utf-8')
+            checks.append((name, audit_artifact(target / event.name)['verdict'] == 'contradiction'))
+            checks.append((name + '：归档校验和发现修改', bool(audit_archive(target)[1])))
+        target = Path(tmp) / 'main-event-page'
+        shutil.copytree(queued.parent, target)
+        path = target / 'task-after-campaign.json'
+        value = json.loads(path.read_text(encoding='utf-8'))
+        value['evidence']['pages'] = ['page_event']
+        path.write_text(json.dumps(value), encoding='utf-8')
+        checks.append(('普通战役不能以活动页证明返页',
+                       audit_artifact(target / queued.name)['verdict'] == 'contradiction'))
         target = Path(tmp) / 'missing-task'
         shutil.copytree(queued.parent, target)
         (target / 'task-after-campaign.json').unlink()
