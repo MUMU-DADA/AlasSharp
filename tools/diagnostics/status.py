@@ -2,7 +2,7 @@
 """把四份验收证据汇总成 docs/status.md：一页回答"上游识别与控制跑到什么程度了"。
 
 数据全部来自已有证据文件，不重新跑设备、也不重复维护分类：
-  docs/page-verification.json   页面规则：哪些已命中、哪些受游戏状态阻塞
+  docs/page-verification.json   页面规则历史命中与导航未达记录（两者可能重叠）
   data/controls_verify.json     控件规则与动作（滑动/开关驱动）
   data/primitives_verify.json   控制原语（返回键/长按/滑动）
   data/regress_pages.json       全量回归（产品路径导航）
@@ -40,7 +40,11 @@ def main():
 
     verified = sorted(pages.get('verified', {}))
     blocked = pages.get('blocked', {})
-    located = TOTAL_PAGES - len(verified) - len(blocked)
+    overlap = set(verified) & set(blocked)
+    blocked_only = set(blocked) - set(verified)
+    located = TOTAL_PAGES - len(set(verified) | set(blocked))
+    if located < 0:
+        raise ValueError('页面证据超过上游页面总数')
 
     rules = [x for x in ctrl if not x['rule'].endswith(('#swipe', '#drive', '#probe'))]
     acts = [x for x in ctrl if x['rule'].endswith(('#swipe', '#drive', '#probe'))]
@@ -68,8 +72,8 @@ def main():
         '',
         '| 范围 | 总数 | 已通过 | 未通过/阻塞 | 明细 |',
         '| --- | --- | --- | --- | --- |',
-        '| 页面规则（Page） | %d | **%d** | %d 受游戏状态阻塞 + %d 原因已定位 | `page-verification.md` |'
-        % (TOTAL_PAGES, len(verified), len(blocked), located),
+        '| 页面规则（Page） | %d | **%d** | %d 导航未达且规则未命中 + %d 原因已定位 | `page-verification.md` |'
+        % (TOTAL_PAGES, len(verified), len(blocked_only), located),
         '| 控件规则（模块级 Switch/Scroll） | %d | %d | %d | `controls.md` |'
         % (TOTAL_MODULE_RULES, len(hit_module), TOTAL_MODULE_RULES - len(hit_module)),
         '| cached_property 规则 | %d | %d | %d | `controls.md` |'
@@ -90,14 +94,15 @@ def main():
         % (rc.get('total', 0), rc.get('passed', 0), rc.get('skipped', 0)),
         '',
         '（控件与页面条目在证据文件里含"动作行"，上表已把动作与规则分开计数；',
-        '页面规则里 `page_main_white` / `page_channel` / `page_unknown` 是上游图里**无入边**的',
+        '页面规则历史命中与导航未达记录有 %d 页重叠（不重复计入总数）；' % len(overlap),
+        '`page_main_white` / `page_channel` / `page_unknown` 是上游图里**无入边**的',
         '状态节点，只能验"同屏被检测到"，见 `regression.md`。）',
         '',
-        '## 已通过：页面 %d 个' % len(verified),
+        '## 页面规则曾命中：%d 个' % len(verified),
         '',
         '、'.join('`%s`' % p for p in verified),
         '',
-        '## 受游戏状态阻塞（页面不可达，非识别缺陷）',
+        '## 导航未达或状态受限记录',
         '',
         '| 页面 | 原因与证据 |',
         '| --- | --- |',
@@ -108,13 +113,11 @@ def main():
         '',
         '## 原因已定位但未验证的 %d 个页面' % located,
         '',
-        '分三类（逐条原因见 `page-verification.md`）：',
+        '逐条原因见 `page-verification.md`：',
         '',
         '1. **依赖阻塞页**：9 个岛屿子页（岛屿计划未解锁）；',
-        '2. **活动类型不同**：raid / sp / coalition / hospital / rpg_* —— 都由',
-        '   `CAMPAIGN_MENU_GOTO_EVENT` 按当前活动指向，本机当前活动只命中 `page_event`；',
-        '3. **上游无入边或非真实画面**：`page_channel`（只有出边）、`page_unknown`（`Page(None)`）、',
-        '   `page_private_quarters`（宿舍菜单里没有该入口，实测资产分 0.06）。',
+        '2. **上游无入边或非真实画面**：`page_channel`（只有出边）、',
+        '   `page_rpg_city`（只有出边且活动类型未开跑）、`page_unknown`（`Page(None)`）。',
         '',
         '## 还没验的控件（都是"到不了"，不是"判定错"）',
         '',
@@ -143,7 +146,7 @@ def main():
         '',
         '```powershell',
         '$env:STUB_ADB = "<adb.exe>"',
-        'python tools/diagnostics/regress_pages.py        # 29 个页面全量回归（约 5 分钟）',
+        'python tools/diagnostics/regress_pages.py        # 已验证页面的产品导航回归',
         'python tools/diagnostics/verify_controls.py      # 控件规则 + 滑动/开关驱动',
         'python tools/diagnostics/verify_primitives.py    # 返回键/长按/滑动',
         'python tools/diagnostics/report_pages.py         # 重建 page-verification.md',
@@ -154,8 +157,8 @@ def main():
     out = os.path.join(DOCS, 'status.md')
     with open(out, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
-    print('页面 %d/%d 通过（阻塞 %d，原因已定位 %d）'
-          % (len(verified), TOTAL_PAGES, len(blocked), located))
+    print('页面 %d/%d 曾命中（导航未达记录 %d，其中重叠 %d；其余原因已定位 %d）'
+          % (len(verified), TOTAL_PAGES, len(blocked), len(overlap), located))
     print('控件规则 %d 命中 / 动作 %d 命中 / 原语 %d/%d / 回归 %d/%d'
           % (len(rule_hit), len(act_hit), len(prim_hit), len(prim), len(reg_ok), len(regress)))
     print('写入 %s' % out)

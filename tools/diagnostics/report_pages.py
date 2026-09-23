@@ -62,6 +62,13 @@ def main():
     with open(PROG, encoding='utf-8') as f:
         prog = json.load(f)
     ver, blk = prog['verified'], prog['blocked']
+    inventory = set(pages)
+    verified = set(ver)
+    blocked = set(blk)
+    unknown_pages = (verified | blocked) - inventory
+    if unknown_pages:
+        raise ValueError(f'页面证据含上游清单之外的页面: {sorted(unknown_pages)}')
+    overlap = verified & blocked
 
     stuck, unknown = [], []
     for name in sorted(pages):
@@ -72,9 +79,10 @@ def main():
     lines = [
         '# 界面识别验证记录（真机导航）',
         '',
-        '判定口径：从主界面按上游 `module/ui/page.py` 的页面图逐段导航，每段点击后用 **全量',
+        '判定口径：通常从主界面按上游 `module/ui/page.py` 的页面图逐段导航，点击后用 **全量',
         '页面扫描**（`ui_rules_sweep`）看目标页规则是否在该页上真正返回真。',
         '「可驱动」（不抛异常）不算通过 —— 只有**在它自己的页面上命中**才算。',
+        '少数手工进入后命中的规则单独列出，不能据此声称产品导航可达。',
         '',
         '设备：MuMu 模拟器 1280x720 @ `127.0.0.1:16384`（国服，新主界面 UI）。',
         '生成脚本：`tools/diagnostics/report_pages.py`（数据源 `docs/page-verification.json`，',
@@ -84,20 +92,24 @@ def main():
         '',
         '| 类别 | 数量 | 含义 |',
         '| --- | --- | --- |',
-        '| 已验证命中 | %d | 在该页上规则返回真，且离开该页后不再命中 |' % len(ver),
-        '| 受游戏状态阻塞 | %d | 页面可达性被账号/活动状态挡住，非识别缺陷 |' % len(blk),
-        '| 未验证（原因已定位） | %d | 依赖阻塞页或上游没有入边 |' % len(stuck),
+        '| 已验证规则命中 | %d | 历史真机画面上规则返回真；不等于当前账号可导航到 |' % len(ver),
+        '| 导航未达或状态受限记录 | %d | 含导航素材问题与账号/活动门禁 |' % len(blk),
+        '| 两项重叠 | %d | 规则曾命中，但另一次导航未达；已计在上述两项中 |' % len(overlap),
+        '| 尚未命中且未列为阻塞（原因已定位） | %d | 依赖阻塞页或上游没有入边 |' % len(stuck),
         '| 未分类 | %d | 需要继续排查 |' % len(unknown),
         '| 合计 | %d | 上游 `page.py` 的全部 Page |' % len(pages),
         '',
-        '## 已验证命中',
+        '上述两项是独立证据维度，不能相加当作页面总数；去重后全部 %d 页都有分类，' % len(pages),
+        '其中只有已验证规则命中的页面有真机正样本。',
+        '',
+        '## 已验证规则命中',
         '',
         '| 页面 | 该页实际命中的规则 |',
         '| --- | --- |',
     ]
     for name in sorted(ver):
         lines.append('| `%s` | %s |' % (name, ', '.join('`%s`' % v for v in ver[name])))
-    lines += ['', '## 受游戏状态阻塞（页面不可达）', '',
+    lines += ['', '## 导航未达或状态受限记录', '',
               '| 页面 | 原因与证据 |', '| --- | --- |']
     for name in sorted(blk):
         lines.append('| `%s` | %s |' % (name, blk[name]))

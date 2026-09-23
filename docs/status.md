@@ -9,7 +9,7 @@
 
 | 范围 | 总数 | 已通过 | 未通过/阻塞 | 明细 |
 | --- | --- | --- | --- | --- |
-| 页面规则（Page） | 53 | **34** | 8 受游戏状态阻塞 + 11 原因已定位 | `page-verification.md` |
+| 页面规则（Page） | 53 | **34** | 7 导航未达且规则未命中 + 12 原因已定位 | `page-verification.md` |
 | 控件规则（模块级 Switch/Scroll） | 20 | 9 | 11 | `controls.md` |
 | cached_property 规则 | 6 | 3 | 3 | `controls.md` |
 | 控制动作（滑动/开关驱动/探测） | 3 | 3 | 0 | `controls.md` |
@@ -20,14 +20,15 @@
 | 控件 Switch 合成正对照 | 20 | 10 | 10 跳过（Scroll 判定依赖颜色掩码） | `positive-control.md` |
 
 （控件与页面条目在证据文件里含"动作行"，上表已把动作与规则分开计数；
-页面规则里 `page_main_white` / `page_channel` / `page_unknown` 是上游图里**无入边**的
+页面规则历史命中与导航未达记录有 1 页重叠（不重复计入总数）；
+`page_main_white` / `page_channel` / `page_unknown` 是上游图里**无入边**的
 状态节点，只能验"同屏被检测到"，见 `regression.md`。）
 
-## 已通过：页面 34 个
+## 页面规则曾命中：34 个
 
 `page_academy`、`page_archives`、`page_battle_pass`、`page_build`、`page_campaign`、`page_campaign_menu`、`page_commission`、`page_daily`、`page_dock`、`page_dorm`、`page_dormmenu`、`page_event`、`page_event_list`、`page_exercise`、`page_fleet`、`page_game_room`、`page_guild`、`page_mail`、`page_main`、`page_main_white`、`page_meowfficer`、`page_meta`、`page_mission`、`page_munitions`、`page_os`、`page_private_quarters`、`page_research`、`page_reshmenu`、`page_reward`、`page_shipyard`、`page_shop`、`page_storage`、`page_supply_pack`、`page_tactical`
 
-## 受游戏状态阻塞（页面不可达，非识别缺陷）
+## 导航未达或状态受限记录
 
 | 页面 | 原因与证据 |
 | --- | --- |
@@ -40,15 +41,13 @@
 | `page_rpg_story` | 定向重试仍未到达：落在 ['page_event']（goto-failed） |
 | `page_sp` | 定向重试仍未到达：落在 ['page_campaign']（goto-failed） |
 
-## 原因已定位但未验证的 11 个页面
+## 原因已定位但未验证的 12 个页面
 
-分三类（逐条原因见 `page-verification.md`）：
+逐条原因见 `page-verification.md`：
 
 1. **依赖阻塞页**：9 个岛屿子页（岛屿计划未解锁）；
-2. **活动类型不同**：raid / sp / coalition / hospital / rpg_* —— 都由
-   `CAMPAIGN_MENU_GOTO_EVENT` 按当前活动指向，本机当前活动只命中 `page_event`；
-3. **上游无入边或非真实画面**：`page_channel`（只有出边）、`page_unknown`（`Page(None)`）、
-   `page_private_quarters`（宿舍菜单里没有该入口，实测资产分 0.06）。
+2. **上游无入边或非真实画面**：`page_channel`（只有出边）、
+   `page_rpg_city`（只有出边且活动类型未开跑）、`page_unknown`（`Page(None)`）。
 
 ## 还没验的控件（都是"到不了"，不是"判定错"）
 
@@ -74,7 +73,7 @@
 
 ```powershell
 $env:STUB_ADB = "<adb.exe>"
-python tools/diagnostics/regress_pages.py        # 29 个页面全量回归（约 5 分钟）
+python tools/diagnostics/regress_pages.py        # 已验证页面的产品导航回归
 python tools/diagnostics/verify_controls.py      # 控件规则 + 滑动/开关驱动
 python tools/diagnostics/verify_primitives.py    # 返回键/长按/滑动
 python tools/diagnostics/report_pages.py         # 重建 page-verification.md
