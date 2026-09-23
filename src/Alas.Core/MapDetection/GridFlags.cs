@@ -5,8 +5,9 @@ namespace Alas.MapDetection;
 ///
 /// 表来自上游 `GridInfo.decode()`，**逐条照抄**，包括两个容易看漏的点：
 ///   1. 先 `text.upper()` —— 所以 `Me` 与 `ME` 同义（数据里 `Me` 有 4728 个！）；
-///   2. `--` **不在表里**，于是所有标志为假；"海"是由 <see cref="IsSea"/> 反推的，
-///      不是查表查出来的。
+///   2. `--` **不在表里**，于是八个查表标志为假；"海"是由 <see cref="IsSea"/> 反推的，
+///      不是查表查出来的。<see cref="MayAmbush"/> 与 <see cref="MayCarrier"/> 是推导值，
+///      对未知 token 仍可能为真。
 ///
 /// 上游表（print_name → property）：
 /// | ++ | is_land | 舰队不能进 |
@@ -18,7 +19,7 @@ namespace Alas.MapDetection;
 /// | MM | may_mystery | 可能有神秘事件 |
 /// | MA | may_ammo | 可补给弹药 |
 /// | MS | may_siren | 塞壬/精英可能出生 |
-/// 其余（`SI`、`-`）不在表里 → 全假。
+/// 其余（`SI`、`-`）不在表里 → 八个查表标志为假；推导值仍按上游公式计算。
 /// </summary>
 public readonly record struct GridFlags(
     bool IsLand, bool IsSpawnPoint, bool IsSubmarineSpawnPoint,
