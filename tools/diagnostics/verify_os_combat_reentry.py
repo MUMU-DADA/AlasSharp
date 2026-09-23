@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 os.chdir(ENGINE)
 
 import alas_vision as vision  # noqa: E402
+from module.combat.assets import BATTLE_PREPARATION_WITH_OVERLAY  # noqa: E402
 from module.combat.combat import Combat as BaseCombat  # noqa: E402
 from module.os_combat.combat import Combat  # noqa: E402
 from module.os.map import OSMap  # noqa: E402
@@ -42,6 +43,38 @@ class State:
 
     def handle_combat_automation_confirm(self):
         return False
+
+
+class OverlayState(State):
+    """替身：执行态与准备覆盖层同时命中，记录上游确认分支有没有被调用。
+
+    上游 `combat_appear()` 的最后一条准备分支是
+    `appear(BATTLE_PREPARATION_WITH_OVERLAY) and handle_combat_automation_confirm()`，
+    后者会点一次 `AUTOMATION_CONFIRM`。AzurPilot 257bef255d 把执行态判据放在准备态**之前**，
+    所以"执行态 + 覆盖层"重叠时不应走到那次点击；没打补丁的顺序会走进去。
+    """
+
+    def __init__(self, *, executing=False, confirm=True):
+        super().__init__(executing=executing)
+        self.confirm_result = confirm
+        self.confirm_calls = 0
+
+    def appear(self, button, **kwargs):
+        return button is BATTLE_PREPARATION_WITH_OVERLAY
+
+    def handle_combat_automation_confirm(self):
+        self.confirm_calls += 1
+        return self.confirm_result
+
+
+class LoadingState(State):
+    def __init__(self):
+        super().__init__(loading=True, executing=True)
+        self.executing_calls = 0
+
+    def is_combat_executing(self):
+        self.executing_calls += 1
+        return self.executing
 
 
 class DaemonState(State):
@@ -106,8 +139,27 @@ def main():
     results.append(check('loading and preparation retain their original result',
                          patched(State(loading=True)) is True
                          and patched(State(preparation=True)) is True))
+    loading = LoadingState()
+    results.append(check('loading precedes the running-combat detector',
+                         patched(loading) is True and loading.executing_calls == 0))
     results.append(check('non-combat remains excluded',
                          patched(State()) is False))
+    overlay = OverlayState(executing=True)
+    overlay_wins = patched(overlay) is True and overlay.confirm_calls == 0
+    results.append(check('executing combat wins over the preparation overlay '
+                         f'(native confirm calls: {overlay.confirm_calls})',
+                         overlay_wins))
+    overlay_only = OverlayState()
+    overlay_native = patched(overlay_only) is True and overlay_only.confirm_calls == 1
+    results.append(check('preparation overlay still takes the native confirm branch '
+                         f'(native confirm calls: {overlay_only.confirm_calls})',
+                         overlay_native))
+    overlay_refused = OverlayState(confirm=False)
+    overlay_stays_false = (patched(overlay_refused) is False
+                           and overlay_refused.confirm_calls == 1)
+    results.append(check('overlay without confirmation keeps the original result '
+                         f'(native confirm calls: {overlay_refused.confirm_calls})',
+                         overlay_stays_false))
     vision.apply_os_combat_reentry_compat()
     results.append(check('compatibility hook is idempotent',
                          Combat.combat_appear is patched))

@@ -1734,9 +1734,10 @@ def apply_auto_search_skip_compat():
 def apply_os_combat_reentry_compat():
     """Restore AzurPilot's OS auto-search handoff when combat starts between screenshots.
 
-    The ALAS host only checks loading and preparation in combat_appear(); AzurPilot
-    commit 257bef255d also checks is_combat_executing(). Keep the original checks
-    and map exclusion, then use that detector for the missed transition.
+    The ALAS host checks map exclusion, loading and preparation; AzurPilot
+    commit 257bef255d checks is_combat_executing() before preparation handlers.
+    Keep the original preparation checks after that detector so an executing frame
+    cannot trigger preparation-overlay confirmation.
     """
     from module.os_combat.combat import Combat as OSCombat
 
@@ -1745,11 +1746,13 @@ def apply_os_combat_reentry_compat():
     original = OSCombat.combat_appear
 
     def combat_appear(self):
-        if original(self):
-            return True
         if self.is_in_map():
             return False
-        return bool(self.is_combat_executing())
+        if self.is_combat_loading():
+            return True
+        if self.is_combat_executing():
+            return True
+        return original(self)
 
     OSCombat.combat_appear = combat_appear
     OSCombat._alas_combat_reentry_compat = True

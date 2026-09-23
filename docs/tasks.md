@@ -330,7 +330,9 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 页面到达判据与海域在图判据出现分歧。`OpsiDaily` 放行检查通过；从已确认的海域启动
 原生 `opsi_daily()` 后，`os_init()` 报告 `Already in os map`，但 `zone_init()` 仍等待
 `OS_CHECK` 并触发 `GameStuckError`，任务记失败，没有每日目标或战斗结算证据。
-对这次上游保存的错误帧直接运行既有素材探针，`OS_CHECK` 模板分为 `-0.034`、
+另取此前 OS 原生导航的本地失败帧
+`data/mainline-device/20260923T220727-os_native_from_unknown/blocked-frame.png` 运行既有素材探针，
+`OS_CHECK` 模板分为 `-0.034`、
 颜色差为 `54.15`（上游颜色门槛为 `<10`）；本地运行上游与另一份上游源码的
 `OS_CHECK` 定义相同，国服素材 SHA-256 也相同。该证据支持当前客户端画面与
 上游素材判据不兼容，不能归因于 C# 导出或导航选边。
@@ -362,7 +364,9 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 `os_auto_search_daemon()` 只在 `combat_appear()` 为真时接管战斗，当前 ALAS 宿主的
 该方法遗漏执行态。另一份上游 AzurPilot 的提交 `257bef255d` 已通过
 `is_combat_executing()` 处理自动搜索跳过准备页的通用情形。宿主现仅在 OS 原生任务
-中复用该上游判据，不添加界面或地图特例；`verify_os_combat_reentry.py` 覆盖原帧和
+中复用该上游判据，并保持地图排除、加载、执行态、准备态的上游判定顺序；执行态与
+准备页覆盖层同时命中时，先接管战斗而不触发准备页确认点击，不添加界面或地图特例。
+`verify_os_combat_reentry.py` 覆盖原帧、重叠状态和
 地图、加载、准备页等状态（原帧需显式传入本地路径）。用户现场确认这次要塞在游戏内
 完成，随后复跑的上游扫描
 也报告没有可清理的要塞；但首次任务失败、没有留到独立成功结算，不能把其工件改成
