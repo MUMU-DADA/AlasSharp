@@ -386,6 +386,12 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 `data/mainline-device/20260924-os-second-account/`；配置副作用均按运行前快照恢复并
 校验原字节一致，未加入页面或地图特例。
 
+同一客户端上，先前已通关账号的原生日志有九次 `zone_init()` 成功读出海域名；
+两次入口卡死的调用栈则停在 `wait_until_appear(OS_CHECK)`，约一分钟后由设备停滞计时器
+报错，尚未走到海域名兜底。现有存盘帧不能证明 `OS_CHECK` 与 OS 在图判据普遍互斥；
+OS 原生 `is_in_map()` 使用 `os_handler/IN_MAP` 和迷雾后备判据，不能与普通战役的
+`handler/IN_MAP` 混为一谈。缺图标的游戏状态仍需跨状态真机帧确认。
+
 ## 下一步与本域的缺口
 
 - 账号状态 `capture=true` 与 `IN_MAP` 现场复核已有设备窗口记录，见 `handover-r0-r2.md` 第五节与第八节补充六。
