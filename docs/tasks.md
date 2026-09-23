@@ -381,8 +381,8 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 `OS_CHECK` 仍未命中。直接从该海域启动 `OpsiStronghold` 时，上游 `os_init()` 报告
 `Already in os map`，随后 `zone_init()` 等待同一 `OS_CHECK` 并以 `GameStuckError`
 结束，未进入要塞目标或战斗；工件登记了调用栈和失败帧。两份已获取的上游源码与素材
-没有可直接同步的 `OS_CHECK` 更新。本次只证明该账号现场的顶栏判据失配，尚不能仅凭
-画面确认账号剧情进度或修复后的战斗闭环。两批原始工件与截图留在本地忽略目录
+没有可直接同步的 `OS_CHECK` 更新。本次只证明该账号现场的顶栏判据失配，不能据此
+证明修复后的战斗闭环。两批原始工件与截图留在本地忽略目录
 `data/mainline-device/20260924-os-second-account/`；配置副作用均按运行前快照恢复并
 校验原字节一致，未加入页面或地图特例。
 
@@ -391,6 +391,17 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 报错，尚未走到海域名兜底。现有存盘帧不能证明 `OS_CHECK` 与 OS 在图判据普遍互斥；
 OS 原生 `is_in_map()` 使用 `os_handler/IN_MAP` 和迷雾后备判据，不能与普通战役的
 `handler/IN_MAP` 混为一谈。缺图标的游戏状态仍需跨状态真机帧确认。
+
+用户已确认当前模拟器账号尚未通关大世界，无法使用自律寻敌。上游
+`module/os/map.py` 的自动寻敌流程也明确要求先完成大世界剧情；其他游戏机制可参照
+[游戏 Wiki](https://wiki.biligame.com/blhx/%E9%A6%96%E9%A1%B5)。随后仅抓一帧到本地忽略目录；
+同帧上游判据为 `page_os=false`、`OS_CHECK` 模板相似度 `0.298`（阈值 `0.85`）、
+等待用的颜色判据为假、OS `is_in_map=true`、网格 43 格，
+三种自律寻敌控件均未命中。该账号不满足上游自动寻敌的前提，不能把它的入口超时
+外推为已解锁账号的通用兼容缺陷；没有据此增加页面或地图旁路，也不在该账号继续
+OS 动作验收。只读复盘可用 `python tools/diagnostics/oneoff/probe_os_entry.py <本地帧> --server cn`，它在同一帧
+调用上游页面、海域、球面和自律寻敌判据，不会操作设备。已解锁账号上的长战斗
+自动结算仍需独立真机正例。
 
 ## 下一步与本域的缺口
 
