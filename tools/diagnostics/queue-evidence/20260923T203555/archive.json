@@ -1,0 +1,30 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/current-tactical-access-retry-artifacts/20260923T203555",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "8f3099d378e3c65c1eafa9a29e23a472f818d7e30a7449ca860968c550487146",
+    "state.json": "619f0076cd9388b2bd20666d7b350b880729849c0d21a320d5a69c03f5a1c827",
+    "session-log.jsonl": "56e070d101e77a5d82254e566a8fa5e4ed797e89645f79526d60aa4220ec0200",
+    "task-at-main.json": "c19e2246e98e048d5ddb1bdd5fd751ede049b05f75757c46d1f988ad6c41c4a6",
+    "task-at-tactical.json": "e26174f80e84b5e534470e8d97dca55680a9ccd14e141745aa30635c377c9299",
+    "task-back-main.json": "d9af6875e4568692be650b55a218bd6d9addabf1a22b83a9f91f8fb7eaefa420",
+    "task-prepare-main.json": "4cd659843c1920acb3b213d6d8e1dd7d987702efc37c9bf252cb612d64da9752",
+    "task-to-tactical.json": "f27bffe6c0719d7bfd0b0f269969e999e15bcc8a92e707786782f0d1ef4e3c7c"
+  },
+  "files": {
+    "queue.json": "e0b56d02b589c256a4fb8e5c2c6155697e58309e522f91370d6f4937b20f9158",
+    "state.json": "4ead06c4a87e93213de8a8dcb02cfe8fcb68272f10ee21cc9951bcc6ee6f9f04",
+    "session-log.jsonl": "5fd9efd55d8677e5a493cafa88b6c5689f2793fed88eb1ed7be7c7c0fd6a5001",
+    "task-at-main.json": "7e96bab63464986bcdab2dde8488bcd73eecb901c78071ebadcccee865a202e0",
+    "task-at-tactical.json": "950570bccb3263f2245919c3b0363cf0be942ff2d5b47329ffa2b573aa8f8072",
+    "task-back-main.json": "be2f3b091221da3596b11b007bc4dee747430ca83ff3cdb4ce2178beeed16d9d",
+    "task-prepare-main.json": "be6e8d796a52cd02256719ec4f164ecb2fd811b233b44dade3629c144c1ca60a",
+    "task-to-tactical.json": "5d955453d406efd5ecea0f6f55d930a32d6b3c15875425005a15041407a3275b"
+  }
+}

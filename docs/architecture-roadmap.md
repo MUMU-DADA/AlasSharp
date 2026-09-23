@@ -75,6 +75,11 @@
 本次 `queue --file` 真机只读队列完成 `account_state` 与 6 tick 观测，导航队列完成主界面/战役页往返、两轮战役页导航与 4 tick 观测；两批都只初始化一次宿主和设备，脱敏队列/任务/断点/会话证据见 `docs/queue-evidence.md`。
 `observe(map=main)` 另有主界面真机负样本：6 次地图检测、零命中、零错误；这不证明地图内正样本可识别。
 其他设备后端仍未由这些样本验证。导航迁移的替身用例另覆盖非法输入、设备错误及后续回合失败。
+战术页首次真机导航在 `page_reward` 识页处失败；同一静止画面 raw 抓帧空命中、普通抓帧命中，
+定位为宿主 raw 分支多余的颜色通道交换，已修复并补逐像素回归。修复后的五任务队列
+从功能面板回主页、导航到 `page_tactical`、实时抓帧、返回主页并再次抓帧，全部成功；
+宿主与设备各初始化一次，脱敏工件见 `tools/diagnostics/queue-evidence/20260923T203555/`。
+这证明当前账号可访问战术页且该导航往返有效，不证明周期 `tactical` 任务或其他页面导航。
 
 ### R2：任务域垂直切片
 
@@ -103,7 +108,7 @@
 2. 账号状态当场抓帧和 `IN_MAP` 现场核对已有设备窗口记录（见交接文档第五节与第八节补充六）；
    周期任务执行已有 dorm/reward 两条历史真机路径；通用执行器现已改为复用上游 Scheduler.Command、
    任务绑定和原生 dispatcher，离线覆盖 reward / opsi / event；新队列入口已真实执行 `reward` 与
-   `dorm` 的仅收取配置。`dorm` 到达宿舍并完成原生调度，但本次收取超时且无收取点击，不能证明资源领取成功。新增 `freebies` 队列样本以本次配置覆盖关闭战令、钥匙、礼包和删信，原生调度与返页完成；上游日志写明 `Mail claim success: False`，仍不能证明功勋实际领取。计划、放行、执行及返页的脱敏归档见 `tools/diagnostics/queue-evidence/20260923T175825/`；其余周期执行路径仍待逐域验证。
+   `dorm` 的仅收取配置。`dorm` 到达宿舍并完成原生调度，但本次收取超时且无收取点击，不能证明资源领取成功。新增 `freebies` 队列样本以本次配置覆盖关闭战令、钥匙、礼包和删信，原生调度与返页完成；上游日志写明 `Mail claim success: False`，仍不能证明功勋实际领取。计划、放行、执行及返页的脱敏归档见 `tools/diagnostics/queue-evidence/20260923T175825/`。另一次 `reward` 产品队列关闭油、金币、经验领取后执行每日与每周任务奖励领取，原生日志有领取点击与奖励弹窗处理，两类列表最终均为 `MISSION_UNFINISH`；末帧在 `page_mission`，脱敏队列证据见 `tools/diagnostics/queue-evidence/20260923T200327/`。没有独立的到账数量读数，其余周期执行路径仍待逐域验证。
 3. `docs/tasks.md` 记录了每域必须带的四件套；未满足门槛时不进入下一个域。
 
 **实现与验证清单（十一类业务任务，另有通用导航与观测）**：
@@ -120,7 +125,7 @@
 | 7 | 周期任务勘察（跑谁） | 只读 | `verify_periodic_plan.py`（独立对拍 + 不 import 目标模块） |
 | 8 | 周期任务放行判定（放不放） | 只读（**永不执行**） | `verify_periodic_plan.py`（四条路径 + executes 恒 False） |
 | 9 | 配置开关（授权前的花费开关留档） | 只读 | `verify_config_get.py`（独立对拍 + 缺失≠false） |
-| 10 | **周期任务执行**（执行环；产品路径 kind=periodic_run） | **动作**（会话授权 + 宿主两道闸 + 上游原生 dispatcher） | `verify_periodic_plan.py`（任务目录解析、绑定、跨调用形态、TaskEnd/False/SystemExit、设备恢复）+ 原生 dispatcher 的 `reward` 与 `dorm` 队列真机样本；`dorm` 的资源领取效果和其他域未覆盖 |
+| 10 | **周期任务执行**（执行环；产品路径 kind=periodic_run） | **动作**（会话授权 + 宿主两道闸 + 上游原生 dispatcher） | `verify_periodic_plan.py`（任务目录解析、绑定、跨调用形态、TaskEnd/False/SystemExit、设备恢复）+ 原生 dispatcher 的 `reward` 与 `dorm` 队列真机样本；`reward` 每日/每周有领取点击、无独立到账数量读数，`dorm` 的资源领取效果和其他域未覆盖 |
 | 通用 | 页面导航 `navigate` | 动作 | `verify_runtime.py`、`navigate_cases.json` + `docs/queue-evidence.md` 的新队列入口往返/多轮真机样本 |
 | 通用 | 观测 `observe` | 只读设备任务 | `verify_runtime.py`、`observe_cases.json` + `docs/queue-evidence.md` 的 6 tick / 4 tick 新队列入口真机样本 |
 

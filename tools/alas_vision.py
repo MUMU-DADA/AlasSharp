@@ -3133,11 +3133,9 @@ def op_device_capture_set(args):
         img = dev.screenshot()
     cap_ms = (_time.time() - t0) * 1000
 
-    # **通道顺序必须在这里定死**（这条链路踩过两次，代价是一版错误的垫片）：
-    #   - `raw=True` 直接调后端原始实现，**绕过了 `method/adb.py:134` 的 BGR2RGB** → 拿到的是 BGR；
-    #   - 落盘用 `cv2.imwrite`（把数组当 BGR）＋ 读回用 `load_image`（PIL，忠实读）＝ **一次 R/B 互换**。
-    # 所以先统一成"ALAS 约定的 RGB"，再用 `RGB2BGR` 忠实落盘；`load_image` 读回来的就正好是
-    # 引擎交给上游的那张图 E —— 与夹具路径（`screenshot_load`）同源，也与上游内部一致。
+    # raw 直接调用配置的截图后端；普通路径还经过上游截图包装器。
+    # 通道顺序由后端决定，这里只为 cv2.imwrite 转成 BGR，确保 load_image 读回后
+    # 与后端返回的像素逐字节相同。再按 raw 交换一次会让 scrcpy 的 RGB 帧变成 BGR。
     import tempfile
     import numpy as _np
     import cv2 as _cv2
@@ -3146,10 +3144,8 @@ def op_device_capture_set(args):
     os.close(fd)
     try:
         if isinstance(img, _np.ndarray) and img.ndim == 3 and img.shape[2] == 3:
-            engine_img = _cv2.cvtColor(img, _cv2.COLOR_BGR2RGB) if raw else img
-            _cv2.imwrite(tmp, _cv2.cvtColor(engine_img, _cv2.COLOR_RGB2BGR))
+            _cv2.imwrite(tmp, _cv2.cvtColor(img, _cv2.COLOR_RGB2BGR))
         else:
-            engine_img = img
             img.save(tmp)
         _state['image'] = load_image(tmp)
         _state['path'] = tmp

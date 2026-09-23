@@ -1,0 +1,56 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 22.9,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "before-reward-mission",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 2.2,
+      "artifact": "<project>/data/mainline-device/current-reward-mission-artifacts/20260923T200327/task-before-reward-mission.json"
+    },
+    {
+      "id": "reward-mission-plan",
+      "kind": "periodic_plan",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/current-reward-mission-artifacts/20260923T200327/task-reward-mission-plan.json"
+    },
+    {
+      "id": "reward-mission-preflight",
+      "kind": "periodic_preflight",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/current-reward-mission-artifacts/20260923T200327/task-reward-mission-preflight.json"
+    },
+    {
+      "id": "reward-mission-run",
+      "kind": "periodic_run",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 20.4,
+      "artifact": "<project>/data/mainline-device/current-reward-mission-artifacts/20260923T200327/task-reward-mission-run.json"
+    },
+    {
+      "id": "after-reward-mission",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.2,
+      "artifact": "<project>/data/mainline-device/current-reward-mission-artifacts/20260923T200327/task-after-reward-mission.json"
+    }
+  ]
+}

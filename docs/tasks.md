@@ -289,7 +289,8 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 - 账号状态 `capture=true` 与 `IN_MAP` 现场复核已有设备窗口记录，见 `handover-r0-r2.md` 第五节与第八节补充六。
 - 队列已有 CLI 入口和静态 HTML 证据视图；统一配置、任务和运行控制前端仍未交付。
 - 大世界已有只读探针和动作任务的离线接线，当前账号的大型作战入口带锁，动作闭环未获真机验收；活动已有 A1、A2、A3 普通战役队列真机通关样本，其他活动章节及活动域完整动作流程仍需验证。
-- 周期任务已接通通用执行入口，reward 与 dorm 的原生调度有真机证据；dorm 本次没有收取点击，领取效果及其余执行路径不能据此视为已验证。
+- 周期任务已接通通用执行入口；reward 的油/金币历史样本及每日/每周任务领取点击有真机证据，但没有独立到账数量读数；dorm 本次没有收取点击，领取效果及其余执行路径不能据此视为已验证。
+- 当前账号的 `page_tactical` 导航往返和实时识页已有五任务队列真机证据；周期 `tactical` 执行及领取效果尚未验证。
 - 观测已进入任务队列，完成离线故障/取消回归与只读真机抓帧/识页验证；`map=main` 仅有主界面零命中的现场负样本，地图内正样本及其他后端不据此外推。
 
 ## 周期任务调度状态（第六个域，只读；已实现并验收）
@@ -705,6 +706,16 @@ Mission collect finished
 本机原始日志、配置前后快照在忽略目录 `data/mainline-device/20260923T145244-reward`，
 脱敏队列、逐任务、断点和会话证据见 `docs/queue-evidence.md`，账号配置已按原始字节恢复；
 点击 OIL/COIN 的控制台原件没有入库，归档只证明结构化调度与返回结果。此样本不证明其他周期域可运行。
+
+同一产品入口又以显式覆盖关闭油、金币、经验领取，只执行每日与每周任务奖励领取。
+原生日志记录进入任务页、两类任务列表的批量/单项领取点击及奖励弹窗处理，
+两类列表最终均为 `MISSION_UNFINISH`；`periodic_plan` / `periodic_preflight` /
+`periodic_run` / 前后 `account_state` 五任务队列成功，末帧实时识别 `page_mission`、
+`in_map=false`。脱敏结构化工件见 `tools/diagnostics/queue-evidence/20260923T200327/`，
+原始点击日志与运行前账号配置只留在本地忽略目录
+`data/mainline-device/current-reward-mission-*`。上游写入的下一次运行时间已按运行前配置原字节恢复。
+这证明当前已解锁账号能走完整的任务领取操作链；工件没有独立的奖励数量前后读数，
+不能据此声称具体资源到账数量，也不能外推其他周期任务。
 
 新队列入口还以 `dorm` 跑了仅收取配置：`Dorm_Feed=false`、`Dorm_Collect=true`、
 `BuyFurniture_Enable=false`。`periodic_plan` 找到上游 `Dorm` 绑定；`periodic_run` 经

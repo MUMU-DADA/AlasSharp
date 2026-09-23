@@ -1,0 +1,40 @@
+{
+  "id": "reward-mission-preflight",
+  "kind": "periodic_preflight",
+  "required": true,
+  "input": {
+    "task": "reward",
+    "allow_actions": true,
+    "confirm": "reward"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 0,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_event"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "task": "reward",
+    "allow_actions": true,
+    "confirm_matches": true,
+    "executes": false,
+    "decision": "allowed",
+    "reason": "两道闸都通过；放行后将会执行：from module.reward.reward import Reward（alas.py 第 208 行）",
+    "plan": {
+      "found": true,
+      "lineno": 208,
+      "imports": [
+        "from module.reward.reward import Reward"
+      ],
+      "calls_run": true
+    }
+  }
+}

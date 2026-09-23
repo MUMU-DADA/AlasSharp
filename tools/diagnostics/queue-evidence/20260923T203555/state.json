@@ -1,0 +1,261 @@
+{
+  "completed": {
+    "prepare-main": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_main",
+          "max_hops": 8,
+          "rounds": 1
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "to-tactical": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_tactical",
+          "max_hops": 8,
+          "rounds": 1
+        },
+        "preceding_tasks": [
+          {
+            "id": "prepare-main",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main",
+              "max_hops": 8,
+              "rounds": 1
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "at-tactical": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "prepare-main",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main",
+              "max_hops": 8,
+              "rounds": 1
+            }
+          },
+          {
+            "id": "to-tactical",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_tactical",
+              "max_hops": 8,
+              "rounds": 1
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "back-main": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_main",
+          "max_hops": 8,
+          "rounds": 1
+        },
+        "preceding_tasks": [
+          {
+            "id": "prepare-main",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main",
+              "max_hops": 8,
+              "rounds": 1
+            }
+          },
+          {
+            "id": "to-tactical",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_tactical",
+              "max_hops": 8,
+              "rounds": 1
+            }
+          },
+          {
+            "id": "at-tactical",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "at-main": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "prepare-main",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main",
+              "max_hops": 8,
+              "rounds": 1
+            }
+          },
+          {
+            "id": "to-tactical",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_tactical",
+              "max_hops": 8,
+              "rounds": 1
+            }
+          },
+          {
+            "id": "at-tactical",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "back-main",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main",
+              "max_hops": 8,
+              "rounds": 1
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-23T20:36:09+08:00"
+}

@@ -1,0 +1,91 @@
+{
+  "id": "back-main",
+  "kind": "navigate",
+  "required": true,
+  "input": {
+    "to": "page_main",
+    "max_hops": 8,
+    "rounds": 1
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 2.9,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_tactical"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "target": "page_main",
+    "max_hops": 8,
+    "rounds_requested": 1,
+    "rounds_completed": 1,
+    "rounds": [
+      {
+        "round": 1,
+        "success": true,
+        "to_target": {
+          "target": "page_main",
+          "success": true,
+          "final_pages": [
+            "page_main",
+            "page_main_white"
+          ],
+          "hops": [
+            {
+              "Hop": 1,
+              "OnPages": [
+                "page_tactical"
+              ],
+              "Target": "page_main",
+              "Button": "ui/GOTO_MAIN",
+              "Score": 0.226249,
+              "ClickX": 1238,
+              "ClickY": 8,
+              "ArrivedPages": [
+                "page_main",
+                "page_main_white"
+              ],
+              "LowConfidence": true
+            }
+          ],
+          "failure": null,
+          "graph_nodes": 53,
+          "graph_edges": 127,
+          "elapsed_ms": 2836.856
+        }
+      }
+    ],
+    "hops": [
+      {
+        "Hop": 1,
+        "OnPages": [
+          "page_tactical"
+        ],
+        "Target": "page_main",
+        "Button": "ui/GOTO_MAIN",
+        "Score": 0.226249,
+        "ClickX": 1238,
+        "ClickY": 8,
+        "ArrivedPages": [
+          "page_main",
+          "page_main_white"
+        ],
+        "LowConfidence": true
+      }
+    ],
+    "final_pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "success": true,
+    "graph_nodes": 53,
+    "graph_edges": 127
+  }
+}

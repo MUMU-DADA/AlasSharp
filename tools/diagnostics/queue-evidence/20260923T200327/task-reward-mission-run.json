@@ -1,0 +1,52 @@
+{
+  "id": "reward-mission-run",
+  "kind": "periodic_run",
+  "required": true,
+  "input": {
+    "task": "reward",
+    "allow_actions": true,
+    "confirm": "reward",
+    "overrides": {
+      "Reward_CollectOil": false,
+      "Reward_CollectCoin": false,
+      "Reward_CollectExp": false,
+      "Reward_CollectMission": true,
+      "Reward_CollectWeeklyMission": true
+    }
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 20.4,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_event"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "task": "reward",
+    "allow_actions": true,
+    "confirm_matches": true,
+    "decision": "ran",
+    "target": {
+      "module": "alas",
+      "class": "AzurLaneAutoScript",
+      "scheduler_command": "Reward",
+      "method": "reward"
+    },
+    "constructed": true,
+    "ran": true,
+    "native_success": true,
+    "elapsed_s": 20.4,
+    "returned": null,
+    "exit_code": null,
+    "reason": null,
+    "error": null,
+    "traceback_tail": []
+  }
+}

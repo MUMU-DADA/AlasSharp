@@ -132,11 +132,22 @@ alashub queue --file navigate.json --run --allow-actions --serial <device> --scr
 默认设备 I/O 使用上游配置，显式 `--screenshot` / `--control` 优先，`--adb` 仅保留参数兼容。
 导航新队列入口已完成一次主界面到战役页往返及两轮战役页导航；脱敏证据见 `docs/queue-evidence.md`。未解锁的页面与其他导航路径仍须单独验证。
 
+2026-09-23 战术页导航的首次真机队列在侧边功能面板失去识页结果。对同一静止画面重复抓帧时，
+`device_capture_set(raw=true)` 不能识别 `page_reward`，普通抓帧却能识别；连续约 13 秒的
+raw 采样仍为空命中，排除瞬时动画。根因是视觉宿主在 raw 分支把截图后端已返回的颜色通道
+额外交换了一次。现已统一按后端返回像素保存，再由 `load_image` 读回；
+`verify_device_capture_color.py` 用带有非对称 RGB 通道的帧逐像素验证 raw 与普通路径。
+人工进入战术页后的只读抓帧先确认当前账号可访问该页。修复后的五任务产品队列
+从功能面板回主页、导航至 `page_tactical`、抓帧识页、返回主页并再次抓帧，五项均成功；
+宿主与设备各初始化一次。脱敏工件见 `tools/diagnostics/queue-evidence/20260923T203555/`。
+这只验证当前账号的战术页导航与返页，不证明周期 `tactical` 执行或其他导航路径。
+
 ## 八、复现
 
 ```powershell
 dotnet build src\Alas.DataTool\Alas.DataTool.csproj -c Release
-python tools\diagnostics\verify_runtime.py          # 44 例：会话 / 批次 / 队列 / 导航 / 观测
+python tools\diagnostics\verify_runtime.py          # 50 例：会话 / 批次 / 队列 / 导航 / 观测
+python tools\diagnostics\verify_device_capture_color.py # raw / 普通抓帧像素一致
 python tools\diagnostics\verify_report.py           # 报告读得出事实；缺工件/缺日志/目录不存在都会被指出
 python tools\diagnostics\verify_architecture.py     # CLI 不复制业务状态机
 ```
@@ -320,6 +331,9 @@ python tools\report_html.py <artifacts>                     # 产物：<artifact
 | 1 | **入口在不在屏上** | `probe_asset_match.py <真机帧> <素材id>` —— 看模板分与颜色 | 分低 → 素材/判据问题（如 `IN_MAP` 那次）；分高 → 继续第 2 步 |
 | 2 | **点了有没有反应** | 对比点击前后两帧的页面判定（或直接抓帧看） | 画面**完全不变** → 入口惰性（多半未解锁）；**弹回上一页/主界面** → 也是未解锁，但游戏会"弹回"；**画面变了但认不出** → 页面规则问题 |
 | 3 | **是不是账号没解锁** | 看卡片美术是否发灰、查该功能的解锁条件 | 本账号已知三处：`page_guild`（惰性）· `page_os`（惰性，模板分 0.9990）· `page_meowfficer`（弹回主界面） |
+
+识页结果本身异常时，还要在同一静止画面比较 raw 与普通抓帧的像素和命中结果。
+战术页首次失败就属于 raw 颜色通道错误，不能从空命中直接推断页面未解锁或上游模板失效。
 
 **两种最容易犯的错**（我都犯过）：
 

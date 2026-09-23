@@ -1,0 +1,56 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 13.9,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "prepare-main",
+      "kind": "navigate",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 4.4,
+      "artifact": "<project>/data/mainline-device/current-tactical-access-retry-artifacts/20260923T203555/task-prepare-main.json"
+    },
+    {
+      "id": "to-tactical",
+      "kind": "navigate",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 5.5,
+      "artifact": "<project>/data/mainline-device/current-tactical-access-retry-artifacts/20260923T203555/task-to-tactical.json"
+    },
+    {
+      "id": "at-tactical",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.1,
+      "artifact": "<project>/data/mainline-device/current-tactical-access-retry-artifacts/20260923T203555/task-at-tactical.json"
+    },
+    {
+      "id": "back-main",
+      "kind": "navigate",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 2.9,
+      "artifact": "<project>/data/mainline-device/current-tactical-access-retry-artifacts/20260923T203555/task-back-main.json"
+    },
+    {
+      "id": "at-main",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.1,
+      "artifact": "<project>/data/mainline-device/current-tactical-access-retry-artifacts/20260923T203555/task-at-main.json"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/current-reward-mission-artifacts/20260923T200327",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "ee1d2badf69942f802216831d83dd153b22254533bd440b2f14c9a0a20daac43",
+    "state.json": "011cc18ffbe40b1352b375d0c43f9f936bd307ab3846261bb48efbea64cf9626",
+    "session-log.jsonl": "93e5cbad3514ba4fd684f7ddeabf2dbb3699a48becfe84f800348db919c97b05",
+    "task-after-reward-mission.json": "0e45c5aca34c266c047927e61c850aafb61864f4760e420bf245b921e3a29c55",
+    "task-before-reward-mission.json": "5ae292eb30d66b8e9e75a8f7afcf2cf0b07bd06440b6e58e70fa124ede108eab",
+    "task-reward-mission-plan.json": "7a06786994800a92f891e28a6bd9c863b29b6377b57c4e14d8f275a4ee95681f",
+    "task-reward-mission-preflight.json": "cdf553aa65ab84d1b7dfb75e7e150503a8c059f9b6464f3d4975f4cde548cdd9",
+    "task-reward-mission-run.json": "ac47b22d45baf238fb6ded506560eb80cd18c4a5a7700b30bc3bfc3e27ca3c2b"
+  },
+  "files": {
+    "queue.json": "49a41c3b0738af9117bd109fed0c28446a809e5b93c2b19f5b8f19f28840e42e",
+    "state.json": "6d3fadf50aa97f64205189e6eda67de823cf708936809a00dab34759b9aaf04b",
+    "session-log.jsonl": "cb8834d1418d9105a9e2951849281c54b970bc609f9e860ab8771db803f142c6",
+    "task-after-reward-mission.json": "23b17c5f778ea530a59a658ae23cba9f08445c5cb9942a7b9ef6a6b6afd18b73",
+    "task-before-reward-mission.json": "fccf19bfd456b3985f6303d368ff23572f424c5a1499dcbf101942d9f8ec11bd",
+    "task-reward-mission-plan.json": "12d33885b95b3fb5c27a01063a6af617f4a8ff30cad3ff377510da928499c7e7",
+    "task-reward-mission-preflight.json": "1551dffbdbd2512095ea79f8027bd57045cfa86d40e41e2979d8654e5e616d29",
+    "task-reward-mission-run.json": "780cf37f3d66c13ef4822597af98376a1f94b66ebb0de52d3470acab83a876af"
+  }
+}

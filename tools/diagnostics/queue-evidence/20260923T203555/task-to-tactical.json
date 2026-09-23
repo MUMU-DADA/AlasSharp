@@ -1,0 +1,118 @@
+{
+  "id": "to-tactical",
+  "kind": "navigate",
+  "required": true,
+  "input": {
+    "to": "page_tactical",
+    "max_hops": 8,
+    "rounds": 1
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 5.5,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "target": "page_tactical",
+    "max_hops": 8,
+    "rounds_requested": 1,
+    "rounds_completed": 1,
+    "rounds": [
+      {
+        "round": 1,
+        "success": true,
+        "to_target": {
+          "target": "page_tactical",
+          "success": true,
+          "final_pages": [
+            "page_tactical"
+          ],
+          "hops": [
+            {
+              "Hop": 1,
+              "OnPages": [
+                "page_main"
+              ],
+              "Target": "page_tactical",
+              "Button": "ui_white/MAIN_GOTO_REWARD_WHITE",
+              "Score": 0.990449,
+              "ClickX": 20,
+              "ClickY": 234,
+              "ArrivedPages": [
+                "page_reward"
+              ],
+              "LowConfidence": false
+            },
+            {
+              "Hop": 2,
+              "OnPages": [
+                "page_reward"
+              ],
+              "Target": "page_tactical",
+              "Button": "ui_white/REWARD_GOTO_TACTICAL_WHITE",
+              "Score": 0.891644,
+              "ClickX": 467,
+              "ClickY": 416,
+              "ArrivedPages": [
+                "page_tactical"
+              ],
+              "LowConfidence": false
+            }
+          ],
+          "failure": null,
+          "graph_nodes": 53,
+          "graph_edges": 127,
+          "elapsed_ms": 5434.745
+        }
+      }
+    ],
+    "hops": [
+      {
+        "Hop": 1,
+        "OnPages": [
+          "page_main"
+        ],
+        "Target": "page_tactical",
+        "Button": "ui_white/MAIN_GOTO_REWARD_WHITE",
+        "Score": 0.990449,
+        "ClickX": 20,
+        "ClickY": 234,
+        "ArrivedPages": [
+          "page_reward"
+        ],
+        "LowConfidence": false
+      },
+      {
+        "Hop": 2,
+        "OnPages": [
+          "page_reward"
+        ],
+        "Target": "page_tactical",
+        "Button": "ui_white/REWARD_GOTO_TACTICAL_WHITE",
+        "Score": 0.891644,
+        "ClickX": 467,
+        "ClickY": 416,
+        "ArrivedPages": [
+          "page_tactical"
+        ],
+        "LowConfidence": false
+      }
+    ],
+    "final_pages": [
+      "page_tactical"
+    ],
+    "success": true,
+    "graph_nodes": 53,
+    "graph_edges": 127
+  }
+}

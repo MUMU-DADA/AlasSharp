@@ -1,0 +1,46 @@
+{
+  "id": "reward-mission-plan",
+  "kind": "periodic_plan",
+  "required": true,
+  "input": {
+    "tasks": [
+      "reward"
+    ]
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 0,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_event"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "count": 1,
+    "missing": [],
+    "plans": [
+      {
+        "task": "reward",
+        "found": true,
+        "scheduler_command": "Reward",
+        "method": "reward",
+        "lineno": 208,
+        "imports": [
+          "from module.reward.reward import Reward"
+        ],
+        "calls": [
+          "Reward",
+          "run"
+        ],
+        "calls_run": true,
+        "error": null
+      }
+    ]
+  }
+}

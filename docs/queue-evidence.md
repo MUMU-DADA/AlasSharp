@@ -19,6 +19,8 @@
 | `20260923T155210` | 动作授权；宿主 1 / 设备配置 1 | 7.9 秒 |
 | `20260923T160321` | 动作授权；宿主 1 / 设备配置 1 | 10.6 秒 |
 | `20260923T175825` | 动作授权；宿主 1 / 设备配置 1 | 8.7 秒 |
+| `20260923T200327` | 动作授权；宿主 1 / 设备配置 1 | 22.9 秒 |
+| `20260923T203555` | 动作授权；宿主 1 / 设备配置 1 | 13.9 秒 |
 
 | 归档 / 任务 | 任务域 | 已核对事实 |
 | --- | --- | --- |
@@ -42,6 +44,16 @@
 | `20260923T175825/freebies-preflight` | `periodic_preflight` | 请求 freebies 已放行；executes=false；上游绑定一致 |
 | `20260923T175825/freebies-merit` | `periodic_run` | 上游 AzurLaneAutoScript.freebies；decision=ran；native_success=true |
 | `20260923T175825/after-freebies` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
+| `20260923T200327/before-reward-mission` | `account_state` | 实时抓帧；页面 page_event；in_map=False |
+| `20260923T200327/reward-mission-plan` | `periodic_plan` | 上游绑定 1 项；请求 reward 已找到 |
+| `20260923T200327/reward-mission-preflight` | `periodic_preflight` | 请求 reward 已放行；executes=false；上游绑定一致 |
+| `20260923T200327/reward-mission-run` | `periodic_run` | 上游 AzurLaneAutoScript.reward；decision=ran；native_success=true |
+| `20260923T200327/after-reward-mission` | `account_state` | 实时抓帧；页面 page_mission；in_map=False |
+| `20260923T203555/prepare-main` | `navigate` | 目标 page_main；完成 1/1 轮；1 次跳转；最终 page_main, page_main_white |
+| `20260923T203555/to-tactical` | `navigate` | 目标 page_tactical；完成 1/1 轮；2 次跳转；最终 page_tactical |
+| `20260923T203555/at-tactical` | `account_state` | 实时抓帧；页面 page_tactical；in_map=False |
+| `20260923T203555/back-main` | `navigate` | 目标 page_main；完成 1/1 轮；1 次跳转；最终 page_main, page_main_white |
+| `20260923T203555/at-main` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
 
 来源目录（项目相对路径，原件不入库）：
 
@@ -52,3 +64,5 @@
 - `data/mainline-device/20260923T155210-dorm/artifacts/20260923T155210`
 - `data/mainline-device/20260923T160321-event_nav/artifacts/20260923T160321`
 - `data/mainline-device/current-freebies-merit/20260923T175825`
+- `data/mainline-device/current-reward-mission-artifacts/20260923T200327`
+- `data/mainline-device/current-tactical-access-retry-artifacts/20260923T203555`
