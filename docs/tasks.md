@@ -276,6 +276,9 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 上游 `AzurLaneAutoScript.run()` 捕获异常后返回 `False` 时，宿主在该次原生调用期间
 记录 logger 中的异常类型和去绝对路径的调用栈帧，写入任务错误与 `traceback_tail`；
 没有异常记录时仍如实报告未确认成功，不猜测失败原因。
+若上游保存了错误目录，工件还登记相对上游仓库的 `native_error_dir`、
+`native_error_log` 和 `failure_frames`；原始日志与截图仍留在本地忽略目录，
+不会作为提交内容。
 `verify_os_action.py` 走真实 CLI 和上游只读解析，验证 dry-run 跳过及
 `reward` 作为非 OS 目标在设备配置前被拒绝；这两条都没有执行设备动作。
 

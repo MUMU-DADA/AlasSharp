@@ -29,6 +29,7 @@ import sys
 import time
 import traceback
 from contextlib import contextmanager
+from pathlib import Path
 
 FORK = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      '..', '.runtime', 'engine'))
@@ -1071,8 +1072,13 @@ class _LoggedNativeFailure(logging.Handler):
         super().__init__(logging.WARNING)
         self.kind = None
         self.traceback_tail = []
+        self.error_directory = None
 
     def emit(self, record):
+        if isinstance(record.msg, str) and record.msg.startswith('Saving error: '):
+            candidate = (Path(FORK) / record.msg.removeprefix('Saving error: ')).resolve()
+            if candidate.is_relative_to((Path(FORK) / 'log' / 'error').resolve()):
+                self.error_directory = candidate
         error = record.msg if isinstance(record.msg, Exception) else sys.exc_info()[1]
         if not isinstance(error, Exception):
             return
@@ -1191,6 +1197,16 @@ def op_periodic_run(args):
                             + (f'（已记录 {failure.kind}）' if failure.kind else ''))
             if failure.traceback_tail:
                 out['traceback_tail'] = failure.traceback_tail
+            if failure.error_directory is not None and failure.error_directory.is_dir():
+                directory = failure.error_directory
+                out['native_error_dir'] = directory.relative_to(FORK).as_posix()
+                out['failure_frames'] = [
+                    frame.relative_to(FORK).as_posix()
+                    for frame in sorted(directory.glob('*.png')) if frame.is_file()
+                ]
+                log_file = directory / 'log.txt'
+                if log_file.is_file():
+                    out['native_error_log'] = log_file.relative_to(FORK).as_posix()
     except SystemExit as error:
         out['ran'] = bool(out.get('ran'))
         out['native_success'] = False

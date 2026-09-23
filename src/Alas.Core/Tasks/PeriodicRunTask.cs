@@ -127,6 +127,10 @@ public sealed class PeriodicRunTask : ITaskRunner
                 ["error"] = run.Error,
                 ["traceback_tail"] = new JsonArray((run.TracebackTail ?? new List<string>())
                     .Select(l => (JsonNode)JsonValue.Create(l)!).ToArray()),
+                ["native_error_dir"] = run.NativeErrorDirectory,
+                ["native_error_log"] = run.NativeErrorLog,
+                ["failure_frames"] = new JsonArray((run.FailureFrames ?? new List<string>())
+                    .Select(path => (JsonNode)JsonValue.Create(path)!).ToArray()),
             };
             switch (run.Decision)
             {
@@ -186,6 +190,9 @@ public sealed class PeriodicRunResult
     [JsonPropertyName("exit_code")] public string? ExitCode { get; set; }
     [JsonPropertyName("error")] public string? Error { get; set; }
     [JsonPropertyName("traceback_tail")] public List<string>? TracebackTail { get; set; }
+    [JsonPropertyName("native_error_dir")] public string? NativeErrorDirectory { get; set; }
+    [JsonPropertyName("native_error_log")] public string? NativeErrorLog { get; set; }
+    [JsonPropertyName("failure_frames")] public List<string>? FailureFrames { get; set; }
 }
 
 public sealed class PeriodicRunTarget

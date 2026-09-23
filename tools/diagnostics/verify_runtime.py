@@ -631,6 +631,9 @@ def build_queue_cases() -> list[dict]:
                 'constructed': True, 'ran': True, 'native_success': False,
                 'error': '上游原生调度器未确认成功（已记录 GameStuckError）',
                 'traceback_tail': ['map_operation.py:201 zone_init'],
+                'native_error_dir': 'log/error/fixture',
+                'native_error_log': 'log/error/fixture/log.txt',
+                'failure_frames': ['log/error/fixture/failure.png'],
             }}]},
             'expect': {
                 'outcome': 'failed', 'host_start_count': 1,
@@ -638,7 +641,10 @@ def build_queue_cases() -> list[dict]:
                 'tasks': [{'id': 'periodic', 'outcome': 'failed',
                            'error_kind': 'upstream_error', 'error_contains': 'GameStuckError',
                            'evidence_equals': {'decision': 'failed', 'native_success': False,
-                                               'traceback_tail': ['map_operation.py:201 zone_init']}}],
+                                               'traceback_tail': ['map_operation.py:201 zone_init'],
+                                               'native_error_dir': 'log/error/fixture',
+                                               'native_error_log': 'log/error/fixture/log.txt',
+                                               'failure_frames': ['log/error/fixture/failure.png']}}],
             },
         },
         {

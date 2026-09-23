@@ -327,14 +327,30 @@ def verify_native_dispatch(failures):
                   tuple(native_alas.logger.handlers) == handlers_before)
 
             state.mode = 'stuck'
-            with patch.object(native_alas.AzurLaneAutoScript, 'save_error_log',
-                              lambda self: None):
-                stuck = call_op('periodic_run', {
-                    'task': 'reward', 'allow_actions': True, 'confirm': 'reward'})
+            error_root = ENGINE / 'log' / 'error'
+            error_root.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix='fixture-', dir=error_root) as folder:
+                error_dir = Path(folder)
+                frame = error_dir / 'failure.png'
+                frame.write_bytes(b'fixture frame')
+                (error_dir / 'log.txt').write_text('fixture log', encoding='utf-8')
+                relative_dir = error_dir.relative_to(ENGINE).as_posix()
+
+                def save_fixture_error(self):
+                    native_alas.logger.warning(f'Saving error: ./{relative_dir}')
+                    native_alas.logger.warning('Saving error: ../outside')
+
+                with patch.object(native_alas.AzurLaneAutoScript, 'save_error_log',
+                                  save_fixture_error):
+                    stuck = call_op('periodic_run', {
+                        'task': 'reward', 'allow_actions': True, 'confirm': 'reward'})
             check(failures, 'GameStuckError 由原生 run 返回 False 后仍可定位',
                   stuck.get('decision') == 'failed'
                   and 'GameStuckError' in (stuck.get('error') or '')
                   and bool(stuck.get('traceback_tail'))
+                  and stuck.get('native_error_dir') == relative_dir
+                  and stuck.get('native_error_log') == f'{relative_dir}/log.txt'
+                  and stuck.get('failure_frames') == [f'{relative_dir}/failure.png']
                   and tuple(native_alas.logger.handlers) == handlers_before,
                   f'{stuck}')
 
