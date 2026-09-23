@@ -975,6 +975,45 @@ def op_periodic_preflight(args):
     return out
 
 
+def op_config_get(args):
+    """按**点分路径**读账号配置里的值（只读）：args = {"keys": ["Dorm.BuyFurniture.Enable", ...]}。
+
+    为什么需要它：R4 的"配置"面里最要紧的一类值是**决定任务会不会花资源的开关**
+    （docs/tasks.md 花费路径表：dorm 看 BuyFurniture、meowfficer 看 BuyAmount …）。
+    判"能不能无人值守跑某个周期任务"时，第一步就是把这些开关的值报出来。
+
+    **通用实现，不写任何具体键名**：调用方给什么路径就读什么路径；读不到时如实区分
+    "配置里没这一项"与"配置读不出来" —— **空值不等于 false**（缺省走上游默认值）。
+    """
+    keys = args.get('keys') or []
+    if not isinstance(keys, list) or not keys:
+        return {'error': '缺少 keys（点分路径列表，如 ["Dorm.BuyFurniture.Enable"]）'}
+    path = os.path.join(FORK, 'config', 'alas.json')
+    if not os.path.exists(path):
+        return {'error': f'读不到账号配置: {path}',
+                'note': '这属于环境问题（Failed），不是"没跑"（skipped）'}
+    try:
+        with open(path, encoding='utf-8') as stream:
+            config = json.load(stream)
+    except Exception as e:
+        return {'error': f'账号配置读不出来: {type(e).__name__}: {e}'}
+
+    def walk(node, parts):
+        for part in parts:
+            if not isinstance(node, dict) or part not in node:
+                return None
+            node = node[part]
+        return node
+
+    values = {str(key): walk(config, str(key).split('.')) for key in keys}
+    return {
+        'config_source': path,
+        'values': values,
+        'missing': [k for k, v in values.items() if v is None],
+        'note': 'missing 表示**配置里没显式设置**（缺省走上游默认值），不等于 false/0',
+        'checked': len(keys),
+    }
+
 def _asset_id_map():
     """id(Button 对象) -> '子模块/资产名'，实时扫描已导入的 module.*.assets。
 
@@ -3040,6 +3079,7 @@ OPS = {
     'task_schedule': op_task_schedule,
     'periodic_plan': op_periodic_plan,
     'periodic_preflight': op_periodic_preflight,
+    'config_get': op_config_get,
     'ui_page_graph': op_ui_page_graph,
     'cached_rule_check': op_cached_rule_check,
     'page_positive_control': op_page_positive_control,
