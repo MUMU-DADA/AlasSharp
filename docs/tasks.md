@@ -599,3 +599,26 @@ Fallback to dorm_page
    要在资源充足时看完整购买（含确认弹窗与返回），需账号有足够家具币；
 3. **执行入口的两道闸已验**（未授权/确认不匹配/任务名不存在/缺 task → 全部 denied 且未发生任何执行），
    真机跑通的是"两闸都通过"的那条路径。
+
+#### 执行环第二个域：`reward`（真机跑通，2026-09-23）
+
+**为什么选它**：执行环只跑通过 `dorm` 时，还不能说明这套入口是**通用的**（可能只是为宿舍凑巧能跑）。
+`reward` 是花费路径表里**下钻四层确认无花费**的那个域 —— 用它验证既证明通用性，又是最安全的演示。
+
+```
+op_periodic_run(task="reward", allow_actions=true, confirm="reward")
+→ decision=ran  target={module.reward.reward, Reward}  constructed=True  ran=True  elapsed_s=21.5
+```
+
+上游真机日志（在领取任务奖励，行为符合预期）：
+
+```
+[MissionState] MISSION_SINGLE
+Click (1150, 134) @ MISSION_SINGLE
+Mission claim receive
+[MissionState] MISSION_UNFINISH
+Mission collect finished
+```
+
+**结论**：执行入口对**不同域**都成立 —— 它只做三件事（两道闸 → 用勘察结果定位上游类 →
+构造并 `run()`），域差异全部由上游自己的类消费。**没有为任何域写专用分支。**
