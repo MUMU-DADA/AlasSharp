@@ -158,6 +158,67 @@ def main() -> int:
                 if not ok:
                     failures.append(f'{name}: {detail}')
 
+    # ---- 放行判定（periodic_preflight）：四条路径 + "永不执行"这条不变量
+    print()
+    print('=== 放行判定（kind = periodic_preflight）===')
+    if not exe.is_file():
+        print('[跳过] 未构建 alashub —— 放行判定未验。')
+    else:
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix='alas-preflight-') as tmp:
+            tmpdir = Path(tmp)
+            cases = {
+                'no-auth': {'task': 'reward'},
+                'bad-confirm': {'task': 'reward', 'allow_actions': True, 'confirm': 'research'},
+                'unknown': {'task': 'no_such_task_zzz', 'allow_actions': True,
+                            'confirm': 'no_such_task_zzz'},
+                'allowed': {'task': 'reward', 'allow_actions': True, 'confirm': 'reward'},
+            }
+            queue_file = tmpdir / 'queue.json'
+            queue_file.write_text(json.dumps({'tasks': [
+                {'id': key, 'kind': 'periodic_preflight', 'input': value}
+                for key, value in cases.items()]}, ensure_ascii=False), encoding='utf-8')
+            artifacts = tmpdir / 'artifacts'
+            subprocess.run([str(exe), 'queue', '--file', str(queue_file),
+                            '--artifacts', str(artifacts), '--continue-on-error'],
+                           capture_output=True, text=True, encoding='utf-8',
+                           errors='replace', timeout=300)
+            docs = {}
+            for artifact in artifacts.glob('*/task-*.json'):
+                document = json.loads(artifact.read_text(encoding='utf-8'))
+                docs[artifact.name.replace('task-', '').replace('.json', '')] = document
+
+            def decision(key):
+                evidence = (docs.get(key) or {}).get('evidence') or {}
+                return (docs.get(key) or {}).get('outcome'), evidence
+
+            gate_checks = []
+            for key in ('no-auth', 'bad-confirm', 'unknown'):
+                outcome, evidence = decision(key)
+                gate_checks.append((f'{key} → failed 且 decision=denied',
+                                    outcome == 'failed' and evidence.get('decision') == 'denied',
+                                    f"outcome={outcome} decision={evidence.get('decision')}"))
+            _, allowed_evidence = decision('allowed')
+            gate_checks += [
+                ('两闸都过 → allowed',
+                 allowed_evidence.get('decision') == 'allowed', f'{allowed_evidence}'),
+                # 这条是**不变量**：这个 op/任务存在的前提就是它不驱动游戏
+                ('四条路径的 executes 全为 False（永不执行）',
+                 all((decision(k)[1].get('executes') is False) for k in cases),
+                 f"{ {k: decision(k)[1].get('executes') for k in cases} }"),
+                ('放行时随附勘察结果（会跑哪个类）',
+                 bool((allowed_evidence.get('plan') or {}).get('imports')),
+                 f"plan={allowed_evidence.get('plan')}"),
+                ('未授权的原因提到 allow_actions',
+                 'allow_actions' in str(decision('no-auth')[1].get('reason') or ''),
+                 f"reason={decision('no-auth')[1].get('reason')}"),
+            ]
+            for name, ok, detail in gate_checks:
+                print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+                if not ok:
+                    failures.append(f'{name}: {detail}')
+
     print()
     if failures:
         print(f'结果: FAIL（{len(failures)} 项）')
