@@ -125,8 +125,11 @@ public sealed class OsStateTask : ITaskRunner
                 evidence["in_map"] = detection.InMap;
                 evidence["backend"] = detection.Backend;
                 evidence["construct_error"] = detection.ConstructError;
+                evidence["grid_flags_error"] = detection.GridFlagsError;
                 evidence["load"] = detection.Load;
                 evidence["predict"] = detection.Predict;
+                evidence["detected_raw"] = detection.DetectedRaw;
+                evidence["ships"] = detection.Ships;
                 evidence["grid_count"] = detection.GridCount;
                 evidence["center_loca"] = detection.CenterLoca is null ? null
                     : System.Text.Json.JsonSerializer.SerializeToNode(detection.CenterLoca);

@@ -232,7 +232,8 @@ public sealed class ObserveTask : ITaskRunner
                             "map_detect", new { mode = mapMode });
                         var mapError = detected.ExecutionError;
                         lastMapReason = mapError ?? detected.Reason;
-                        lastGridCount = null;
+                        lastGridCount = mapError is null || detected.GridFlagsError is not null
+                            ? detected.GridCount : null;
                         if (mapError is not null)
                         {
                             mapErrors++;

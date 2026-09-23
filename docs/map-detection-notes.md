@@ -12,7 +12,11 @@
 `predict`。C# 消费方先检查这些执行状态，再使用 `detected`：一次执行故障不能算作
 "当前不是地图"。OS 模式的构造异常也要复位全局遮罩，避免影响下一帧。
 
-`verify_map_detect_failures.py` 通过替身 `View` 注入负样本和三阶段故障；
+逐格标志抽取失败另记在 `grid_flags_error`，不会触发 `require_ships` 的船标志防误报
+判据，也不会把已经检出的地图翻成负样本；消费方会把这类不完整结果记为上游故障，
+同时保留 `detected_raw`、`grid_count` 和 `ships` 供诊断。
+
+`verify_map_detect_failures.py` 通过替身 `View` 注入负样本和四阶段故障；
 `observe_cases.json` 通过真实队列与替身宿主校验 `observe` / `os_state` 的失败工件。
 这项验证不改变上游图像算法、地图规则、界面规则或既有真机结算判据。
 

@@ -917,8 +917,8 @@ alashub queue --file observe.json --run --read-only-device --serial <device> --s
 观测可在 tick 边界停止，故障必须留在任务证据中。其离线验收由 `observe_cases.json` 与
 `verify_runtime.py` 覆盖。地图检测中，上游 `MapDetectionError` 保持正常负样本；
 `construct_error`、`load=error`、预测异常及缺少必要状态会让任务失败，`observe` 同时计入
-`map.errors`。`os_state` 使用同一判据；`verify_map_detect_failures.py` 注入验证三阶段故障
-和 OS 遮罩复位。
+`map.errors`。`os_state` 使用同一判据；`verify_map_detect_failures.py` 注入验证四阶段故障
+（含逐格语义抽取）和 OS 遮罩复位。
 历史 `run` 兼容入口的只读真机记录为 4 tick、0 error，命中
 `page_main` / `page_main_white`，宿主/设备各初始化一次。新队列入口已分别完成 6 tick 和导航后的 4 tick 真机观测。当前未通关大世界的账号在海域运行 `observe(map=os)` 只读队列，4 次抓帧与 4 次上游地图检测均成功，最后检出 43 格、错误 0；页面命中为空，未执行自律、导航或战斗。原件留在本地忽略目录 `data/mainline-device/20260924-observe-os/`，配置按运行前快照恢复并核对原字节。脱敏交叉审计见 `docs/queue-evidence.md`。
 原始现场工件在忽略目录 `data/progress-audit-observe/20260923T105409`，未入库，原配置已恢复。

@@ -155,6 +155,7 @@ def main():
                 land_cells = set(exp.get('land_cells') or [])
                 entry['ships_on_land'] = sorted(k for k in ships if k in land_cells)
                 entry['land_cells_total'] = len(land_cells)
+                entry['grid_flags_ok'] = not bool(m.get('grid_flags_error'))
             else:
                 entry['ir_match'] = None
         results['map'].append(dict(m, fixture=f, ir=entry.get('ir'),
@@ -163,7 +164,8 @@ def main():
                                    grid_missing_count=entry.get('grid_missing_count'),
                                    ship_tiles=entry.get('ship_tiles'),
                                    ships_on_land=entry.get('ships_on_land'),
-                                   land_cells_total=entry.get('land_cells_total')))
+                                   land_cells_total=entry.get('land_cells_total'),
+                                   grid_flags_ok=entry.get('grid_flags_ok')))
         print('%s: globe load=%s 往返误差=%s | map detected=%s %s'
               % (f, g.get('load'), ('%.2e' % rt) if rt is not None else 'n/a',
                  m.get('detected'), m.get('reason') or ''))
@@ -184,7 +186,7 @@ def main():
     negative_targets = [m for m in results['map']
                         if 'os_map' in m.get('fixture', '') or 'menu' in m.get('fixture', '')]
     def completed(m):
-        if m.get('construct_error'):
+        if m.get('construct_error') or m.get('grid_flags_error'):
             return False
         if m.get('load') == 'negative':
             return not m.get('detected') and bool(m.get('reason'))
@@ -194,7 +196,14 @@ def main():
     process_ok = all(completed(m) for m in results['map'])
     negative_ok = all(completed(m) and not m.get('detected')
                       for m in negative_targets) if negative_targets else None
-    positive = [m for m in results['map'] if m.get('detected')]
+    positive = [m for m in results['map']
+                if m.get('detected') and not m.get('grid_flags_error')]
+    grid_flags_ok = all(not m.get('grid_flags_error') for m in results['map'])
+    rejected_by_ship_check = [m.get('fixture') for m in results['map']
+                              if m.get('detected_raw') is True
+                              and m.get('detected') is False
+                              and m.get('ships') == 0
+                              and not m.get('grid_flags_error')]
     # 动画期/脏样本被检出与否不算判定项，但要在报告里如实列出
     dirty = [m.get('fixture') for m in results['map']
              if not m.get('detected') and not m.get('reason')]
@@ -218,6 +227,10 @@ def main():
         % ('✅' if negative_ok else ('—' if negative_ok is None else '❌')),
         '| 检测过程 | %s | 构造、加载和预测错误不得当作正常未检出 |'
         % ('✅' if process_ok else '❌'),
+        '| 逐格语义 | %s | 逐格标志抽取失败不能伪装成船标志为 0 |'
+        % ('✅' if grid_flags_ok else '❌'),
+        '| 船标志筛选 | %s | 记录网格被船标志防误报规则拒绝的帧 |'
+        % ('✅' if not rejected_by_ship_check else '⚠️ %d 张' % len(rejected_by_ship_check)),
         '| 地图正样本 | %s | 需要真机地图画面（见下） |'
         % ('✅ %d 张检测到网格' % len(positive) if positive else '⏳ 缺正样本'),
         '| 检测 vs 关卡 IR | %s | 检出的格数/形状必须与该关卡声明的 map_data 一致 |'
@@ -272,7 +285,7 @@ def main():
     print('素材链=%s 大世界=%s 往返=%s 负样本=%s 检测过程=%s 正样本=%s'
           % (asset_ok, globe_ok, rt_ok, negative_ok, process_ok, len(positive)))
     print('报告: %s' % out)
-    return 0 if (asset_ok and globe_ok and rt_ok and process_ok
+    return 0 if (asset_ok and globe_ok and rt_ok and process_ok and grid_flags_ok
                  and negative_ok is not False) else 1
 
 

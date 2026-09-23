@@ -34,6 +34,7 @@ public sealed class MapDetectResult
 {
     [JsonPropertyName("backend")] public string? Backend { get; set; }
     [JsonPropertyName("construct_error")] public string? ConstructError { get; set; }
+    [JsonPropertyName("grid_flags_error")] public string? GridFlagsError { get; set; }
     [JsonPropertyName("load")] public string? Load { get; set; }
     [JsonPropertyName("predict")] public string? Predict { get; set; }
     [JsonPropertyName("detected")] public bool Detected { get; set; }
@@ -50,6 +51,10 @@ public sealed class MapDetectResult
     /// </summary>
     [JsonPropertyName("grid_flags")]
     public Dictionary<string, List<string>>? GridFlags { get; set; }
+    [JsonPropertyName("detected_raw")] public bool? DetectedRaw { get; set; }
+    [JsonPropertyName("ships")] public int? Ships { get; set; }
+    [JsonPropertyName("ship_tiles")]
+    public Dictionary<string, List<string>>? ShipTiles { get; set; }
     [JsonPropertyName("shape")] public List<int>? Shape { get; set; }
     [JsonPropertyName("center_loca")] public List<int>? CenterLoca { get; set; }
     [JsonPropertyName("left_edge")] public bool? LeftEdge { get; set; }
@@ -64,6 +69,8 @@ public sealed class MapDetectResult
         {
             if (!string.IsNullOrWhiteSpace(ConstructError))
                 return $"View 构造失败: {ConstructError}";
+            if (!string.IsNullOrWhiteSpace(GridFlagsError))
+                return $"逐格语义抽取失败: {GridFlagsError}";
             if (Load == "negative")
                 return Detected ? "地图加载为负样本却标记为已检出"
                     : string.IsNullOrWhiteSpace(Reason) ? "地图负样本缺少原因" : null;

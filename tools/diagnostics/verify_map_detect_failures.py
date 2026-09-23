@@ -32,7 +32,12 @@ class View:
         pass
 
 
-def detect(view_class, mode='main'):
+class ExplodingItems(dict):
+    def items(self):
+        raise RuntimeError('injected grid flag extraction failure')
+
+
+def detect(view_class, mode='main', **options):
     config = Config(DETECTION_BACKEND='perspective',
                     INTERNAL_LINES_HOUGHLINES_THRESHOLD=1)
     with patch.object(view_mod, 'View', view_class), \
@@ -40,7 +45,7 @@ def detect(view_class, mode='main'):
          patch.object(vision, '_map_config', return_value=config), \
          patch.object(vision, 'apply_numpy2_compat'), \
          patch.object(vision, 'apply_points_empty_compat'):
-        return vision.op_map_detect({'mode': mode})
+        return vision.op_map_detect({'mode': mode, **options})
 
 
 def main():
@@ -76,6 +81,24 @@ def main():
     assert predicted['load'] == 'ok' and predicted['predict'].startswith('RuntimeError:')
     assert predicted['detected'] is False and predicted['grid_count'] == 1
 
+    class GridFlagsError(View):
+        def __init__(self, config, **kwargs):
+            self.grids = ExplodingItems({(0, 0): object()})
+
+    flags = detect(GridFlagsError)
+    assert flags['load'] == 'ok' and flags['predict'] == 'ok'
+    assert flags['detected_raw'] is True and flags['detected'] is True
+    assert flags['grid_flags_error'].startswith('RuntimeError:')
+    assert flags['ships'] is None and flags['ship_tiles'] is None
+    assert 'reason' not in flags
+
+    no_ship_gate = detect(View)
+    assert no_ship_gate['detected_raw'] is True and no_ship_gate['detected'] is False
+    assert no_ship_gate['ships'] == 0 and '没有任何船标志' in no_ship_gate['reason']
+    no_ship_gate_disabled = detect(View, require_ships=False)
+    assert no_ship_gate_disabled['detected_raw'] is True
+    assert no_ship_gate_disabled['detected'] is True and no_ship_gate_disabled['ships'] == 0
+
     mask_states = []
     with patch.object(vision, '_make_main_shim', return_value=object()), \
          patch.object(vision, 'apply_os_mask_compat'), \
@@ -85,7 +108,7 @@ def main():
     assert os_constructed['construct_error'].startswith('TypeError:')
     assert mask_states == [True, False], mask_states
 
-    print('map_detect 故障语义通过：正常负样本、三阶段故障、OS 遮罩复位（5 例）')
+    print('map_detect 故障语义通过：正常负样本、四阶段故障、船标志门控、OS 遮罩复位（8 例）')
     return 0
 
 

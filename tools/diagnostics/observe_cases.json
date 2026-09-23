@@ -241,6 +241,29 @@
    }
   },
   {
+   "name": "observe_map_grid_flags_failure_is_error",
+   "dry_run": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "tasks": [{"id": "map-grid-flags", "kind": "observe",
+              "input": {"tick_seconds": 0.02, "seconds": 0.01, "map": "main"}}],
+   "stub_responses": {"map_detect": [{"result": {
+    "load": "ok", "predict": "ok", "detected_raw": true,
+    "detected": true, "grid_count": 35,
+    "grid_flags_error": "RuntimeError: injected grid flag extraction failure",
+    "ships": null
+   }}]},
+   "expect": {
+    "outcome": "failed", "host_start_count": 1,
+    "device_configure_count": 1, "stopped_early": true,
+    "tasks": [{"id": "map-grid-flags", "outcome": "failed",
+      "error_kind": "upstream_error", "error_contains": "逐格语义抽取失败",
+      "evidence_equals": {"errors": 1, "map.attempts": 1,
+                          "map.errors": 1, "map.detected_hits": 0,
+                          "map.last_grid_count": 35}}]
+   }
+  },
+  {
    "name": "os_state_map_negative_is_valid",
    "dry_run": false,
    "read_only_device": true,
@@ -276,6 +299,28 @@
       "evidence_equals": {
        "detected": false,
        "construct_error": "TypeError: injected constructor failure"}}]
+   }
+  },
+  {
+   "name": "os_state_map_grid_flags_failure_is_error",
+   "dry_run": false,
+   "read_only_device": true,
+   "serial": "stub-1",
+   "tasks": [{"id": "os-grid-flags", "kind": "os_state", "input": {"capture": true}}],
+   "stub_responses": {"map_detect": [{"result": {
+    "load": "ok", "predict": "ok", "detected_raw": true,
+    "detected": true, "grid_count": 35,
+    "grid_flags_error": "RuntimeError: injected grid flag extraction failure",
+    "ships": null
+   }}]},
+   "expect": {
+    "outcome": "failed", "host_start_count": 1,
+    "device_configure_count": 1, "stopped_early": true,
+    "tasks": [{"id": "os-grid-flags", "outcome": "failed",
+      "error_kind": "upstream_error", "error_contains": "逐格语义抽取失败",
+      "evidence_equals": {"detected": true, "detected_raw": true,
+                          "grid_flags_error": "RuntimeError: injected grid flag extraction failure",
+                          "grid_count": 35, "ships": null}}]
    }
   },
   {

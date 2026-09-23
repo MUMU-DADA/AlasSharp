@@ -2666,12 +2666,18 @@ def op_map_detect(args):
         if any(n in names for n in SHIP_FLAGS):
             ships[key] = names
     out['detected_raw'] = out['detected']
-    out['ships'] = len(ships)
-    out['ship_tiles'] = ships
+    if out.get('grid_flags_error'):
+        # 网格已检出，但逐格语义不可用；不要把“未知”编码成 0 艘船。
+        out['ships'] = None
+        out['ship_tiles'] = None
+    else:
+        out['ships'] = len(ships)
+        out['ship_tiles'] = ships
     # 注意：**只在战役模式（main）下用这条判据**。海域图（mode=os）的逐格标志在本客户端
     # 本来就为空（OS 网格类的模板与本客户端图标不匹配，S2 阶段已查明并记录），
     # 若一并要求船标志会把**整类海域图误杀** —— 实测产品路径因此从 5/5 掉到 4/5。
-    if bool(args.get('require_ships', True)) and mode != 'os' and not ships and out['detected']:
+    if (bool(args.get('require_ships', True)) and mode != 'os'
+            and not out.get('grid_flags_error') and not ships and out['detected']):
         out['detected'] = False
         out['reason'] = ('检出网格但**没有任何船标志**（%s 格），判为非战场画面'
                          % out.get('grid_count'))
