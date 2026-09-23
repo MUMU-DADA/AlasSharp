@@ -13,6 +13,12 @@ C# 只负责动作授权、多回合、段间取消与工件；不按页面另�
 `IDLE_3` 识别待机界面并点击 `REWARD_GOTO_MAIN`。本次 OS 失败队列的原生日志
 先记录 `UI additional: IDLE -> REWARD_GOTO_MAIN`，随后识别 `page_main` 并点击
 OS 入口；因此待机恢复已实际执行，后续超时属于 `page_os` 判据未确认海域画面。
+恢复只在上游导航处理当前画面时触发；`account_state` 等只读任务不会主动唤醒待机。
+当前真机证据覆盖 `IDLE`，`IDLE_2` / `IDLE_3` 仅有上游代码依据。
+2026-09-23 又从自然待机画面运行 `navigate(to=page_main)`：原生日志记录
+`UI additional: IDLE -> REWARD_GOTO_MAIN`，随后识别 `page_main`；任务成功。
+其 `changed=false` 只是 `ui_ensure()` 返回值，不表示没有点击。原始工件留在
+本地忽略目录 `data/mainline-device/20260923-idle-nav-probe/`，未入库。
 
 2026-09-23 新原生队列从主界面到 `page_tactical` 两轮、轮间返主界面及最终返页均成功，
 末帧 `account_state` 命中主界面；原始工件留在本地忽略目录

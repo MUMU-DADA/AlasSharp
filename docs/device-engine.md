@@ -1,5 +1,8 @@
 # 设备引擎（方案 A）：设备 I/O 走宿主，多后端可切换
 
+`alashub device --adb ... --serial ...` 真机诊断只查询设备、截图和识图，不发送输入；
+无 `--adb` 的桩设备验收仍显式测试点击与滑动命令。
+
 > 目的：让 C# 不再自己实现控制/采集后端，而是通过**宿主协议**调用引擎自带的多引擎设备层。
 > 引擎 `module/device/method/` 里已有 15 个后端（与第三方上游 AzurPilot 同源）：
 > `adb / ascreencap / droidcast / hermit / ldopengl / maatouch / minitouch / nemu_ipc / scrcpy / uiautomator_2 / wsa`

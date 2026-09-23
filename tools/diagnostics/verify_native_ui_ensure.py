@@ -3,7 +3,7 @@
 import json
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import alas_vision as vision  # noqa: E402
@@ -41,7 +41,39 @@ class FakeUI:
         return destination == self.ui_current
 
 
+def verify_idle_handler():
+    module = sys.modules[UI.__module__]
+    for active in (None, 'IDLE', 'IDLE_2', 'IDLE_3'):
+        buttons = {name: Mock(name=name) for name in ('IDLE', 'IDLE_2', 'IDLE_3')}
+        for name, button in buttons.items():
+            button.match_luma.return_value = name == active
+        reward = Mock(name='REWARD_GOTO_MAIN')
+        timer = Mock()
+        timer.reached.return_value = True
+        handler = Mock()
+        handler.get_interval_timer.return_value = timer
+        handler.device.image = object()
+        with patch.multiple(module, **buttons, REWARD_GOTO_MAIN=reward):
+            assert UI.handle_idle_page(handler) is (active is not None)
+        handler.get_interval_timer.assert_called_once_with(buttons['IDLE'], interval=3)
+        if active is None:
+            handler.device.click.assert_not_called()
+            timer.reset.assert_not_called()
+        else:
+            handler.device.click.assert_called_once_with(reward)
+            timer.reset.assert_called_once_with()
+
+    timer.reset_mock()
+    timer.reached.return_value = False
+    handler.device.click.reset_mock()
+    with patch.multiple(module, **buttons, REWARD_GOTO_MAIN=reward):
+        assert UI.handle_idle_page(handler) is False
+    assert all(button.match_luma.call_count == 1 for button in buttons.values())
+    handler.device.click.assert_not_called()
+
+
 def main():
+    verify_idle_handler()
     device = Device()
     destination = Page.all_pages['page_campaign']
     FakeUI.instances = []

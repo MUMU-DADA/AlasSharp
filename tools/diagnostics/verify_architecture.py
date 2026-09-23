@@ -360,6 +360,9 @@ def main() -> int:
     models = read("src/Alas.Core/UpstreamModels.cs")
     upstream = read("src/Alas.Core/UpstreamData.cs")
     batch = read("src/Alas.Core/Runtime/CampaignBatchRunner.cs")
+    device_check = read("src/Alas.DataTool/DeviceCheck.cs")
+    real_device_check = device_check.split("public static int RunReal(", 1)[-1].split(
+        "public static int Run(", 1)[0]
     checks = {
         "CLI 使用集中路径解析": "ProjectPaths.Resolve()" in program,
         "战役生产入口": "RunCampaignPlan" in batch and '"s3_run_plan"' in vision,
@@ -385,6 +388,11 @@ def main() -> int:
         "导航生产路径调用上游 UI": '"ui_ensure"' in read("src/Alas.Core/Tasks/NavigateTask.cs")
                               and "PageNavigator(" not in read("src/Alas.Core/Tasks/NavigateTask.cs")
                               and "ui.ui_ensure(destination" in read("tools/alas_vision.py"),
+        "真机设备诊断只读": "public static int RunReal(" in device_check
+                          and "public static int Run(" in device_check
+                          and not any(action in real_device_check for action in (
+                              "device.Click(", "device.Swipe(", "device.Back(",
+                              "AssetButtonCenter(", "ConfigureEngineDevice(")),
         # R2：任务域走通用任务模型，CLI 只解析队列文件（不解释任务内容）。
         "任务队列入口": "QueueExecution.RunFile" in program
                           and "TaskQueueFile.Parse" in read("src/Alas.Core/Runtime/QueueExecution.cs"),

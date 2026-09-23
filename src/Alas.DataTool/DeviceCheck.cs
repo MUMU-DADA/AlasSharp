@@ -120,34 +120,6 @@ internal static class DeviceCheck
             Console.WriteLine("           （无页面被识别）");
         else
             Console.WriteLine($"[页面规则] 识别到 {recognized.Count} 个：{string.Join(", ", recognized)}");
-        // ---- 识别 → 控制 → 再识别：完整闭环
-        // 坐标全部来自上游规则（Button.button 区域中心），C# 只负责把它点下去。
-        if (recognized.Count > 0 || true)
-        {
-            Console.WriteLine();
-            Console.WriteLine("[闭环] 识别 → 点击 → 重新识别");
-            foreach (var (label, asset, expect) in new[]
-            {
-                ("点商店", "ui/MAIN_GOTO_SHOP", "page_shop"),
-                ("点返回", "ui/SHOP_BACK_ARROW", "page_main"),
-            })
-            {
-                var c = vision.AssetButtonCenter(asset);
-                Console.WriteLine($"           {label}: {asset} 点击区={string.Join(",", c.Button)}"
-                                  + $" → 点 ({c.Center[0]}, {c.Center[1]})");
-                device.Click(c.Center[0], c.Center[1]);
-                System.Threading.Thread.Sleep(2200);
-                device.Screenshot();
-                var hits2 = new List<string>();
-                foreach (var pg in pageList.Pages)
-                {
-                    try { if (vision.PageAppear(pg.Page).Appear) hits2.Add(pg.Page); }
-                    catch (Exception) { }
-                }
-                Console.WriteLine($"           2.2s 后识别到: {(hits2.Count == 0 ? "（无）" : string.Join(", ", hits2))}"
-                                  + $"   期望 {expect}: {(hits2.Contains(expect) ? "✓" : "✗")}");
-            }
-        }
         // ---- 识别层缩放适配扫描
         // 模拟器 DPI 与素材采集时不一致会让所有 UI 元素错位。用 ALAS 自己的缩放机制
         // （Template.match 就是对图像做 cv2.resize）反过来扫：哪个因子让最多素材命中，
