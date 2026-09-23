@@ -666,7 +666,9 @@ Mission collect finished
 `Scheduler.Command` 及 `AzurLaneAutoScript.reward` 跑通一次 `reward`：`periodic_plan` 后的
 `periodic_run` 返回 `decision=ran`、`native_success=true`，上游实际点击 OIL、COIN 并返回主界面。
 本机原始日志、配置前后快照在忽略目录 `data/mainline-device/20260923T145244-reward`，
-账号配置已按原始字节恢复；此样本不证明其他周期域可运行。当前产品路径先检查会话授权：会话未授权记前置条件不满足，
+脱敏队列、逐任务、断点和会话证据见 `docs/queue-evidence.md`，账号配置已按原始字节恢复；
+点击 OIL/COIN 的控制台原件没有入库，归档只证明结构化调度与返回结果。此样本不证明其他周期域可运行。
+当前产品路径先检查会话授权：会话未授权记前置条件不满足，
 非 required 任务为 `skipped`、required 任务为 `failed`；两者都没有开始执行。
 已授权会话中，宿主返回的 `denied` 仍带原因及 `constructed`/`ran` 证据。
 

@@ -1,0 +1,91 @@
+{
+  "id": "reward-plan",
+  "kind": "periodic_plan",
+  "required": true,
+  "input": {
+    "task": "reward"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 0.1,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "count": 4,
+    "missing": [],
+    "plans": [
+      {
+        "task": "commission",
+        "found": true,
+        "scheduler_command": "Commission",
+        "method": "commission",
+        "lineno": 188,
+        "imports": [
+          "from module.commission.commission import RewardCommission"
+        ],
+        "calls": [
+          "RewardCommission",
+          "run"
+        ],
+        "calls_run": true,
+        "error": null
+      },
+      {
+        "task": "research",
+        "found": true,
+        "scheduler_command": "Research",
+        "method": "research",
+        "lineno": 184,
+        "imports": [
+          "from module.research.research import RewardResearch"
+        ],
+        "calls": [
+          "RewardResearch",
+          "run"
+        ],
+        "calls_run": true,
+        "error": null
+      },
+      {
+        "task": "dorm",
+        "found": true,
+        "scheduler_command": "Dorm",
+        "method": "dorm",
+        "lineno": 196,
+        "imports": [
+          "from module.dorm.dorm import RewardDorm"
+        ],
+        "calls": [
+          "RewardDorm",
+          "run"
+        ],
+        "calls_run": true,
+        "error": null
+      },
+      {
+        "task": "reward",
+        "found": true,
+        "scheduler_command": "Reward",
+        "method": "reward",
+        "lineno": 208,
+        "imports": [
+          "from module.reward.reward import Reward"
+        ],
+        "calls": [
+          "Reward",
+          "run"
+        ],
+        "calls_run": true,
+        "error": null
+      }
+    ]
+  }
+}

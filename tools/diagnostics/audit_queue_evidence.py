@@ -2,7 +2,7 @@
 """Read real queue artifacts, archive redacted copies, and derive their evidence report.
 
 This never starts a host or touches a device. Only completed successful account_state,
-observe and navigate queues are supported; unsupported/failed runs remain local and
+observe, navigate and planned periodic execution queues are supported; failed runs remain local and
 cannot be made into a success record by supplying a completion label.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ARCHIVE = Path(__file__).resolve().parent / 'queue-evidence'
 DOC = ROOT / 'docs' / 'queue-evidence.md'
 SCHEMA = 'queue-evidence/1'
-KINDS = {'account_state', 'observe', 'navigate'}
+KINDS = {'account_state', 'observe', 'navigate', 'periodic_plan', 'periodic_run'}
 REDACTIONS = [
     'Absolute project paths replaced with <project>/relative paths; other absolute paths removed.',
     'Device serial and configured endpoint replaced with <device>.',
@@ -108,7 +108,7 @@ def frame_ok(shape):
     return isinstance(shape, list) and len(shape) == 3 and all(type(v) is int and v > 0 for v in shape)
 
 
-def task_proof(task, session):
+def task_proof(task, session, plan=None):
     evidence, request, kind = task['evidence'], task['input'], task['kind']
     require(isinstance(evidence, dict) and isinstance(request, dict), 'missing task evidence/input')
     if kind == 'account_state':
@@ -149,6 +149,35 @@ def task_proof(task, session):
                     and mapping['errors'] == mapping['skipped_capture_failed'] == 0,
                     'observe map counts mismatch')
         return f"{ticks} tick；抓帧 {capture['succeeded']}/{capture['attempts']}；错误 0；{evidence['elapsed_seconds']} 秒"
+    if kind == 'periodic_plan':
+        plans = evidence['plans']
+        require(evidence['missing'] == [] and evidence['count'] == len(plans) > 0,
+                'periodic plan missing bindings')
+        require(len({item['task'] for item in plans}) == len(plans)
+                and all(item['found'] is True and item['scheduler_command']
+                        and item['method'] and item['calls_run'] is True
+                        and item['error'] is None for item in plans),
+                'periodic plan binding incomplete')
+        require(any(item['task'] == request['task'] for item in plans),
+                'requested periodic task absent from plan')
+        return f"上游绑定 {len(plans)} 项；请求 {request['task']} 已找到"
+    if kind == 'periodic_run':
+        require(session['allow_actions'] is True and session['read_only_device'] is False,
+                'periodic action missing session authorization')
+        name = request['task']
+        require(request.get('allow_actions') is True and request.get('confirm') == name
+                and evidence['task'] == name and evidence['allow_actions'] is True
+                and evidence['confirm_matches'] is True, 'periodic input gates mismatch')
+        require(plan is not None and plan['task'] == name, 'periodic run lacks preceding plan')
+        target = evidence['target']
+        require(target['module'] == 'alas' and target['class'] == 'AzurLaneAutoScript'
+                and target['scheduler_command'] == plan['scheduler_command']
+                and target['method'] == plan['method'], 'periodic native dispatcher binding mismatch')
+        require(evidence['decision'] == 'ran' and evidence['constructed'] is True
+                and evidence['ran'] is True and evidence['native_success'] is True
+                and evidence['error'] is None and evidence['reason'] is None
+                and evidence['traceback_tail'] == [], 'periodic native execution not proven')
+        return f"上游 {target['class']}.{target['method']}；decision=ran；native_success=true"
     require(kind == 'navigate', 'unsupported task kind')
     require(session['allow_actions'] is True and session['read_only_device'] is False,
             'navigate missing action authorization')
@@ -211,6 +240,7 @@ def validate_run(files):
     queue_ends = [row['fields'] for row in logs if row['scope'] == 'queue' and 'outcome' in row['fields']]
     require(len(queue_starts) == len(queue_ends) == 1, 'queue log count mismatch')
     require(queue_starts[0]['tasks'] == queue_ends[0]['tasks'] == len(entries)
+            and queue_starts[0]['kinds'] == ','.join(dict.fromkeys(row['kind'] for row in entries))
             and queue_starts[0]['dry_run'] is False
             and queue_ends[0]['outcome'] == queue['outcome']
             and queue_ends[0]['failed'] == queue_ends[0]['skipped'] == 0
@@ -224,7 +254,7 @@ def validate_run(files):
             'artifact log mismatch')
     require(set(files) == set(expected_names) | {'queue.json', 'state.json', 'session-log.jsonl'},
             'missing or unindexed task artifact')
-    previous, proofs, reference_session = [], [], None
+    previous, proofs, reference_session, plans = [], [], None, {}
     for index, row in enumerate(entries):
         task = files[expected_names[index]]
         require(task['kind'] in KINDS, 'unsupported task kind')
@@ -251,8 +281,11 @@ def validate_run(files):
                 and log['fields']['preconditions'] == 0, 'task/session log mismatch')
         require(boundaries[index]['task'] == task['id'] and boundaries[index]['kind'] == task['kind'],
                 'task boundary order mismatch')
+        if task['kind'] == 'periodic_plan':
+            plans.update({item['task']: item for item in task['evidence']['plans']})
+        proof = task_proof(task, session, plans.get(task['input'].get('task')))
         previous.append({key: task[key] for key in ('id', 'kind', 'required', 'input')})
-        proofs.append({'id': task['id'], 'kind': task['kind'], 'proof': task_proof(task, session)})
+        proofs.append({'id': task['id'], 'kind': task['kind'], 'proof': proof})
     return {'tasks': proofs, 'elapsed_s': queue['elapsed_s'], 'read_only_device': start['read_only_device'],
             'host_start_count': len(starts), 'device_configure_count': len(devices)}
 
@@ -314,7 +347,7 @@ def report(facts):
              '归档保留原件和脱敏件 SHA-256。原件存在时还会验证原件校验和及可重复脱敏。',
              '离线检出只有脱敏件时只能验证归档完整性与交叉一致性，不能代替现场重跑。', '',
              '账号配置、设备标识和本机绝对路径已脱敏，截图与原始控制台日志留在忽略目录。',
-             '这些记录只覆盖表中实际执行的任务；不能证明未解锁功能、其他页面或战役通关。', '',
+             '这些记录只覆盖表中实际执行的任务；不能证明未解锁功能、其他周期任务或战役通关。', '',
              '| 归档 | 会话 | 耗时 |', '| --- | --- | --- |']
     for fact in facts:
         mode = '只读设备' if fact['read_only_device'] else '动作授权'

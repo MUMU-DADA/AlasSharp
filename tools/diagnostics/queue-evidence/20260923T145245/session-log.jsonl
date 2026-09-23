@@ -1,0 +1,15 @@
+{"time":"2026-09-23T14:52:45.364+08:00","level":"INFO","scope":"session","message":"识图宿主已启动","fields":{"repo":"<project>/.runtime/engine","dry_run":false,"allow_actions":true,"read_only_device":false,"host_start_ms":331.3}}
+{"time":"2026-09-23T14:52:45.401+08:00","level":"INFO","scope":"session","message":"设备后端已配置","fields":{"serial":"<device>","screenshot":"scrcpy","control":"MaaTouch","configured":"serial=<device>,screenshot=scrcpy,control=MaaTouch"}}
+{"time":"2026-09-23T14:52:45.404+08:00","level":"INFO","scope":"queue","message":"开始任务队列","fields":{"tasks":3,"kinds":"periodic_plan,periodic_run,account_state","dry_run":false,"artifacts":"<project>/data/mainline-device/20260923T145244-reward/artifacts/20260923T145245"}}
+{"time":"2026-09-23T14:52:45.415+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"reward-plan","kind":"periodic_plan","pages":null,"in_map":null}}
+{"time":"2026-09-23T14:52:45.461+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260923T145244-reward/artifacts/20260923T145245/task-reward-plan.json"}}
+{"time":"2026-09-23T14:52:45.464+08:00","level":"INFO","scope":"task","message":"periodic_plan:reward-plan → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":0.1,"preconditions":0}}
+{"time":"2026-09-23T14:52:45.464+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"reward","kind":"periodic_run","pages":null,"in_map":null}}
+{"time":"2026-09-23T14:52:52.679+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260923T145244-reward/artifacts/20260923T145245/task-reward.json"}}
+{"time":"2026-09-23T14:52:52.679+08:00","level":"INFO","scope":"task","message":"periodic_run:reward → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":7.2,"preconditions":0}}
+{"time":"2026-09-23T14:52:52.680+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"after-reward","kind":"account_state","pages":null,"in_map":null}}
+{"time":"2026-09-23T14:52:53.082+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260923T145244-reward/artifacts/20260923T145245/task-after-reward.json"}}
+{"time":"2026-09-23T14:52:53.083+08:00","level":"INFO","scope":"task","message":"account_state:after-reward → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":0.4,"preconditions":0}}
+{"time":"2026-09-23T14:52:53.084+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260923T145244-reward/artifacts/20260923T145245/queue.json"}}
+{"time":"2026-09-23T14:52:53.085+08:00","level":"INFO","scope":"queue","message":"任务队列结束","fields":{"outcome":"succeeded","tasks":3,"failed":0,"skipped":0,"elapsed_s":7.7}}
+{"time":"2026-09-23T14:52:53.251+08:00","level":"INFO","scope":"session","message":"识图宿主已释放","fields":{}}

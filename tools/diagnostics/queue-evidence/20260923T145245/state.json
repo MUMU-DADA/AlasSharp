@@ -1,0 +1,139 @@
+{
+  "completed": {
+    "reward-plan": {
+      "identity": {
+        "kind": "periodic_plan",
+        "required": true,
+        "input": {
+          "task": "reward"
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "reward": {
+      "identity": {
+        "kind": "periodic_run",
+        "required": true,
+        "input": {
+          "task": "reward",
+          "allow_actions": true,
+          "confirm": "reward",
+          "overrides": {
+            "Reward_CollectOil": true,
+            "Reward_CollectCoin": true,
+            "Reward_CollectExp": true,
+            "Reward_CollectMission": false,
+            "Reward_CollectWeeklyMission": false
+          }
+        },
+        "preceding_tasks": [
+          {
+            "id": "reward-plan",
+            "kind": "periodic_plan",
+            "required": true,
+            "input": {
+              "task": "reward"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "after-reward": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "reward-plan",
+            "kind": "periodic_plan",
+            "required": true,
+            "input": {
+              "task": "reward"
+            }
+          },
+          {
+            "id": "reward",
+            "kind": "periodic_run",
+            "required": true,
+            "input": {
+              "task": "reward",
+              "allow_actions": true,
+              "confirm": "reward",
+              "overrides": {
+                "Reward_CollectOil": true,
+                "Reward_CollectCoin": true,
+                "Reward_CollectExp": true,
+                "Reward_CollectMission": false,
+                "Reward_CollectWeeklyMission": false
+              }
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-23T14:52:53+08:00"
+}

@@ -1,0 +1,38 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 7.7,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "reward-plan",
+      "kind": "periodic_plan",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.1,
+      "artifact": "<project>/data/mainline-device/20260923T145244-reward/artifacts/20260923T145245/task-reward-plan.json"
+    },
+    {
+      "id": "reward",
+      "kind": "periodic_run",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 7.2,
+      "artifact": "<project>/data/mainline-device/20260923T145244-reward/artifacts/20260923T145245/task-reward.json"
+    },
+    {
+      "id": "after-reward",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/20260923T145244-reward/artifacts/20260923T145245/task-after-reward.json"
+    }
+  ]
+}

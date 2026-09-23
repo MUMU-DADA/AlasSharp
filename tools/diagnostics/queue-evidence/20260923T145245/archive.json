@@ -1,0 +1,26 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/20260923T145244-reward/artifacts/20260923T145245",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "2eb6a72b3c866ed11dfcd86627dd561486d48bfadf446c8b316b96706200e3c1",
+    "state.json": "24ee347b6f7c750b0aaf1b80889b3dbadc641e3813f7c8085b47d914ded8a178",
+    "session-log.jsonl": "ed19237b6e78316089c31133003c1e7ff1544204a1d2745d97c2a0d9b2db9f48",
+    "task-after-reward.json": "e215f9e2de9c62a2de6b2cf0f35d0bd44a45d46b8778542755a7370914903821",
+    "task-reward-plan.json": "069723ee88efac48bce60671344e8737f3904287f34f88a357b05787d63f2952",
+    "task-reward.json": "7cd0f41aae8f0c033549d67095b0bbb0ee0f6f0537caf3acab066adaa0af809d"
+  },
+  "files": {
+    "queue.json": "cce8b8b9c8a0caabfc4a9cfc7a119b04a9ef83f3e5e745dc399e0d8be23e1660",
+    "state.json": "c27f1a8ab9c6ae3d7cc37fc5ad0e583b22039f421346dc26a075aa2cc343e1a7",
+    "session-log.jsonl": "6ecfdee3ecc9d595f49394dd47267b470d1d43e5b010e7c813e8b4d5489e8a2f",
+    "task-after-reward.json": "c78450a20da563025df51fde8448b4d6d71828010d72f47c4136e8f4417753bb",
+    "task-reward-plan.json": "0210fe98f41fccd552995b1a8712ff5c1da67f87c17339ec45f6ba260d82ccca",
+    "task-reward.json": "dbc30f9bd4c3b00898f35fffa4a0002329c2c10cb33c2a5031912abb1f0567f8"
+  }
+}

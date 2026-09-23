@@ -13,7 +13,7 @@ import audit_queue_evidence as audit
 
 def main():
     archives = sorted(audit.ARCHIVE.glob('*/archive.json'))
-    audit.require(len(archives) >= 2, 'real account/observe/navigation archives missing')
+    audit.require(len(archives) >= 3, 'real observe/navigation/periodic archives missing')
     facts = [audit.audit_archive(p.parent) for p in archives]
     kinds = {task['kind'] for fact in facts for task in fact['tasks']}
     audit.require(kinds == audit.KINDS, 'real queue evidence domain coverage missing')
@@ -21,6 +21,7 @@ def main():
     runs = [audit.load_run(p.parent) for p in archives]
     observed = next(run for run in runs if any(t['kind'] == 'account_state' for t in run['queue.json']['tasks']))
     navigated = next(run for run in runs if any(t['kind'] == 'navigate' for t in run['queue.json']['tasks']))
+    periodic = next(run for run in runs if any(t['kind'] == 'periodic_run' for t in run['queue.json']['tasks']))
     checks = ['real archives + generated report']
 
     def rejected(name, run, change, expected):
@@ -41,6 +42,8 @@ def main():
     observed_file = task_file(observed, 'observe')
     navigation_file = task_file(navigated, 'navigate')
     account_file = task_file(observed, 'account_state')
+    plan_file = task_file(periodic, 'periodic_plan')
+    periodic_file = task_file(periodic, 'periodic_run')
     rounds_file = next(audit.basename(row['artifact']) for row in navigated['queue.json']['tasks']
                        if row['kind'] == 'navigate' and navigated[audit.basename(row['artifact'])]['input'].get('rounds') == 2)
     rejected('missing task', observed, lambda r: r.pop(observed_file), 'missing or unindexed')
@@ -69,6 +72,10 @@ def main():
              lambda r: r['queue.json'].update(host_start_count=2), 'session counts')
     rejected('host log removed', observed,
              lambda r: r['session-log.jsonl'].pop(0), 'session log counts')
+    rejected('queue kind summary differs', periodic,
+             lambda r: next(row for row in r['session-log.jsonl']
+                            if row['scope'] == 'queue' and 'kinds' in row['fields'])['fields'].update(kinds='observe'),
+             'queue log summary mismatch')
     rejected('missing task log', observed,
              lambda r: r['session-log.jsonl'].remove(next(v for v in r['session-log.jsonl'] if v['scope'] == 'task')),
              'task log count')
@@ -78,6 +85,17 @@ def main():
     rejected('state predecessor lost', observed,
              lambda r: r['state.json']['completed']['observe']['identity'].update(preceding_tasks=[]),
              'state request identity')
+    rejected('periodic plan lacks requested binding', periodic,
+             lambda r: r[plan_file]['evidence']['plans'].pop(), 'periodic plan missing bindings')
+    rejected('periodic native method differs from plan', periodic,
+             lambda r: r[periodic_file]['evidence']['target'].update(method='unbound'),
+             'native dispatcher binding mismatch')
+    rejected('periodic input gates differ', periodic,
+             lambda r: r[periodic_file]['evidence'].update(confirm_matches=False),
+             'periodic input gates mismatch')
+    rejected('periodic native call did not succeed', periodic,
+             lambda r: r[periodic_file]['evidence'].update(native_success=False),
+             'native execution not proven')
 
     with tempfile.TemporaryDirectory(prefix='queue-evidence-', dir=audit.ROOT / '.runtime') as tmp:
         folder = Path(tmp)

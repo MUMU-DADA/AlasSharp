@@ -7,12 +7,13 @@
 离线检出只有脱敏件时只能验证归档完整性与交叉一致性，不能代替现场重跑。
 
 账号配置、设备标识和本机绝对路径已脱敏，截图与原始控制台日志留在忽略目录。
-这些记录只覆盖表中实际执行的任务；不能证明未解锁功能、其他页面或战役通关。
+这些记录只覆盖表中实际执行的任务；不能证明未解锁功能、其他周期任务或战役通关。
 
 | 归档 | 会话 | 耗时 |
 | --- | --- | --- |
 | `20260923T144841` | 只读设备；宿主 1 / 设备配置 1 | 6.4 秒 |
 | `20260923T144906` | 动作授权；宿主 1 / 设备配置 1 | 21.4 秒 |
+| `20260923T145245` | 动作授权；宿主 1 / 设备配置 1 | 7.7 秒 |
 
 | 归档 / 任务 | 任务域 | 已核对事实 |
 | --- | --- | --- |
@@ -22,8 +23,12 @@
 | `20260923T144906/to-campaign` | `navigate` | 目标 page_campaign；完成 2/2 轮；5 次跳转；最终 page_campaign |
 | `20260923T144906/return-main` | `navigate` | 目标 page_main；完成 1/1 轮；1 次跳转；最终 page_main, page_main_white |
 | `20260923T144906/observe` | `observe` | 4 tick；抓帧 4/4；错误 0；2 秒 |
+| `20260923T145245/reward-plan` | `periodic_plan` | 上游绑定 4 项；请求 reward 已找到 |
+| `20260923T145245/reward` | `periodic_run` | 上游 AzurLaneAutoScript.reward；decision=ran；native_success=true |
+| `20260923T145245/after-reward` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
 
 来源目录（项目相对路径，原件不入库）：
 
 - `data/mainline-device/20260923T144841-observe/artifacts/20260923T144841`
 - `data/mainline-device/20260923T144905-navigate/artifacts/20260923T144906`
+- `data/mainline-device/20260923T145244-reward/artifacts/20260923T145245`
