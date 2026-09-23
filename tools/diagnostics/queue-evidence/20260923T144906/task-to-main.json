@@ -1,0 +1,55 @@
+{
+  "id": "to-main",
+  "kind": "navigate",
+  "required": true,
+  "input": {
+    "to": "page_main",
+    "max_hops": 8
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 1.5,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "target": "page_main",
+    "max_hops": 8,
+    "rounds_requested": 1,
+    "rounds_completed": 1,
+    "rounds": [
+      {
+        "round": 1,
+        "success": true,
+        "to_target": {
+          "target": "page_main",
+          "success": true,
+          "final_pages": [
+            "page_main",
+            "page_main_white"
+          ],
+          "hops": [],
+          "failure": null,
+          "graph_nodes": 53,
+          "graph_edges": 127,
+          "elapsed_ms": 1469.603
+        }
+      }
+    ],
+    "hops": [],
+    "final_pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "success": true,
+    "graph_nodes": 53,
+    "graph_edges": 127
+  }
+}

@@ -1,0 +1,2 @@
+# Archive checksums cover exact UTF-8 bytes; checkout must not convert newlines.
+* -text

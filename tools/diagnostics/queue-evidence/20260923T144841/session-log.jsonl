@@ -1,0 +1,12 @@
+{"time":"2026-09-23T14:48:41.769+08:00","level":"INFO","scope":"session","message":"识图宿主已启动","fields":{"repo":"<project>/.runtime/engine","dry_run":false,"allow_actions":false,"read_only_device":true,"host_start_ms":366.7}}
+{"time":"2026-09-23T14:48:41.810+08:00","level":"INFO","scope":"session","message":"设备后端已配置","fields":{"serial":"<device>","screenshot":"scrcpy","control":"MaaTouch","configured":"serial=<device>,screenshot=scrcpy,control=MaaTouch"}}
+{"time":"2026-09-23T14:48:41.813+08:00","level":"INFO","scope":"queue","message":"开始任务队列","fields":{"tasks":2,"kinds":"account_state,observe","dry_run":false,"artifacts":"<project>/data/mainline-device/20260923T144841-observe/artifacts/20260923T144841"}}
+{"time":"2026-09-23T14:48:41.824+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"live-state","kind":"account_state","pages":null,"in_map":null}}
+{"time":"2026-09-23T14:48:45.026+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260923T144841-observe/artifacts/20260923T144841/task-live-state.json"}}
+{"time":"2026-09-23T14:48:45.028+08:00","level":"INFO","scope":"task","message":"account_state:live-state → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":3.2,"preconditions":0}}
+{"time":"2026-09-23T14:48:45.059+08:00","level":"INFO","scope":"queue","message":"任务开始（跨任务复位边界）","fields":{"task":"observe","kind":"observe","pages":"[\"page_main\",\"page_main_white\"]","in_map":"false"}}
+{"time":"2026-09-23T14:48:48.242+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260923T144841-observe/artifacts/20260923T144841/task-observe.json"}}
+{"time":"2026-09-23T14:48:48.243+08:00","level":"INFO","scope":"task","message":"observe:observe → succeeded","fields":{"outcome":"succeeded","error_kind":"none","error":null,"elapsed_s":3.2,"preconditions":0}}
+{"time":"2026-09-23T14:48:48.245+08:00","level":"INFO","scope":"artifacts","message":"已写入工件","fields":{"path":"<project>/data/mainline-device/20260923T144841-observe/artifacts/20260923T144841/queue.json"}}
+{"time":"2026-09-23T14:48:48.246+08:00","level":"INFO","scope":"queue","message":"任务队列结束","fields":{"outcome":"succeeded","tasks":2,"failed":0,"skipped":0,"elapsed_s":6.4}}
+{"time":"2026-09-23T14:48:48.415+08:00","level":"INFO","scope":"session","message":"识图宿主已释放","fields":{}}

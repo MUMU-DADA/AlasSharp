@@ -1,0 +1,75 @@
+{
+  "completed": {
+    "live-state": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": false,
+          "read_only_device": true,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "observe": {
+      "identity": {
+        "kind": "observe",
+        "required": true,
+        "input": {
+          "seconds": 3,
+          "tick_seconds": 0.5
+        },
+        "preceding_tasks": [
+          {
+            "id": "live-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "scrcpy",
+          "control_backend": "MaaTouch",
+          "dry_run": false,
+          "allow_actions": false,
+          "read_only_device": true,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-23T14:48:48+08:00"
+}

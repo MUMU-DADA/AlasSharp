@@ -1,0 +1,17 @@
+{"time": "2026-09-23T14:49:51.772+08:00", "level": "INFO", "scope": "session", "message": "识图宿主已启动", "fields": {"repo": "<upstream-root>", "dry_run": false, "allow_actions": true, "read_only_device": false, "host_start_ms": 311.8}}
+{"time": "2026-09-23T14:49:51.811+08:00", "level": "INFO", "scope": "session", "message": "设备后端已配置", "fields": {"serial": "<device>", "screenshot": "scrcpy", "control": "MaaTouch", "configured": "serial=<device>,screenshot=scrcpy,control=MaaTouch"}}
+{"time": "2026-09-23T14:49:51.813+08:00", "level": "INFO", "scope": "queue", "message": "开始任务队列", "fields": {"tasks": 2, "kinds": "campaign_batch,account_state", "dry_run": false, "artifacts": "<run-directory>"}}
+{"time": "2026-09-23T14:49:51.828+08:00", "level": "INFO", "scope": "queue", "message": "任务开始（跨任务复位边界）", "fields": {"task": "campaign-smoke", "kind": "campaign_batch", "pages": null, "in_map": null}}
+{"time": "2026-09-23T14:49:51.831+08:00", "level": "INFO", "scope": "batch", "message": "开始批量任务", "fields": {"chapters": 1, "dry_run": false, "max_seconds": 600, "max_rounds": 5, "artifacts": "<run-directory>"}}
+{"time": "2026-09-23T14:50:54.926+08:00", "level": "INFO", "scope": "artifacts", "message": "已写入工件", "fields": {"path": "<run-directory>\\sortie-1-1.json"}}
+{"time": "2026-09-23T14:50:54.927+08:00", "level": "INFO", "scope": "stage", "message": "合规 outcome=cleared cleared=True", "fields": {"chapter": "campaign.campaign_main.campaign_1_1", "stage": "1-1", "outcome": "cleared", "cleared": true, "elapsed_s": 63.1, "violations": 0}}
+{"time": "2026-09-23T14:50:54.928+08:00", "level": "INFO", "scope": "artifacts", "message": "已写入工件", "fields": {"path": "<run-directory>\\index.json"}}
+{"time": "2026-09-23T14:50:54.929+08:00", "level": "INFO", "scope": "batch", "message": "批量任务结束", "fields": {"outcome": "cleared", "cleared": true, "stages": 1, "failed": 0, "elapsed_s": 63.1}}
+{"time": "2026-09-23T14:50:54.931+08:00", "level": "INFO", "scope": "artifacts", "message": "已写入工件", "fields": {"path": "<run-directory>\\task-campaign-smoke.json"}}
+{"time": "2026-09-23T14:50:54.934+08:00", "level": "INFO", "scope": "task", "message": "campaign_batch:campaign-smoke → succeeded", "fields": {"outcome": "succeeded", "error_kind": "none", "error": null, "elapsed_s": 63.1, "preconditions": 0}}
+{"time": "2026-09-23T14:50:54.934+08:00", "level": "INFO", "scope": "queue", "message": "任务开始（跨任务复位边界）", "fields": {"task": "after-campaign", "kind": "account_state", "pages": null, "in_map": null}}
+{"time": "2026-09-23T14:50:55.092+08:00", "level": "INFO", "scope": "artifacts", "message": "已写入工件", "fields": {"path": "<run-directory>\\task-after-campaign.json"}}
+{"time": "2026-09-23T14:50:55.092+08:00", "level": "INFO", "scope": "task", "message": "account_state:after-campaign → succeeded", "fields": {"outcome": "succeeded", "error_kind": "none", "error": null, "elapsed_s": 0.2, "preconditions": 0}}
+{"time": "2026-09-23T14:50:55.094+08:00", "level": "INFO", "scope": "artifacts", "message": "已写入工件", "fields": {"path": "<run-directory>\\queue.json"}}
+{"time": "2026-09-23T14:50:55.094+08:00", "level": "INFO", "scope": "queue", "message": "任务队列结束", "fields": {"outcome": "succeeded", "tasks": 2, "failed": 0, "skipped": 0, "elapsed_s": 63.3}}
+{"time": "2026-09-23T14:50:55.276+08:00", "level": "INFO", "scope": "session", "message": "识图宿主已释放", "fields": {}}

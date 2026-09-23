@@ -662,8 +662,11 @@ Mission collect finished
 [任务] run  kind=periodic_run outcome=succeeded elapsed=7s
 ```
 
-这些记录来自旧的直接构造适配器，只证明当时的 dorm / reward 样本，不能证明新的原生 dispatcher
-适配已做真机回归。当前产品路径先检查会话授权：会话未授权记前置条件不满足，
+这些记录来自旧的直接构造适配器，只证明当时的 dorm / reward 样本。新队列入口另以原生
+`Scheduler.Command` 及 `AzurLaneAutoScript.reward` 跑通一次 `reward`：`periodic_plan` 后的
+`periodic_run` 返回 `decision=ran`、`native_success=true`，上游实际点击 OIL、COIN 并返回主界面。
+本机原始日志、配置前后快照在忽略目录 `data/mainline-device/20260923T145244-reward`，
+账号配置已按原始字节恢复；此样本不证明其他周期域可运行。当前产品路径先检查会话授权：会话未授权记前置条件不满足，
 非 required 任务为 `skipped`、required 任务为 `failed`；两者都没有开始执行。
 已授权会话中，宿主返回的 `denied` 仍带原因及 `constructed`/`ran` 证据。
 
@@ -696,5 +699,5 @@ alashub queue --file observe.json --run --read-only-device --serial <device> --s
 队列入口要求设备已配置，dry-run 的前置条件不满足时记 `Skipped`；`required` 决定其是否导致队列失败。
 观测可在 tick 边界停止，故障必须留在任务证据中。其离线验收由 `observe_cases.json` 与
 `verify_runtime.py` 覆盖。历史 `run` 兼容入口的只读真机记录为 4 tick、0 error，命中
-`page_main` / `page_main_white`，宿主/设备各初始化一次；它覆盖观测核心任务，当前队列入口仍待真机回归。
+`page_main` / `page_main_white`，宿主/设备各初始化一次。新队列入口已分别完成 6 tick 和导航后的 4 tick 真机观测；脱敏交叉审计见 `docs/queue-evidence.md`。
 原始现场工件在忽略目录 `data/progress-audit-observe/20260923T105409`，未入库，原配置已恢复。

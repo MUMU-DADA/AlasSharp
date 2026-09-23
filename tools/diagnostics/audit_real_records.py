@@ -12,7 +12,7 @@
      `WITHDRAW CALLED` / `MAP WITHDRAW`、`[错误]`、步骤行、失败帧路径；
   3. 按 sortie-result/1 的规则复核 `cleared` / `campaign_end` 声称；
   4. 撤退事件按**发生在哪**分类：进图前的上一局清理 / 导航期 / 本局过程；
-  5. 对结构化工件复用 sortie-result/1，并核对索引、会话日志与归档完整性；
+  5. 对结构化工件复用 sortie-result/1，并核对索引、队列任务、战后抓帧、会话日志与归档完整性；
   6. 产出 `data/result_records_audit.json` 与 `docs/result-evidence.md`。
 
 退出码非 0 = 有记录解释不通，或有门槛项缺失。
@@ -23,7 +23,7 @@ import hashlib
 import json
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -235,6 +235,166 @@ def audit_log(path: Path):
     return records
 
 
+def artifact_name(value):
+    return str(value or '').replace('\\', '/').rsplit('/', 1)[-1]
+
+
+def audit_queue_chain(directory: Path, sortie_name: str, result: dict, index: dict,
+                      session: list):
+    """Corroborate a sortie with queue tasks, when the run has a queue artifact."""
+    queue_path = directory / 'queue.json'
+    if not queue_path.is_file():
+        return {'present': False, 'post_campaign_page_verified': False, 'problems': []}
+
+    queue = json.loads(queue_path.read_text(encoding='utf-8'))
+    problems = []
+    tasks = queue.get('tasks')
+    if not isinstance(tasks, list) or not tasks:
+        return {'present': True, 'post_campaign_page_verified': False,
+                'problems': ['queue 缺少任务索引']}
+    if queue.get('dry_run') is not False or queue.get('host_start_count') != 1 \
+            or queue.get('device_configure_count') != 1:
+        problems.append('queue 不是单会话真机运行')
+
+    task_files = {}
+    names = []
+    for row in tasks:
+        name = artifact_name(row.get('artifact'))
+        names.append(name)
+        if not name.startswith('task-') or not name.endswith('.json') or not (directory / name).is_file():
+            problems.append(f'queue 任务工件缺失: {name}')
+            continue
+        task = json.loads((directory / name).read_text(encoding='utf-8'))
+        task_files[name] = task
+        for key in ('id', 'kind', 'outcome', 'error_kind', 'error', 'elapsed_s'):
+            if task.get(key) != row.get(key):
+                problems.append(f'queue 与 {name} 的 {key} 不一致')
+        if task.get('outcome') == 'succeeded' \
+                and (task.get('error_kind') != 'none' or task.get('error') is not None
+                     or task.get('stop_reason') is not None):
+            problems.append(f'queue 成功任务状态不一致: {name}')
+    if len(names) != len(set(names)) or set(names) != {p.name for p in directory.glob('task-*.json')}:
+        problems.append('queue 任务工件引用不完整或重复')
+    ids = [row.get('id') for row in tasks]
+    if len(ids) != len(set(ids)):
+        problems.append('queue 任务 id 重复')
+    if all(row.get('outcome') == 'succeeded' for row in tasks) \
+            and (queue.get('outcome') != 'succeeded' or queue.get('stopped_early') is not False):
+        problems.append('queue 总结果与全部成功任务不一致')
+
+    def events(scope, field):
+        return [(i, entry) for i, entry in enumerate(session)
+                if entry.get('scope') == scope and field in (entry.get('fields') or {})]
+
+    starts = events('session', 'host_start_ms')
+    devices = events('session', 'configured')
+    releases = [(i, entry) for i, entry in enumerate(session)
+                if entry.get('scope') == 'session' and entry.get('message') == '识图宿主已释放']
+    queue_starts = events('queue', 'kinds')
+    queue_ends = events('queue', 'outcome')
+    boundaries = events('queue', 'task')
+    completions = [(i, entry) for i, entry in enumerate(session)
+                   if entry.get('scope') == 'task']
+    if not (len(starts) == len(devices) == len(releases) == len(queue_starts)
+            == len(queue_ends) == 1 and len(boundaries) == len(completions) == len(tasks)):
+        problems.append('queue 会话事件数量与任务数不一致')
+    else:
+        if not (starts[0][0] < devices[0][0] < queue_starts[0][0]
+                < boundaries[0][0] < completions[-1][0] < queue_ends[0][0]
+                < releases[0][0]):
+            problems.append('queue 会话启动、任务和释放顺序不一致')
+        if queue_starts[0][1]['fields'].get('tasks') != len(tasks) \
+                or queue_ends[0][1]['fields'].get('tasks') != len(tasks) \
+                or queue_ends[0][1]['fields'].get('outcome') != queue.get('outcome'):
+            problems.append('queue 会话日志汇总与队列不一致')
+        for position, row in enumerate(tasks):
+            begin, boundary = boundaries[position]
+            end, completion = completions[position]
+            fields = completion.get('fields') or {}
+            if (boundary['fields'].get('task') != row.get('id')
+                    or boundary['fields'].get('kind') != row.get('kind')
+                    or fields.get('outcome') != row.get('outcome')
+                    or fields.get('error_kind') != row.get('error_kind')
+                    or fields.get('error') != row.get('error')
+                    or fields.get('elapsed_s') != row.get('elapsed_s')
+                    or not (begin < end < (boundaries[position + 1][0]
+                                           if position + 1 < len(tasks) else queue_ends[0][0]))):
+                problems.append(f'queue 任务事件或顺序不一致: {row.get("id")}')
+
+    campaign_matches = []
+    page_verified = False
+    for position, row in enumerate(tasks):
+        task = task_files.get(artifact_name(row.get('artifact')))
+        if not task or task.get('kind') != 'campaign_batch':
+            continue
+        evidence = task.get('evidence') or {}
+        if artifact_name(evidence.get('index_artifact')) != 'index.json':
+            problems.append('战役任务未指向本次批次索引')
+            continue
+        if evidence.get('batch_outcome') != index.get('outcome') \
+                or evidence.get('cleared') != index.get('cleared') \
+                or evidence.get('stopped_early') != index.get('stopped_early'):
+            problems.append('战役任务与批次结论不一致')
+        stages = evidence.get('stages')
+        indexed = index.get('stages')
+        if not isinstance(stages, list) or not isinstance(indexed, list) \
+                or len(stages) != len(indexed):
+            problems.append('战役任务与批次关卡数量不一致')
+            continue
+        if (task.get('input') or {}).get('chapters') != [s.get('chapter') for s in indexed]:
+            problems.append('战役任务输入章节与批次顺序不一致')
+        for stage, batch_stage in zip(stages, indexed):
+            for key in ('chapter', 'stage', 'outcome', 'cleared', 'failed', 'skipped',
+                        'error_kind', 'error'):
+                if stage.get(key) != batch_stage.get(key):
+                    problems.append(f'战役任务与批次关卡的 {key} 不一致')
+            if artifact_name(stage.get('artifact')) != artifact_name(batch_stage.get('artifact')):
+                problems.append('战役任务与批次关卡工件引用不一致')
+            if artifact_name(stage.get('artifact')) == sortie_name:
+                campaign_matches.append(stage)
+                for key in ('chapter', 'stage', 'outcome', 'cleared'):
+                    if stage.get(key) != result.get(key):
+                        problems.append(f'战役任务与单关结果的 {key} 不一致')
+                if stage.get('contract_violations') != (result.get('contract_violations') or []):
+                    problems.append('战役任务与单关合同违例不一致')
+        if not any(artifact_name(s.get('artifact')) == sortie_name for s in stages):
+            continue
+        if len(boundaries) == len(completions) == len(tasks):
+            stage_events = [(i, event) for i, event in enumerate(session)
+                            if event.get('scope') == 'stage'
+                            and (event.get('fields') or {}).get('chapter') == result.get('chapter')
+                            and (event.get('fields') or {}).get('stage') == result.get('stage')]
+            if len(stage_events) != 1 or not (boundaries[position][0] < stage_events[0][0]
+                                              < completions[position][0]):
+                problems.append('关卡结论未发生在对应战役任务期间')
+        if result.get('cleared') is True and (task.get('outcome') != 'succeeded'
+                                             or task.get('error_kind') != 'none'):
+            problems.append('通关结果与 queue 战役任务状态不一致')
+        # A capture immediately after the campaign can corroborate the return page.
+        if position + 1 < len(tasks):
+            next_task = task_files.get(artifact_name(tasks[position + 1].get('artifact')))
+            if next_task and next_task.get('kind') == 'account_state' \
+                    and (next_task.get('input') or {}).get('capture') is True:
+                frame = (next_task.get('evidence') or {}).get('frame') or {}
+                observed = next_task.get('evidence') or {}
+                shape = frame.get('shape')
+                campaign = observed.get('campaign') or {}
+                page_verified = (next_task.get('outcome') == 'succeeded'
+                                 and observed.get('source') == 'device_capture'
+                                 and frame.get('available') is True
+                                 and isinstance(shape, list) and len(shape) == 3
+                                 and all(type(size) is int and size > 0 for size in shape)
+                                 and observed.get('page_errors') == []
+                                 and 'page_campaign' in (observed.get('pages') or [])
+                                 and observed.get('in_map') is False
+                                 and campaign.get('chapter') == result.get('chapter'))
+                if not page_verified:
+                    problems.append('战后抓帧未证实返回章节页')
+    if len(campaign_matches) != 1:
+        problems.append('queue 战役任务必须唯一关联本关工件')
+    return {'present': True, 'post_campaign_page_verified': page_verified, 'problems': problems}
+
+
 def audit_artifact(path: Path):
     """复核运行时脱敏归档的工件；结果语义仍由 sortie-result/1 判定。
 
@@ -281,6 +441,8 @@ def audit_artifact(path: Path):
                        and e.get('fields', {}).get('dry_run') is False for e in session)
     if not configured or not real_session:
         problems.append('session-log 缺少真实会话/设备配置记录')
+    queue_chain = audit_queue_chain(path.parent, path.name, result, index, session)
+    problems.extend(queue_chain['problems'])
     evidence = result.get('end_evidence') or {}
     steps = result.get('steps') or []
     stage_withdrawal = (result.get('outcome') == 'withdrawn'
@@ -297,13 +459,15 @@ def audit_artifact(path: Path):
         'stage_observed': evidence.get('stage_observed'),
         'withdrawn': evidence.get('withdrawn'),
         'stage_withdrawal': stage_withdrawal,
+        'queue_chain': queue_chain['present'],
+        'post_campaign_page_verified': queue_chain['post_campaign_page_verified'],
         'steps': [s.get('step') for s in steps],
         'session_time': matching[0].get('time') if len(matching) == 1 else None,
         'verdict': 'contradiction' if problems else 'consistent', 'problems': problems,
     }
 
 
-def audit_archive(archive: Path = ARCHIVE):
+def audit_archive(archive: Path = ARCHIVE, source_root: Path = ROOT):
     records, errors = [], []
     manifests = list(archive.rglob('archive.json'))
     if not manifests:
@@ -312,7 +476,10 @@ def audit_archive(archive: Path = ARCHIVE):
         try:
             metadata = json.loads(manifest.read_text(encoding='utf-8'))
             files = metadata['files']
-            if not metadata.get('source_run') or not isinstance(files, dict):
+            source_id = metadata.get('source_run')
+            source_path = PurePosixPath(source_id) if isinstance(source_id, str) else PurePosixPath()
+            if (not source_id or source_path.is_absolute() or '..' in source_path.parts
+                    or ':' in source_id or '\\' in source_id or not isinstance(files, dict)):
                 raise ValueError('归档必须有原运行目录和文件校验和')
             if set(metadata.get('source_files_sha256', {})) != set(files):
                 raise ValueError('脱敏副本必须逐文件保留原件校验和')
@@ -323,8 +490,14 @@ def audit_archive(archive: Path = ARCHIVE):
                 if Path(name).name != name or '/' in name or '\\' in name:
                     raise ValueError('归档文件名不得包含目录')
                 if hashlib.sha256((manifest.parent / name).read_bytes()).hexdigest() != checksum:
-                    raise ValueError(f'原始工件校验和不一致: {name}')
-            unlisted = {p.name for p in manifest.parent.glob('sortie-*.json')} - files.keys()
+                    raise ValueError(f'脱敏工件校验和不一致: {name}')
+            source = source_root / source_path
+            if source.is_dir():
+                for name, checksum in metadata['source_files_sha256'].items():
+                    if hashlib.sha256((source / name).read_bytes()).hexdigest() != checksum:
+                        raise ValueError(f'本机原件校验和不一致: {name}')
+            unlisted = {p.name for pattern in ('sortie-*.json', 'task-*.json', 'queue.json')
+                        for p in manifest.parent.glob(pattern)} - files.keys()
             if unlisted:
                 raise ValueError(f'工件未登记在归档清单: {sorted(unlisted)}')
         except (KeyError, TypeError, ValueError, OSError, AttributeError) as error:
@@ -373,14 +546,16 @@ def render_markdown(audit) -> str:
     for event in audit['withdraw_events']:
         lines.append(f"| `{event['log']}` | {event['line'] + 1} | {event['kind']} | {event['why']} |")
     lines += ['', '## 结构化运行工件', '',
-              '脱敏归档保留调用链与结果字段，同时检查结果合同、index 与会话日志。下表不把撤退当成通关；'
+              '脱敏归档保留调用链与结果字段，同时检查结果合同、index、队列任务与会话日志。'
+              '战后返回章节页只在下一任务实时抓帧、识别页面、非地图状态及章节关联均一致时记为已核验。下表不把撤退当成通关；'
               '它与上面的历史控制台日志分别计数。', '',
-              '| 工件 | 会话时间 | 结果 | 本局撤退证据 | 裁决 |',
-              '| --- | --- | --- | --- | --- |']
+              '| 工件 | 会话时间 | 结果 | 本局撤退证据 | 战后章节页 | 裁决 |',
+              '| --- | --- | --- | --- | --- | --- |']
     for record in audit['artifact_records']:
         lines.append(f"| `{record['artifact']}` | {record['session_time']} | "
                      f"{record['outcome']}, cleared={record['cleared']} | "
                      f"{'withdraw 步骤 + 上游调用链 + 返回章节页' if record['stage_withdrawal'] else '—'} | "
+                     f"{'已核验' if record['post_campaign_page_verified'] else '未核验'} | "
                      f"{'一致' if record['verdict'] == 'consistent' else '**矛盾**'} |")
         for problem in record['problems']:
             lines.append(f'\n- ⚠️ {problem}')

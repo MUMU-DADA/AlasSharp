@@ -1,0 +1,47 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 21.4,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "to-main",
+      "kind": "navigate",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 1.5,
+      "artifact": "<project>/data/mainline-device/20260923T144905-navigate/artifacts/20260923T144906/task-to-main.json"
+    },
+    {
+      "id": "to-campaign",
+      "kind": "navigate",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 14.1,
+      "artifact": "<project>/data/mainline-device/20260923T144905-navigate/artifacts/20260923T144906/task-to-campaign.json"
+    },
+    {
+      "id": "return-main",
+      "kind": "navigate",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 2.9,
+      "artifact": "<project>/data/mainline-device/20260923T144905-navigate/artifacts/20260923T144906/task-return-main.json"
+    },
+    {
+      "id": "observe",
+      "kind": "observe",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 2.1,
+      "artifact": "<project>/data/mainline-device/20260923T144905-navigate/artifacts/20260923T144906/task-observe.json"
+    }
+  ]
+}

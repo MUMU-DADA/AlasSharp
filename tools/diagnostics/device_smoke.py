@@ -29,12 +29,14 @@ import subprocess
 import sys
 from pathlib import Path
 import contextlib
+import math
 from datetime import datetime
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 DATA = ROOT / 'data'
 sys.path.insert(0, str(ROOT / 'tools'))
+from audit_real_records import audit_artifact
 
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -112,6 +114,144 @@ def device_state():
     return ('device' if code == 0 and 'device' in out else None), out.strip()[:120]
 
 
+def audit_smoke_run(run_dir: Path, queue_returncode: int, report_returncode: int,
+                    report_path: Path, *, allow_actions=False, read_only_device=False) -> list[str]:
+    """只读核对本次队列工件；退出码或一个 succeeded 字段都不能代替证据。"""
+    failures = []
+    real = allow_actions or read_only_device
+
+    def read_object(path):
+        try:
+            value = json.loads(path.read_text(encoding='utf-8-sig'))
+            if not isinstance(value, dict):
+                raise ValueError('JSON 顶层必须是对象')
+            return value
+        except (OSError, ValueError) as error:
+            failures.append(f'{path.name} 缺失或不可读: {error}')
+            return {}
+
+    def object_at(value, key):
+        return value.get(key) if isinstance(value.get(key), dict) else {}
+
+    def references(value):
+        # 产品工件可能使用本机绝对路径；只复核这次运行目录里的文件，防止借用旧证据。
+        return run_dir / str(value or '').replace('\\', '/').rsplit('/', 1)[-1]
+
+    if queue_returncode != 0:
+        failures.append(f'queue 退出码 {queue_returncode}')
+    if report_returncode != 0:
+        failures.append(f'report 退出码 {report_returncode}')
+    queue = read_object(run_dir / 'queue.json')
+    state = read_object(run_dir / 'state.json')
+    report = read_object(report_path)
+    if queue.get('dry_run') is not (not real) or report.get('dry_run') is not (not real):
+        failures.append('队列/报告运行模式与本次授权不一致')
+    for key, expected in (('host_start_count', 1), ('device_configure_count', int(real))):
+        if queue.get(key) != expected or report.get(key) != expected:
+            failures.append(f'队列/报告 {key} 必须为 {expected}')
+    if real and (queue.get('outcome') != 'succeeded' or report.get('queue_outcome') != 'succeeded'):
+        failures.append('实际运行的队列/报告没有成功完成')
+    if report.get('evidence_complete') is not True or report.get('has_failures') is not False:
+        failures.append('运行报告显示失败或证据不完整')
+    findings = report.get('findings')
+    if not isinstance(findings, list) or any(
+            not isinstance(item, dict) or item.get('code') != 'relocated_artifact' for item in findings):
+        failures.append('运行报告含异常 finding 或缺少 findings')
+    totals = object_at(report, 'totals')
+    log_entries = totals.get('log_entries')
+    if not isinstance(log_entries, int) or log_entries < 1:
+        failures.append('运行报告缺少会话日志条目')
+    try:
+        session = [json.loads(line) for line in
+                   (run_dir / 'session-log.jsonl').read_text(encoding='utf-8-sig').splitlines()
+                   if line.strip()]
+        if not session or any(not isinstance(entry, dict) for entry in session):
+            raise ValueError('会话日志必须包含对象记录')
+        if len(session) != log_entries:
+            failures.append('报告日志计数与本次会话日志不一致')
+    except (OSError, ValueError) as error:
+        failures.append(f'session-log.jsonl 缺失或不可读: {error}')
+
+    expected = {'live-state': 'account_state'}
+    if read_only_device:
+        expected['observe'] = 'observe'
+    if allow_actions:
+        expected['campaign-smoke'] = 'campaign_batch'
+    tasks = queue.get('tasks')
+    if (not isinstance(tasks, list) or any(not isinstance(item, dict) for item in tasks)
+            or len(tasks) != len(expected)):
+        failures.append('queue.json 的任务清单不完整')
+        tasks = []
+    completed = object_at(state, 'completed')
+    for task_id, kind in expected.items():
+        path = run_dir / f'task-{task_id}.json'
+        task = read_object(path)
+        rows = [item for item in tasks if item.get('id') == task_id]
+        if (len(rows) != 1 or rows[0].get('kind') != kind
+                or references(rows[0].get('artifact')) != path
+                or rows[0].get('outcome') != task.get('outcome')):
+            failures.append(f'{task_id} 工件与队列索引不一致')
+        if task.get('id') != task_id or task.get('kind') != kind:
+            failures.append(f'{task_id} 工件身份不一致')
+        if not real:
+            if task.get('outcome') != 'skipped' or not task.get('unmet_preconditions'):
+                failures.append(f'{task_id} 默认 dry-run 必须因抓帧前置条件而跳过')
+            continue
+        if task.get('outcome') != 'succeeded' or task.get('unmet_preconditions'):
+            failures.append(f'{task_id} 未成功执行: {task.get("error")}')
+        done = object_at(completed, task_id)
+        if done.get('outcome') != 'succeeded' or not done.get('identity'):
+            failures.append(f'{task_id} 缺少匹配的完成断点')
+        evidence = object_at(task, 'evidence')
+        if kind == 'account_state':
+            frame = object_at(evidence, 'frame')
+            shape = frame.get('shape')
+            tolerance = evidence.get('in_map_tolerance')
+            if (frame.get('available') is not True or evidence.get('source') != 'device_capture'
+                    or not isinstance(shape, list) or len(shape) != 3
+                    or any(type(n) is not int or n < 1 for n in shape)):
+                failures.append('现场账号状态缺少有效的当场抓帧证据')
+            if type(tolerance) not in (int, float) or not math.isfinite(tolerance):
+                failures.append('现场账号状态没有有效的 IN_MAP 判据数值')
+            if not isinstance(evidence.get('pages'), list) or not isinstance(evidence.get('page_errors'), list):
+                failures.append('现场账号状态没有页面识别证据')
+            elif evidence['page_errors']:
+                failures.append('现场账号状态页面识别有错误')
+        elif kind == 'observe':
+            ticks = evidence.get('ticks')
+            capture = object_at(evidence, 'capture')
+            pages = object_at(evidence, 'page_detection')
+            if (type(ticks) is not int or ticks < 1 or evidence.get('errors') != 0
+                    or evidence.get('read_only') is not True or evidence.get('cancelled') is not False
+                    or object_at(evidence, 'warmup').get('ok') is not True
+                    or capture.get('attempts') != ticks or capture.get('succeeded') != ticks
+                    or capture.get('failed') != 0 or pages.get('attempts') != ticks
+                    or pages.get('failed') != 0 or pages.get('skipped_capture_failed') != 0):
+                failures.append('新队列入口的只读观测未完成或抓帧/识页证据不完整')
+        elif kind == 'campaign_batch':
+            stages = evidence.get('stages')
+            if (evidence.get('batch_outcome') != 'cleared' or evidence.get('cleared') is not True
+                    or not isinstance(stages, list) or len(stages) != 1
+                    or not isinstance(stages[0], dict) or stages[0].get('chapter') != CHAPTER):
+                failures.append('战役任务缺少本次请求关卡的通关证据')
+                continue
+            if references(evidence.get('index_artifact')) != run_dir / 'index.json':
+                failures.append('战役任务未关联本次批次索引')
+            stage = stages[0]
+            if (stage.get('outcome') != 'cleared' or stage.get('cleared') is not True
+                    or stage.get('contract_violations') != []):
+                failures.append('战役任务逐关结论不是合规通关')
+            try:
+                verdict = audit_artifact(references(stage.get('artifact')))
+                if (verdict['verdict'] != 'consistent' or verdict['outcome'] != 'cleared'
+                        or verdict['chapter'] != CHAPTER):
+                    failures.append('战役原始工件未通过合同/批次/会话核对: '
+                                    + '; '.join(verdict['problems']))
+            except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+                failures.append(f'战役原始工件缺失或不可读: {error}')
+    return failures
+
+
 def main() -> int:
     allow_actions = '--allow-actions' in sys.argv
     read_only_device = '--read-only-device' in sys.argv
@@ -166,14 +306,16 @@ def main() -> int:
             cmd += ['--run', '--allow-actions']
         elif read_only_device:
             cmd += ['--run', '--read-only-device']
+        prior_runs = {p for p in artifacts.glob('*') if p.is_dir()}
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8',
                               errors='replace', timeout=1800)
+        results['queue_returncode'] = proc.returncode
         print(proc.stdout[-3000:] if proc.stdout else '')
         if proc.stderr:
             print('stderr: ' + proc.stderr[-800:])
-        run_dirs = sorted(p for p in artifacts.glob('*') if p.is_dir())
+        run_dirs = sorted(p for p in artifacts.glob('*') if p.is_dir() and p not in prior_runs)
         if not run_dirs:
-            print('**失败**：没有产出运行目录')
+            print('**失败**：本次没有产出新的运行目录')
             return 1
         run_dir = run_dirs[-1]
 
@@ -249,11 +391,18 @@ def main() -> int:
                 failures.append(f"真跑冒烟未成功: {doc.get('outcome')} {doc.get('error')}")
 
         results['run_directory'] = str(run_dir)
-        report = subprocess.run([str(EXE), 'report', '--run', str(run_dir)],
+        report_path = tmpdir / 'report.json'
+        report_path.unlink(missing_ok=True)
+        report = subprocess.run([str(EXE), 'report', '--run', str(run_dir), '--json', str(report_path)],
                                 capture_output=True, text=True, encoding='utf-8',
                                 errors='replace', timeout=120)
+        results['report_returncode'] = report.returncode
+        results['report_path'] = str(report_path)
         print('--- 运行报告（证据完整性）---')
         print(report.stdout[-1500:] if report.stdout else '')
+        failures.extend(audit_smoke_run(
+            run_dir, proc.returncode, report.returncode, report_path,
+            allow_actions=allow_actions, read_only_device=read_only_device))
 
     results['failures'] = failures
     (DATA / 'device_smoke.json').write_text(json.dumps(results, ensure_ascii=False, indent=1),
@@ -261,9 +410,14 @@ def main() -> int:
     print('证据已写入: data/device_smoke.json')
     print()
     if failures:
+        for failure in failures:
+            print(f'  FAIL: {failure}')
         print(f'结果: FAIL（{len(failures)} 项）')
         return 1
-    print('结果: OK（真机冒烟项已跑；IN_MAP 现场取值已记录）')
+    if allow_actions or read_only_device:
+        print('结果: OK（本次授权的真机冒烟项及结构化证据已核对）')
+    else:
+        print('结果: OK（dry-run 前置条件跳过符合预期；没有执行真机验收）')
     return 0
 
 

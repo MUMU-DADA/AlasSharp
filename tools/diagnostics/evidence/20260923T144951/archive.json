@@ -1,0 +1,26 @@
+{
+  "source_run": "data/mainline-device/20260923T144951-campaign/artifacts/20260923T144951",
+  "product_commit": "c973c1f",
+  "entry": "alashub queue --file <input> --run --allow-actions",
+  "redactions": [
+    "absolute local paths replaced by portable placeholders",
+    "device serial and configured endpoint replaced by <device>",
+    "account config and config_name replaced by <redacted-account-config>"
+  ],
+  "source_files_sha256": {
+    "index.json": "936f64606de7d5dba76751e61d9ff56dab587bea719082fbd84f3f82bb874432",
+    "session-log.jsonl": "0bc1f32faf22942f206d273fff6635d53e30a16397eef3c6c0dd4c2568981e20",
+    "sortie-1-1.json": "7e6ebd25f0337e6c1f33c6572bebf27b1084217e70b2cb4a060c5437e5bc0944",
+    "queue.json": "f54058493dd01dd86be7fbe8d21fc1b044ca790d2a8c7f619448c23018f7fd02",
+    "task-campaign-smoke.json": "ef75812d10a8ff20743721a3a4543fb5fb8e47e5a26f9b4638c584b8dc989585",
+    "task-after-campaign.json": "64ca7c2876b180072b9d73bc4c6adb193321735d8523c7f0177e80f1e83e6395"
+  },
+  "files": {
+    "index.json": "c4946e6dbf9854ff80da30117eaa565e8e9d63db5d98f268e1d0448eb9f50251",
+    "session-log.jsonl": "56bf2492df0753df1ada8241ca6a0bf5bed4f83a449a35fd7ab63294b40b253d",
+    "sortie-1-1.json": "d23a0bb6a601261ff69652d5106046d782f8ee74431d5591483cb16c1686cf6a",
+    "queue.json": "7de97372a4d40176fbae2552682457cf81a774c4e02ae2d6c921d193c8bbebdd",
+    "task-campaign-smoke.json": "199c6e1c339f7c8aecba07abdfa3f9eeb647791e05d9790981ce65d365be2473",
+    "task-after-campaign.json": "ad92201572fe3dc4f30d73d4182992e43442a5d6817aa8bc14c08d468a71f7df"
+  }
+}

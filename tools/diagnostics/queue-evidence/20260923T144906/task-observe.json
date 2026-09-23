@@ -1,0 +1,95 @@
+{
+  "id": "observe",
+  "kind": "observe",
+  "required": true,
+  "input": {
+    "seconds": 2,
+    "tick_seconds": 0.5
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 2.1,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "tick_seconds": 0.5,
+    "requested_seconds": 2,
+    "map_mode": null,
+    "read_only": true,
+    "warmup": {
+      "ok": true,
+      "capture_ms": 46.5,
+      "elapsed_ms": 94.721,
+      "method": "scrcpy",
+      "raw": true,
+      "shape": [
+        720,
+        1280,
+        3
+      ],
+      "error": null
+    },
+    "ticks": 4,
+    "errors": 0,
+    "error_details": [],
+    "elapsed_seconds": 2,
+    "cancelled": false,
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "pages_tick": 4,
+    "page_hits": {
+      "page_main": 4,
+      "page_main_white": 4
+    },
+    "page_errors": [],
+    "capture": {
+      "attempts": 4,
+      "succeeded": 4,
+      "failed": 0,
+      "method": "scrcpy",
+      "shape": [
+        720,
+        1280,
+        3
+      ],
+      "timing_ms": {
+        "count": 4,
+        "median": 116.3,
+        "p25": 114.7,
+        "p75": 116.7,
+        "max": 116.7
+      }
+    },
+    "page_detection": {
+      "attempts": 4,
+      "failed": 0,
+      "skipped_capture_failed": 0,
+      "timing_ms": {
+        "count": 4,
+        "median": 19.664,
+        "p25": 19.188,
+        "p75": 19.743,
+        "max": 19.743
+      }
+    },
+    "tick_interval_ms": {
+      "count": 4,
+      "median": 499.761,
+      "p25": 497.171,
+      "p75": 500.99,
+      "max": 500.99
+    }
+  }
+}

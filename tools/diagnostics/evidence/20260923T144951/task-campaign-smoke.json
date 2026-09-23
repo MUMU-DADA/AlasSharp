@@ -1,0 +1,45 @@
+{
+  "id": "campaign-smoke",
+  "kind": "campaign_batch",
+  "required": true,
+  "input": {
+    "chapters": [
+      "campaign.campaign_main.campaign_1_1"
+    ],
+    "max_rounds": 5,
+    "max_seconds": 600
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 63.1,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "batch_outcome": "cleared",
+    "cleared": true,
+    "stopped_early": false,
+    "index_artifact": "<run-directory>\\index.json",
+    "stages": [
+      {
+        "chapter": "campaign.campaign_main.campaign_1_1",
+        "stage": "1-1",
+        "outcome": "cleared",
+        "cleared": true,
+        "failed": false,
+        "skipped": false,
+        "error_kind": "none",
+        "error": null,
+        "contract_violations": [],
+        "artifact": "<run-directory>\\sortie-1-1.json"
+      }
+    ]
+  }
+}

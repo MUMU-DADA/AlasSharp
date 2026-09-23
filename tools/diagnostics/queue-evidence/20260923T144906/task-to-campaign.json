@@ -1,0 +1,241 @@
+{
+  "id": "to-campaign",
+  "kind": "navigate",
+  "required": true,
+  "input": {
+    "to": "page_campaign",
+    "rounds": 2,
+    "max_hops": 8
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 14.1,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "target": "page_campaign",
+    "max_hops": 8,
+    "rounds_requested": 2,
+    "rounds_completed": 2,
+    "rounds": [
+      {
+        "round": 1,
+        "success": true,
+        "to_target": {
+          "target": "page_campaign",
+          "success": true,
+          "final_pages": [
+            "page_campaign"
+          ],
+          "hops": [
+            {
+              "Hop": 1,
+              "OnPages": [
+                "page_main"
+              ],
+              "Target": "page_campaign",
+              "Button": "ui_white/MAIN_GOTO_CAMPAIGN_WHITE",
+              "Score": 0.949844,
+              "ClickX": 1192,
+              "ClickY": 508,
+              "ArrivedPages": [
+                "page_campaign_menu"
+              ],
+              "LowConfidence": false
+            },
+            {
+              "Hop": 2,
+              "OnPages": [
+                "page_campaign_menu"
+              ],
+              "Target": "page_campaign",
+              "Button": "ui/CAMPAIGN_MENU_GOTO_CAMPAIGN",
+              "Score": 0.996727,
+              "ClickX": 350,
+              "ClickY": 327,
+              "ArrivedPages": [
+                "page_campaign"
+              ],
+              "LowConfidence": false
+            }
+          ],
+          "failure": null,
+          "graph_nodes": 53,
+          "graph_edges": 127,
+          "elapsed_ms": 5685.21
+        }
+      },
+      {
+        "round": 2,
+        "success": true,
+        "return_to_main": {
+          "target": "page_main",
+          "success": true,
+          "final_pages": [
+            "page_main",
+            "page_main_white"
+          ],
+          "hops": [
+            {
+              "Hop": 1,
+              "OnPages": [
+                "page_campaign"
+              ],
+              "Target": "page_main",
+              "Button": "ui_white/GOTO_MAIN_WHITE",
+              "Score": 0.352382,
+              "ClickX": 1228,
+              "ClickY": 12,
+              "ArrivedPages": [
+                "page_main",
+                "page_main_white"
+              ],
+              "LowConfidence": true
+            }
+          ],
+          "failure": null,
+          "graph_nodes": 53,
+          "graph_edges": 127,
+          "elapsed_ms": 2833.336
+        },
+        "to_target": {
+          "target": "page_campaign",
+          "success": true,
+          "final_pages": [
+            "page_campaign"
+          ],
+          "hops": [
+            {
+              "Hop": 1,
+              "OnPages": [
+                "page_main"
+              ],
+              "Target": "page_campaign",
+              "Button": "ui_white/MAIN_GOTO_CAMPAIGN_WHITE",
+              "Score": 0.948618,
+              "ClickX": 1192,
+              "ClickY": 508,
+              "ArrivedPages": [
+                "page_campaign_menu"
+              ],
+              "LowConfidence": false
+            },
+            {
+              "Hop": 2,
+              "OnPages": [
+                "page_campaign_menu"
+              ],
+              "Target": "page_campaign",
+              "Button": "ui/CAMPAIGN_MENU_GOTO_CAMPAIGN",
+              "Score": 0.996759,
+              "ClickX": 350,
+              "ClickY": 327,
+              "ArrivedPages": [
+                "page_campaign"
+              ],
+              "LowConfidence": false
+            }
+          ],
+          "failure": null,
+          "graph_nodes": 53,
+          "graph_edges": 127,
+          "elapsed_ms": 5496.239
+        }
+      }
+    ],
+    "hops": [
+      {
+        "Hop": 1,
+        "OnPages": [
+          "page_main"
+        ],
+        "Target": "page_campaign",
+        "Button": "ui_white/MAIN_GOTO_CAMPAIGN_WHITE",
+        "Score": 0.949844,
+        "ClickX": 1192,
+        "ClickY": 508,
+        "ArrivedPages": [
+          "page_campaign_menu"
+        ],
+        "LowConfidence": false
+      },
+      {
+        "Hop": 2,
+        "OnPages": [
+          "page_campaign_menu"
+        ],
+        "Target": "page_campaign",
+        "Button": "ui/CAMPAIGN_MENU_GOTO_CAMPAIGN",
+        "Score": 0.996727,
+        "ClickX": 350,
+        "ClickY": 327,
+        "ArrivedPages": [
+          "page_campaign"
+        ],
+        "LowConfidence": false
+      },
+      {
+        "Hop": 1,
+        "OnPages": [
+          "page_campaign"
+        ],
+        "Target": "page_main",
+        "Button": "ui_white/GOTO_MAIN_WHITE",
+        "Score": 0.352382,
+        "ClickX": 1228,
+        "ClickY": 12,
+        "ArrivedPages": [
+          "page_main",
+          "page_main_white"
+        ],
+        "LowConfidence": true
+      },
+      {
+        "Hop": 1,
+        "OnPages": [
+          "page_main"
+        ],
+        "Target": "page_campaign",
+        "Button": "ui_white/MAIN_GOTO_CAMPAIGN_WHITE",
+        "Score": 0.948618,
+        "ClickX": 1192,
+        "ClickY": 508,
+        "ArrivedPages": [
+          "page_campaign_menu"
+        ],
+        "LowConfidence": false
+      },
+      {
+        "Hop": 2,
+        "OnPages": [
+          "page_campaign_menu"
+        ],
+        "Target": "page_campaign",
+        "Button": "ui/CAMPAIGN_MENU_GOTO_CAMPAIGN",
+        "Score": 0.996759,
+        "ClickX": 350,
+        "ClickY": 327,
+        "ArrivedPages": [
+          "page_campaign"
+        ],
+        "LowConfidence": false
+      }
+    ],
+    "final_pages": [
+      "page_campaign"
+    ],
+    "success": true,
+    "graph_nodes": 53,
+    "graph_edges": 127
+  }
+}

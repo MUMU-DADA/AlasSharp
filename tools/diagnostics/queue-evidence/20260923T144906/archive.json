@@ -1,0 +1,28 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/20260923T144905-navigate/artifacts/20260923T144906",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "a6e6165a17258ce96af33f6e528ecf81cf730d3e347da785fb2bff1a3b30d83a",
+    "state.json": "ed45076ec7233dbb347c5b147694e1c7b043b307c6aba5c947261cf042259fd0",
+    "session-log.jsonl": "b16fb4748daf285c20d363b756ba5cfd0cad7d59bccba80fe549ca48ccb6cd05",
+    "task-observe.json": "b1fbe8f45f5bdd0890e51cfa190ad81e937774fadfe9715eb4652f9d44a72689",
+    "task-return-main.json": "3d8d28cd0264dc61e726dbc64226602149a4283e5bb892f1670168dd2abe1f5e",
+    "task-to-campaign.json": "a45d201f1dc295267e5db194d8b82fed7a67503b3c129c5e02201f390e0c5738",
+    "task-to-main.json": "55946681c62b74758e3b5b5cb76ffe9edfd53b3e27576774d9ea2aa1f2aaa9b0"
+  },
+  "files": {
+    "queue.json": "d38e1ba8c293dec229b3701d00d2475b55f26de7ff74b2425cb3cbb80a210d7b",
+    "state.json": "a0b7c3bd545caf7dd1924754b399db66cdabb5850a97f4b673d8b2234c0293cd",
+    "session-log.jsonl": "e9db03e820142686ecb5b05e98f25f0dff7592c9c40668753c616ba62be8ec8b",
+    "task-observe.json": "f93f5d8027a1c30746bc5d2a941a6ce20dff2c398d4d173752b0e14c11be652c",
+    "task-return-main.json": "970d523b6ad7647d874c6e577371a0820fff28e45d87836b54f2eb45ea1a3c90",
+    "task-to-campaign.json": "4588a73f539a472267d3c6b3e5314d9fd694206e3d49780c9da017646d0ef300",
+    "task-to-main.json": "380b148581b91d06fc02a1ad726c69ed01fc0996f6fb07bb2c5b8741c0dd34f2"
+  }
+}

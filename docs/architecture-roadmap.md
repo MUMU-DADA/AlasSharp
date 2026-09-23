@@ -50,7 +50,7 @@
 
 阶段门槛：同一进程连续运行多个任务时宿主和设备只初始化一次；取消、超时和异常都能释放资源并保留证据；CLI 参数不会再复制一套业务状态机。
 
-**状态：常驻会话与任务编排已收敛；观测与导航统一从 `queue --file` 进入，当前队列入口仍待真机回归**
+**状态：常驻会话与任务编排已收敛；观测与导航统一从 `queue --file` 进入，并已各取一批真机样本**
 （详见 [常驻运行时](runtime.md)）。
 
 | 交付物 | 落地 | 验证 |
@@ -72,8 +72,8 @@
 
 **保留的边界**：战役取消在关卡边界生效；只读观测可在 tick 边界停止。
 已退役直接 CLI wrapper 的观测核心任务留有 2 秒窗口、4 tick、0 error、宿主/设备各初始化一次的历史记录；
-当前队列入口仍待真机回归，可选地图模式及其他设备后端也不能据此视为已验证。
-导航迁移的替身用例覆盖多回合、非法输入、设备错误及后续回合失败；历史页面回归不能代替队列入口的真机验证。
+本次 `queue --file` 真机只读队列完成 `account_state` 与 6 tick 观测，导航队列完成主界面/战役页往返、两轮战役页导航与 4 tick 观测；两批都只初始化一次宿主和设备，脱敏队列/任务/断点/会话证据见 `docs/queue-evidence.md`。
+可选地图模式及其他设备后端仍未由这些样本验证。导航迁移的替身用例另覆盖非法输入、设备错误及后续回合失败。
 
 ### R2：任务域垂直切片
 
@@ -90,7 +90,7 @@
 | 通用任务模型 | `Alas.Core/Tasks/TaskModel.cs`：`TaskRequest`/`TaskResult`/`TaskOutcome`/`ITaskRunner` | `verify_architecture.py`（模型必须是接口） |
 | 队列调度 | `Alas.Core/Tasks/TaskQueue.cs`：前置条件、跨任务复位边界、失败即停、取消、证据、断点 | `verify_runtime.py` 5 例队列用例 |
 | 输入模型 | `TaskQueueFile.cs`（队列/断点文件）+ 战役域自己的 `input` JSON | 同上 |
-| 第一个域：战役批量 | `Alas.Core/Tasks/CampaignBatchTask.cs`：接合同裁决与批次工件 | 5 例队列用例 + 已有 4 条真机通关证据 |
+| 第一个域：战役批量 | `Alas.Core/Tasks/CampaignBatchTask.cs`：接合同裁决与批次工件 | 5 例队列用例 + 历史 4 条真机通关日志 + 新队列入口 1-1 成功结算样本 |
 | 第二个域：账号状态（只读） | `AccountStateTask.cs` + 宿主 `account_state` op：当前页面/在图内/服务器/配置要点 | `verify_account_state.py`（真机存盘帧，无设备） |
 | 可恢复状态 | 逐任务 `state.json` + `--resume` 跳过已完成任务 | `queue_resume_skips_completed_task` |
 | CLI 入口 | `alashub queue --file`；与 `campaign` 共用 `ParseRunFlags` | `verify_architecture.py`（参数解析共享） |
@@ -101,7 +101,7 @@
 1. 大世界目前是只读探针；活动目前是清点与队列生成。完整动作流程仍需逐域接通并提供真实产品路径证据。
 2. 账号状态当场抓帧和 `IN_MAP` 现场核对已有设备窗口记录（见交接文档第五节与第八节补充六）；
    周期任务执行已有 dorm/reward 两条历史真机路径；通用执行器现已改为复用上游 Scheduler.Command、
-   任务绑定和原生 dispatcher，离线覆盖 reward / opsi / event，新的入口仍待授权真机回归。
+   任务绑定和原生 dispatcher，离线覆盖 reward / opsi / event；新队列入口已真实执行 `reward` 一次，其余周期执行路径仍待逐域验证。
 3. `docs/tasks.md` 记录了每域必须带的四件套；未满足门槛时不进入下一个域。
 
 **实现与验证清单（十类业务任务，另有通用导航与观测）**：
@@ -117,9 +117,9 @@
 | 7 | 周期任务勘察（跑谁） | 只读 | `verify_periodic_plan.py`（独立对拍 + 不 import 目标模块） |
 | 8 | 周期任务放行判定（放不放） | 只读（**永不执行**） | `verify_periodic_plan.py`（四条路径 + executes 恒 False） |
 | 9 | 配置开关（授权前的花费开关留档） | 只读 | `verify_config_get.py`（独立对拍 + 缺失≠false） |
-| 10 | **周期任务执行**（执行环；产品路径 kind=periodic_run） | **动作**（会话授权 + 宿主两道闸 + 上游原生 dispatcher） | `verify_periodic_plan.py`（任务目录解析、绑定、跨调用形态、TaskEnd/False/SystemExit、设备恢复）+ 历史真机两域（新入口待回归） |
-| 通用 | 页面导航 `navigate` | 动作 | `verify_runtime.py`、`navigate_cases.json` + 既有两跳导航核心任务记录；当前队列入口待真机回归 |
-| 通用 | 观测 `observe` | 只读设备任务 | `verify_runtime.py`、`observe_cases.json`；历史核心任务 2 秒记录为 4 tick / 0 error，当前队列入口待真机回归，见 `runtime.md` |
+| 10 | **周期任务执行**（执行环；产品路径 kind=periodic_run） | **动作**（会话授权 + 宿主两道闸 + 上游原生 dispatcher） | `verify_periodic_plan.py`（任务目录解析、绑定、跨调用形态、TaskEnd/False/SystemExit、设备恢复）+ 原生 dispatcher 的 `reward` 队列真机样本；其他域未覆盖 |
+| 通用 | 页面导航 `navigate` | 动作 | `verify_runtime.py`、`navigate_cases.json` + `docs/queue-evidence.md` 的新队列入口往返/多轮真机样本 |
+| 通用 | 观测 `observe` | 只读设备任务 | `verify_runtime.py`、`observe_cases.json` + `docs/queue-evidence.md` 的 6 tick / 4 tick 新队列入口真机样本 |
 
 剩余**动作范围**包括大世界流程、活动出击和周期任务尚未验证的执行路径；
 逐域的四件套与边界见 `docs/tasks.md`（那份文档同时是本表的详细版）。
