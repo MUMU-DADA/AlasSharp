@@ -154,7 +154,8 @@ internal static class Program
                  .Register(new Alas.Tasks.TaskCatalogTask())
                  .Register(new Alas.Tasks.NavigateTask())
                  .Register(new Alas.Tasks.TaskScheduleTask())
-                 .Register(new Alas.Tasks.PeriodicPlanTask());
+                 .Register(new Alas.Tasks.PeriodicPlanTask())
+                 .Register(new Alas.Tasks.PeriodicPreflightTask());
                 if (queueFlags.Resume)
                 {
                     // `--resume <state.json>` 显式给路径；只写 `--resume` 则取工件根目录下
