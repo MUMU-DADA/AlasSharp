@@ -21,14 +21,33 @@ namespace Alas.Tasks;
 /// </summary>
 public sealed class ConfigGetTask : ITaskRunner
 {
+    private static readonly HashSet<string> InputFields = new(StringComparer.Ordinal)
+    {
+        "keys",
+    };
+
     public string Kind => "config_get";
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskContext context)
     {
         var problems = new List<string>();
+        if (request.Input is not null)
+            foreach (var field in request.Input.Select(pair => pair.Key))
+                if (!InputFields.Contains(field))
+                    problems.Add($"未知配置读取字段: input.{field}");
+
         if (request.Input?["keys"] is not JsonArray keys || keys.Count == 0)
+        {
             problems.Add("input.keys 为空：至少要给一个点分路径（如 Dorm.BuyFurniture.Enable），"
                          + "否则这一步没有任何信息量");
+            return problems;
+        }
+
+        for (int index = 0; index < keys.Count; index++)
+            if (keys[index] is not JsonValue value
+                || !value.TryGetValue<string>(out var key)
+                || string.IsNullOrWhiteSpace(key))
+                problems.Add($"input.keys[{index}] 必须是非空字符串");
         return problems;
     }
 
@@ -36,8 +55,7 @@ public sealed class ConfigGetTask : ITaskRunner
     {
         var result = new TaskResult { Id = request.Id, Kind = Kind };
         var keys = (request.Input?["keys"] as JsonArray)?
-            .Select(k => k?.GetValue<string>() ?? "")
-            .Where(k => k.Length > 0).ToList() ?? new List<string>();
+            .Select(k => k!.GetValue<string>()).ToList() ?? new List<string>();
         try
         {
             var read = context.Session.Vision.CallTyped<ConfigGetResult>(

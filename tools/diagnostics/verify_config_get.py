@@ -33,12 +33,13 @@ except Exception:
     pass
 
 
-def run_task(keys, timeout=300):
+def run_task(keys, timeout=300, *, input_value=None):
     """跑一次队列任务，返回 (outcome, evidence, error)。"""
     with tempfile.TemporaryDirectory(prefix='alas-config-') as tmp:
         queue_file = Path(tmp) / 'queue.json'
         queue_file.write_text(json.dumps({'tasks': [
-            {'id': 'cfg', 'kind': 'config_get', 'input': {'keys': keys}}]},
+            {'id': 'cfg', 'kind': 'config_get',
+             'input': {'keys': keys} if input_value is None else input_value}]},
             ensure_ascii=False), encoding='utf-8')
         artifacts = Path(tmp) / 'artifacts'
         proc = subprocess.run([str(EXE), 'queue', '--file', str(queue_file),
@@ -132,6 +133,25 @@ def main() -> int:
          f'outcome={deep_outcome} missing={deep_evidence.get("missing_keys")}'),
     ]
     for name, ok, detail in boundary:
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
+        if not ok:
+            failures.append(f'{name}: {detail}')
+
+    invalid_inputs = {
+        'missing-keys': {},
+        'wrong-array-type': {'keys': 'Dorm.BuyFurniture.Enable'},
+        'null-entry': {'keys': [None]},
+        'number-entry': {'keys': [7]},
+        'empty-entry': {'keys': [' ']},
+        'mixed-entry': {'keys': ['Dorm.BuyFurniture.Enable', False]},
+        'unknown-field': {'keys': ['Dorm.BuyFurniture.Enable'], 'extra': True},
+    }
+    for name, task_input in invalid_inputs.items():
+        invalid_outcome, invalid_evidence, invalid_error = run_task(
+            [], input_value=task_input)
+        ok = (invalid_outcome == 'skipped' and not invalid_evidence
+              and '前置条件不满足' in (invalid_error or ''))
+        detail = f'outcome={invalid_outcome} error={invalid_error}'
         print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
         if not ok:
             failures.append(f'{name}: {detail}')
