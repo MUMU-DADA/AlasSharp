@@ -26,3 +26,6 @@ __pycache__/
 
 # 固定在本仓库内的运行时（Python 3.14 环境 / OCR 模型 / 测试配置），不进版本库
 .runtime/
+
+# 并行 agent 的本地工作树；各工作树有独立分支和生成物。
+.worktrees/
