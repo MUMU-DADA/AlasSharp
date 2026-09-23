@@ -209,6 +209,20 @@ def main() -> int:
                                 executed.returncode == 0 and f'任务={len(tasks)}' in out
                                 and '失败=0' in out,
                                 f'退出码={executed.returncode} {out[-200:]}'))
+            captured_out = tmpdir / 'planned-capture.json'
+            captured = subprocess.run([str(EXE), 'plan-queue', '--out', str(captured_out),
+                                       '--only-complete', '--limit', '2', '--capture-after'],
+                                      capture_output=True, text=True, encoding='utf-8',
+                                      errors='replace', timeout=120)
+            captured_tasks = (json.loads(captured_out.read_text(encoding='utf-8'))['tasks']
+                              if captured.returncode == 0 and captured_out.is_file() else [])
+            plan_checks.append(('每关后可生成同会话抓帧任务',
+                                len(captured_tasks) == 4 and all(
+                                    captured_tasks[i + 1]['kind'] == 'account_state'
+                                    and captured_tasks[i + 1]['input'] == {'capture': True}
+                                    and captured_tasks[i + 1]['required'] is True
+                                    and captured_tasks[i + 1]['id'] == captured_tasks[i]['id'] + ':post'
+                                    for i in (0, 2)), f'tasks={captured_tasks}'))
         for name, ok, detail in plan_checks:
             print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
             if not ok:

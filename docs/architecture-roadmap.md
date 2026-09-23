@@ -99,7 +99,7 @@
 
 **R2 未完成**：
 
-1. 大世界已有只读探针和动作任务的离线接线；`os_action` 复用上游 `Scheduler.Command`、`opsi_*` 方法与原生 dispatcher，尚无真机动作成功证据。真机导航到 `page_os` 时当前账号的大型作战入口带锁，队列在 `navigate` 失败后跳过后续探针，原件见本地忽略目录 `data/mainline-device/20260923T170655-os_nav/`。活动清点与队列生成已有离线覆盖，普通战役队列另有已解锁活动 A1、A2、A3 的真实成功结算及战后 `page_event` 抓帧归档（`tools/diagnostics/evidence/20260923T163008/`、`20260923T171026/`、`20260923T180804/`）。这三个样本不能覆盖其他活动章节或活动域完整动作流程，低等级账号的未解锁功能仍待验证。
+1. 大世界已有只读探针和动作任务的离线接线；`os_action` 复用上游 `Scheduler.Command`、`opsi_*` 方法与原生 dispatcher，尚无真机动作成功证据。真机导航到 `page_os` 时当前账号的大型作战入口带锁，队列在 `navigate` 失败后跳过后续探针，原件见本地忽略目录 `data/mainline-device/20260923T170655-os_nav/`。活动清点与队列生成已有离线覆盖，普通战役队列另有已解锁活动 A1、A2、A3 的真实成功结算及战后 `page_event` 抓帧归档（`tools/diagnostics/evidence/20260923T163008/`、`20260923T171026/`、`20260923T180804/`）。`plan-queue --capture-after` 的 A1、A2 连续四任务真机复验也已成功，脱敏计划、双批次索引及逐关返页证据归档于 `tools/diagnostics/evidence/20260923T194236/`；修复前一次 A1 战后超时仍保留为失败。已验证的仍只有三个已解锁活动章节，不能覆盖其他活动章节或活动域完整动作流程，低等级账号的未解锁功能仍待验证。
 2. 账号状态当场抓帧和 `IN_MAP` 现场核对已有设备窗口记录（见交接文档第五节与第八节补充六）；
    周期任务执行已有 dorm/reward 两条历史真机路径；通用执行器现已改为复用上游 Scheduler.Command、
    任务绑定和原生 dispatcher，离线覆盖 reward / opsi / event；新队列入口已真实执行 `reward` 与

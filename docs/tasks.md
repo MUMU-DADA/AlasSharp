@@ -126,6 +126,9 @@ alashub plan-queue --out events.json --only-complete --limit 5
 alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真跑加 --run --allow-actions
 ```
 
+需要逐关核对返页时可加 `--capture-after`：生成器会在每个战役任务后插入
+`account_state(capture=true)`，仍由普通队列调度，战役结论仍由结果合同裁决。
+
 筛选规则**只有一处**（`EventStateTask.Select`），清点任务与生成器共用 —— 两边各写一套
 筛选迟早会走偏。实测：`event_*` 匹配 879 章、其中计划完整 768 章（A 644 / B 124）；
 生成的 3 关队列 dry-run 全部跑通并逐任务落盘工件。
@@ -136,6 +139,11 @@ alashub queue --file events.json --artifacts runs\        # 默认 dry-run；真
 实时识别 `page_event`、`in_map=false`。六份脱敏工件及原件哈希见
 `tools/diagnostics/evidence/20260923T163008/`、`20260923T171026/` 与
 `20260923T180804/`，由 `audit_real_records.py` 逐关交叉核对。
+另一次 `plan-queue --capture-after --run` 生成的 A1、A2 连续四任务真机队列
+在通用战后按钮兼容修复后通过：两关 `cleared=true`、零违例，两个紧随其后的抓帧
+均为 `page_event`、`in_map=false`；含原样计划和两个批次索引的脱敏工件见
+`tools/diagnostics/evidence/20260923T194236/`。修复前同一计划的第一次尝试
+在 A1 战后超时，失败原件只留在本地忽略目录；不能以重试成功抹去该次失败。
 这只覆盖当前账号已解锁的三关，
 不能据此认定其他活动关或活动任务整体完成。
 

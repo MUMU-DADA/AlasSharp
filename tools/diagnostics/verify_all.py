@@ -67,6 +67,7 @@ STEPS = [
     ('verify_s3_plan.py', 'S3 计划读取回归（协议 plan_steps == IR battle_* + 安全锁）', False, 300),
     ('verify_s3_upstream_loading.py', 'S3 上游加载链/继承配置/地图帧回归（离线）', False, 300),
     ('verify_s3_camera_compat.py', 'S3 原生相机等待空状态兼容（离线）', False, 300),
+    ('verify_campaign_button_compat.py', 'S3 原生战役按钮颜色临界值与模板对拍（脱敏局部帧）', False, 300),
     ('verify_s3_outcome.py', 'S3 原生 run 调度与清图/撤退判别（离线上游执行）', False, 300),
     ('verify_result_contract.py', 'R0 结果合同（四类判别 + 反例拒绝 + 跨语言对拍）', False, 300),
     ('audit_real_records.py', 'R0 实机记录重新核对（重建 result-evidence.md）', False, 300),

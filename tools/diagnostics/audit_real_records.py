@@ -239,8 +239,7 @@ def artifact_name(value):
     return str(value or '').replace('\\', '/').rsplit('/', 1)[-1]
 
 
-def audit_queue_chain(directory: Path, sortie_name: str, result: dict, index: dict,
-                      session: list):
+def audit_queue_chain(directory: Path, sortie_name: str, result: dict, session: list):
     """Corroborate a sortie with queue tasks, when the run has a queue artifact."""
     queue_path = directory / 'queue.json'
     if not queue_path.is_file():
@@ -273,6 +272,20 @@ def audit_queue_chain(directory: Path, sortie_name: str, result: dict, index: di
                 and (task.get('error_kind') != 'none' or task.get('error') is not None
                      or task.get('stop_reason') is not None):
             problems.append(f'queue 成功任务状态不一致: {name}')
+    plan_path = directory / 'plan.json'
+    if plan_path.is_file():
+        plan = json.loads(plan_path.read_text(encoding='utf-8'))
+        planned = plan.get('tasks')
+        if (plan.get('generated_by') != 'alashub plan-queue'
+                or plan.get('dry_run') != queue.get('dry_run')
+                or not isinstance(planned, list) or len(planned) != len(tasks)):
+            problems.append('生成计划与执行队列不一致')
+        else:
+            for row, item in zip(tasks, planned):
+                task = task_files.get(artifact_name(row.get('artifact')))
+                if not task or any(task.get(key) != item.get(key)
+                                   for key in ('id', 'kind', 'input', 'required')):
+                    problems.append(f'生成计划与实际任务输入不一致: {row.get("id")}')
     if len(names) != len(set(names)) or set(names) != {p.name for p in directory.glob('task-*.json')}:
         problems.append('queue 任务工件引用不完整或重复')
     ids = [row.get('id') for row in tasks]
@@ -323,14 +336,21 @@ def audit_queue_chain(directory: Path, sortie_name: str, result: dict, index: di
 
     campaign_matches = []
     page_verified = False
+    seen_indexes = set()
     for position, row in enumerate(tasks):
         task = task_files.get(artifact_name(row.get('artifact')))
         if not task or task.get('kind') != 'campaign_batch':
             continue
         evidence = task.get('evidence') or {}
-        if artifact_name(evidence.get('index_artifact')) != 'index.json':
+        index_name = artifact_name(evidence.get('index_artifact'))
+        if (not re.fullmatch(r'index(?:-\d+)?\.json', index_name)
+                or not (directory / index_name).is_file()):
             problems.append('战役任务未指向本次批次索引')
             continue
+        if index_name in seen_indexes:
+            problems.append('多个战役任务共用同一批次索引')
+        seen_indexes.add(index_name)
+        index = json.loads((directory / index_name).read_text(encoding='utf-8'))
         if evidence.get('batch_outcome') != index.get('outcome') \
                 or evidence.get('cleared') != index.get('cleared') \
                 or evidence.get('stopped_early') != index.get('stopped_early'):
@@ -409,7 +429,15 @@ def audit_artifact(path: Path):
     """
     artifact = json.loads(path.read_text(encoding='utf-8'))
     result = artifact['result']
-    index = json.loads((path.parent / 'index.json').read_text(encoding='utf-8'))
+    matches = []
+    for index_path in path.parent.glob('index*.json'):
+        candidate = json.loads(index_path.read_text(encoding='utf-8'))
+        if any(artifact_name(stage.get('artifact')) == path.name
+               for stage in candidate.get('stages', [])):
+            matches.append(candidate)
+    if len(matches) != 1:
+        raise ValueError(f'单关工件必须对应唯一批次索引: {path.name}')
+    index = matches[0]
     session = [json.loads(line) for line in
                (path.parent / 'session-log.jsonl').read_text(encoding='utf-8').splitlines()
                if line.strip()]
@@ -447,7 +475,7 @@ def audit_artifact(path: Path):
                        and e.get('fields', {}).get('dry_run') is False for e in session)
     if not configured or not real_session:
         problems.append('session-log 缺少真实会话/设备配置记录')
-    queue_chain = audit_queue_chain(path.parent, path.name, result, index, session)
+    queue_chain = audit_queue_chain(path.parent, path.name, result, session)
     problems.extend(queue_chain['problems'])
     evidence = result.get('end_evidence') or {}
     steps = result.get('steps') or []
@@ -502,7 +530,8 @@ def audit_archive(archive: Path = ARCHIVE, source_root: Path = ROOT):
                 for name, checksum in metadata['source_files_sha256'].items():
                     if hashlib.sha256((source / name).read_bytes()).hexdigest() != checksum:
                         raise ValueError(f'本机原件校验和不一致: {name}')
-            unlisted = {p.name for pattern in ('sortie-*.json', 'task-*.json', 'queue.json')
+            unlisted = {p.name for pattern in ('index*.json', 'sortie-*.json',
+                                                'task-*.json', 'queue.json', 'plan.json')
                         for p in manifest.parent.glob(pattern)} - files.keys()
             if unlisted:
                 raise ValueError(f'工件未登记在归档清单: {sorted(unlisted)}')

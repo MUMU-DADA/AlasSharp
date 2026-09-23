@@ -1,0 +1,37 @@
+{
+  "source_run": "data/mainline-device/generated-event-capture/retry-artifacts/20260923T194236",
+  "product_base_commit": "719201e",
+  "entry": "alashub queue --file <input> --run --allow-actions",
+  "redactions": [
+    "absolute project paths replaced with <project> placeholders",
+    "device serial and configured endpoint replaced with <device>",
+    "account config and config_name replaced with <redacted-account-config>",
+    "raw console log and screenshots remain in local ignored directory"
+  ],
+  "source_files_sha256": {
+    "index.json": "45298c4af133b9b5ac6ab3ab1aca5bf0c467eb89f784a7037ed95ed87965afbe",
+    "session-log.jsonl": "f59339d63e1b0a4d776feb090e2007c7d241a744861645ecab6568138c95521b",
+    "queue.json": "f5b4355fad2bc228ee51cffb079c7ef9a38a839bd4a21a1a7d5a0a4c305517bf",
+    "index-2.json": "e2ba05f04d16c1d79ec5bfb7d7a9bd27840be0ee8605a8a9da2e200dca12c4d9",
+    "plan.json": "2b4f5f5cee72ac4ecf81f071fe6525bbe7ac984ba2b430a23ff3ecf61dab587f",
+    "sortie-a1.json": "e56f1ed1d0e7cca810987c08cb689b8e0e8288743c2ff2ecf7b9dfee07b02ab6",
+    "sortie-a2.json": "d00ed0cd43be4dae69c9ddf8486e831a19970b3210becbac66b46920bf9ef98b",
+    "task-campaign_event_20260908_cn_a1.json": "231d5394a32cc8004860ab5423571bc1d5702e47d0407dbacef62539cd8fe771",
+    "task-campaign_event_20260908_cn_a1_post.json": "3e0b5f06991558efc3d5a45d3c062e7d267b3636f66e7159e1dc314c267d29df",
+    "task-campaign_event_20260908_cn_a2.json": "f33a5dc7234a824aebaf0f4065b1b6a40a4aca98d3256b9844d53c57c89b1c39",
+    "task-campaign_event_20260908_cn_a2_post.json": "e6ada4f8452f4afbdfc3a87401b32513a9fb8bcfabbb9d1977867942ad27d883"
+  },
+  "files": {
+    "index.json": "5b4973e0fadd991d0440e0d5f7e27b2a094753eae9321fb7771e0c74bb400360",
+    "session-log.jsonl": "6a8e59e2eec970b31441ddc956f852af76ad3a4ec284147dbd2ed98123977cc8",
+    "queue.json": "0266db49bb5b5073013dd2709b30fd77a2ef45c0c7e4ba22973743df30837a03",
+    "index-2.json": "e7cc2e1bb8ed40ebec7f13c76afa979c31d2637f9446d64041c353c1d9abb1b8",
+    "plan.json": "1f04429db40fcb1cca7999e109797cc60132a99886273c7698a81e3670af1f15",
+    "sortie-a1.json": "610b4e0331ef5ead9da95fcfe73f765b2cfe773ad6206ad8d224dbdc0ed1e068",
+    "sortie-a2.json": "1f8de43e7ac5eb184d01816d0c4348c1b8d004407a3601ec523e95acb2984f8c",
+    "task-campaign_event_20260908_cn_a1.json": "57bc3ce1b15abb29f5099299803af1f16e3a56571035c36f75b9fbbbedaf6576",
+    "task-campaign_event_20260908_cn_a1_post.json": "70d418498f5dc863aa5244578ba780fd7ff827e75b5a249f4276962a483b1144",
+    "task-campaign_event_20260908_cn_a2.json": "44e6e0c649561847fa9002b07557399d4a09e214a21b3eb7b2784eb006f8684e",
+    "task-campaign_event_20260908_cn_a2_post.json": "2e3ac50d54537c69f055c0ef253d7dbf2c4a40d5f4475837bfcfc64c9988eddb"
+  }
+}

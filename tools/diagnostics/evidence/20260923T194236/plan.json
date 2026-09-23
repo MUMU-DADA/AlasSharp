@@ -1,0 +1,52 @@
+{
+  "generated_by": "alashub plan-queue",
+  "folder_prefix": "event_20260908_cn",
+  "only_complete": true,
+  "limit": 2,
+  "dry_run": false,
+  "capture_after": true,
+  "chapters_total": 1437,
+  "matched": 13,
+  "tasks": [
+    {
+      "id": "campaign.event_20260908_cn.a1",
+      "kind": "campaign_batch",
+      "input": {
+        "chapters": [
+          "campaign.event_20260908_cn.a1"
+        ],
+        "max_rounds": 20,
+        "max_seconds": 600
+      },
+      "required": false
+    },
+    {
+      "id": "campaign.event_20260908_cn.a1:post",
+      "kind": "account_state",
+      "input": {
+        "capture": true
+      },
+      "required": true
+    },
+    {
+      "id": "campaign.event_20260908_cn.a2",
+      "kind": "campaign_batch",
+      "input": {
+        "chapters": [
+          "campaign.event_20260908_cn.a2"
+        ],
+        "max_rounds": 20,
+        "max_seconds": 600
+      },
+      "required": false
+    },
+    {
+      "id": "campaign.event_20260908_cn.a2:post",
+      "kind": "account_state",
+      "input": {
+        "capture": true
+      },
+      "required": true
+    }
+  ]
+}

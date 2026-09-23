@@ -99,6 +99,27 @@ IR JSON 是身份、计划摘要和校验信息，**当前不是独立 JSON 战�
 这些修改只涉及证据保存和读取；上游章节 `Config`、`MAP`、入口准备、
 `CampaignRun.load_campaign()`、原生 `Campaign.run()` 与 `sortie-result/1` 均未更改。
 
+同日连续活动队列的第二次真机运行在 A1 第三场战后停于 S 级结算屏，
+`execute_a_battle` 最终报 `GameStuckError: Wait too long`。失败帧只留在本地忽略目录
+`data/mainline-device/generated-event-capture/artifacts/20260923T191826/`；入库夹具仅是
+`BATTLE_STATUS_S` 固定检测区的 79×20 像素裁剪，不含账号或设备画面。
+上游原生颜色比对在该帧为 11.99（默认阈值 10），原生固定区域模板相关系数为
+0.917（默认阈值 0.85）；章节页和地图负样本的模板分均低于 0.85。
+兼容垫片仅在原生战役执行期间启用：先保留上游颜色判据，默认阈值临界未命中时
+要求颜色差仍小于默认阈值两倍，且上游素材的固定区域模板匹配也命中。
+它不按章节、地图、页面、服务器或素材名称分支，不复制素材规则；显式传入的自定义
+颜色阈值仍走上游原判断，执行结束或抛错即恢复原方法。
+`verify_campaign_button_compat.py` 用上述脱敏裁剪及章节页、地图负样本验证判据和恢复。
+这次失败仍记 `error`，不能用先前 A1/A2 成功覆盖。
+
+兼容垫片随后以同一个生成计划真机复验：A1、A2 依次由原生 `Campaign.run()`
+完成 S 级成功结算，`sortie-result/1` 均为 `cleared=true`、零违例；每关后紧接的
+`account_state(capture=true)` 同会话识别 `page_event`、`in_map=false`。四任务队列
+`succeeded`，两份原始单关工件审计均为 `consistent`。完整脱敏计划、两个批次索引、
+任务、单关与会话工件见 `tools/diagnostics/evidence/20260923T194236/`；原始截图和
+运行日志留在本地忽略目录。此结果只验证当前账号已解锁的两关和这条兼容路径，
+不能推断其他地图、功能或战果画面均已覆盖。
+
 ## 使用
 
 ```powershell
@@ -118,5 +139,5 @@ IR JSON 是身份、计划摘要和校验信息，**当前不是独立 JSON 战�
 
 ```powershell
 dotnet build src/Alas.DataTool/Alas.DataTool.csproj -c Release
-.\.runtime\venv314\Scripts\python.exe tools/diagnostics/verify_all.py --only verify_s3_plan.py,verify_s3_upstream_loading.py,verify_s3_camera_compat.py,verify_s3_outcome.py,verify_dryrun_purity.py,verify_product_map.py
+.\.runtime\venv314\Scripts\python.exe tools/diagnostics/verify_all.py --only verify_s3_plan.py,verify_s3_upstream_loading.py,verify_s3_camera_compat.py,verify_campaign_button_compat.py,verify_s3_outcome.py,verify_dryrun_purity.py,verify_product_map.py
 ```

@@ -1,0 +1,45 @@
+{
+  "id": "campaign.event_20260908_cn.a1",
+  "kind": "campaign_batch",
+  "required": false,
+  "input": {
+    "chapters": [
+      "campaign.event_20260908_cn.a1"
+    ],
+    "max_rounds": 20,
+    "max_seconds": 600
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 192.3,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "batch_outcome": "cleared",
+    "cleared": true,
+    "stopped_early": false,
+    "index_artifact": "<project>/data/mainline-device/generated-event-capture/retry-artifacts/20260923T194236/index.json",
+    "stages": [
+      {
+        "chapter": "campaign.event_20260908_cn.a1",
+        "stage": "a1",
+        "outcome": "cleared",
+        "cleared": true,
+        "failed": false,
+        "skipped": false,
+        "error_kind": "none",
+        "error": null,
+        "contract_violations": [],
+        "artifact": "<project>/data/mainline-device/generated-event-capture/retry-artifacts/20260923T194236/sortie-a1.json"
+      }
+    ]
+  }
+}

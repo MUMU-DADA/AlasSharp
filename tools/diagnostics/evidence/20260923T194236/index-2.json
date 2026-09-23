@@ -1,0 +1,26 @@
+{
+  "contract": "sortie-result/1",
+  "dry_run": false,
+  "requested_stages": 1,
+  "outcome": "cleared",
+  "cleared": true,
+  "error_kind": "none",
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 271.2,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "stages": [
+    {
+      "chapter": "campaign.event_20260908_cn.a2",
+      "stage": "a2",
+      "outcome": "cleared",
+      "cleared": true,
+      "failed": false,
+      "skipped": false,
+      "error_kind": "none",
+      "error": null,
+      "artifact": "<project>/data/mainline-device/generated-event-capture/retry-artifacts/20260923T194236/sortie-a2.json"
+    }
+  ]
+}

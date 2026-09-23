@@ -27,6 +27,7 @@ import os
 import sys
 import time
 import traceback
+from contextlib import contextmanager
 
 FORK = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      '..', '.runtime', 'engine'))
@@ -1760,6 +1761,33 @@ def apply_in_map_threshold_compat():
     _state['in_map_compat'] = True
 
 
+@contextmanager
+def campaign_button_color_compat():
+    """During native sorties, confirm near-miss colors with the asset's fixed-area template."""
+    from module.base.button import Button
+    from module.base.utils import color_similarity, get_color
+
+    original = Button.appear_on
+
+    def appear_on(button, image, threshold=10):
+        if original(button, image, threshold=threshold):
+            return True
+        if not button.file or float(threshold) != 10.0:
+            return False
+        try:
+            tolerance = float(color_similarity(get_color(image, button.area), button.color))
+            return (tolerance < float(threshold) * 2
+                    and button.match(image, offset=(0, 0), similarity=0.85))
+        except Exception:
+            return False
+
+    Button.appear_on = appear_on
+    try:
+        yield
+    finally:
+        Button.appear_on = original
+
+
 def apply_boss_icon_color_compat(enabled=False):
     """**可选兜底**：给 BOSS 判据补一条"蓝色眼睛"判据。**默认关闭**。
 
@@ -2367,7 +2395,8 @@ def op_s3_run_plan(args):
             battle_count=args.get('battle_count'))
         if args.get('artifact_dir'):
             native_kwargs['artifact_dir'] = args['artifact_dir']
-        result = run_native_campaign(inst, **native_kwargs)
+        with campaign_button_color_compat():
+            result = run_native_campaign(inst, **native_kwargs)
     finally:
         if owned_enter:
             inst.enter_map = own_enter

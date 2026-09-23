@@ -15,11 +15,11 @@ namespace Alas.Tasks;
 /// </summary>
 public static class TaskQueuePlanner
 {
-    /// <summary>生成队列文档；返回 (任务数, 文档)。</summary>
+    /// <summary>生成队列文档；返回 (选中章节数, 文档)。</summary>
     public static (int Count, JsonObject Document) Build(string dataDirectory, string prefix,
                                                          bool onlyComplete, int limit,
                                                          int maxRounds, double maxSeconds,
-                                                         bool dryRun)
+                                                         bool dryRun, bool captureAfter = false)
     {
         var catalog = UpstreamData.Catalog.Open(dataDirectory);
         var matched = EventStateTask.Select(catalog, prefix, onlyComplete, default, out int total);
@@ -47,6 +47,14 @@ public static class TaskQueuePlanner
                 // 但失败仍会按"失败即停"停下（要跑完请显式 --continue-on-error）。
                 ["required"] = false,
             });
+            if (captureAfter)
+                tasks.Add(new JsonObject
+                {
+                    ["id"] = $"{module}:post",
+                    ["kind"] = "account_state",
+                    ["input"] = new JsonObject { ["capture"] = true },
+                    ["required"] = true,
+                });
         }
 
         var document = new JsonObject
@@ -56,6 +64,7 @@ public static class TaskQueuePlanner
             ["only_complete"] = onlyComplete,
             ["limit"] = limit,
             ["dry_run"] = dryRun,
+            ["capture_after"] = captureAfter,
             ["chapters_total"] = total,
             ["matched"] = matched.Count,
             ["tasks"] = tasks,

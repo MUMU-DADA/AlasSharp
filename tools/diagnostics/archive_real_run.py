@@ -32,6 +32,9 @@ def archive_run(source: Path, product_commit: str) -> Path:
         raise FileExistsError(f'archive already exists: {destination}')
 
     names = ['index.json', 'session-log.jsonl', 'queue.json']
+    names += sorted(path.name for path in source.glob('index-*.json'))
+    if (source / 'plan.json').is_file():
+        names.append('plan.json')
     names += sorted(path.name for pattern in ('sortie-*.json', 'task-*.json')
                     for path in source.glob(pattern))
     if len(names) != len(set(names)) or not any(name.startswith('sortie-') for name in names):

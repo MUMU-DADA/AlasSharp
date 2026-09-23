@@ -1,0 +1,47 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 463.9,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "campaign.event_20260908_cn.a1",
+      "kind": "campaign_batch",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 192.3,
+      "artifact": "<project>/data/mainline-device/generated-event-capture/retry-artifacts/20260923T194236/task-campaign_event_20260908_cn_a1.json"
+    },
+    {
+      "id": "campaign.event_20260908_cn.a1:post",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.2,
+      "artifact": "<project>/data/mainline-device/generated-event-capture/retry-artifacts/20260923T194236/task-campaign_event_20260908_cn_a1_post.json"
+    },
+    {
+      "id": "campaign.event_20260908_cn.a2",
+      "kind": "campaign_batch",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 271.2,
+      "artifact": "<project>/data/mainline-device/generated-event-capture/retry-artifacts/20260923T194236/task-campaign_event_20260908_cn_a2.json"
+    },
+    {
+      "id": "campaign.event_20260908_cn.a2:post",
+      "kind": "account_state",
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.2,
+      "artifact": "<project>/data/mainline-device/generated-event-capture/retry-artifacts/20260923T194236/task-campaign_event_20260908_cn_a2_post.json"
+    }
+  ]
+}

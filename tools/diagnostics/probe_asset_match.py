@@ -21,6 +21,8 @@ import os
 import sys
 from pathlib import Path
 
+import cv2
+
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / '.runtime' / 'engine'
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -35,7 +37,7 @@ except Exception:
 CALLER_CWD = Path.cwd()
 os.chdir(ENGINE)
 import alas_vision as av                                        # noqa: E402
-from module.base.utils import color_similarity, get_color       # noqa: E402
+from module.base.utils import color_similarity, crop, get_color  # noqa: E402
 
 
 def describe(asset_id: str) -> str:
@@ -51,8 +53,16 @@ def describe(asset_id: str) -> str:
     parts = [f'{asset_id:34s}']
     if has_file:
         try:
-            score = float(button.match(image, offset=(0, 0), similarity=0.85))
-            parts.append(f'模板={score:.3f}{"✓" if score >= 0.85 else "✗"}')
+            button.ensure_template()
+            region = crop(image, button.area, copy=False)
+            templates = button.image if button.is_gif else [button.image]
+            score = max(float(cv2.minMaxLoc(cv2.matchTemplate(
+                template, region, cv2.TM_CCOEFF_NORMED))[1])
+                for template in templates)
+            matched = button.match(image, offset=(0, 0), similarity=0.85)
+            parts.append(f'模板={score:.3f}{"✓" if matched else "✗"}')
+            combined = button.match_template_color(image, offset=(0, 0))
+            parts.append(f'模板+颜色={"✓" if combined else "✗"}')
         except Exception as error:
             parts.append(f'模板=取不到({type(error).__name__})')
     else:

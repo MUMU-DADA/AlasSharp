@@ -17,6 +17,69 @@ except Exception:
     pass
 
 
+def make_multi_index_fixture(destination: Path, events: list[Path]) -> None:
+    """Combine two archived sorties into a temporary synthetic queue for contract tests."""
+    by_stage = {}
+    for path in events:
+        if (path.parent / 'task-after-event.json').is_file():
+            stage = json.loads(path.read_text(encoding='utf-8'))['result']['stage']
+            by_stage.setdefault(stage, path)
+    first, second = by_stage['a1'].parent, by_stage['a2'].parent
+    shutil.copytree(first, destination)
+    (destination / 'archive.json').unlink()
+    for name in ('index.json', 'sortie-a2.json', 'task-event-a2.json'):
+        shutil.copyfile(second / name, destination / ('index-2.json' if name == 'index.json' else name))
+
+    task_path = destination / 'task-event-a2.json'
+    task = json.loads(task_path.read_text(encoding='utf-8'))
+    task['evidence']['index_artifact'] = 'index-2.json'
+    task_path.write_text(json.dumps(task), encoding='utf-8')
+
+    for stage, source in (('a1', first), ('a2', second)):
+        capture = json.loads((source / 'task-after-event.json').read_text(encoding='utf-8'))
+        capture['id'] = f'after-{stage}'
+        (destination / f'task-after-{stage}.json').write_text(json.dumps(capture), encoding='utf-8')
+    (destination / 'task-after-event.json').unlink()
+
+    queue = json.loads((first / 'queue.json').read_text(encoding='utf-8'))
+    other_queue = json.loads((second / 'queue.json').read_text(encoding='utf-8'))
+    queue['tasks'] = queue['tasks'] + other_queue['tasks']
+    queue['elapsed_s'] += other_queue['elapsed_s']
+    for position, stage in ((1, 'a1'), (3, 'a2')):
+        queue['tasks'][position]['id'] = f'after-{stage}'
+        queue['tasks'][position]['artifact'] = f'task-after-{stage}.json'
+    (destination / 'queue.json').write_text(json.dumps(queue), encoding='utf-8')
+
+    def read_session(source: Path) -> list[dict]:
+        return [json.loads(line) for line in
+                (source / 'session-log.jsonl').read_text(encoding='utf-8').splitlines()]
+
+    first_session, second_session = read_session(first), read_session(second)
+    first_tasks, second_tasks = first_session[3:-3], second_session[3:-3]
+    for stage, rows in (('a1', first_tasks), ('a2', second_tasks)):
+        for event in rows:
+            fields = event.get('fields') or {}
+            if event.get('scope') == 'queue' and fields.get('task') == 'after-event':
+                fields['task'] = f'after-{stage}'
+    session = first_session[:3] + first_tasks + second_tasks + first_session[-3:]
+    for event in session:
+        fields = event.get('fields') or {}
+        if event.get('scope') == 'queue' and 'kinds' in fields:
+            fields.update(tasks=4, kinds='campaign_batch,account_state,campaign_batch,account_state')
+        elif event.get('scope') == 'queue' and 'outcome' in fields:
+            fields['tasks'] = 4
+    (destination / 'session-log.jsonl').write_text(
+        '\n'.join(json.dumps(event, ensure_ascii=False) for event in session), encoding='utf-8')
+
+    planned = []
+    for row in queue['tasks']:
+        task = json.loads((destination / Path(row['artifact']).name).read_text(encoding='utf-8'))
+        planned.append({key: task[key] for key in ('id', 'kind', 'input', 'required')})
+    (destination / 'plan.json').write_text(json.dumps({
+        'generated_by': 'alashub plan-queue', 'dry_run': False, 'tasks': planned,
+    }), encoding='utf-8')
+
+
 def main():
     sources = sorted(ARCHIVE.rglob('sortie-*.json'))
     if not sources:
@@ -161,6 +224,45 @@ def main():
             checks.append(('现有归档不会被覆盖', duplicate_rejected))
         finally:
             archive_real_run.ARCHIVE = previous_archive
+    with TemporaryDirectory(prefix='alas-multi-index-check-', dir=archive_real_run.ROOT / 'data') as tmp:
+        root = Path(tmp)
+        source_dir = root / 'synthetic-source'
+        make_multi_index_fixture(source_dir, events)
+        output_root = root / 'archives'
+        output_root.mkdir()
+        previous_archive = archive_real_run.ARCHIVE
+        try:
+            archive_real_run.ARCHIVE = output_root
+            generated = archive_real_run.archive_run(source_dir, '5f87af9')
+        finally:
+            archive_real_run.ARCHIVE = previous_archive
+        records, errors = audit_archive(generated)
+        checks.append(('多批次索引及计划完整归档', not errors and
+                       {'index.json', 'index-2.json', 'plan.json'} <=
+                       {p.name for p in generated.iterdir()} and
+                       len(records) == 2 and all(r['verdict'] == 'consistent' and
+                                                 r['post_campaign_page_verified'] for r in records)))
+        plan_path = generated / 'plan.json'
+        original_plan = plan_path.read_bytes()
+        plan = json.loads(original_plan)
+        plan['tasks'][2]['input']['chapters'] = ['campaign.other']
+        plan_path.write_text(json.dumps(plan), encoding='utf-8')
+        checks.append(('计划章节篡改被逐关语义审计发现', all(
+            audit_artifact(path)['verdict'] == 'contradiction'
+            for path in generated.glob('sortie-*.json'))))
+        checks.append(('计划篡改被归档校验和发现', bool(audit_archive(generated)[1])))
+        plan_path.write_bytes(original_plan)
+        task_path = generated / 'task-event-a2.json'
+        original_task = task_path.read_bytes()
+        task = json.loads(original_task)
+        task['evidence']['index_artifact'] = 'index.json'
+        task_path.write_text(json.dumps(task), encoding='utf-8')
+        checks.append(('战役任务错指前一批次索引被发现',
+                       audit_artifact(generated / 'sortie-a2.json')['verdict'] == 'contradiction'))
+        task_path.write_bytes(original_task)
+        index_path = generated / 'index-2.json'
+        index_path.unlink()
+        checks.append(('次批次索引缺失不得静默跳过', bool(audit_archive(generated)[1])))
     for name, passed in checks:
         print(f'{"PASS" if passed else "FAIL"}: {name}')
     return 0 if all(passed for _, passed in checks) else 1
