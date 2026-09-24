@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 import time
 import traceback
 
 from native_telemetry import NativeLogCapture, observe_config, write_snapshot
+
+
+def _traceback_tail(error):
+    return [f'{os.path.basename(frame.filename)}:{frame.lineno} {frame.name}'
+            for frame in traceback.extract_tb(error.__traceback__)[-8:]]
 
 
 class FileStopEvent:
@@ -48,6 +54,8 @@ def run_scheduler(args, host):
     device = None
     previous_config = None
     last_success = None
+    last_failure = None
+    failure_frames = []
     observation = {}
     capture = None
 
@@ -93,7 +101,7 @@ def run_scheduler(args, host):
             return super().wait_until(future)
 
         def run(self, command, skip_first_screenshot=False):
-            nonlocal last_success
+            nonlocal last_success, last_failure
             out['dispatch_count'] += 1
             number = out['dispatch_count']
             record = dict(sequence=number, instance=instance, method=command,
@@ -117,14 +125,15 @@ def run_scheduler(args, host):
             except (Exception, SystemExit) as error:
                 last_success = False
                 record.update(error=f'{type(error).__name__}: {error}',
-                              traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
+                              traceback_tail=_traceback_tail(error))
                 raise
             finally:
                 logger.removeHandler(failure)
                 failure.close()
                 if failure.traceback_tail:
                     record['traceback_tail'] = failure.traceback_tail
-                    record['error'] = f'上游执行失败: {failure.kind}'
+                    message = f'上游执行失败: {failure.kind}'
+                    record['error'] = f"{record['error']}; {message}" if record.get('error') else message
                 if failure.error_directory is not None and failure.error_directory.is_dir():
                     error_dir = failure.error_directory
                     record['failure_frames'] = [p.relative_to(host.FORK).as_posix()
@@ -134,6 +143,13 @@ def run_scheduler(args, host):
                         record['native_error_log'] = (error_dir / 'log.txt').relative_to(host.FORK).as_posix()
                 if not record['native_success']:
                     out['failed_dispatches'] += 1
+                    record.setdefault('error', '上游原生调度器未确认成功')
+                    if record.get('traceback_tail'):
+                        record['error'] += '\n' + '\n'.join(record['traceback_tail'])
+                    last_failure = dict(record)
+                    for frame in record.get('failure_frames', []):
+                        if frame not in failure_frames:
+                            failure_frames.append(frame)
                 record['finished_at'] = datetime.now(timezone.utc).isoformat()
                 write(name, record)
                 status('selecting', config=self.config)
@@ -155,25 +171,40 @@ def run_scheduler(args, host):
             out['decision'] = 'stopped'
         else:
             out.update(decision='error', error=f'SystemExit: {error.code}',
-                       traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
+                       traceback_tail=_traceback_tail(error))
         out['exit_code'] = None if error.code is None else str(error.code)
     except Exception as error:
         out.update(decision='error', error=f'{type(error).__name__}: {error}',
-                   traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
+                   traceback_tail=_traceback_tail(error))
     finally:
+        # Core consumes the task summary, not individual dispatch files. Preserve
+        # the last native cause as well as every saved failure frame on that path.
+        out['failure_frames'] = failure_frames
+        if out.get('error') and out.get('traceback_tail'):
+            out['error'] += '\n' + '\n'.join(out['traceback_tail'])
+        if last_failure is not None and out.get('decision') != 'stopped':
+            out['last_failed_dispatch'] = last_failure['sequence']
+            out['error'] = f"{out.get('error', '上游调度失败')}; {last_failure['error']}"
+            for key in ('traceback_tail', 'native_error_dir', 'native_error_log'):
+                if key in last_failure:
+                    out[key] = last_failure[key]
         if device is not None:
             try:
                 device.config = previous_config
             except Exception as error:
-                out.update(decision='error', error=f'恢复设备配置失败: {type(error).__name__}: {error}',
-                           traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
+                message = f'恢复设备配置失败: {type(error).__name__}: {error}'
+                out.update(decision='error', error=f"{out['error']}; {message}" if out.get('error') else message)
+                tail = _traceback_tail(error)
+                out['traceback_tail'] = out.get('traceback_tail', []) + tail
+                out['error'] += '\n' + '\n'.join(tail)
         out.update(stop_observed=stop.observed, elapsed_s=round(time.monotonic() - started, 3))
         def finalization_error(phase, error):
             message = f'{phase}: {type(error).__name__}: {error}'
             out.setdefault('artifact_errors', []).append(message)
             previous = out.get('error')
             out.update(decision='error', error=f'{previous}; {message}' if previous else message,
-                       traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
+                       traceback_tail=out.get('traceback_tail', []) + _traceback_tail(error))
+            out['error'] += '\n' + '\n'.join(_traceback_tail(error))
 
         try:
             status(out.get('decision', 'error'), error=out.get('error'), stop_observed=stop.observed)

@@ -1434,7 +1434,8 @@ def op_tool_run(args):
             out['error'] = '上游原生工具未确认成功'
     except (Exception, SystemExit) as error:
         out.update(decision='error', error=f'{type(error).__name__}: {error}',
-                   traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
+                   traceback_tail=[f'{os.path.basename(frame.filename)}:{frame.lineno} {frame.name}'
+                                   for frame in traceback.extract_tb(error.__traceback__)[-8:]])
         if isinstance(error, SystemExit):
             out['exit_code'] = None if error.code is None else str(error.code)
     finally:
@@ -1455,9 +1456,15 @@ def op_tool_run(args):
             try:
                 device.config = previous_config
             except Exception as restore_error:
+                previous_error = out.get('error')
+                message = f'恢复设备配置失败: {type(restore_error).__name__}: {restore_error}'
                 out.update(decision='error', native_success=False,
-                           error=f'恢复设备配置失败: {type(restore_error).__name__}: {restore_error}',
-                           traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
+                           error=f'{previous_error}; {message}' if previous_error else message)
+                restore_tail = [f'{os.path.basename(frame.filename)}:{frame.lineno} {frame.name}'
+                                for frame in traceback.extract_tb(restore_error.__traceback__)[-8:]]
+                out['traceback_tail'] = out.get('traceback_tail', []) + restore_tail
+        if out.get('error') and out.get('traceback_tail'):
+            out['error'] += '\n' + '\n'.join(out['traceback_tail'])
         out['elapsed_s'] = round(time.monotonic() - started, 3)
     return out
 

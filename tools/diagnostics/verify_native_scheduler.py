@@ -20,7 +20,7 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 os.chdir(ENGINE)
 import alas_vision as host
 from alas import AzurLaneAutoScript
-from module.exception import GameNotRunningError
+from module.exception import GameNotRunningError, MapDetectionError
 from module.logger import logger
 import native_telemetry
 
@@ -170,6 +170,8 @@ def native_case(root, mode):
             events.append(('run', self.config.task.command))
             if mode in ('failure_retry', 'no_retry'):
                 raise GameNotRunningError('fixture failure')
+            if mode == 'fatal_map':
+                raise MapDetectionError('fixture map detection failure')
             state['index'] += 1
             if mode != 'sequence' or state['index'] >= len(commands):
                 stop.write_text('stop')
@@ -207,6 +209,13 @@ def native_case(root, mode):
         captures.append(capture)
         return native_close(capture)
 
+    def save_fixture_error(_):
+        saved = root / 'log/error' / mode
+        saved.mkdir(parents=True, exist_ok=True)
+        (saved / 'failure.png').write_bytes(b'synthetic-frame')
+        (saved / 'log.txt').write_text('synthetic native log', encoding='utf-8')
+        logger.warning('Saving error: ' + saved.relative_to(root).as_posix())
+
     with patch.object(host, 'FORK', str(root)), patch.object(host, '_DEVICE_ARGS', {'serial': 'fixture-device'}), \
          patch.object(host, '_device_engine', lambda config: device), patch('alas.AzurLaneConfig', Config), \
          patch.object(AzurLaneAutoScript, 'checker', property(lambda _: checker)), \
@@ -214,6 +223,7 @@ def native_case(root, mode):
          patch('module.base.resource.release_resources'), patch('alas.time.sleep'), \
          patch.object(logger, 'handlers', []), patch.object(logger, 'propagate', False), \
          patch.object(logger, 'set_file_logger'), \
+         patch.object(AzurLaneAutoScript, 'save_error_log', save_fixture_error), \
          patch.object(native_telemetry, 'write_snapshot', side_effect=write_with_final_failure), \
          patch.object(native_telemetry.NativeLogCapture, 'close', track_close):
         args = dict(instance='fixture', allow_actions=True, confirm='fixture', artifact_directory=str(directory))
@@ -223,7 +233,7 @@ def native_case(root, mode):
         assert not events
         got = host.op_scheduler_run(args)
         assert not logger.handlers, 'scheduler telemetry handler leaked'
-    expected = 'error' if mode in ('failure_retry', 'artifact_failure') else 'failed' if mode == 'no_retry' else 'stopped'
+    expected = 'error' if mode in ('failure_retry', 'artifact_failure', 'fatal_map') else 'failed' if mode == 'no_retry' else 'stopped'
     assert got['decision'] == expected, (mode, got, events)
     assert device.config is initial_config, mode
     records = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(directory.glob('dispatch-*.json'))]
@@ -252,8 +262,21 @@ def native_case(root, mode):
     if mode == 'failure_retry':
         assert state['count'] == 3 and got['failed_dispatches'] == 3 and got['exit_code'] == '1'
         assert all(record['traceback_tail'] for record in records)
+        assert all(all(line in record['error'] for line in record['traceback_tail']) for record in records), records
+        assert 'GameNotRunningError' in got['error'] and got['failure_frames'] == [], got
+        assert got['traceback_tail'] and all(line in got['error'] for line in got['traceback_tail']), got
     if mode == 'no_retry':
         assert state['count'] == 1 and got['failed_dispatches'] == 1
+    if mode == 'fatal_map':
+        frame = 'log/error/fatal_map/failure.png'
+        assert got['exit_code'] == '1' and state['count'] == 1 and got['last_failed_dispatch'] == 1, got
+        assert got['failure_frames'] == records[0]['failure_frames'] == [frame]
+        assert (root / frame).is_file() and got['native_error_log'] == 'log/error/fatal_map/log.txt'
+        assert 'MapDetectionError' in got['error'] and 'SystemExit: 1' in got['error'], got
+        assert all(line in got['error'] for line in got['traceback_tail'])
+        assert all('/' not in line and '\\' not in line for line in got['traceback_tail'])
+    elif mode not in ('failure_retry', 'no_retry'):
+        assert 'last_failed_dispatch' not in got and got['failure_frames'] == [], got
     if mode == 'wait_cancel':
         assert not records and got['exit_code'] == '0' and 'watch' in events
     if mode == 'reload':
@@ -334,7 +357,7 @@ def main():
         assert len(tail['entries'][-1]['message']) == 12000 and len(raw[-1]['message']) >= 13000
         print('PASS: native log ring is bounded, cursors stable, full raw evidence retained')
         for mode in ('sequence', 'failure_retry', 'no_retry', 'wait_cancel', 'reload', 'recovered', 'prestop',
-                     'artifact_failure'):
+                     'artifact_failure', 'fatal_map', 'sequence_after_failure'):
             native_case(workspace, mode)
         queue_cases(workspace)
 

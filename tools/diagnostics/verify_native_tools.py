@@ -32,10 +32,29 @@ def host_checks(workspace):
     events = []
     state = {'mode': 'success'}
     original = object()
-    device = types.SimpleNamespace(config=original,
-        stuck_record_clear=lambda: events.append('stuck'),
-        click_record_clear=lambda: events.append('click'),
-        screenshot=lambda: events.append('screenshot'))
+    class Device:
+        _config = original
+
+        @property
+        def config(self):
+            return self._config
+
+        @config.setter
+        def config(self, value):
+            if state['mode'] == 'restore_failure' and value is original:
+                raise RuntimeError('fixture config restore failure')
+            self._config = value
+
+        def stuck_record_clear(self):
+            events.append('stuck')
+
+        def click_record_clear(self):
+            events.append('click')
+
+        def screenshot(self):
+            events.append('screenshot')
+
+    device = Device()
 
     class Config:
         Error_SaveError = False
@@ -67,6 +86,15 @@ def host_checks(workspace):
 
         def run(self):
             events.append('story-run')
+            if state['mode'] == 'restore_failure':
+                raise RuntimeError('fixture original story failure')
+
+    def save_fixture_error(_):
+        saved = workspace / 'log/error' / state['mode']
+        saved.mkdir(parents=True, exist_ok=True)
+        (saved / 'failure.png').write_bytes(b'synthetic-frame')
+        (saved / 'log.txt').write_text('synthetic native log', encoding='utf-8')
+        logger.warning('Saving error: ' + saved.relative_to(workspace).as_posix())
 
     def get_device(config=None):
         assert config.config_name == 'fixture'
@@ -84,7 +112,7 @@ def host_checks(workspace):
     with patch.object(av, 'FORK', str(workspace)), patch.object(av, '_device_engine', get_device), \
          patch.object(av, '_DEVICE_ARGS', {'serial': 'fixture-device'}), \
          patch.dict(sys.modules, modules), patch('alas.AzurLaneConfig', Config), \
-         patch('alas.handle_notify'), patch.object(AzurLaneAutoScript, 'save_error_log'), \
+         patch('alas.handle_notify'), patch.object(AzurLaneAutoScript, 'save_error_log', save_fixture_error), \
          patch.object(logger, 'handlers', []), patch.object(logger, 'propagate', False):
         for task in get_available_func():
             assert av.op_tool_plan({'task': task})['found'] is True, task
@@ -108,14 +136,32 @@ def host_checks(workspace):
             assert got['native_success'] is (verdict == 'ran'), got
             if mode == 'exception':
                 assert got['traceback_tail'] and 'RuntimeError' in got['error'], got
+                assert got['failure_frames'] == ['log/error/exception/failure.png']
+                assert (workspace / got['failure_frames'][0]).is_file()
+                assert got['native_error_log'] == 'log/error/exception/log.txt'
+            if mode in ('false', 'exit', 'exception'):
+                assert got['traceback_tail'] and all(line in got['error'] for line in got['traceback_tail']), got
+                assert all('/' not in line and '\\' not in line for line in got['traceback_tail']), got
+        state['mode'] = 'success'
         events.clear()
         got = run('EventStory')
         assert got['decision'] == 'ran', got
+        assert not got.get('failure_frames') and not got.get('traceback_tail'), got
         assert events == ['config', 'device', 'stuck', 'click', 'story-init', 'story-run'], events
         assert device.config is original
         stale = av.op_tool_run(dict(task='EventStory', instance='fixture', allow_actions=True,
                                     confirm='EventStory', device_configured=False))
         assert stale['decision'] == 'error' and device.config is original, stale
+        state['mode'] = 'restore_failure'
+        got = run('EventStory')
+        assert got['decision'] == 'error' and got['native_success'] is False
+        assert 'SystemExit: 1' in got['error'] and 'RuntimeError' in got['error']
+        assert 'fixture config restore failure' in got['error']
+        assert any('run' in line for line in got['traceback_tail']) and any('config' in line for line in got['traceback_tail'])
+        assert all(line in got['error'] for line in got['traceback_tail'])
+        assert got['failure_frames'] == ['log/error/restore_failure/failure.png']
+        state['mode'] = 'success'
+        device.config = original
         with patch.object(av, '_DEVICE_ARGS', {}):
             state['mode'] = 'success'
             events.clear()
