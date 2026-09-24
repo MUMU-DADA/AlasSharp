@@ -35,6 +35,7 @@
 | `20260925T043232` | 只读设备；宿主 1 / 设备配置 1 | 2.9 秒 |
 | `20260925T045455` | 动作授权；宿主 1 / 设备配置 1 | 17.8 秒 |
 | `20260925T053018` | 动作授权；宿主 1 / 设备配置 1 | 8 秒 |
+| `20260925T061816` | 动作授权；宿主 1 / 设备配置 1 | 176.3 秒 |
 
 | 归档 / 任务 | 任务域 | 已核对事实 |
 | --- | --- | --- |
@@ -128,6 +129,9 @@
 | `20260925T053018/research-state` | `account_state` | 实时抓帧；页面 page_research；in_map=False |
 | `20260925T053018/home` | `navigate` | 上游原生导航到 page_main；完成 1/1 轮；最终 page_main |
 | `20260925T053018/home-state` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
+| `20260925T061816/plan` | `periodic_plan` | 上游绑定 1 项；请求 Main 已找到 |
+| `20260925T061816/main-once` | `periodic_run` | 上游 AzurLaneAutoScript.main；decision=ran；native_success=true |
+| `20260925T061816/after` | `account_state` | 实时抓帧；页面 page_campaign；in_map=False |
 
 来源目录（项目相对路径，原件不入库）：
 
@@ -154,3 +158,4 @@
 - `data/mainline-device/live-20260925-scheduler-after/artifacts/20260925T043232`
 - `data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455`
 - `data/mainline-device/live-20260925-boundary-cache/artifacts/20260925T053018`
+- `data/mainline-device/live-20260925-native-main-fixed/artifacts/20260925T061816`

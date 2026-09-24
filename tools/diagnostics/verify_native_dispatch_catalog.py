@@ -153,6 +153,14 @@ def check_entry(entry, workspace, native_config_path):
         events.append(('call', symbol))
         return finish_endpoint(config)
 
+    # Keep the loader hook shape when substituting a campaign dispatcher. The
+    # leaf run remains inert; executing the real loader here would exceed this
+    # test's dispatch boundary (covered by verify_native_campaign_runtime).
+    if constructor is not None and hasattr(original, 'load_campaign'):
+        def unexpected_load(*args, **kwargs):
+            raise AssertionError('Dispatch fixture must not enter a campaign')
+        Endpoint.load_campaign = unexpected_load
+
     def engine(config=None):
         assert isinstance(config, AzurLaneConfig)
         device_requests.append(config)

@@ -1,0 +1,50 @@
+{
+  "id": "main-once",
+  "kind": "periodic_run",
+  "required": true,
+  "input": {
+    "task": "Main",
+    "instance": "validation_native_main_fixed_20260925",
+    "allow_actions": true,
+    "confirm": "Main"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 175.8,
+  "boundary_state": {
+    "available": false,
+    "frame_source": "device_cached",
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "常驻设备没有缓存画面；未创建设备或抓帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "task": "Main",
+    "instance": "validation_native_main_fixed_20260925",
+    "allow_actions": true,
+    "confirm_matches": true,
+    "decision": "ran",
+    "target": {
+      "module": "alas",
+      "class": "AzurLaneAutoScript",
+      "scheduler_command": "Main",
+      "method": "main"
+    },
+    "constructed": true,
+    "ran": true,
+    "native_success": true,
+    "elapsed_s": 175.6,
+    "returned": null,
+    "exit_code": null,
+    "reason": null,
+    "error": null,
+    "traceback_tail": [],
+    "native_error_dir": null,
+    "native_error_log": null,
+    "failure_frames": []
+  }
+}

@@ -63,6 +63,7 @@ STEPS = [
     ('verify_native_dispatch_catalog.py', '全部周期任务与独立工具的原生分派、配置绑定和重试写入（离线）', False, 300),
     ('verify_native_tool_devices.py', '全部独立工具原生构造器复用会话设备与错误检测恢复（离线）', False, 120),
     ('verify_native_runtime_compat.py', '新宿主周期任务/连续调度/独立工具的原生数值兼容（离线）', False, 120),
+    ('verify_native_campaign_runtime.py', '原生任务战役加载/舰队/相机/结算兼容与作用域恢复（离线）', False, 120),
     ('verify_native_scheduler.py', '上游连续调度与边界停止（离线）', False, 300),
     ('verify_scheduler_evidence.py', '真实连续调度边界停止证据及反例（离线）', False, 120),
     ('verify_instance_device_binding.py', '实例配置与共享设备绑定（离线）', False, 120),

@@ -1,0 +1,44 @@
+{
+  "id": "plan",
+  "kind": "periodic_plan",
+  "required": true,
+  "input": {
+    "task": "Main"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 0,
+  "boundary_state": {
+    "available": false,
+    "frame_source": "device_cached",
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "常驻设备没有缓存画面；未创建设备或抓帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "count": 1,
+    "missing": [],
+    "plans": [
+      {
+        "task": "Main",
+        "found": true,
+        "scheduler_command": "Main",
+        "method": "main",
+        "lineno": 353,
+        "imports": [
+          "from module.campaign.run import CampaignRun"
+        ],
+        "calls": [
+          "CampaignRun",
+          "run"
+        ],
+        "calls_run": true,
+        "error": null
+      }
+    ]
+  }
+}

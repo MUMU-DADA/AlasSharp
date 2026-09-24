@@ -1,0 +1,127 @@
+{
+  "completed": {
+    "plan": {
+      "identity": {
+        "kind": "periodic_plan",
+        "required": true,
+        "input": {
+          "task": "Main"
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "main-once": {
+      "identity": {
+        "kind": "periodic_run",
+        "required": true,
+        "input": {
+          "task": "Main",
+          "instance": "validation_native_main_fixed_20260925",
+          "allow_actions": true,
+          "confirm": "Main"
+        },
+        "preceding_tasks": [
+          {
+            "id": "plan",
+            "kind": "periodic_plan",
+            "required": true,
+            "input": {
+              "task": "Main"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "after": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "plan",
+            "kind": "periodic_plan",
+            "required": true,
+            "input": {
+              "task": "Main"
+            }
+          },
+          {
+            "id": "main-once",
+            "kind": "periodic_run",
+            "required": true,
+            "input": {
+              "task": "Main",
+              "instance": "validation_native_main_fixed_20260925",
+              "allow_actions": true,
+              "confirm": "Main"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-25T06:21:12+08:00"
+}

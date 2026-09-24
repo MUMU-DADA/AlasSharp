@@ -1833,11 +1833,14 @@ def prepare_native_runtime():
 @contextmanager
 def native_task_runtime():
     """Scope shared runtime fixes without inheriting an explicit sortie option."""
+    from native_campaign_runtime import native_campaign_scope
+
     prepare_native_runtime()
     previous = _CLEAR_ALL_OVERRIDE['enabled']
     _CLEAR_ALL_OVERRIDE['enabled'] = False
     try:
-        yield
+        with native_campaign_scope(sys.modules[__name__]):
+            yield
     finally:
         _CLEAR_ALL_OVERRIDE['enabled'] = previous
 

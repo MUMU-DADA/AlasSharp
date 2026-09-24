@@ -335,6 +335,11 @@ def queue_cases(workspace):
 
 
 def main():
+    # patch.dict restores all of sys.modules after each case. Import native
+    # extension dependencies first, so later cases do not reload NumPy/OpenCV.
+    import module.campaign.run
+    import module.campaign.campaign_base
+
     root = ROOT / '.runtime/verification'
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='scheduler-', dir=root) as folder:

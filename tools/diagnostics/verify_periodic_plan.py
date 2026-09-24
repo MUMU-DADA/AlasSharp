@@ -214,6 +214,9 @@ def verify_native_dispatch(failures):
             state.calls.append(('opsi_explore',))
 
     class FakeCampaignRun:
+        def load_campaign(self, *args, **kwargs):
+            raise AssertionError('Dispatch fixture must not enter a campaign')
+
         def __init__(self, config, device):
             self.config = config
             state.calls.append(('event.construct', config.task.command, device is globals_device[0]))

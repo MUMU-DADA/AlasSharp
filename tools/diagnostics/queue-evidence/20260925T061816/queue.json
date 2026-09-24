@@ -1,0 +1,53 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 176.3,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "plan",
+      "kind": "periodic_plan",
+      "required": true,
+      "input": {
+        "task": "Main"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/live-20260925-native-main-fixed/artifacts/20260925T061816/task-plan.json"
+    },
+    {
+      "id": "main-once",
+      "kind": "periodic_run",
+      "required": true,
+      "input": {
+        "task": "Main",
+        "instance": "validation_native_main_fixed_20260925",
+        "allow_actions": true,
+        "confirm": "Main"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 175.8,
+      "artifact": "<project>/data/mainline-device/live-20260925-native-main-fixed/artifacts/20260925T061816/task-main-once.json"
+    },
+    {
+      "id": "after",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/live-20260925-native-main-fixed/artifacts/20260925T061816/task-after.json"
+    }
+  ]
+}

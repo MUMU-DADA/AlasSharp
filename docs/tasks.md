@@ -139,6 +139,8 @@ TaskEnd 和重试异常，并验证原生 Restart 配置写入、设备恢复及
 它不验证领域构造器或内部流程，不把调度通过当作业务完成，见[全量分派报告](archive/reports/native-dispatch.md)。
 `verify_native_scheduler.py` 对真实原生循环使用合成依赖；`verify_scheduler_control.py` 验证 Core 接单、常驻宿主、停止、关闭及工件。
 `verify_native_runtime_compat.py` 为三种执行入口分别启动新进程，验证真实上游数值计算、拒绝路径和全清选项隔离。
+`verify_native_campaign_runtime.py` 补验任务内首次战役调用的舰队/相机/结算兼容，使用真实原生加载器和 run；
+16 项检查覆盖继承配置、MAP 身份和正常/异常/嵌套作用域恢复，战斗端点仍为替身，不证明通关。
 `verify_native_tool_devices.py` 再深入全部工具的真实构造器，包括函数型入口的内部构造和 DaemonBase，
 仅替换末端 run 与物理设备构造；验证任务配置初始化、显式设备/内部工厂共用会话、未配置时拒绝、
 正常/异常退出及原有卡死/多次点击检测恢复。它仍不执行工具业务动作。

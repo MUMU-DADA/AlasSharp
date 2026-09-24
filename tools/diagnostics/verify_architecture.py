@@ -461,6 +461,12 @@ def main() -> int:
         "控件发现来自上游继承声明": "discover_controls(FORK)" in read("tools/alas_vision.py")
                                and (ROOT / "tools/ui_rule_catalog.py").is_file(),
         "全量原生规则覆盖进入总验收": "verify_upstream_coverage.py" in read("tools/diagnostics/verify_all.py"),
+        "原生任务统一进入战役兼容作用域": 'with native_campaign_scope(sys.modules[__name__]):' in read("tools/alas_vision.py")
+                                  and 'verify_native_campaign_runtime.py' in read("tools/diagnostics/verify_all.py"),
+        "战役兼容保留原生加载和运行": all(marker in read("tools/native_campaign_runtime.py") for marker in (
+            'return original_load(self, *args, **kwargs)', 'return original_run(self, *args, **kwargs)',
+            'with host.campaign_button_color_compat():', 'CampaignBase.run = original_run',
+            'CampaignRun.load_campaign = original_load')),
         "旧控件逐页驱动不再执行": not any(marker in read("tools/diagnostics/verify_controls.py")
             for marker in ("import alas_vision", "import subprocess", "click_xy", "PLAN =", "def swipe(")),
         "旧页面逐段驱动不再执行": not any(marker in read(path)
