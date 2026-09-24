@@ -17,6 +17,7 @@ import logging
 import os
 from pathlib import Path
 import tempfile
+import traceback
 import types
 
 
@@ -146,7 +147,7 @@ class Fixture:
 
         # Do not let the host's optional ADB PATH setup touch the caller's environment.
         fake_path = types.SimpleNamespace(**{
-            name: getattr(os.path, name) for name in ('abspath', 'dirname', 'join', 'normpath')
+            name: getattr(os.path, name) for name in ('abspath', 'dirname', 'join', 'normpath', 'basename')
         }, isdir=lambda path: False)
         fake_os = types.SimpleNamespace(path=fake_path, environ={}, pathsep=os.pathsep)
         tree = ast.parse(host.read_text(encoding='utf-8'), filename=host.name)
@@ -158,6 +159,7 @@ class Fixture:
             '__builtins__': {**vars(builtins), '__import__': import_fixture},
             '__file__': str(root / 'tools' / 'alas_vision.py'), 'FORK': str(root),
             'os': fake_os, 'Path': Path, 'json': json,
+            'traceback': traceback,
             '_DEVICE_OBJ': None, '_DEVICE_KEY': None, '_DEVICE_ARGS': dict(TRANSPORT),
             '_LoggedNativeFailure': Failure,
             'native_task_runtime': contextlib.nullcontext,
