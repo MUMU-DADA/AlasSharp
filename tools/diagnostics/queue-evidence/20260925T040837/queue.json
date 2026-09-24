@@ -1,0 +1,27 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 6.1,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "chapter-map",
+      "kind": "observe",
+      "required": true,
+      "input": {
+        "map": "main",
+        "tick_seconds": 1,
+        "seconds": 4,
+        "chapter": "campaign.campaign_main.campaign_1_1"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 6.1,
+      "artifact": "<project>/data/mainline-device/live-20260925-observe-chapter/artifacts/20260925T040837/task-chapter-map.json"
+    }
+  ]
+}

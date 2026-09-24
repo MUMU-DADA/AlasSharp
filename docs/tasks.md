@@ -41,7 +41,7 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 | --- | --- | --- |
 | `campaign_batch` | `chapters` 为完整上游模块名；支持舰队、轮次、时间、全清及 `mode=normal/hard` | 真跑须动作会话，逐关结果过 `sortie-result/1` |
 | `account_state` | 只读页面、在图状态；`capture=true` 从设备取帧，存盘帧与现场帧来源明确区分 | 抓设备帧须设备会话 |
-| `observe` | `seconds`、`tick_seconds`；可加 `map=main/os` | 只读设备，tick 边界取消 |
+| `observe` | `seconds`、`tick_seconds`；可加 `map=main/os` 和完整 `chapter` 模块名 | 只读设备，tick 边界取消 |
 | `navigate` | `to`、`rounds`；`max_hops` 已停用，出现即拒绝 | 动作会话，调用上游 `UI.ui_ensure()` |
 | `os_state` | `capture`、`detect=map/globe`；海域网格与球面探针 | 只读，不执行寻敌或战斗 |
 | `os_action` | `task` 为上游 `opsi_*` 绑定任务，另需 `confirm`、`allow_actions` | 动作会话，原生调度 |
@@ -103,6 +103,8 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 `account_state` 的页面、在图判据或配置读取发生异常时记为 `failed/upstream_error`，并保留部分观测与错误；正常未命中仍可成功返回只读状态。
 `changed=false` 只是 `ui_ensure()` 返回值，不能据此断言没有点击。只读状态任务不会主动退出待机。
 识别异常先核对截图颜色、上游素材、配置和完整调用链，再核对功能是否解锁。
+`observe` 的可选 `chapter` 随 `map` 透传给宿主 `_map_config(chapter)`，由原生章节 Config 合并决定识别参数，
+不用导出 JSON 重建规则。省略时沿用通用配置；工件记录所用章节，未检出与执行异常仍分别计数。
 
 地图 `MapDetectionError` 是正常负样本；构造、其他加载异常、预测和逐格语义抽取错误属于执行故障，
 不能算作“不是地图”。逐格失败保留 `detected_raw/grid_count`，船标志未知不能当成零；OS 遮罩必须复位。

@@ -1,0 +1,76 @@
+{
+  "completed": {
+    "exit-observation": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_main",
+          "rounds": 1
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "after-cleanup": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "exit-observation",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main",
+              "rounds": 1
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-25T04:09:19+08:00"
+}

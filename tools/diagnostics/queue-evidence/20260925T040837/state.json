@@ -1,0 +1,38 @@
+{
+  "completed": {
+    "chapter-map": {
+      "identity": {
+        "kind": "observe",
+        "required": true,
+        "input": {
+          "map": "main",
+          "tick_seconds": 1,
+          "seconds": 4,
+          "chapter": "campaign.campaign_main.campaign_1_1"
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": false,
+          "read_only_device": true,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-25T04:08:43+08:00"
+}

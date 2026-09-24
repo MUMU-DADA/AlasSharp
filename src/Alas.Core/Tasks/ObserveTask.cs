@@ -27,7 +27,7 @@ public sealed class ObserveTask : ITaskRunner
     public TaskResult Run(TaskRequest request, TaskContext context, CancellationToken token)
     {
         var problems = new List<string>();
-        var (tickSeconds, seconds, mapMode) = ReadInput(request, problems);
+        var (tickSeconds, seconds, mapMode, chapter) = ReadInput(request, problems);
         if (problems.Count > 0) throw new ArgumentException(string.Join("; ", problems));
 
         var result = new TaskResult { Id = request.Id, Kind = Kind };
@@ -52,6 +52,7 @@ public sealed class ObserveTask : ITaskRunner
             ["tick_seconds"] = tickSeconds,
             ["requested_seconds"] = seconds,
             ["map_mode"] = mapMode,
+            ["chapter"] = chapter,
             ["read_only"] = true,
         };
 
@@ -106,6 +107,7 @@ public sealed class ObserveTask : ITaskRunner
                 evidence["map"] = new JsonObject
                 {
                     ["mode"] = mapMode,
+                    ["chapter"] = chapter,
                     ["attempts"] = mapAttempts,
                     ["detected_hits"] = mapHits,
                     ["errors"] = mapErrors,
@@ -229,7 +231,7 @@ public sealed class ObserveTask : ITaskRunner
                     try
                     {
                         var detected = context.Session.Vision.CallTyped<MapDetectResult>(
-                            "map_detect", new { mode = mapMode });
+                            "map_detect", new { mode = mapMode, chapter });
                         var mapError = detected.ExecutionError;
                         lastMapReason = mapError ?? detected.Reason;
                         lastGridCount = mapError is null || detected.GridFlagsError is not null
@@ -285,12 +287,16 @@ public sealed class ObserveTask : ITaskRunner
         return Finish();
     }
 
-    private static (double TickSeconds, double Seconds, string? MapMode) ReadInput(
+    private static (double TickSeconds, double Seconds, string? MapMode, string? Chapter) ReadInput(
         TaskRequest request, List<string> problems)
     {
         double tick = Number(request, "tick_seconds", 0.5, problems);
         double seconds = Number(request, "seconds", 20, problems);
-        string? map = null;
+        string? map = null, chapter = null;
+        if (request.Input is not null)
+            foreach (string field in request.Input.Select(pair => pair.Key))
+                if (field is not ("seconds" or "tick_seconds" or "map" or "chapter"))
+                    problems.Add($"未知观测输入字段: input.{field}");
         if (request.Input?["map"] is JsonNode mapNode)
         {
             if (mapNode is JsonValue value && value.TryGetValue<string>(out var text)) map = text;
@@ -302,7 +308,21 @@ public sealed class ObserveTask : ITaskRunner
             problems.Add("seconds 必须是大于 0 的有限数值");
         if (map is not null && map is not ("main" or "os"))
             problems.Add("map 只支持上游通用模式 main 或 os");
-        return (tick, seconds, map);
+        if (request.Input?["chapter"] is JsonNode chapterNode)
+        {
+            if (chapterNode is JsonValue value && value.TryGetValue<string>(out var text))
+            {
+                var parts = text.Split('.');
+                if (parts.Length == 3 && parts[0] == "campaign"
+                    && parts.All(p => p.Length > 0 && (char.IsAsciiLetter(p[0]) || p[0] == '_')
+                                      && p.All(c => char.IsAsciiLetterOrDigit(c) || c == '_')))
+                    chapter = text;
+                else problems.Add("chapter 必须是完整的 campaign 模块名");
+            }
+            else problems.Add("chapter 必须是字符串或 null");
+            if (map is null) problems.Add("chapter 需要同时指定 map 模式");
+        }
+        return (tick, seconds, map, chapter);
     }
 
     private static double Number(TaskRequest request, string key, double defaultValue,

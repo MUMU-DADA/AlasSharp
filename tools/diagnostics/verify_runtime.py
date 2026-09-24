@@ -791,6 +791,32 @@ def build_campaign_mode_cases():
     return cases
 
 
+def build_observe_chapter_cases():
+    valid = dict(id='observe', kind='observe', required=True,
+                 input=dict(map='main', chapter=CLEARED, seconds=0.01, tick_seconds=0.02))
+    cases = [dict(
+        name='observe_native_chapter_forwarded', dry_run=False, read_only_device=True,
+        serial='stub-1', artifacts=True, tasks=[valid],
+        stub_responses={'map_detect': [dict(
+            expected_args=dict(mode='main', chapter=CLEARED),
+            result=dict(load='ok', predict='ok', detected=True, grid_count=7))]},
+        expect=dict(outcome='succeeded', host_start_count=1, device_configure_count=1,
+                    stopped_early=False, tasks=[dict(id='observe', outcome='succeeded',
+                        evidence_equals={'chapter': CLEARED, 'map.chapter': CLEARED,
+                                         'map.detected_hits': 1, 'map.errors': 0})]))]
+    for index, change in enumerate([
+            {'chapter': ''}, {'chapter': '1-1'}, {'chapter': 'campaign..one'},
+            {'chapter': 'campaign.main.1'}, {'chapter': '../file'}, {'chapter': True},
+            {'chapter': []}, {'chapter': {}}, {'map': None}, {'chapter_name': CLEARED}]):
+        request = dict(valid, input=dict(valid['input'], **change))
+        cases.append(dict(name=f'observe_invalid_chapter_{index}', dry_run=False,
+                          read_only_device=True, serial='stub-1', artifacts=True, tasks=[request],
+                          expect=dict(outcome='failed', host_start_count=1, device_configure_count=1,
+                                      stopped_early=True, backend_calls=1,
+                                      tasks=[dict(id='observe', outcome='failed')])) )
+    return cases
+
+
 def main() -> int:
     if not EXE.is_file():
         print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先运行 dotnet build）')
@@ -804,7 +830,8 @@ def main() -> int:
 
 def verify_in_workspace(workspace: Path) -> int:
     cases = (build_cases() + build_queue_cases() + build_account_state_cases()
-             + build_dry_run_cancellation_cases() + build_campaign_mode_cases())
+             + build_dry_run_cancellation_cases() + build_campaign_mode_cases()
+             + build_observe_chapter_cases())
     failures = []
     # 原生 UI 导航合同的替身用例，不复制上游页面点击路径。
     diagnostics = Path(__file__).resolve().parent

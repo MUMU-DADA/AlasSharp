@@ -1,0 +1,38 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 4.1,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "exit-observation",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_main",
+        "rounds": 1
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 2.8,
+      "artifact": "<project>/data/mainline-device/live-20260925-observe-cleanup/artifacts/20260925T040915/task-exit-observation.json"
+    },
+    {
+      "id": "after-cleanup",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/live-20260925-observe-cleanup/artifacts/20260925T040915/task-after-cleanup.json"
+    }
+  ]
+}

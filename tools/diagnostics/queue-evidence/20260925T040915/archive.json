@@ -1,0 +1,24 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/live-20260925-observe-cleanup/artifacts/20260925T040915",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "93cfb3031a76e2cb879ae767f65c2f85831f8c63200f3945f7105399f26be3b2",
+    "state.json": "bbcfc04902f0d4349a0ade9a6c7dfd877bddd909f3d947cf6a37979bad3c233d",
+    "session-log.jsonl": "b519f16dbc9651ab6fa2e4e42048d22d0de7bb3f7a190f2b8b9fa04d130c1df6",
+    "task-after-cleanup.json": "70c27c0faf46f7553b356392183432ad88d127a9554e4504046343cdca0d6fc3",
+    "task-exit-observation.json": "69498c46bcb8ae1dfa7d06cb0c7957ab5d1c09381d3228d2cf18429f9fa68895"
+  },
+  "files": {
+    "queue.json": "5f41cf788a2d3586409ffda2ca3b53b905a5c247cb200e166ded98d9d4b168fb",
+    "state.json": "855cb3d2d5ef9e198bacf4c3db0e770656d8a3436cb7e10236fb41418d5ebcb1",
+    "session-log.jsonl": "2a94a69ecda53b0d0d82af7ffe8d245fe3bb340859f6bad2c824b5ca83444efc",
+    "task-after-cleanup.json": "dab3f3b2cbd24c9ebdbd15c44b7248b937324a774cf576a0e105516ccb8f937c",
+    "task-exit-observation.json": "0f15faee37aedc3d9beb6d487759d4bd98a8156cebcc88dfc98fef074be076ce"
+  }
+}

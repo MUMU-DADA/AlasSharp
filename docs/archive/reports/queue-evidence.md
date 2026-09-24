@@ -30,6 +30,8 @@
 | `20260925T025717` | 动作授权；宿主 1 / 设备配置 1 | 16.5 秒 |
 | `20260925T025946` | 动作授权；宿主 1 / 设备配置 1 | 111.7 秒 |
 | `20260925T030928` | 动作授权；宿主 1 / 设备配置 1 | 48.6 秒 |
+| `20260925T040837` | 只读设备；宿主 1 / 设备配置 1 | 6.1 秒 |
+| `20260925T040915` | 动作授权；宿主 1 / 设备配置 1 | 4.1 秒 |
 
 | 归档 / 任务 | 任务域 | 已核对事实 |
 | --- | --- | --- |
@@ -101,6 +103,9 @@
 | `20260925T030928/to-page_exercise` | `navigate` | 上游原生导航到 page_exercise；完成 2/2 轮；最终 page_exercise |
 | `20260925T030928/state-page_exercise` | `account_state` | 实时抓帧；页面 page_exercise；in_map=False |
 | `20260925T030928/return-main` | `navigate` | 上游原生导航到 page_main；完成 1/1 轮；最终 page_main |
+| `20260925T040837/chapter-map` | `observe` | 4 tick；抓帧 4/4；错误 0；4 秒；地图 main 命中 4/4；原生章节配置 `campaign.campaign_main.campaign_1_1` |
+| `20260925T040915/exit-observation` | `navigate` | 上游原生导航到 page_main；完成 1/1 轮；最终 page_main |
+| `20260925T040915/after-cleanup` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
 
 来源目录（项目相对路径，原件不入库）：
 
@@ -122,3 +127,5 @@
 - `data/mainline-device/live-20260925-daily/artifacts/20260925T025717`
 - `data/mainline-device/live-20260925-daily-advance/artifacts/20260925T025946`
 - `data/mainline-device/live-20260925-pages/artifacts/20260925T030928`
+- `data/mainline-device/live-20260925-observe-chapter/artifacts/20260925T040837`
+- `data/mainline-device/live-20260925-observe-cleanup/artifacts/20260925T040915`

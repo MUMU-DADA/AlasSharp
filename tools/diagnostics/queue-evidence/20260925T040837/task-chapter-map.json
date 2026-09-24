@@ -1,0 +1,107 @@
+{
+  "id": "chapter-map",
+  "kind": "observe",
+  "required": true,
+  "input": {
+    "map": "main",
+    "tick_seconds": 1,
+    "seconds": 4,
+    "chapter": "campaign.campaign_main.campaign_1_1"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 6.1,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "tick_seconds": 1,
+    "requested_seconds": 4,
+    "map_mode": "main",
+    "chapter": "campaign.campaign_main.campaign_1_1",
+    "read_only": true,
+    "warmup": {
+      "ok": true,
+      "capture_ms": 256,
+      "elapsed_ms": 2111.381,
+      "method": "adb",
+      "raw": true,
+      "shape": [
+        720,
+        1280,
+        3
+      ],
+      "error": null
+    },
+    "ticks": 4,
+    "errors": 0,
+    "error_details": [],
+    "elapsed_seconds": 4,
+    "cancelled": false,
+    "pages": [],
+    "pages_tick": 4,
+    "page_hits": {},
+    "page_errors": [],
+    "capture": {
+      "attempts": 4,
+      "succeeded": 4,
+      "failed": 0,
+      "method": "adb",
+      "shape": [
+        720,
+        1280,
+        3
+      ],
+      "timing_ms": {
+        "count": 4,
+        "median": 254.1,
+        "p25": 251.6,
+        "p75": 255.2,
+        "max": 255.2
+      }
+    },
+    "page_detection": {
+      "attempts": 4,
+      "failed": 0,
+      "skipped_capture_failed": 0,
+      "timing_ms": {
+        "count": 4,
+        "median": 23.54,
+        "p25": 22.949,
+        "p75": 670.865,
+        "max": 670.865
+      }
+    },
+    "tick_interval_ms": {
+      "count": 4,
+      "median": 1003.78,
+      "p25": 999.607,
+      "p75": 1148.604,
+      "max": 1148.604
+    },
+    "map": {
+      "mode": "main",
+      "chapter": "campaign.campaign_main.campaign_1_1",
+      "attempts": 4,
+      "detected_hits": 4,
+      "errors": 0,
+      "skipped_capture_failed": 0,
+      "last_grid_count": 7,
+      "last_reason": null,
+      "timing_ms": {
+        "count": 4,
+        "median": 160.735,
+        "p25": 159.432,
+        "p75": 237.815,
+        "max": 237.815
+      }
+    }
+  }
+}

@@ -60,6 +60,9 @@ def main():
     preflight_file = task_file(preflight_run, 'periodic_preflight')
     targeted_plan_file = task_file(preflight_run, 'periodic_plan')
     mapped_file = task_file(mapped, 'observe')
+    rejected('observe chapter mismatch', mapped,
+             lambda r: r[mapped_file]['evidence'].update(chapter='campaign.campaign_main.campaign_1_1'),
+             'observe chapter mismatch')
     rounds_file = next(audit.basename(row['artifact']) for row in navigated['queue.json']['tasks']
                        if row['kind'] == 'navigate' and navigated[audit.basename(row['artifact'])]['input'].get('rounds') == 2)
     rejected('missing task', observed, lambda r: r.pop(observed_file), 'missing or unindexed')
