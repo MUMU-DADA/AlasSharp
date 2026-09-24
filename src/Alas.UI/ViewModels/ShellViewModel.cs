@@ -697,12 +697,6 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         _previewData = previewData;
         _backend = backend;
         Selection = new ResourceSelection(resourceStore ?? new MemoryResourceSelectionStore());
-        Selection.PropertyChanged += (_, _) =>
-        {
-            if (_previewData) return;
-            Resources.Clear();
-            foreach (var choice in Selection.Selected) Resources.Add(choice.Card);
-        };
         ToggleFilterCommand = new PreviewCommand(_ => IsFilterOpen = !IsFilterOpen);
         ToggleFollowCommand = new PreviewCommand(_ => IsFollowing = !IsFollowing);
         ToggleOrderCommand = new PreviewCommand(_ => IsDescending = !IsDescending);
@@ -719,6 +713,12 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
                 new("心智魔方", "Resources/cube", "384", null, "记录于 09-24 01:13:44", 3),
             }
             : new ObservableCollection<ResourceCardViewModel>();
+        Selection.PropertyChanged += (_, _) =>
+        {
+            if (_previewData) return;
+            Resources.Clear();
+            foreach (var choice in Selection.Selected) Resources.Add(choice.Card);
+        };
         if (previewData) AppendLog("测试实例已就绪，所有操作均为模拟。");
     }
 
