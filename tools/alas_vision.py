@@ -3702,6 +3702,8 @@ def handle(req):
         fn = OPS.get(op)
         if fn is None:
             raise KeyError(f'未知操作: {op}（可用: {", ".join(sorted(OPS))}）')
+        from deploy_storage import install as install_deploy_storage
+        install_deploy_storage()
         return {'id': rid, 'ok': True, 'result': fn(req.get('args') or {})}
     except Exception as e:
         return {'id': rid, 'ok': False,
