@@ -33,7 +33,8 @@ internal sealed class StaticUiFiles
         string html = File.ReadAllText(index);
         var hashes = Regex.Matches(html, "<script\\b[^>]*>(.*?)</script\\s*>",
                 RegexOptions.Singleline | RegexOptions.IgnoreCase)
-            .Select(match => match.Groups[1].Value).Where(body => body.Length > 0)
+            .Select(match => NormalizeHtmlLineEndings(match.Groups[1].Value))
+            .Where(body => body.Length > 0)
             .Select(body => "'sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(body))) + "'");
         _policy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' " + string.Join(" ", hashes) +
             "; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; " +
@@ -72,5 +73,13 @@ internal sealed class StaticUiFiles
             if ((File.Exists(current) || Directory.Exists(current)) &&
                 (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
                 throw new ArgumentException("UI 静态目录及文件不能使用链接");
+    }
+
+    private static string NormalizeHtmlLineEndings(string value)
+    {
+        // The HTML tokenizer normalizes CRLF and CR to LF before exposing script text.
+        // Hash the same bytes the browser sees, regardless of the publication's newline.
+        return value.Replace("\r\n", "\n", StringComparison.Ordinal)
+                    .Replace('\r', '\n');
     }
 }

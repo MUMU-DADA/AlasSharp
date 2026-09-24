@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import socket
@@ -46,59 +48,73 @@ def wait_state(base: str) -> None:
     raise AssertionError("standalone server did not start")
 
 
+def normalized_script_hash(body: str) -> str:
+    normalized = body.replace("\r\n", "\n").replace("\r", "\n")
+    digest = base64.b64encode(hashlib.sha256(normalized.encode("utf-8")).digest()).decode("ascii")
+    return f"'sha256-{digest}'"
+
+
 def main() -> int:
     if not DOTNET.is_file() or not SERVER.is_file():
         raise AssertionError("build Alas.Server in Release before this check")
     with tempfile.TemporaryDirectory(prefix="alas-server-static-") as directory:
         root = Path(directory)
-        ui = root / "ui"
-        ui.mkdir()
-        (ui / "index.html").write_text(
-            '<!doctype html><script type="importmap">{"imports":{}}</script>'
-            '<script type="module" src="main.js"></script><link rel="stylesheet" href="app.css">',
-            encoding="utf-8",
-        )
-        (ui / "main.js").write_text("console.log('ui');", encoding="utf-8")
-        (ui / "app.css").write_text("body { color: black; }", encoding="utf-8")
-        (ui / "payload.wasm").write_bytes(b"\0asm\1\0\0\0")
         (root / "outside.txt").write_text("outside", encoding="utf-8")
-        service_port = port()
-        extra_port = port()
-        base = f"http://127.0.0.1:{service_port}"
-        env = {**os.environ, "ASPNETCORE_URLS": f"http://0.0.0.0:{extra_port}"}
-        process = subprocess.Popen(
-            [str(DOTNET), str(SERVER), "--root", str(root), "--ui-root", str(ui),
-             "--port", str(service_port)],
-            cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
-        )
-        try:
-            wait_state(base)
-            status, headers, body = get(base, "/")
-            assert status == 200 and b"<!doctype html>" in body
-            assert headers["Content-Type"].startswith("text/html")
-            assert "default-src 'self'" in headers["Content-Security-Policy"]
-            status, headers, _ = get(base, "/main.js")
-            assert status == 200 and headers["Content-Type"].startswith("text/javascript")
-            status, headers, _ = get(base, "/payload.wasm")
-            assert status == 200 and headers["Content-Type"] == "application/wasm"
-            status, headers, body = get(base, "/app.css", method="HEAD")
-            assert status == 200 and not body and headers["Content-Length"]
-            assert get(base, "/missing.js")[0] == 404
-            assert get(base, "/%2e%2e/outside.txt")[0] == 404
-            assert get(base, "/../outside.txt")[0] == 404
-            assert get(base, "/api/state", headers={"Host": "example.invalid"})[0] == 403
-            status, _, body = get(base, "/api/state")
-            assert status == 200 and json.loads(body)["token"]
-            with socket.socket() as probe:
-                probe.settimeout(0.5)
-                assert probe.connect_ex(("127.0.0.1", extra_port)) != 0
-        finally:
-            process.terminate()
+        importmap_body = '{\n  "imports": {\n    "ui": "./main.js"\n  }\n}'
+        expected_hash = normalized_script_hash(importmap_body)
+        policies: list[str] = []
+        for label, newline in (("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")):
+            ui = root / label
+            ui.mkdir()
+            index = (
+                '<!doctype html><script type="importmap">' + importmap_body +
+                '</script><script type="module" src="main.js"></script>'
+                '<link rel="stylesheet" href="app.css">\n'
+            )
+            (ui / "index.html").write_bytes(index.replace("\n", newline).encode("utf-8"))
+            (ui / "main.js").write_text("console.log('ui');", encoding="utf-8")
+            (ui / "app.css").write_text("body { color: black; }", encoding="utf-8")
+            (ui / "payload.wasm").write_bytes(b"\0asm\1\0\0\0")
+            service_port = port()
+            extra_port = port()
+            base = f"http://127.0.0.1:{service_port}"
+            env = {**os.environ, "ASPNETCORE_URLS": f"http://0.0.0.0:{extra_port}"}
+            process = subprocess.Popen(
+                [str(DOTNET), str(SERVER), "--root", str(root), "--ui-root", str(ui),
+                 "--port", str(service_port)],
+                cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
+            )
             try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
+                wait_state(base)
+                status, headers, body = get(base, "/")
+                assert status == 200 and b"<!doctype html>" in body
+                assert headers["Content-Type"].startswith("text/html")
+                policy = headers["Content-Security-Policy"]
+                assert expected_hash in policy
+                policies.append(policy)
+                status, headers, _ = get(base, "/main.js")
+                assert status == 200 and headers["Content-Type"].startswith("text/javascript")
+                status, headers, _ = get(base, "/payload.wasm")
+                assert status == 200 and headers["Content-Type"] == "application/wasm"
+                status, headers, body = get(base, "/app.css", method="HEAD")
+                assert status == 200 and not body and headers["Content-Length"]
+                assert get(base, "/missing.js")[0] == 404
+                assert get(base, "/%2e%2e/outside.txt")[0] == 404
+                assert get(base, "/../outside.txt")[0] == 404
+                assert get(base, "/api/state", headers={"Host": "example.invalid"})[0] == 403
+                status, _, body = get(base, "/api/state")
+                assert status == 200 and json.loads(body)["token"]
+                with socket.socket() as probe:
+                    probe.settimeout(0.5)
+                    assert probe.connect_ex(("127.0.0.1", extra_port)) != 0
+            finally:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+        assert len(set(policies)) == 1
     print("PASS: standalone Alas.Server serves selected UI assets and keeps loopback/API/path guards")
     return 0
 
