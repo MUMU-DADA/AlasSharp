@@ -1,0 +1,46 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 169.8,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "sortie-2-2",
+      "kind": "campaign_batch",
+      "required": true,
+      "input": {
+        "chapters": [
+          "campaign.campaign_main.campaign_2_2"
+        ],
+        "mode": "normal",
+        "max_seconds": 420,
+        "max_rounds": 8,
+        "clear_all": false,
+        "fleet1": 1,
+        "fleet2": 0,
+        "submarine": 0
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 169.4,
+      "artifact": "<project>/data/mainline-device/live-20260925-main-next/artifacts/20260925T053717/task-sortie-2-2.json"
+    },
+    {
+      "id": "after-sortie",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/live-20260925-main-next/artifacts/20260925T053717/task-after-sortie.json"
+    }
+  ]
+}
