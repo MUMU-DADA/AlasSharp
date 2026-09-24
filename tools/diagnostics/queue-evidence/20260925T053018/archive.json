@@ -1,0 +1,30 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/live-20260925-boundary-cache/artifacts/20260925T053018",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "73181ac49e87c51028ff0a14bfaf1185e8eb3df786c5926d6b17c2c057b48793",
+    "state.json": "bf0adf9eb70a5852bbb44ed3569aca929b6bca3f0c67c8a9c3e78354aa8e9576",
+    "session-log.jsonl": "03f802dd089a3b1f8c15c6aabb0afdf7cdfd184c9305b6089909f80caed0d9cb",
+    "task-home-state.json": "93a336a6645fa34a82a8ef1acb87374b8881060a125c631774899733f0462764",
+    "task-home.json": "a1a86306d6f2f67df65d4ddf523fe22bd6dfc01190313eb6875dd0cd57c91dd0",
+    "task-initial.json": "ea1511c12840f2ccc2dbb8f17c4884c95443800aaaf2e46ff76d0ad750aa7d9b",
+    "task-research-state.json": "12ccb1840bc4e74815bd173ddad7ba6629cc0c68fa957784351f3c88aa52cf76",
+    "task-research.json": "55b03d6bb0a110a0283eaada2d5b252854a74a91b84ec9237874d154cdace903"
+  },
+  "files": {
+    "queue.json": "5f08dcb3f8339155e033975595275c1058cf0d84bac35bb25ade047f29c565c5",
+    "state.json": "43cc2315ecd8b9355cc5e3fa9b9dfd9c68bc1982f94e16bbde74d10ec4b2b240",
+    "session-log.jsonl": "91ea48c068f993dd3924dff62c646523e186c85ee7073b36804fbcb7b16b5961",
+    "task-home-state.json": "68f65c904067907808c4421dc97f80460fef4d1f898acb6cd74f6785200bbae0",
+    "task-home.json": "307962b859ff5a6fcd8e2ae2526f11f761590c119ec139f46ef11875bfbe9d1b",
+    "task-initial.json": "ec439176492681dc7384834641470ff2272bb3dee6694d3328e013f02b18324c",
+    "task-research-state.json": "e74e361e666d0011a662098b112b116646356c373ac56a47e7ac1a3b874a151a",
+    "task-research.json": "1f95e85cbc270fd1627977dc4fab66a620e7a0f4e2faf2116912c9b271b04be2"
+  }
+}

@@ -104,6 +104,10 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 控件清单包含原生子类和延迟声明，不能以静态清单、构造成功或模板正对照替代实际操作结果。
 延迟属性返回的容器会展开其中的原生控件并分别识别；Scroll 无命中时位置为未知，任何子控件异常均保留且不计整体命中。
 `account_state` 的页面、在图判据或配置读取发生异常时记为 `failed/upstream_error`，并保留部分观测与错误；正常未命中仍可成功返回只读状态。
+队列的 `boundary_state` 在设备会话中读取已存在上游设备的最后缓存帧，在离线会话中读取宿主帧，
+以 `frame_source=device_cached/host_frame` 区分；没有设备缓存就记为不可用，不回退到旧离线帧。
+边界读取不创建设备、不新增抓帧或点击，只证明最后观测状态；需要现场状态仍显式提交 `account_state(capture=true)`。
+显式加载或抓帧失败会清除旧宿主帧，避免随后把旧画面当作成功读取。
 `changed=false` 只是 `ui_ensure()` 返回值，不能据此断言没有点击。只读状态任务不会主动退出待机。
 导航异常的调用栈尾部同时进入错误摘要和逐段证据；原生 `SystemExit` 作为失败返回，不退出共享宿主。
 存在运行工件目录时，Core 为每段导航分配独立失败帧路径，仅在失败后保存设备已有的最后一帧，
@@ -122,6 +126,7 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 `verify_runtime.py` 覆盖通用队列、导航和观测；各域由 `verify_account_state.py`、`verify_os_state.py`、
 `verify_os_action.py`、`verify_event_state.py`、`verify_task_catalog.py`、`verify_task_schedule.py`、
 `verify_config_get.py`、`verify_periodic_plan.py`、`verify_native_tools.py` 等离线检查覆盖。
+`verify_account_state_cache.py` 覆盖原生设备/宿主帧分离、无缓存与失败失效，以及 Core 在动作、只读设备和 dry-run 会话中的来源参数。
 `verify_native_dispatch_catalog.py` 从原生参数和工具目录发现全部入口，使用真实 ConfigUpdater、配置绑定、
 `AzurLaneAutoScript.run()` 与任务方法，对照领域签名和 AST 核对调用参数；每个入口覆盖正常返回、普通 False、
 TaskEnd 和重试异常，并验证原生 Restart 配置写入、设备恢复及失败证据隔离。

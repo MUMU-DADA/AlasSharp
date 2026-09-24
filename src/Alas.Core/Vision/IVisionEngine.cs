@@ -49,8 +49,9 @@ public interface IVisionEngine : IDisposable
     /// <summary>
     /// 账号/环境状态的**只读**快照（R2 账号状态域）：当前页面、是否在图内、服务器、章节与关键配置。
     /// 不点击、不导航；`capture=true` 才让设备抓一帧，`screenshotPath` 则用存盘帧（离线验收）。
+    /// `deviceCached=true` 仅读取已有设备缓存，不创建设备或抓帧；三种显式来源互斥。
     /// </summary>
-    AccountStateResult AccountState(bool capture = false, string? screenshotPath = null);
+    AccountStateResult AccountState(bool capture = false, string? screenshotPath = null, bool deviceCached = false);
 
     /// <summary>
     /// 上游任务目录（只读）。`SourceGroups` 是 `task.yaml` 的顶层键（**分组**），
@@ -148,6 +149,7 @@ public sealed class AccountStateResult
 public sealed class AccountFrameInfo
 {
     [JsonPropertyName("available")] public bool Available { get; set; }
+    [JsonPropertyName("source")] public string? Source { get; set; }
     [JsonPropertyName("path")] public string? Path { get; set; }
     [JsonPropertyName("shape")] public List<int>? Shape { get; set; }
 }
@@ -251,9 +253,9 @@ public abstract class VisionEngineBase : IVisionEngine
         => CallTyped<DeviceConfigResult>("device_configure",
             new { serial, screenshot, control });
 
-    public AccountStateResult AccountState(bool capture = false, string? screenshotPath = null)
+    public AccountStateResult AccountState(bool capture = false, string? screenshotPath = null, bool deviceCached = false)
         => CallTyped<AccountStateResult>("account_state",
-            new { capture, screenshot = screenshotPath });
+            new { capture, screenshot = screenshotPath, device_cached = deviceCached });
 
     public TaskCatalogResult TaskCatalog() => CallTyped<TaskCatalogResult>("task_catalog");
 

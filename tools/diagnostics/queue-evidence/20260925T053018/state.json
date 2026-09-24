@@ -1,0 +1,239 @@
+{
+  "completed": {
+    "initial": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "research": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_research"
+        },
+        "preceding_tasks": [
+          {
+            "id": "initial",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "research-state": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "initial",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "research",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_research"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "home": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_main"
+        },
+        "preceding_tasks": [
+          {
+            "id": "initial",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "research",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_research"
+            }
+          },
+          {
+            "id": "research-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "home-state": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "initial",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "research",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_research"
+            }
+          },
+          {
+            "id": "research-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-25T05:30:26+08:00"
+}

@@ -664,18 +664,38 @@ def op_account_state(args):
     也能在没有设备时用存盘帧验收（`screenshot` 参数直接给帧路径）。
 
     只读纪律：不点击、不导航；只有显式 `capture=true` 才让设备抓一帧。
+    device_cached 只读已存在设备的最后原生帧，不创建设备，不回退到离线宿主帧。
     判据全部交给上游：页面用 `Page.check_button`，在图内用 `handler/IN_MAP` 的
     **同一个 `appear` 判定**（`ModuleBase.appear` → `Button.appear_on`，颜色比对），
     不在 C# 侧另写一套。
     """
-    out = {'server': getattr(server_module, 'server', None),
-           'capture': bool(args.get('capture'))}
+    for name in ('capture', 'device_cached'):
+        if name in args and type(args[name]) is not bool:
+            raise ValueError(f'{name} 必须是布尔值')
+    capture, cached = args.get('capture') is True, args.get('device_cached') is True
+    screenshot = args.get('screenshot')
+    if sum((capture, cached, bool(screenshot))) > 1:
+        raise ValueError('capture、device_cached 和 screenshot 只能选择一个画面来源')
+    source = 'device_capture' if capture else 'device_cached' if cached else 'host_frame'
+    out = {'server': getattr(server_module, 'server', None), 'capture': capture,
+           'frame': {'available': False, 'path': None, 'shape': None, 'source': source}}
+    dev = None
     try:
-        if args.get('screenshot'):
-            out['loaded'] = op_screenshot_load({'path': args['screenshot']})
-        elif args.get('capture'):
-            dev = _device_engine()
-            dev.screenshot()
+        if screenshot or capture or cached:
+            # Any failed attempt at a different source invalidates old evidence.
+            _state['image'] = None
+            _state['image_path'] = None
+        if screenshot:
+            out['loaded'] = op_screenshot_load({'path': screenshot})
+        elif capture or cached:
+            if cached:
+                dev = _DEVICE_OBJ
+                if dev is None or not getattr(dev, 'has_cached_image', False):
+                    out['error'] = '常驻设备没有缓存画面；未创建设备或抓帧'
+                    return out
+            else:
+                dev = _device_engine()
+                dev.screenshot()
             image = getattr(dev, 'image', None)
             if image is None:
                 out['error'] = '设备抓帧失败：device.image 为空'
@@ -683,7 +703,8 @@ def op_account_state(args):
             _state['image'] = image
             _state['image_path'] = None
     except Exception as e:
-        out['error'] = f'取当前画面失败: {type(e).__name__}: {e}'
+        label = '设备抓帧失败' if capture else '取当前画面失败'
+        out['error'] = f'{label}: {type(e).__name__}: {e}'
         return out
 
     image = _state.get('image')
@@ -691,6 +712,7 @@ def op_account_state(args):
         'available': image is not None,
         'path': _state.get('image_path'),
         'shape': list(image.shape) if image is not None else None,
+        'source': source,
     }
     if image is None:
         out['error'] = ('宿主还没有当前画面：先 screenshot_load / screenshot_set / '
@@ -717,7 +739,7 @@ def op_account_state(args):
     }
 
     try:
-        cfg = _map_config()
+        cfg = dev.config if dev is not None else _map_config()
         keys = ('Campaign_Name', 'Campaign_Mode', 'Campaign_UseClearMode', 'Campaign_UseAutoSearch',
                 'Fleet_Fleet1', 'Fleet_Fleet2', 'Submarine_Fleet', 'Emotion_Mode',
                 'Emulator_ScreenshotMethod', 'Emulator_ControlMethod')

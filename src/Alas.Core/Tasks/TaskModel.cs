@@ -54,9 +54,9 @@ public sealed class TaskResult
     public string? ArtifactPath { get; set; }
     public JsonObject? Evidence { get; set; }
     /// <summary>
-    /// 任务开始前的状态快照（页面集合、是否在图内）。R2 的"跨任务复位"要能**被看见**：
-    /// 只记一条边界日志不够，得留下当时到底在哪个画面，否则"复位了没有"没法复核。
-    /// 拿不到画面时如实记 `available=false`，不假装拿到了。
+    /// 任务开始前的状态快照（页面集合、是否在图内及帧来源）。设备会话取上游最后缓存帧，
+    /// 离线会话取宿主帧，不新增设备动作；这是最后观测状态，不承诺实时。
+    /// 无缓存如实记 `available=false`，不回退到另一来源的旧画面。
     /// </summary>
     public JsonObject? BoundaryState { get; set; }
     /// <summary>前置条件不满足时的原因（与"跑失败"区分开）。</summary>

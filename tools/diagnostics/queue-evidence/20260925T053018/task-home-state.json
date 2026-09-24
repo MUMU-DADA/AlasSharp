@@ -1,0 +1,50 @@
+{
+  "id": "home-state",
+  "kind": "account_state",
+  "required": true,
+  "input": {
+    "capture": true
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 0.5,
+  "boundary_state": {
+    "available": true,
+    "frame_source": "device_cached",
+    "server": "cn",
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "server": "cn",
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "page_errors": [],
+    "in_map": false,
+    "in_map_error": null,
+    "in_map_tolerance": 94.86,
+    "frame": {
+      "available": true,
+      "source": "device_capture",
+      "path": null,
+      "shape": [
+        720,
+        1280,
+        3
+      ]
+    },
+    "source": "device_capture",
+    "campaign": null,
+    "config": "<redacted-account-config>",
+    "config_name": "<redacted-account-config>",
+    "config_error": null
+  }
+}

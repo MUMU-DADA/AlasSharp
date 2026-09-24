@@ -1,0 +1,76 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 8,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "initial",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 3.2,
+      "artifact": "<project>/data/mainline-device/live-20260925-boundary-cache/artifacts/20260925T053018/task-initial.json"
+    },
+    {
+      "id": "research",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_research"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 2.1,
+      "artifact": "<project>/data/mainline-device/live-20260925-boundary-cache/artifacts/20260925T053018/task-research.json"
+    },
+    {
+      "id": "research-state",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/live-20260925-boundary-cache/artifacts/20260925T053018/task-research-state.json"
+    },
+    {
+      "id": "home",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_main"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 1.8,
+      "artifact": "<project>/data/mainline-device/live-20260925-boundary-cache/artifacts/20260925T053018/task-home.json"
+    },
+    {
+      "id": "home-state",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.5,
+      "artifact": "<project>/data/mainline-device/live-20260925-boundary-cache/artifacts/20260925T053018/task-home-state.json"
+    }
+  ]
+}

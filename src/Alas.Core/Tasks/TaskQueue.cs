@@ -174,8 +174,8 @@ public sealed class TaskQueue
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var context = new TaskContext(_session);
-        // 跨任务复位边界：先**看一眼现在是什么画面**（只读），再让任务自己去把状态带到
-        // 可开始的样子。快照是证据：没有它，"复位了没有"只能靠嘴说。
+        // 动作/只读设备会话使用上游设备最后缓存帧，避免读到旧的离线宿主帧。
+        // 不新增抓帧或设备初始化；缓存只证明最后观测状态，不承诺实时状态。
         result.BoundaryState = SnapshotBoundary(context);
         _session.Log.Info("queue", "任务开始（跨任务复位边界）",
                           new Dictionary<string, object?>
@@ -220,13 +220,18 @@ public sealed class TaskQueue
         var snapshot = new JsonObject { ["available"] = false };
         try
         {
-            var state = context.Session.Vision.AccountState();
+            bool deviceCached = context.Options.ShouldConfigureDevice;
+            var state = context.Session.Vision.AccountState(deviceCached: deviceCached);
             snapshot["available"] = state.Frame?.Available == true;
+            snapshot["frame_source"] = state.Frame?.Source ?? (deviceCached ? "device_cached" : "host_frame");
             snapshot["server"] = state.Server;
             snapshot["pages"] = state.Pages is null
                 ? null
                 : new JsonArray(state.Pages.Select(p => (JsonNode)JsonValue.Create(p)!).ToArray());
             snapshot["in_map"] = state.InMap;
+            if (state.PageErrors is { Count: > 0 })
+                snapshot["page_errors"] = new JsonArray(state.PageErrors.Select(e => (JsonNode)JsonValue.Create(e)!).ToArray());
+            if (state.InMapError is not null) snapshot["in_map_error"] = state.InMapError;
             if (state.Error is not null) snapshot["note"] = state.Error;
         }
         catch (Exception error)

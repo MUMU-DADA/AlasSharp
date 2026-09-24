@@ -84,6 +84,7 @@ STEPS = [
     ('verify_runtime.py', 'R1 常驻运行时（会话只初始化一次 / 失败即停 / 取消 / 证据）', False, 300),
     ('verify_artifact_paths.py', 'R1 相对工件、断点和停止文件路径', False, 300),
     ('verify_account_state.py', 'R2 账号状态域（只读状态任务 + 真机帧 + 临界判据留证）', False, 600),
+    ('verify_account_state_cache.py', 'R2 任务边界使用原生设备缓存并保留帧来源（无设备）', False, 120),
     ('verify_stop.py', 'R4 停止任务（--stop-file 在任务边界生效 + 对照）', False, 300),
     ('verify_report_html.py', 'R4 HTML 视图（不丢事实 / 单文件自足 / 缺工件也能看）', False, 600),
     ('verify_report.py', 'R2 运行报告（工件→结构化事实 + 证据完整性反例）', False, 600),

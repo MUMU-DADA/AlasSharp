@@ -1,0 +1,49 @@
+{
+  "id": "research",
+  "kind": "navigate",
+  "required": true,
+  "input": {
+    "to": "page_research"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 2.1,
+  "boundary_state": {
+    "available": true,
+    "frame_source": "device_cached",
+    "server": "cn",
+    "pages": [
+      "page_main",
+      "page_main_white"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "target": "page_research",
+    "rounds_requested": 1,
+    "rounds_completed": 1,
+    "rounds": [
+      {
+        "round": 1,
+        "success": true,
+        "to_target": {
+          "destination": "page_research",
+          "arrived": true,
+          "final_page": "page_research",
+          "changed": true,
+          "elapsed_ms": 2085.3,
+          "error": null,
+          "error_kind": null,
+          "failure_frames": [],
+          "failure_frame_source": null,
+          "failure_frame_error": null
+        }
+      }
+    ],
+    "final_page": "page_research",
+    "success": true
+  }
+}

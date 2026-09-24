@@ -122,6 +122,7 @@ public sealed class AccountStateTask : ITaskRunner
             ["frame"] = state.Frame is null ? null : new JsonObject
             {
                 ["available"] = state.Frame.Available,
+                ["source"] = state.Frame.Source,
                 ["path"] = state.Frame.Path,
                 ["shape"] = state.Frame.Shape is null
                     ? null
