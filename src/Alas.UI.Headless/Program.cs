@@ -2,11 +2,13 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Alas.UI.Theming;
 using Alas.UI.ViewModels;
 using Alas.UI.Views;
 
@@ -67,8 +69,29 @@ internal static class Program
         try
         {
             var model = view.Model;
-            model.IsDark = false;
+            ApplyShellTheme(model, UiTheme.Light);
             Pump();
+
+            // 初始外壳必须是「无实例 + 未连接」的主页：不伪造任何已连接实例。
+            var homeHost = Find<Panel>(view, "HomeHost");
+            Check(model.IsHomeActive && !model.HasInstance && homeHost.IsVisible, "starts on the no-instance home shell");
+            Check(!model.IsRailVisible && !Find<Border>(view, "RailPanel").IsVisible, "no right rail without an instance");
+            var homeNav = Find<ItemsControl>(view, "PrimaryNav");
+            Check(homeNav.ItemCount == 8, $"eight global nav entries without an instance (got {homeNav.ItemCount})");
+            Check(string.Join('/', model.PrimaryNav.Select(entry => entry.Label))
+                == "主页/更新器/界面设置/远程访问/配置管理/系统设置/开发者工具/开源项目", "global nav order matches upstream");
+            Check(Find<ItemsControl>(view, "TaskNav").ItemCount == 0, "no task groups without an instance");
+            Check(!model.Home.IsConnected && model.Home.ShowDisconnected, "home reports the real disconnected state");
+            // 主页自身的一批断言（子 agent 交付，要求调用时主页是当前可见页）。
+            HomeChecks.Run(window, view);
+            Pump();
+
+            // 显式进入离线演示实例：后续断言都以「有实例外壳 + 运行总览」为上下文。
+            model.SelectInstance("demo-main");
+            Pump();
+            window.UpdateLayout();
+            Pump();
+            Check(model.HasInstance && model.IsOverviewActive && !homeHost.IsVisible, "selecting an instance opens its overview");
 
             // 字体：与上游视觉对照需要稳定的中文字形（上游用系统中文字体栈）。
             Check(FontManager.Current.TryGetGlyphTypeface(new Typeface(view.FontFamily), out var font), "embedded font loads");
@@ -93,10 +116,88 @@ internal static class Program
             // 侧栏内容：两个一级入口与十个任务分组（上游 TaskNavTree groupIcons 的十组）。
             var primaryNav = Find<ItemsControl>(view, "PrimaryNav");
             var taskNav = Find<ItemsControl>(view, "TaskNav");
-            Check(primaryNav.ItemCount == 2, $"two primary nav entries (got {primaryNav.ItemCount})");
+            Check(primaryNav.ItemCount == 2, $"two instance nav entries (got {primaryNav.ItemCount})");
             Check(taskNav.ItemCount == 10, $"ten task groups (got {taskNav.ItemCount})");
-            Check(model.PrimaryNav[0].Label == "运行总览" && model.PrimaryNav[1].Label == "资源统计", "primary nav labels");
+            Check(model.PrimaryNav[0].Label == "运行总览" && model.PrimaryNav[1].Label == "资源统计",
+                "instance nav labels");
             Check(model.TaskGroups[0].Title == "系统" && model.TaskGroups[^1].Title == "工具Plus", "task group order");
+
+            // 界面设置页（上游 /interface）：真实页面、真实主题切换、配色 CRUD、未接服务的禁用与说明。
+            var settingsOverviewHost = Find<Panel>(view, "OverviewHost");
+            var settingsHost = Find<Panel>(view, "InterfaceSettingsHost");
+            var settingsPlaceholderHost = Find<Panel>(view, "PlaceholderHost");
+            // 界面设置只出现在无实例外壳的全局导航里：先回主页，再点真实导航项。
+            model.GoHome();
+            Pump();
+            primaryNav.UpdateLayout();
+            Pump();
+            var navButton = primaryNav.GetVisualDescendants().OfType<Button>()
+                .FirstOrDefault(button => button.DataContext is NavEntry entry && entry.Key == "interface")
+                ?? throw new Exception($"FAIL: interface nav entry is realised (count={primaryNav.ItemCount}, "
+                    + $"realised={primaryNav.GetVisualDescendants().OfType<Button>().Count()})");
+            Click(window, navButton);
+            Pump();
+            Check(model.IsInterfaceSettingsActive && settingsHost.IsVisible && !settingsOverviewHost.IsVisible && !settingsPlaceholderHost.IsVisible,
+                "interface settings page replaces the placeholder");
+            var settings = model.InterfaceSettings;
+            Check(settings.Themes.Count == 6 && settings.Themes[0].Label == "浅色" && settings.Themes[2].Label == "简约"
+                && settings.Themes[5].Label == "紧凑", "theme dropdown keeps the upstream order");
+            Check(!settings.ShowPalettePreferences && settings.ShowBackgroundPreferences,
+                "classic light shows background preferences only");
+            // 切到简约：应换 Minimal 皮肤字典、显示配色偏好、隐藏背景偏好。
+            settings.SelectedThemeId = "minimal";
+            Pump();
+            Check(Application.Current!.Resources.MergedDictionaries.OfType<ResourceInclude>()
+                    .Any(include => include.Source?.ToString().EndsWith("/Themes/Minimal.Light.axaml", StringComparison.Ordinal) == true),
+                "selecting minimal merges the Minimal.Light dictionary");
+            Check(settings.ShowPalettePreferences && !settings.ShowBackgroundPreferences,
+                "minimal shows palette preferences and hides the background row");
+            Check(settings.Palettes.Count == 5, $"five preset palettes (got {settings.Palettes.Count})");
+            // 换配色：配色层覆盖 AlasAccentBrush。
+            settings.SelectedPaletteId = "forest";
+            Pump();
+            Check(Application.Current!.TryFindResource("AlasAccentBrush", out var forestAccent)
+                && forestAccent is SolidColorBrush forest && forest.Color == Color.Parse("#286747"),
+                "palette overlay applies the upstream forest accent");
+            // 自定义配色：非法颜色要报错、取消要丢弃草稿、保存后立即选中。
+            Click(window, Find<Button>(view, "AddPaletteButton"));
+            Pump();
+            Check(settings.IsPaletteDialogOpen, "add palette opens the dialog");
+            settings.DraftName = "test-palette";
+            settings.DraftPrimary = "#12";
+            settings.DraftSecondary = "#345678";
+            settings.SavePaletteCommand.Execute(null);
+            Pump();
+            Check(settings.DraftError.Contains("#RRGGBB"), "invalid colour is rejected with the upstream hint");
+            settings.DraftPrimary = "#123456";
+            settings.CancelPaletteCommand.Execute(null);
+            Pump();
+            Check(!settings.IsPaletteDialogOpen && settings.Palettes.Count == 5, "cancel discards the draft");
+            Click(window, Find<Button>(view, "AddPaletteButton"));
+            Pump();
+            settings.DraftName = "test-palette";
+            settings.DraftPrimary = "#123456";
+            settings.DraftSecondary = "#654321";
+            settings.SavePaletteCommand.Execute(null);
+            Pump();
+            Check(settings.Palettes.Count == 6 && settings.SelectedPaletteId == "custom:test-palette",
+                "saved custom palette is selected");
+            Check(model.Theme.Preference.CustomPalettes.Count == 1, "custom palette is persisted in the preference");
+            var custom = settings.Palettes[^1];
+            settings.DeletePaletteCommand.Execute(custom);
+            Pump();
+            Check(settings.Palettes.Count == 5 && settings.SelectedPaletteId == "ocean",
+                "deleting the selected custom palette falls back to ocean");
+            // 未接服务：背景与语言必须禁用并说明原因，不留点了没反应的死按钮。
+            Check(!settings.IsConnected && settings.BackgroundNotice.Contains("未连接"), "background explains why it is unavailable");
+            settings.SelectedThemeId = "light";
+            Pump();
+            // 回到运行总览：后面的断言都以总览页为上下文（界面设置页只存在于无实例外壳）。
+            model.SelectInstance("demo-main");
+            Pump();
+            Check(model.IsOverviewActive && settingsOverviewHost.IsVisible && !settingsHost.IsVisible,
+                "navigating back shows the overview page again");
+            Pump();
 
             // 资源卡：弹性换行、等宽拉伸；1280 内容宽 664 时 4 张各 160（上游实测 160）。
             var resourceCards = Find<ItemsControl>(view, "ResourceCards");
@@ -139,22 +240,30 @@ internal static class Program
             Check(model.Rail.Groups[1].Tasks[0].Name == "重启设置" && model.Rail.Groups[2].Tasks[0].Name == "主线图-1Plus", "rail task names");
             Check(Find<TextBlock>(view, "BreadcrumbTail").IsVisible == false, "overview hides the breadcrumb tail");
 
-            // 主题：顶栏主题入口是真实入口（不是只改 VM 属性），暗色令牌与主题变体一起切换。
+            // 主题：唯一入口是界面设置页（顶栏临时入口已移除）；这里直接验主题服务，
+            // 六个主题值各自解析出的皮肤、明暗、合并进资源的皮肤字典与布局标记。
             Pump();
-            var themeToggle = Find<Button>(view, "ThemeToggle");
-            Check(themeToggle.IsEnabled, "topbar theme entry is enabled");
             Check(Find<Border>(view, "SidebarPanel").Background is SolidColorBrush lightSidebar
-                && lightSidebar.Color == Color.Parse("#FFFFFF"), "light sidebar token before the theme entry is used");
-            Click(window, themeToggle);
+                && lightSidebar.Color == Color.Parse("#FFFFFF"), "classic light sidebar token");
+            foreach (var theme in UiThemes.All)
+            {
+                ApplyShellTheme(model, theme);
+                Pump();
+                var id = UiThemes.ToId(theme);
+                var expectDark = theme is UiTheme.Dark or UiTheme.LegacyDark;
+                var expected = UiThemes.ResourceName(theme, expectDark);
+                Check(model.IsDark == expectDark, $"{id} resolves dark={expectDark}");
+                Check(Application.Current!.RequestedThemeVariant == (expectDark ? ThemeVariant.Dark : ThemeVariant.Light),
+                    $"{id} sets the matching variant");
+                Check(Application.Current!.Resources.MergedDictionaries.OfType<ResourceInclude>()
+                        .Any(include => include.Source?.ToString().EndsWith($"/Themes/{expected}.axaml", StringComparison.Ordinal) == true),
+                    $"{id} merges the {expected} dictionary");
+                Check(model.IsLegacyLayout == (UiThemes.SkinOf(theme) == UiSkin.Legacy), $"{id} legacy layout flag");
+                Check(model.IsExtremeLayout == (theme == UiTheme.Extreme), $"{id} extreme layout flag");
+            }
+            ApplyShellTheme(model, UiTheme.Light);
             Pump();
-            Check(model.IsDark && Application.Current!.RequestedThemeVariant == ThemeVariant.Dark,
-                "topbar theme entry switches to dark");
-            Check(Find<Border>(view, "SidebarPanel").Background is SolidColorBrush darkSidebar
-                && darkSidebar.Color == Color.Parse("#242426"), "dark sidebar token applied by the theme entry");
-            Click(window, themeToggle);
-            Pump();
-            Check(!model.IsDark && Application.Current!.RequestedThemeVariant == ThemeVariant.Light,
-                "topbar theme entry switches back to light");
+            Check(!model.IsDark && !model.IsLegacyLayout && !model.IsExtremeLayout, "applying light resets the theme flags");
 
             // 本阶段没有后端的入口一律禁用并写明原因，不留点了没反应的死绑定。
             foreach (var disabled in new[] { "ExportButton", "InstanceSettingsButton", "InstanceCaption", "InstanceSwitch" })
@@ -345,10 +454,20 @@ internal static class Program
             Click(window, Find<Button>(view, "HomeLink"));
             Pump();
             Check(!model.IsOverviewActive, "home entry leaves the overview page");
-            Check(model.Placeholder.Title == "主页", $"placeholder title follows the entry (got {model.Placeholder.Title})");
+            // 面包屑「主页」现在回到无实例主页外壳（上游 / 路由），不再是占位页。
+            Check(model.IsHomeActive && !model.HasInstance, "breadcrumb home returns to the no-instance shell");
+            // 未实现的全局入口（系统设置）在无实例外壳里如实显示占位页。
+            var settingsEntry = primaryNav.GetVisualDescendants().OfType<Button>()
+                .FirstOrDefault(button => button.DataContext is NavEntry entry && entry.Key == "settings")
+                ?? throw new Exception("FAIL: settings nav entry is realised");
+            Click(window, settingsEntry);
+            Pump();
             Check(!overviewHost.IsVisible && placeholderHost.IsVisible, "overview page hidden while placeholder shows");
             Check(Find<TextBlock>(view, "BreadcrumbTail").IsVisible, "breadcrumb tail appears off the overview page");
             Capture(window, output, "placeholder-light-1280x820.png");
+            // 后续的宽窄屏与浮层断言都在实例外壳里进行，这里重新进入实例。
+            model.SelectInstance("demo-main");
+            Pump();
             var overviewNav = primaryNav.GetVisualDescendants().OfType<Button>().First();
             Click(window, overviewNav);
             Check(model.IsOverviewActive && model.ActiveNavKey == "overview", "overview entry restores the page");
@@ -462,6 +581,9 @@ internal static class Program
             Click(window, Find<Button>(view, "HomeLink"));
             Pump();
             Check(model.IsOverviewActive == false, "home link still works after the drawer interaction");
+            // 点「主页」会回到无实例外壳（右栏随之隐藏），下面的右栏浮层断言要重新进入实例。
+            model.SelectInstance("demo-main");
+            Pump();
             Click(window, Find<Button>(view, "DrawerCloseButton"));
             Check(!model.IsDrawerOpen, "drawer close button still works after the z-order change");
 
@@ -479,12 +601,21 @@ internal static class Program
             // 宽窄往返后回到基线的常驻布局。
             window.Width = 1280;
             window.Height = 820;
-            model.IsDark = false;
+            ApplyShellTheme(model, UiTheme.Light);
             Pump();
             Check(!model.IsNarrow && !model.IsRailOpen && !model.IsDrawerOpen, "resize back to wide resets the overlays");
             Check(rail.IsVisible && Near(rail.Bounds.Width, 292), "wide rail restores 292px");
             Check(Application.Current!.RequestedThemeVariant == ThemeVariant.Light, "light variant restored");
             Console.WriteLine($"PASS: shell geometry and interactions verified; frames written to {output}.");
+            // 六主题各出一张 1280x820 的集成帧（忽略目录留证；主 agent 复验时可与上游同名截图对照）。
+            foreach (var theme in UiThemes.All)
+            {
+                var expectedDark = theme is UiTheme.Dark or UiTheme.LegacyDark;
+                CaptureCleanState(output, 1280, 820, expectedDark,
+                    $"theme-{UiThemes.ToId(theme)}-1280x820.png", target => ApplyShellTheme(target.Model, theme));
+            }
+            ApplyShellTheme(model, UiTheme.Light);
+            Pump();
         }
         finally { window.Close(); }
 
@@ -559,8 +690,7 @@ internal static class Program
     {
         var view = new MainView();
         // 新视图的 IsDark 初值相同，赋值不会触发变更；这里直接同步应用主题，避免沿用上一帧的主题。
-        Application.Current!.RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light;
-        view.Model.IsDark = dark;
+        ApplyShellTheme(view.Model, dark ? UiTheme.Dark : UiTheme.Light);
         var window = new Window { Width = width, Height = height, Content = view };
         window.Show();
         try { Capture(window, output, filename); }
@@ -571,8 +701,7 @@ internal static class Program
     private static void CaptureCleanState(string output, double width, double height, bool dark, string filename, Action<MainView> arrange)
     {
         var view = new MainView();
-        Application.Current!.RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light;
-        view.Model.IsDark = dark;
+        ApplyShellTheme(view.Model, dark ? UiTheme.Dark : UiTheme.Light);
         var window = new Window { Width = width, Height = height, Content = view };
         window.Show();
         try
@@ -642,4 +771,10 @@ internal static class Program
     {
         if (!value) throw new Exception("FAIL: " + label);
     }
+
+    /// <summary>走真实主题路径应用偏好（与界面设置页调用的是同一个方法）。</summary>
+    private static void ApplyShellTheme(ShellViewModel model, UiTheme theme) =>
+        model.ApplyTheme(new ThemePreference(theme, model.Theme.Preference.Palette,
+            UiThemes.UsesPalettePreferences(theme) ? model.Theme.Preference.ColorMode : UiColorMode.Auto,
+            model.Theme.Preference.CustomPalettes), systemDark: false);
 }

@@ -22,7 +22,14 @@
           <Panel x:Name="OverviewHost" IsVisible="{Binding IsOverviewActive}">
             <views:OverviewView x:Name="OverviewPage" DataContext="{Binding Overview}" />
           </Panel>
-          <Panel x:Name="PlaceholderHost" IsVisible="{Binding !IsOverviewActive}">
+          <Panel x:Name="HomeHost" IsVisible="{Binding IsHomeActive}">
+            <views:HomeView x:Name="HomePage" DataContext="{Binding Home}" />
+          </Panel>
+          <Panel x:Name="InterfaceSettingsHost" IsVisible="{Binding IsInterfaceSettingsActive}">
+          <views:InterfaceSettingsView x:Name="InterfaceSettingsPage" DataContext="{Binding InterfaceSettings}" />
+        </Panel>
+
+        <Panel x:Name="PlaceholderHost" IsVisible="{Binding IsPlaceholderActive}">
             <views:PlaceholderView x:Name="PlaceholderPage" DataContext="{Binding Placeholder}" />
           </Panel>
         </Panel>

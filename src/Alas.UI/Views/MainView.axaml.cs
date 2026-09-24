@@ -20,9 +20,14 @@ public partial class MainView : UserControl
     private static readonly TranslateTransform None = new(0, 0);
 
     public MainView()
+        : this(new Theming.MemoryThemeStore())
+    {
+    }
+
+    public MainView(Theming.IThemeStore themeStore)
     {
         InitializeComponent();
-        Model = new ShellViewModel();
+        Model = new ShellViewModel(themeStore);
         DataContext = Model;
         Model.PropertyChanged += OnModelChanged;
         SizeChanged += (_, _) => Model.UpdateViewport(Bounds.Width, Bounds.Height);
@@ -45,7 +50,8 @@ public partial class MainView : UserControl
 
     private void OnModelChanged(object? sender, PropertyChangedEventArgs args)
     {
-        if (args.PropertyName is nameof(ShellViewModel.IsNarrow) or nameof(ShellViewModel.IsDrawerOpen)
+        if (args.PropertyName is nameof(ShellViewModel.IsNarrow) or nameof(ShellViewModel.HasInstance)
+            or nameof(ShellViewModel.IsDrawerOpen)
             or nameof(ShellViewModel.IsRailOpen) or nameof(ShellViewModel.IsRailVisible)
             or nameof(ShellViewModel.ViewportWidth) or nameof(ShellViewModel.ViewportHeight))
             ApplyLayout();
@@ -56,8 +62,22 @@ public partial class MainView : UserControl
         var narrow = Model.IsNarrow;
         Layout.ColumnDefinitions = narrow
             ? new ColumnDefinitions("0,*,0")
-            : new ColumnDefinitions($"232,*,{Model.RailWidth}");
+            // 无实例时上游只有两列（232 + 内容），右栏列不占位：多一列会多算一次列间距。
+            : Model.HasInstance
+                ? new ColumnDefinitions($"232,*,{Model.RailWidth}")
+                : new ColumnDefinitions("232,*");
         Layout.ColumnSpacing = narrow ? 0 : 14;
+        // 整份替换 ColumnDefinitions 后，子元素会保留上一次排布算出的「单元格编号」
+        // （实测：无实例两列 → 有实例三列时，右栏仍按「被夹到最后一列」的位置摆放，
+        //  停在内容列右缘 682 而不是 988）。重新写一遍单元格编号并让网格失效重排。
+        Grid.SetColumn(RailPanel, 1);
+        Grid.SetColumn(RailPanel, 2);
+        Grid.SetColumn(MainScroll, 1);
+        Grid.SetColumn(SidebarPanel, 0);
+        Layout.InvalidateMeasure();
+        Layout.InvalidateArrange();
+        RailPanel.InvalidateMeasure();
+        RailPanel.InvalidateArrange();
 
         SidebarPanel.Width = 232;
         SidebarPanel.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left;

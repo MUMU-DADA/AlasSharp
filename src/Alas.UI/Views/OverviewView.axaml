@@ -30,7 +30,7 @@
 
   <Grid RowDefinitions="Auto,Auto,*">
     <Grid x:Name="PageTitle" Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,48,0,14">
-      <Border x:Name="TitleGlass" Background="{StaticResource AlasTitleFillBrush}" VerticalAlignment="Center">
+      <Border x:Name="TitleGlass" Background="{DynamicResource AlasTitleFillBrush}" VerticalAlignment="Center">
         <TextBlock x:Name="TitleText" Classes="page-title" Text="{Binding InstanceName}" />
       </Border>
       <Border Grid.Column="2" Classes="title-actions" VerticalAlignment="Center">

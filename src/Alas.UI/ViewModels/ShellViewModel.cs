@@ -11,6 +11,7 @@ using Avalonia.Media;
 using Avalonia.Layout;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
+using Alas.UI.Theming;
 
 namespace Alas.UI.ViewModels;
 
@@ -27,21 +28,31 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public const double CompactBreakpoint = 480;
 
     private readonly Dictionary<string, object?> _pages = new(StringComparer.Ordinal);
-    private bool _isDark;
     private bool _isNarrow;
     private bool _isDrawerOpen;
     private bool _isRailOpen;
-    private bool _isOverviewActive = true;
-    private string _activeNavKey = "overview";
+    private string _activePage = "home";
+    private string? _instanceName;
+    private bool _hasInstance;
+    private string _activeNavKey = "home";
 
     public ShellViewModel()
+        : this(new MemoryThemeStore())
     {
+    }
+
+    public ShellViewModel(IThemeStore themeStore)
+    {
+        Theme = new ThemeService(themeStore);
+        InterfaceSettings = new InterfaceSettingsViewModel(Theme);
+        Home = new HomeViewModel();
+        Home.InstanceSelected += (_, instance) => SelectInstance(instance);
         Overview = new OverviewViewModel();
         Placeholder = new PlaceholderViewModel();
         Rail = new RailViewModel(Overview);
         Instances = new ObservableCollection<string> { "demo-main", "demo-alt", "demo-error" };
         SelectNavCommand = new PreviewCommand(parameter => SelectNav(parameter as string));
-        ToggleThemeCommand = new PreviewCommand(_ => IsDark = !IsDark);
+        GoHomeCommand = new PreviewCommand(_ => GoHome());
         OpenDrawerCommand = new PreviewCommand(_ => IsDrawerOpen = true);
         CloseDrawerCommand = new PreviewCommand(_ => { IsDrawerOpen = false; IsRailOpen = false; });
         ToggleRailCommand = new PreviewCommand(_ => IsRailOpen = !IsRailOpen);
@@ -51,21 +62,30 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         });
         SelectTaskCommand = new PreviewCommand(parameter => SelectTask(parameter as TaskEntry));
         BuildNavigation();
+        Theme.Changed += (_, _) =>
+        {
+            Notify(nameof(IsDark));
+            Notify(nameof(CurrentTheme));
+            Notify(nameof(IsLegacyLayout));
+            Notify(nameof(IsExtremeLayout));
+        };
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    public InterfaceSettingsViewModel InterfaceSettings { get; }
+    public HomeViewModel Home { get; }
     public OverviewViewModel Overview { get; }
     public RailViewModel Rail { get; }
     public PlaceholderViewModel Placeholder { get; }
     public ObservableCollection<NavEntry> PrimaryNav { get; } = new();
     public ObservableCollection<TaskGroupEntry> TaskGroups { get; } = new();
     public ObservableCollection<string> Instances { get; }
-    public string InstanceName => "demo-main";
+    public string InstanceName => _instanceName ?? "demo-main";
     public string InstancesSummary => $"{Instances.Count} 个演示实例";
 
     public ICommand SelectNavCommand { get; }
-    public ICommand ToggleThemeCommand { get; }
+    public ICommand GoHomeCommand { get; }
     public ICommand OpenDrawerCommand { get; }
     public ICommand CloseDrawerCommand { get; }
     public ICommand ToggleRailCommand { get; }
@@ -78,16 +98,29 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     /// <summary>本阶段未接后端的入口统一禁用，并用这条提示说明原因，避免出现点了没反应的死按钮。</summary>
     public string PendingNotice => "第一阶段未接后端：该入口在后续切片实现，当前不可用。";
 
-    public bool IsDark
+    /// <summary>六主题与配色偏好的唯一入口（界面设置页驱动；顶栏不再提供临时切换）。</summary>
+    public ThemeService Theme { get; }
+
+    public UiTheme CurrentTheme => Theme.Preference.Theme;
+
+    /// <summary>旧版皮肤使用另一套外壳布局（无顶栏、内容带、圆角 8）。</summary>
+    public bool IsLegacyLayout => UiThemes.SkinOf(CurrentTheme) == UiSkin.Legacy;
+
+    /// <summary>紧凑皮肤不渲染页面标题、工具栏吸顶合并为一行。</summary>
+    public bool IsExtremeLayout => CurrentTheme == UiTheme.Extreme;
+
+    /// <summary>应用一条主题偏好（界面设置页调用）；systemDark 供 auto 模式解析。</summary>
+    public void ApplyTheme(ThemePreference preference, bool systemDark = false)
     {
-        get => _isDark;
-        set
-        {
-            if (!SetField(ref _isDark, value)) return;
-            if (Application.Current is { } application)
-                application.RequestedThemeVariant = value ? ThemeVariant.Dark : ThemeVariant.Light;
-        }
+        Theme.Apply(preference, persist: true, systemDark);
+        Notify(nameof(IsDark));
+        Notify(nameof(CurrentTheme));
+        Notify(nameof(IsLegacyLayout));
+        Notify(nameof(IsExtremeLayout));
     }
+
+    /// <summary>当前解析出的明暗；由主题服务决定，不再由外部赋值。</summary>
+    public bool IsDark => Theme.IsDark;
 
     public bool IsNarrow
     {
@@ -100,6 +133,9 @@ public sealed class ShellViewModel : INotifyPropertyChanged
             Notify(nameof(BreadcrumbAlignment));
             Notify(nameof(TopbarHeight));
             Notify(nameof(MainPadding));
+            // 主页内边距为 0、其它页为 32：切页会改变可用内容高度，必须一起重算。
+            Overview.ContentHeight = ContentMinHeight;
+            Notify(nameof(ContentMinHeight));
             Notify(nameof(ContentMinHeight));
             if (!value) { IsDrawerOpen = false; IsRailOpen = false; }
         }
@@ -119,7 +155,9 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public double TopbarHeight => IsNarrow ? 56 : 41.5;
 
     /// <summary>内容区内边距：宽屏 0 32 32、窄屏 28 18（apple.css:96 / 314，经典主题窄屏覆盖共享层）。</summary>
-    public Thickness MainPadding => IsNarrow ? new Thickness(18, 28, 18, 28) : new Thickness(32, 0, 32, 32);
+    public Thickness MainPadding => IsHomeActive
+        ? new Thickness(0)
+        : IsNarrow ? new Thickness(18, 28, 18, 28) : new Thickness(32, 0, 32, 32);
 
     /// <summary>
     /// 内容区至少可用的高度。上游 <c>main</c> 是 flex 列、总览的监控面板 <c>flex:1</c> 撑满剩余空间；
@@ -144,14 +182,51 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     }
 
     public bool IsScrimVisible => IsNarrow && (IsDrawerOpen || IsRailOpen);
-    public bool IsRailVisible => IsWide || IsRailOpen;
+    public bool IsRailVisible => HasInstance && (IsWide || IsRailOpen);
     public bool IsSidebarVisible => IsWide || IsDrawerOpen;
 
-    public bool IsOverviewActive
+    /// <summary>有实例外壳还是无实例外壳（上游 App.tsx:242 按 instance 二分）。</summary>
+    public bool HasInstance
     {
-        get => _isOverviewActive;
-        private set => SetField(ref _isOverviewActive, value);
+        get => _hasInstance;
+        private set
+        {
+            if (!SetField(ref _hasInstance, value)) return;
+            Notify(nameof(IsRailVisible));
+            Notify(nameof(IsSidebarTaskNavVisible));
+        }
     }
+
+    /// <summary>任务分组导航只在有实例时出现（上游 {instance &amp;&amp; &lt;TaskNav/&gt;}）。</summary>
+    public bool IsSidebarTaskNavVisible => HasInstance;
+
+    /// <summary>页面路由：home / overview / interface，其余走占位页。</summary>
+    public string ActivePage
+    {
+        get => _activePage;
+        private set
+        {
+            if (!SetField(ref _activePage, value)) return;
+            Notify(nameof(IsHomeActive));
+            Notify(nameof(IsOverviewActive));
+            Notify(nameof(IsInterfaceSettingsActive));
+            Notify(nameof(IsPlaceholderActive));
+            Notify(nameof(MainPadding));
+            // 主页内边距为 0、其它页为 32：切页会改变可用内容高度，必须一起重算。
+            Overview.ContentHeight = ContentMinHeight;
+            Notify(nameof(ContentMinHeight));
+            Notify(nameof(BreadcrumbTail));
+        }
+    }
+
+    public bool IsHomeActive => _activePage == "home";
+    public bool IsOverviewActive => _activePage == "overview";
+
+    /// <summary>未实现的入口显示占位页。</summary>
+    public bool IsPlaceholderActive => !IsHomeActive && !IsOverviewActive && !IsInterfaceSettingsActive;
+
+    /// <summary>界面设置页（上游 /interface）：六主题与本地首选项的唯一入口。</summary>
+    public bool IsInterfaceSettingsActive => _activePage == "interface";
 
     public string ActiveNavKey
     {
@@ -161,7 +236,13 @@ public sealed class ShellViewModel : INotifyPropertyChanged
 
     public string BreadcrumbHome => "主页";
 
-    public string BreadcrumbTail => IsOverviewActive ? "运行总览" : Placeholder.Title;
+    public string BreadcrumbTail => _activePage switch
+    {
+        "overview" => "运行总览",
+        "interface" => "界面设置",
+        "home" => string.Empty,
+        _ => Placeholder.Title,
+    };
 
     /// <summary>窄屏时隐藏面包屑（上游 apple.css:338 的 ≤300px 兜底与窄屏压缩）。</summary>
     public bool IsBreadcrumbVisible => ViewportWidth > 300;
@@ -188,10 +269,27 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     private void BuildNavigation()
     {
         PrimaryNav.Clear();
-        PrimaryNav.Add(new NavEntry("overview", "运行总览", "LayoutDashboard", true));
-        PrimaryNav.Add(new NavEntry("statistics", "资源统计", "ChartNoAxesCombined", false));
+        if (HasInstance)
+        {
+            // 有实例：只有运行总览与资源统计（上游 App.tsx:242 的 instance 分支）。
+            PrimaryNav.Add(new NavEntry("overview", "运行总览", "LayoutDashboard", _activeNavKey == "overview"));
+            PrimaryNav.Add(new NavEntry("statistics", "资源统计", "ChartNoAxesCombined", _activeNavKey == "statistics"));
+        }
+        else
+        {
+            // 无实例：主页 + 七个全局入口，顺序与上游一致（最后一项是外链，本项目按未实现处理）。
+            PrimaryNav.Add(new NavEntry("home", "主页", "House", _activeNavKey == "home"));
+            PrimaryNav.Add(new NavEntry("updater", "更新器", "Download", _activeNavKey == "updater"));
+            PrimaryNav.Add(new NavEntry("interface", "界面设置", "Palette", _activeNavKey == "interface"));
+            PrimaryNav.Add(new NavEntry("remote", "远程访问", "Globe", _activeNavKey == "remote"));
+            PrimaryNav.Add(new NavEntry("configs", "配置管理", "FileJson", _activeNavKey == "configs"));
+            PrimaryNav.Add(new NavEntry("settings", "系统设置", "Settings2", _activeNavKey == "settings"));
+            PrimaryNav.Add(new NavEntry("dev", "开发者工具", "Code2", _activeNavKey == "dev"));
+            PrimaryNav.Add(new NavEntry("openSource", "开源项目", "ExternalLink", _activeNavKey == "openSource"));
+        }
 
         TaskGroups.Clear();
+        if (!HasInstance) return;
         // 分组与任务来自上游静态目录 menu.json + zh-CN i18n，顺序原样保留。
         foreach (var (group, groupLabel, icon, tasks, labels) in TaskCatalog.Groups)
         {
@@ -202,13 +300,39 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// 进入某个实例的外壳（上游 /i/&lt;实例&gt;/overview）。主页卡片点击或外部导航都会走这里；
+    /// 离线演示时由调用方显式指定实例名，不会在初始首页伪造已连接实例。
+    /// </summary>
+    public void SelectInstance(string instance)
+    {
+        if (string.IsNullOrWhiteSpace(instance)) return;
+        _instanceName = instance;
+        Notify(nameof(InstanceName));
+        HasInstance = true;
+        _activeNavKey = "overview";
+        BuildNavigation();
+        ActivePage = "overview";
+        Notify(nameof(ActiveNavKey));
+    }
+
+    /// <summary>回到无实例外壳（上游点面包屑「主页」）。</summary>
+    public void GoHome()
+    {
+        HasInstance = false;
+        _activeNavKey = "home";
+        BuildNavigation();
+        ActivePage = "home";
+        Notify(nameof(ActiveNavKey));
+    }
+
     /// <summary>选择任务分组下的具体任务：本切片只切到明确的「未实现」页，不连服务、不跑游戏逻辑。</summary>
     private void SelectTask(TaskEntry? task)
     {
         if (task is null) return;
         foreach (var entry in PrimaryNav) entry.IsActive = false;
         ActiveNavKey = $"task:{task.Key}";
-        IsOverviewActive = false;
+        ActivePage = task.Label;
         Placeholder.LoadTask(task.GroupTitle, task.Label);
         Notify(nameof(BreadcrumbTail));
         IsDrawerOpen = false;
@@ -219,10 +343,22 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         if (key is null) return;
         foreach (var entry in PrimaryNav) entry.IsActive = entry.Key == key;
         ActiveNavKey = key;
-        // 第一阶段只实现运行总览；其余入口如实显示未实现，不伪造页面内容。
-        IsOverviewActive = key == "overview";
-        if (!IsOverviewActive) Placeholder.Load(key);
-        Notify(nameof(BreadcrumbTail));
+        // 面包屑「主页」= 回到无实例外壳（上游 / 路由），导航集合随之切回八项。
+        if (key == "home" && HasInstance)
+        {
+            GoHome();
+            IsDrawerOpen = false;
+            return;
+        }
+        // 已实现的页面走真实视图；其余入口如实显示未实现，不伪造页面内容。
+        ActivePage = key switch
+        {
+            "home" => "home",
+            "overview" => "overview",
+            "interface" => "interface",
+            _ => key,
+        };
+        if (IsPlaceholderActive) Placeholder.Load(key);
         IsDrawerOpen = false;
     }
 

@@ -44,17 +44,6 @@
     <TextBlock x:Name="BreadcrumbTail" Classes="breadcrumb-current" Text="{Binding BreadcrumbTail}"
                VerticalAlignment="Center" IsVisible="{Binding !IsOverviewActive}" />
     </StackPanel>
-    <!-- 主题入口：上游把主题切换放在「界面设置」页，本阶段该页未实现。这里放在顶栏右端的空白处
-         （宽屏顶栏右端本来没有内容，因此不会移动面包屑），窄屏隐藏以保持窄屏顶栏与上游一致；
-         已登记为对上游的已知增补。 -->
-    <Button x:Name="ThemeToggle" Grid.Column="2" Theme="{StaticResource IconButtonTheme}"
-            Classes="wide-only" Classes.wide="{Binding IsWide}"
-            Command="{Binding ToggleThemeCommand}" AutomationProperties.Name="切换明暗主题"
-            ToolTip.Tip="切换明暗主题（本阶段由顶栏提供；上游在界面设置页）">
-      <Panel>
-        <controls:Icon Data="{StaticResource IconSun}" Size="17" IsVisible="{Binding IsDark}" />
-        <controls:Icon Data="{StaticResource IconMoon}" Size="17" IsVisible="{Binding !IsDark}" />
-      </Panel>
-    </Button>
+    <!-- 主题切换已回到上游位置（界面设置页），顶栏不再保留临时入口。 -->
   </Grid>
 </UserControl>

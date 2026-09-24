@@ -1,0 +1,202 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Alas.UI.ViewModels"
+             x:Class="Alas.UI.Views.InterfaceSettingsView"
+             x:DataType="vm:InterfaceSettingsViewModel">
+  <UserControl.Styles>
+    <!-- 上游 .field-row：经典主题 padding 20/24，标签占满左侧，控件固定 260px。 -->
+    <Style Selector="Border.field-row">
+      <Setter Property="Padding" Value="24,20" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AlasBorderBrush}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+    </Style>
+    <Style Selector="Border.field-row:last-child">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="TextBlock.field-label">
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.field-help">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,6,0,0" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+    </Style>
+    <Style Selector="ComboBox.field-control">
+      <Setter Property="Width" Value="260" />
+      <Setter Property="Height" Value="40" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="32,0,32,32" Spacing="18">
+      <TextBlock Classes="page-title" Text="{Binding Title}" Margin="0,32,0,0" />
+
+      <Border Classes="panel">
+        <StackPanel>
+          <!-- 界面主题：六值顺序与上游一致 -->
+          <Border Classes="field-row">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="field-label" Text="界面主题" />
+              <ComboBox x:Name="ThemeSelect" Grid.Column="1" Classes="field-control"
+                        ItemsSource="{Binding Themes}" SelectedValue="{Binding SelectedThemeId, Mode=TwoWay}"
+                        SelectedValueBinding="{Binding Id}" AutomationProperties.Name="界面主题">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ThemeOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </Grid>
+          </Border>
+
+          <!-- 配色方案：仅简约/紧凑显示（上游 ThemePreferences） -->
+          <Border Classes="field-row" IsVisible="{Binding ShowPalettePreferences}">
+            <StackPanel Spacing="10">
+              <TextBlock Classes="field-label" Text="配色方案" />
+              <TextBlock Classes="field-help" Text="主色用于主要操作与选中状态，副色用于辅助信息。" />
+              <ItemsControl x:Name="PaletteGrid" ItemsSource="{Binding Palettes}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PaletteOption">
+                    <Border Classes="palette-swatch" Padding="6" CornerRadius="10" Width="64">
+                      <StackPanel Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <Border Width="22" Height="22" CornerRadius="6" Background="{Binding AccentBrush}" />
+                          <Border Width="22" Height="22" CornerRadius="6" Background="{Binding SecondaryBrush}" />
+                        </StackPanel>
+                        <Button Theme="{StaticResource TextButtonTheme}" FontSize="11" Padding="0"
+                                Content="编辑" IsVisible="{Binding IsCustom}"
+                                Command="{Binding $parent[UserControl].((vm:InterfaceSettingsViewModel)DataContext).EditPaletteCommand}"
+                                CommandParameter="{Binding}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button x:Name="AddPaletteButton" Theme="{StaticResource GhostButtonTheme}" Padding="12,7"
+                        Content="添加自定义配色" Command="{Binding AddPaletteCommand}" />
+                <TextBlock Classes="field-help" Text="{Binding PaletteLimitNotice}" VerticalAlignment="Center" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <!-- 主题模式：仅简约/紧凑显示 -->
+          <Border Classes="field-row" IsVisible="{Binding ShowPalettePreferences}">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel>
+                <TextBlock Classes="field-label" Text="主题模式" />
+                <TextBlock Classes="field-help" Text="自动模式跟随系统外观，配色随浅色或深色模式调整。" />
+              </StackPanel>
+              <ComboBox x:Name="ColorModeSelect" Grid.Column="1" Classes="field-control"
+                        ItemsSource="{Binding ColorModes}" SelectedValue="{Binding SelectedColorMode, Mode=TwoWay}"
+                        SelectedValueBinding="{Binding Id}" AutomationProperties.Name="主题模式">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:LabeledOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </Grid>
+          </Border>
+
+          <!-- 自定义背景：仅 light/dark 显示 -->
+          <Border Classes="field-row" IsVisible="{Binding ShowBackgroundPreferences}">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel>
+                <TextBlock Classes="field-label" Text="自定义背景" />
+                <TextBlock Classes="field-help"
+                           Text="使用在线图片或视频地址，或上传文件并保存在当前浏览器。简约主题会隐藏背景。" />
+                <TextBlock Classes="field-help" Text="{Binding BackgroundNotice}" />
+              </StackPanel>
+              <ComboBox x:Name="BackgroundSelect" Grid.Column="1" Classes="field-control"
+                        ItemsSource="{Binding BackgroundKinds}" SelectedValue="{Binding BackgroundKindId, Mode=TwoWay}"
+                        SelectedValueBinding="{Binding Id}" AutomationProperties.Name="背景类型">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:LabeledOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </Grid>
+          </Border>
+
+          <!-- 背景地址与上传：未接服务时禁用并说明原因 -->
+          <Border Classes="field-row" IsVisible="{Binding IsBackgroundUrlInput}">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="field-label" Text="填写 URL" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <TextBox x:Name="BackgroundUrlInput" Width="260" Height="40" PlaceholderText="https://…"
+                         Text="{Binding BackgroundUrl, Mode=TwoWay}" AutomationProperties.Name="背景地址" />
+                <Button x:Name="ApplyBackgroundButton" Theme="{StaticResource PrimaryButtonTheme}" Padding="14,9"
+                        Content="应用背景" IsEnabled="{Binding IsConnected}"
+                        ToolTip.Tip="{Binding BackgroundNotice}"
+                        Command="{Binding ApplyBackgroundCommand}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <!-- 界面语言：连接未就绪时禁用（上游同此） -->
+          <Border Classes="field-row">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel>
+                <TextBlock Classes="field-label" Text="界面语言" />
+                <TextBlock Classes="field-help" Text="{Binding LanguageNotice}" />
+              </StackPanel>
+              <ComboBox x:Name="LanguageSelect" Grid.Column="1" Classes="field-control"
+                        ItemsSource="{Binding Languages}" SelectedValue="{Binding SelectedLanguage, Mode=TwoWay}"
+                        SelectedValueBinding="{Binding Id}" IsEnabled="{Binding IsConnected}"
+                        ToolTip.Tip="{Binding LanguageNotice}" AutomationProperties.Name="界面语言">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:LabeledOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </Grid>
+          </Border>
+
+          <!-- 本地首选项落盘异常时如实展示 -->
+          <Border Classes="field-row" IsVisible="{Binding HasPersistenceProblem}">
+            <TextBlock x:Name="PersistenceProblem" Classes="field-help" Text="{Binding PersistenceStatus}"
+                       Foreground="{DynamicResource AlasDangerBrush}" />
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <!-- 自定义配色编辑弹窗：取消丢弃草稿（上游 e2e 明确断言） -->
+      <Border x:Name="PaletteDialog" Classes="panel" IsVisible="{Binding IsPaletteDialogOpen}"
+              HorizontalAlignment="Center" Width="420">
+        <StackPanel Spacing="12" Margin="4">
+          <TextBlock Text="{Binding DraftTitle}" FontSize="16" FontWeight="SemiBold" />
+          <TextBlock Classes="field-label" Text="名称" />
+          <TextBox x:Name="PaletteNameInput" Text="{Binding DraftName, Mode=TwoWay}" AutomationProperties.Name="配色名称" />
+          <TextBlock Classes="field-label" Text="主色" />
+          <TextBox x:Name="PalettePrimaryInput" Text="{Binding DraftPrimary, Mode=TwoWay}" AutomationProperties.Name="主色" />
+          <TextBlock Classes="field-label" Text="副色" />
+          <TextBox x:Name="PaletteSecondaryInput" Text="{Binding DraftSecondary, Mode=TwoWay}" AutomationProperties.Name="副色" />
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Border Width="28" Height="28" CornerRadius="8" Background="{Binding DraftPreview}" />
+            <TextBlock x:Name="PaletteDraftError" Classes="field-help" Text="{Binding DraftError}"
+                       Foreground="{DynamicResource AlasDangerBrush}" VerticalAlignment="Center" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
+            <Button x:Name="PaletteCancelButton" Theme="{StaticResource GhostButtonTheme}" Padding="14,9"
+                    Content="取消" Command="{Binding CancelPaletteCommand}" />
+            <Button x:Name="PaletteSaveButton" Theme="{StaticResource PrimaryButtonTheme}" Padding="14,9"
+                    Content="保存并应用" Command="{Binding SavePaletteCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

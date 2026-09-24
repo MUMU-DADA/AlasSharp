@@ -1,0 +1,435 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Alas.UI.ViewModels" xmlns:controls="using:Alas.UI.Controls"
+             x:Class="Alas.UI.Views.HomeView" x:DataType="vm:HomeViewModel"
+             x:Name="HomeRoot">
+  <!--
+    主页（上游 src/pages/Home.tsx + src/styles/home.css）。
+    类名与上游一一对应：.home-editorial / .home-deck / .home-deck-copy / .home-deck-foot /
+    .home-stats / .home-deck-links / .home-main / .home-main-heading / .home-instance-grid / .instance-card。
+    上游用 CSS 媒体查询（≤950px 单列、≤620px 紧凑）与 vw 单位；Avalonia 没有媒体查询，
+    断点与 clamp(...) 的换算集中在 HomeView.axaml.cs 的 ApplyResponsive()。
+  -->
+  <UserControl.Resources>
+    <!-- 指挥台药丸的四个画笔槽位：classic 皮肤是白色半透明（上游 .home-deck-link 的 light/dark 覆盖，
+         rgb(255 255 255 / .14) 与 / .42），其余皮肤是 surface / border / accent 三个令牌。
+         共享令牌里没有这两档白色半透明，code-behind 按当前皮肤从 AlasOnAccentBrush 派生后写回这四个键，
+         所以 XAML 里不出现写死的颜色值。 -->
+    <SolidColorBrush x:Key="HomePillForegroundBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="HomePillFillBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="HomePillEdgeBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="HomePillHoverEdgeBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="HomePillHoverForegroundBrush" Color="#00000000" />
+
+    <!-- 实例卡：上游 a.instance-card.panel（padding 24、圆角取 theme-radius-card 令牌、glass-edge + 面板阴影） -->
+    <ControlTheme x:Key="HomeInstanceCardTheme" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource AlasSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AlasGlassEdgeBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource AlasCardRadius}" />
+      <Setter Property="Padding" Value="24" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Stretch" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasTextBrush}" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"
+                  BoxShadow="{DynamicResource AlasPanelShadow}" Padding="{TemplateBinding Padding}"
+                  ClipToBounds="True">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Root">
+        <Setter Property="BorderBrush" Value="{DynamicResource AlasAccentBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <!-- 指挥台的药丸链接：classic 皮肤是白色玻璃（上游 .home-deck-link 的 light/dark 覆盖） -->
+    <ControlTheme x:Key="HomeDeckLinkTheme" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource HomePillFillBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource HomePillEdgeBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="13,8" />
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="Foreground" Value="{DynamicResource HomePillForegroundBrush}" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                              HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Root">
+        <Setter Property="BorderBrush" Value="{DynamicResource HomePillHoverEdgeBrush}" />
+      </Style>
+      <Style Selector="^:pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource HomePillHoverForegroundBrush}" />
+      </Style>
+    </ControlTheme>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <!-- 左列指挥台：白字/白药丸只对 classic 皮肤（上游 [data-theme='light'|'dark'] .home-deck），
+         其余皮肤走 var(text) / var(border) / var(surface)，由 code-behind 按皮肤写入。 -->
+    <Style Selector="TextBlock.home-deck-eyebrow">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="LetterSpacing" Value="1.68" />
+      <Setter Property="Opacity" Value="0.74" />
+      <Setter Property="Margin" Value="0,0,0,10" />
+    </Style>
+    <Style Selector="TextBlock.home-deck-greeting">
+      <Setter Property="FontSize" Value="38.4" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="-0.8" />
+      <Setter Property="LineHeight" Value="47.616" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,0,0,14" />
+    </Style>
+    <Style Selector="TextBlock.home-deck-subtitle">
+      <Setter Property="FontSize" Value="13.5" />
+      <Setter Property="LineHeight" Value="24.3" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Opacity" Value="0.82" />
+    </Style>
+    <Style Selector="TextBlock.home-stat-label">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Opacity" Value="0.7" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+    </Style>
+    <Style Selector="TextBlock.home-stat-value">
+      <Setter Property="FontSize" Value="22" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="-0.4" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+    </Style>
+
+    <!-- 右列标题行 -->
+    <Style Selector="TextBlock.home-main-title">
+      <Setter Property="FontSize" Value="28.16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="LetterSpacing" Value="-0.6" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+    </Style>
+    <Style Selector="Button.home-action">
+      <Setter Property="Width" Value="32" />
+      <Setter Property="Height" Value="32" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+    </Style>
+
+
+    <!-- 运行状态徽标：上游 .status（11px/550、圆角 20、内边距 6/10、5px 圆点） -->
+    <Style Selector="Border.status">
+      <Setter Property="CornerRadius" Value="20" />
+      <Setter Property="Padding" Value="10,6" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource AlasSurfaceMutedBrush}" />
+    </Style>
+    <Style Selector="Border.status TextBlock">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.status Ellipse">
+      <Setter Property="Width" Value="5" />
+      <Setter Property="Height" Value="5" />
+      <Setter Property="Fill" Value="{DynamicResource AlasMutedBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.status.running">
+      <Setter Property="Background" Value="{DynamicResource AlasSuccessSoftBrush}" />
+    </Style>
+    <Style Selector="Border.status.running TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource AlasSuccessBrush}" />
+    </Style>
+    <Style Selector="Border.status.running Ellipse">
+      <Setter Property="Fill" Value="{DynamicResource AlasSuccessBrush}" />
+    </Style>
+    <Style Selector="Border.status.error">
+      <Setter Property="Background" Value="{DynamicResource AlasDangerSoftBrush}" />
+    </Style>
+    <Style Selector="Border.status.error TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource AlasDangerBrush}" />
+    </Style>
+    <Style Selector="Border.status.error Ellipse">
+      <Setter Property="Fill" Value="{DynamicResource AlasDangerBrush}" />
+    </Style>
+    <Style Selector="Border.status.updating">
+      <Setter Property="Background" Value="{DynamicResource AlasWarningSoftBrush}" />
+    </Style>
+    <Style Selector="Border.status.updating TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource AlasWarningBrush}" />
+    </Style>
+    <Style Selector="Border.status.updating Ellipse">
+      <Setter Property="Fill" Value="{DynamicResource AlasWarningBrush}" />
+    </Style>
+
+    <!-- 演示数据徽标：出现在卡片上，明确标注这不是真实实例 -->
+    <Style Selector="Border.demo-badge">
+      <Setter Property="CornerRadius" Value="20" />
+      <Setter Property="Padding" Value="8,4" />
+      <Setter Property="Background" Value="{DynamicResource AlasAccentSoftBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.demo-badge TextBlock">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasAccentBrush}" />
+    </Style>
+
+    <Style Selector="Border.home-instance-icon">
+      <Setter Property="Width" Value="44" />
+      <Setter Property="Height" Value="44" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Background" Value="{DynamicResource AlasAccentBrush}" />
+    </Style>
+    <Style Selector="TextBlock.instance-name">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="-0.3" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,22,0,10" />
+    </Style>
+    <Style Selector="TextBlock.instance-device">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.instance-foot">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.instance-go">
+      <Setter Property="Background" Value="{DynamicResource AlasAccentSoftBrush}" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="7" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+
+    <Style Selector="Button.home-empty">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+
+    <!-- 上游 forms.css:90 的 .button:disabled {opacity:.45}：禁用的入口要看得出来，
+         否则会出现「看着能点、点了没反应」的死按钮。 -->
+    <Style Selector="Button.home-action:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+    <Style Selector="Button.home-primary:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+    <Style Selector="Button.deck-link:disabled">
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="Button.home-empty:disabled">
+      <Setter Property="Opacity" Value="0.6" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid x:Name="Editorial" Classes="home-editorial" ColumnDefinitions="34*,66*" RowDefinitions="*">
+    <Border x:Name="Deck" Grid.Column="0" Grid.Row="0" Classes="home-deck"
+            Background="{DynamicResource AlasBgBrush}" MinHeight="210">
+      <Grid x:Name="DeckLayout" RowDefinitions="*,Auto" RowSpacing="26">
+        <StackPanel x:Name="DeckCopy" Grid.Row="0" VerticalAlignment="Center">
+          <TextBlock x:Name="EyebrowText" Classes="home-deck-eyebrow" Text="{Binding CommandCenter}" />
+          <TextBlock x:Name="GreetingText" Classes="home-deck-greeting" Text="{Binding Greeting}" />
+          <TextBlock x:Name="SubtitleText" Classes="home-deck-subtitle" Text="{Binding Subtitle}" />
+        </StackPanel>
+
+        <Border x:Name="DeckFoot" Grid.Row="1" Padding="0,6,0,0">
+          <StackPanel Spacing="14">
+            <WrapPanel x:Name="Stats" ItemSpacing="26" LineSpacing="10" Orientation="Horizontal"
+                       AutomationProperties.Name="{Binding StatsLabel}">
+              <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                <TextBlock Classes="home-stat-label" Text="{Binding AllInstancesLabel}" />
+                <TextBlock x:Name="TotalStat" Grid.Column="1" Classes="home-stat-value" Text="{Binding TotalText}" />
+              </Grid>
+              <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                <TextBlock Classes="home-stat-label" Text="{Binding RunningLabel}" />
+                <TextBlock x:Name="RunningStat" Grid.Column="1" Classes="home-stat-value" Text="{Binding RunningText}" />
+              </Grid>
+              <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8">
+                <TextBlock Classes="home-stat-label" Text="{Binding ErrorLabel}" />
+                <TextBlock x:Name="ErrorStat" Grid.Column="1" Classes="home-stat-value" Text="{Binding ErrorText}" />
+              </Grid>
+            </WrapPanel>
+
+            <WrapPanel x:Name="DeckLinks" ItemSpacing="10" LineSpacing="10" Orientation="Horizontal">
+              <Button x:Name="OpenSourceLink" Theme="{StaticResource HomeDeckLinkTheme}" Classes="deck-link" Click="OnOpenSourceClick"
+                      AutomationProperties.Name="{Binding OpenSourceLabel}">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <controls:Icon Data="{StaticResource IconExternalLink}" Size="14" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding OpenSourceLabel}" VerticalAlignment="Center" FontSize="12.5" LineHeight="16" />
+                </StackPanel>
+              </Button>
+              <Button x:Name="LegacyUiToggle" Theme="{StaticResource HomeDeckLinkTheme}" Classes="deck-link"
+                      Command="{Binding ToggleLegacyUiCommand}" IsEnabled="{Binding CanToggleLegacyUi}"
+                      ToolTip.Tip="{Binding LegacyUiNotice}" AutomationProperties.Name="{Binding LegacyUiLabel}">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <controls:Icon Data="{StaticResource IconClock3}" Size="14" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding LegacyUiLabel}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Border x:Name="MainPanel" Grid.Column="1" Grid.Row="0" Classes="home-main"
+            Background="{DynamicResource AlasBgBrush}" Padding="46.08,40.96">
+      <Grid RowDefinitions="Auto,Auto">
+        <Border x:Name="MainHeading" Grid.Row="0" BorderThickness="0,0,0,1" Padding="0,0,0,22"
+                BorderBrush="{DynamicResource AlasBorderBrush}" Margin="0,0,0,24">
+          <Grid x:Name="HeadingRow" ColumnDefinitions="*,Auto" ColumnSpacing="20">
+            <TextBlock x:Name="InstancesTitle" Grid.Column="0" Classes="home-main-title"
+                       Text="{Binding InstancesTitle}" />
+            <StackPanel x:Name="HeadingActions" Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom">
+              <Button x:Name="ImportInstanceButton" Theme="{StaticResource IconButtonTheme}" Classes="home-action icon-button"
+                      IsEnabled="{Binding CanImportInstance}" ToolTip.Tip="{Binding ImportInstanceNotice}"
+                      AutomationProperties.Name="{Binding ImportInstanceLabel}">
+                <controls:Icon Data="{StaticResource IconDownload}" Size="16" />
+              </Button>
+              <Button x:Name="DeleteInstanceButton" Theme="{StaticResource IconButtonTheme}" Classes="home-action icon-button"
+                      IsEnabled="{Binding CanDeleteInstance}" ToolTip.Tip="{Binding DeleteInstanceNotice}"
+                      AutomationProperties.Name="{Binding DeleteInstanceLabel}">
+                <controls:Icon Data="{StaticResource IconTrash2}" Size="16" />
+              </Button>
+              <Button x:Name="SwitchInstanceButton" Theme="{StaticResource IconButtonTheme}" Classes="home-action icon-button"
+                      IsEnabled="{Binding CanSwitchInstance}" ToolTip.Tip="{Binding SwitchInstanceNotice}"
+                      AutomationProperties.Name="{Binding SwitchInstanceLabel}">
+                <controls:Icon Data="{StaticResource IconGripVertical}" Size="16" />
+              </Button>
+              <Button x:Name="InstanceSettingsButton" Theme="{StaticResource IconButtonTheme}" Classes="home-action icon-button"
+                      IsEnabled="{Binding CanOpenInstanceSettings}" ToolTip.Tip="{Binding InstanceSettingsNotice}"
+                      AutomationProperties.Name="{Binding InstanceSettingsLabel}">
+                <controls:Icon Data="{StaticResource IconSettings2}" Size="16" />
+              </Button>
+              <Button x:Name="NewInstanceButton" Theme="{StaticResource PrimaryButtonTheme}" Classes="home-primary" Width="112" Height="40"
+                      Padding="17,9" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                      IsEnabled="{Binding CanCreateInstance}" ToolTip.Tip="{Binding CreateInstanceNotice}"
+                      AutomationProperties.Name="{Binding NewInstanceLabel}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <controls:Icon Data="{StaticResource IconPlus}" Size="16" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding NewInstanceLabel}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <Panel Grid.Row="1">
+          <ItemsControl x:Name="InstanceGrid" ItemsSource="{Binding Instances}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <controls:CardGrid MinItemWidth="250" ItemGap="20" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:InstanceCardViewModel">
+                <Button Theme="{StaticResource HomeInstanceCardTheme}" Classes="instance-card"
+                        Click="OnInstanceCardClick" AutomationProperties.Name="{Binding Name}">
+                  <Grid RowDefinitions="Auto,Auto,Auto,*">
+                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                      <Border Classes="home-instance-icon" VerticalAlignment="Center">
+                        <controls:Icon Data="{StaticResource IconPanelTop}" Size="20" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                      </Border>
+                      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <Border Classes="demo-badge" IsVisible="{Binding IsDemo}">
+                          <TextBlock Text="演示数据" />
+                        </Border>
+                        <Border Classes="status" Classes.running="{Binding IsRunning}"
+                                Classes.error="{Binding IsErrored}" Classes.updating="{Binding IsUpdating}">
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse />
+                            <TextBlock Text="{Binding StatusLabel}" />
+                          </StackPanel>
+                        </Border>
+                      </StackPanel>
+                    </Grid>
+                    <TextBlock Grid.Row="1" Classes="instance-name" Text="{Binding Name}" />
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10">
+                      <TextBlock Classes="instance-device" Text="{Binding DeviceLabel}"
+                                 IsVisible="{Binding HasDeviceLabel}" />
+                      <TextBlock Classes="instance-device" Text="{Binding Serial}" />
+                    </StackPanel>
+                    <!-- 上游 .instance-card-footer 的 padding-top:22px（margin-top:auto 让页脚贴底）。 -->
+                    <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,22,0,0"
+                          VerticalAlignment="Bottom">
+                      <TextBlock Classes="instance-foot" Text="{Binding FooterText}" />
+                      <Border Grid.Column="1" Classes="instance-go">
+                        <controls:Icon Data="{StaticResource IconChevronRight}" Size="17" />
+                      </Border>
+                    </Grid>
+                  </Grid>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <!-- 断线态：未接服务时显示，并如实说明不会伪造实例。
+               外层用 Panel 而不是 Button：里面已经有真的重试按钮，避免按钮套按钮。 -->
+          <Panel x:Name="DisconnectedPanel" IsVisible="{Binding ShowDisconnected}">
+            <Rectangle Stroke="{DynamicResource AlasBorderBrush}" StrokeThickness="1" StrokeDashArray="4,3"
+                       RadiusX="16" RadiusY="16" MinHeight="180" />
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10" Margin="24">
+              <controls:Icon Data="{StaticResource IconTriangleAlert}" Size="28" HorizontalAlignment="Center"
+                             Foreground="{DynamicResource AlasMutedBrush}" />
+              <TextBlock x:Name="DisconnectedTitle" Text="{Binding DisconnectedTitle}" FontSize="14"
+                         FontWeight="SemiBold" HorizontalAlignment="Center" />
+              <TextBlock x:Name="DisconnectedText" Text="{Binding DisconnectedText}" FontSize="12"
+                         TextWrapping="Wrap" MaxWidth="420" HorizontalAlignment="Center" TextAlignment="Center"
+                         Foreground="{DynamicResource AlasMutedBrush}" />
+              <Button x:Name="RetryButton" Theme="{StaticResource GhostButtonTheme}" HorizontalAlignment="Center"
+                      Command="{Binding RetryCommand}" AutomationProperties.Name="{Binding RetryLabel}">
+                <TextBlock x:Name="RetryText" Text="{Binding RetryLabel}" />
+              </Button>
+              <TextBlock x:Name="StatusText" Text="{Binding StatusMessage}" FontSize="11" TextWrapping="Wrap"
+                         MaxWidth="420" HorizontalAlignment="Center" TextAlignment="Center"
+                         IsVisible="{Binding HasStatusMessage}" Foreground="{DynamicResource AlasMutedBrush}" />
+            </StackPanel>
+          </Panel>
+
+          <!-- 已连接但还没有实例：上游 .home-instance-empty -->
+          <Button x:Name="EmptyStatePanel" Classes="home-empty" IsVisible="{Binding ShowEmptyState}"
+                  IsEnabled="{Binding CanCreateInstance}" ToolTip.Tip="{Binding CreateInstanceNotice}"
+                  AutomationProperties.Name="{Binding CreateFirstInstanceLabel}">
+            <Panel MinHeight="180">
+              <Rectangle Stroke="{DynamicResource AlasBorderBrush}" StrokeThickness="1" StrokeDashArray="4,3"
+                         RadiusX="16" RadiusY="16" />
+              <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"
+                          HorizontalAlignment="Center">
+                <controls:Icon Data="{StaticResource IconPlus}" Size="28" VerticalAlignment="Center"
+                               Foreground="{DynamicResource AlasAccentBrush}" />
+                <TextBlock x:Name="EmptyStateText" Text="{Binding CreateFirstInstanceLabel}" FontSize="14"
+                           VerticalAlignment="Center" Foreground="{DynamicResource AlasAccentBrush}" />
+              </StackPanel>
+            </Panel>
+          </Button>
+        </Panel>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

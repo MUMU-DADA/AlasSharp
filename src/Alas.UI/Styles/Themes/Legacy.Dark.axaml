@@ -1,0 +1,114 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- AzurPilot 上游主题值 "legacy-dark"（skin=legacy，colorMode=dark）的 Avalonia 令牌。由 .runtime/ui-reference/tokens 的 CSS 自定义属性计算值逐条转换。 -->
+  <SolidColorBrush x:Key="AlasBgBrush" Color="#FF282A2F" />
+  <SolidColorBrush x:Key="AlasSurfaceBrush" Color="#FF2F3136" />
+  <SolidColorBrush x:Key="AlasSurfaceMutedBrush" Color="#FF36393F" />
+  <SolidColorBrush x:Key="AlasSidebarBrush" Color="#FF2F3136" />
+  <SolidColorBrush x:Key="AlasGlassTintBrush" Color="#FF2F3136" />
+  <SolidColorBrush x:Key="AlasTextBrush" Color="#FFEEEEEE" />
+  <SolidColorBrush x:Key="AlasMutedBrush" Color="#FFADB5BD" />
+  <SolidColorBrush x:Key="AlasBorderBrush" Color="#FF484B52" />
+  <SolidColorBrush x:Key="AlasGlassEdgeBrush" Color="#FF484B52" />
+  <SolidColorBrush x:Key="AlasAccentBrush" Color="#FFB4B1E5" />
+  <SolidColorBrush x:Key="AlasAccentHoverBrush" Color="#FF928FCF" />
+  <SolidColorBrush x:Key="AlasAccentSoftBrush" Color="#FF3E3B6A" />
+  <SolidColorBrush x:Key="AlasSecondaryBrush" Color="#FF928FCF" />
+  <SolidColorBrush x:Key="AlasSecondarySoftBrush" Color="#FF363560" />
+  <SolidColorBrush x:Key="AlasOnAccentBrush" Color="#FF1A1861" />
+  <SolidColorBrush x:Key="AlasDangerBrush" Color="#FFF28B82" />
+  <SolidColorBrush x:Key="AlasDangerSoftBrush" Color="#FF4A2C30" />
+  <SolidColorBrush x:Key="AlasSuccessBrush" Color="#FF4ADE80" />
+  <SolidColorBrush x:Key="AlasSuccessSoftBrush" Color="#FF24362B" />
+  <SolidColorBrush x:Key="AlasWarningBrush" Color="#FFE7C078" />
+  <SolidColorBrush x:Key="AlasWarningSoftBrush" Color="#FF403723" />
+  <SolidColorBrush x:Key="AlasInfoBrush" Color="#FF928FCF" />
+  <SolidColorBrush x:Key="AlasFocusBrush" Color="#FFB4B1E5" />
+  <SolidColorBrush x:Key="AlasFocusRingBrush" Color="#00000000" />
+  <SolidColorBrush x:Key="AlasScrimBrush" Color="#4D282A2F" />
+  <SolidColorBrush x:Key="AlasNavTextBrush" Color="#FFEEEEEE" />
+  <SolidColorBrush x:Key="AlasNavIconBrush" Color="#FFDFDCFB" />
+  <SolidColorBrush x:Key="AlasNavActiveTextBrush" Color="#FFDFDCFB" />
+  <SolidColorBrush x:Key="AlasNavActiveBrush" Color="#FF3E3B6A" />
+  <SolidColorBrush x:Key="AlasNavExpandedBrush" Color="#FF3E3B6A" />
+  <SolidColorBrush x:Key="AlasNavHoverBrush" Color="#FF3E3B6A" />
+  <SolidColorBrush x:Key="AlasNavPopoverBgBrush" Color="#FF2F3136" />
+  <SolidColorBrush x:Key="AlasNavPopoverEdgeBrush" Color="#FF40444B" />
+  <SolidColorBrush x:Key="AlasInputBgBrush" Color="#FF36393F" />
+  <SolidColorBrush x:Key="AlasInputTextBrush" Color="#FFEEEEEE" />
+  <SolidColorBrush x:Key="AlasInputBorderBrush" Color="#FF484B52" />
+  <SolidColorBrush x:Key="AlasFormEdgeBrush" Color="#FF61666D" />
+  <SolidColorBrush x:Key="AlasSegmentBrush" Color="#FF36393F" />
+  <SolidColorBrush x:Key="AlasSegmentIndicatorBrush" Color="#FF3E3B6A" />
+  <SolidColorBrush x:Key="AlasSegmentBorderBrush" Color="#FF484B52" />
+  <SolidColorBrush x:Key="AlasScrollThumbBrush" Color="#FF5A5E66" />
+  <SolidColorBrush x:Key="AlasLogTimeBrush" Color="#FF928FCF" />
+  <SolidColorBrush x:Key="AlasLogInfoBrush" Color="#FFB4B1E5" />
+  <SolidColorBrush x:Key="AlasIconTint0Brush" Color="#FF3E3B6A" />
+  <SolidColorBrush x:Key="AlasIconTint1Brush" Color="#FF363560" />
+  <SolidColorBrush x:Key="AlasIconTint2Brush" Color="#FF3E3B6A" />
+  <SolidColorBrush x:Key="AlasIconTint3Brush" Color="#FF363560" />
+  <SolidColorBrush x:Key="AlasIconTintForeground0Brush" Color="#FFB4B1E5" />
+  <SolidColorBrush x:Key="AlasIconTintForeground1Brush" Color="#FF928FCF" />
+  <SolidColorBrush x:Key="AlasIconTintForeground2Brush" Color="#FFB4B1E5" />
+  <SolidColorBrush x:Key="AlasIconTintForeground3Brush" Color="#FF928FCF" />
+  <SolidColorBrush x:Key="AlasBadgePendingBgBrush" Color="#FF3E3B6A" />
+  <SolidColorBrush x:Key="AlasBadgePendingFgBrush" Color="#FFB4B1E5" />
+  <SolidColorBrush x:Key="AlasBadgeWaitingBgBrush" Color="#FF36393F" />
+  <SolidColorBrush x:Key="AlasBadgeWaitingFgBrush" Color="#FFADB5BD" />
+  <SolidColorBrush x:Key="AlasBadgeBorderBrush" Color="#FF484B52" />
+  <SolidColorBrush x:Key="AlasRailRunningBgBrush" Color="#FF2F3136" />
+  <SolidColorBrush x:Key="AlasRailPendingBgBrush" Color="#FF2F3136" />
+  <SolidColorBrush x:Key="AlasRailWaitingBgBrush" Color="#FF2F3136" />
+  <SolidColorBrush x:Key="AlasRailGroupBorderBrush" Color="#FF484B52" />
+  <SolidColorBrush x:Key="AlasRailRunningBorderBrush" Color="#FF484B52" />
+  <SolidColorBrush x:Key="AlasLogContentBgBrush" Color="#FF2F3136" />
+  <SolidColorBrush x:Key="AlasLogDebugBrush" Color="#FFADB5BD" />
+  <SolidColorBrush x:Key="AlasLogWarningBrush" Color="#FFE7C078" />
+  <SolidColorBrush x:Key="AlasLogErrorBrush" Color="#FFF28B82" />
+  <SolidColorBrush x:Key="AlasLogCriticalBrush" Color="#FFF28B82" />
+  <SolidColorBrush x:Key="AlasLogTrueBrush" Color="#FF4ADE80" />
+  <SolidColorBrush x:Key="AlasLogFalseBrush" Color="#FFF28B82" />
+  <SolidColorBrush x:Key="AlasLogNullBrush" Color="#FFC9A7F0" />
+  <SolidColorBrush x:Key="AlasLogPathBrush" Color="#FFB4B1E5" />
+  <SolidColorBrush x:Key="AlasLogAttrBrush" Color="#FF928FCF" />
+  <SolidColorBrush x:Key="AlasLogSearchBrush" Color="#FF72551A" />
+  <SolidColorBrush x:Key="AlasToastBgBrush" Color="#FFEEEEEE" />
+  <SolidColorBrush x:Key="AlasToastTextBrush" Color="#FF2F3136" />
+  <SolidColorBrush x:Key="AlasToggleOffBrush" Color="#FF938F99" />
+  <SolidColorBrush x:Key="AlasToggleOnBrush" Color="#FF7A77BB" />
+  <SolidColorBrush x:Key="AlasToggleKnobBrush" Color="#FFFFFFFF" />
+  <BoxShadows x:Key="AlasPanelShadow">0 1 2 0 #33000000</BoxShadows>
+  <BoxShadows x:Key="AlasSidebarShadow">0 1 2 0 #33000000</BoxShadows>
+  <BoxShadows x:Key="AlasRailShadow">0 2 6 0 #33000000, 0 1 2 0 #33000000</BoxShadows>
+  <BoxShadows x:Key="AlasTitleActionsShadow">0 0 0 0 #00000000</BoxShadows>
+  <BoxShadows x:Key="AlasGlassShadow">0 0 0 0 #00000000</BoxShadows>
+  <BoxShadows x:Key="AlasShadow">0 1 2 0 #4D000000</BoxShadows>
+  <BoxShadows x:Key="AlasPopoverShadow">0 4 12 0 #40000000</BoxShadows>
+  <BoxShadows x:Key="AlasModalShadow">0 8 24 0 #59000000</BoxShadows>
+  <BoxShadows x:Key="AlasFloatingShadow">0 2 6 0 #33000000</BoxShadows>
+  <BoxShadows x:Key="AlasHoverShadow">0 2 8 0 #40000000</BoxShadows>
+  <BoxShadows x:Key="AlasFormShadow">0 0 0 0 #00000000</BoxShadows>
+  <BoxShadows x:Key="AlasNavPopoverShadow">0 2 10 0 #73000000</BoxShadows>
+  <BoxShadows x:Key="AlasToggleShadow">0 0 0 0 #00000000</BoxShadows>
+  <BoxShadows x:Key="AlasSchedulerShadow">0 0 0 0 #00000000</BoxShadows>
+  <BoxShadows x:Key="AlasRailRunningShadow">0 0 0 0 #00000000</BoxShadows>
+  <BoxShadows x:Key="AlasRailPendingShadow">0 0 0 0 #00000000</BoxShadows>
+  <BoxShadows x:Key="AlasRailWaitingShadow">0 0 0 0 #00000000</BoxShadows>
+  <BoxShadows x:Key="AlasSegmentIndicatorShadow">0 0 0 0 #00000000</BoxShadows>
+  <CornerRadius x:Key="AlasRadius">8</CornerRadius>
+  <CornerRadius x:Key="AlasPanelRadius">16</CornerRadius>
+  <CornerRadius x:Key="AlasCardRadius">12</CornerRadius>
+  <CornerRadius x:Key="AlasPopoverRadius">12</CornerRadius>
+  <CornerRadius x:Key="AlasModalRadius">28</CornerRadius>
+  <CornerRadius x:Key="AlasControlRadius">8</CornerRadius>
+  <CornerRadius x:Key="AlasButtonRadius">20</CornerRadius>
+  <CornerRadius x:Key="AlasInstanceTabRadius">0</CornerRadius>
+  <CornerRadius x:Key="AlasSchedulerRadius">16</CornerRadius>
+  <CornerRadius x:Key="AlasTaskItemRadius">4</CornerRadius>
+  <CornerRadius x:Key="AlasNavItemRadius">22</CornerRadius>
+  <x:Double x:Key="AlasSidebarWidth">240</x:Double>
+  <x:Double x:Key="AlasRailWidthNarrow">292</x:Double>
+  <x:Double x:Key="AlasTopbarHeight">56</x:Double>
+  <x:Double x:Key="AlasFormHeight">40</x:Double>
+  <SolidColorBrush x:Key="AlasTitleFillBrush" Color="#00000000" />
+</ResourceDictionary>
