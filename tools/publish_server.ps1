@@ -19,15 +19,24 @@ $dotnet = Join-Path $sdkDirectory 'dotnet.exe'
 $packageDirectory = Join-Path $repo '.runtime/nuget/packages'
 $packageSource = Join-Path $repo '.runtime/nuget/source'
 $sdkVersion = '10.0.401'
+$environmentNames = @(
+    'DOTNET_ROOT', 'DOTNET_CLI_HOME', 'NUGET_PACKAGES', 'NUGET_HTTP_CACHE_PATH',
+    'DOTNET_CLI_TELEMETRY_OPTOUT', 'DOTNET_SKIP_FIRST_TIME_EXPERIENCE',
+    'DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE', 'PATH'
+)
+$savedEnvironment = @{}
+foreach ($name in $environmentNames) {
+    $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+}
 if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf)) {
     throw 'Project-local SDK is missing; prepare it with tools/build_ui.ps1 -Bootstrap.'
 }
 if (-not $Output) { $Output = Join-Path $repo '.runtime/server-publish' }
 $output = [IO.Path]::GetFullPath($Output)
-$outputRoot = [IO.Path]::GetFullPath((Join-Path $repo '.runtime'))
-if ([IO.Path]::GetDirectoryName($output) -ne $outputRoot -and
+$outputRoot = [IO.Path]::GetFullPath((Join-Path $repo '.runtime/server-publish'))
+if ($output -ne $outputRoot -and
     -not $output.StartsWith($outputRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'Server output must stay under the project .runtime directory.'
+    throw 'Server output must stay under the dedicated .runtime/server-publish directory.'
 }
 
 function Invoke-Dotnet([string[]]$Arguments) {
@@ -36,12 +45,36 @@ function Invoke-Dotnet([string[]]$Arguments) {
 }
 
 function Assert-NoLinks([string]$Path) {
-    if (-not (Test-Path -LiteralPath $Path)) { return }
-    if ((Get-Item -LiteralPath $Path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
-        throw 'Server publication cannot use links.'
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $ancestor = $fullPath
+    while ($null -ne $ancestor) {
+        if (Test-Path -LiteralPath $ancestor) {
+            $item = Get-Item -LiteralPath $ancestor -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw 'Server publication path and its ancestors cannot use links.'
+            }
+        }
+        $parent = [IO.Path]::GetDirectoryName($ancestor)
+        if ($parent -eq $ancestor) { break }
+        $ancestor = $parent
     }
-    Get-ChildItem -LiteralPath $Path -Recurse -Force | ForEach-Object {
-        if ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Server publication cannot use links.' }
+    if (-not (Test-Path -LiteralPath $fullPath)) { return }
+
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $pending.Push($fullPath)
+    while ($pending.Count -gt 0) {
+        $current = $pending.Pop()
+        $item = Get-Item -LiteralPath $current -Force
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw 'Server publication cannot use links.'
+        }
+        if (-not $item.PSIsContainer) { continue }
+        foreach ($child in Get-ChildItem -LiteralPath $current -Force) {
+            if ($child.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw 'Server publication cannot use links.'
+            }
+            if ($child.PSIsContainer) { $pending.Push($child.FullName) }
+        }
     }
 }
 
@@ -66,26 +99,37 @@ try {
 "@
     if ((& $dotnet --version) -ne $sdkVersion) { throw "Expected local SDK $sdkVersion." }
     $flags = @('--configfile', $nugetConfig, '-p:NuGetAudit=false')
+    $selfContainedValue = $SelfContained.ToString().ToLowerInvariant()
     $publishArgs = @('publish', 'src/Alas.Server/Alas.Server.csproj', '-c', 'Release', '-r', $Runtime,
-        '--self-contained', $SelfContained.ToString().ToLowerInvariant(), '-p:DebugType=None',
+        '--self-contained', $selfContainedValue, '--no-restore', '-p:DebugType=None',
         '-p:DebugSymbols=false', '-o', $output) + $flags
+    Assert-NoLinks $output
     if (Test-Path -LiteralPath $output) {
         Assert-NoLinks $output
         Remove-Item -LiteralPath $output -Recurse -Force
     }
-    Invoke-Dotnet (@('restore', 'src/Alas.Server/Alas.Server.csproj', '-r', $Runtime) + $flags)
+    Invoke-Dotnet (@('restore', 'src/Alas.Server/Alas.Server.csproj', '-r', $Runtime,
+        "-p:SelfContained=$selfContainedValue") + $flags)
     Invoke-Dotnet $publishArgs
     Assert-NoLinks $output
     if ($IncludeUi) {
         $source = Join-Path $repo '.runtime/ui-publish/browser/wwwroot'
+        Assert-NoLinks $source
         if (-not (Test-Path -LiteralPath (Join-Path $source 'index.html') -PathType Leaf)) {
             throw 'Browser publication is missing; run tools/build_ui.ps1 -Publish first.'
         }
         $ui = Join-Path $output 'ui'
+        Assert-NoLinks $output
+        Assert-NoLinks $ui
         Copy-Item -LiteralPath $source -Destination $ui -Recurse -Force
         Assert-NoLinks $ui
     }
     Write-Output "PASS: Alas.Server published for $Runtime under .runtime; UI included=$IncludeUi."
     Write-Output 'Runtime inputs remain explicit: --root, --repo, --data, --tools and optional --ui-root ui.'
 }
-finally { Pop-Location }
+finally {
+    foreach ($name in $environmentNames) {
+        [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process')
+    }
+    Pop-Location
+}
