@@ -165,7 +165,8 @@ def verify_native_dispatch(failures):
     device = FakeDevice()
 
     from module.config.config import TaskEnd
-    from module.exception import GameNotRunningError, GameStuckError, RequestHumanTakeover
+    from module.exception import (GameNotRunningError, GameStuckError,
+                                  MapDetectionError, RequestHumanTakeover)
 
     class FakeReward:
         def __init__(self, config, device):
@@ -181,6 +182,8 @@ def verify_native_dispatch(failures):
                 raise GameStuckError('offline fixture')
             if state.mode == 'system_exit':
                 raise RequestHumanTakeover
+            if state.mode == 'fatal_map':
+                raise MapDetectionError('No vertical line detected')
 
     class FakeRewardDorm:
         def __init__(self, config, device):
@@ -388,6 +391,9 @@ def verify_native_dispatch(failures):
                                   save_fixture_error):
                     stuck = call_op('periodic_run', {
                         'task': 'reward', 'allow_actions': True, 'confirm': 'reward'})
+                    state.mode = 'fatal_map'
+                    fatal = call_op('periodic_run', {
+                        'task': 'reward', 'allow_actions': True, 'confirm': 'reward'})
             check(failures, 'GameStuckError 由原生 run 返回 False 后仍可定位',
                   stuck.get('decision') == 'failed'
                   and 'GameStuckError' in (stuck.get('error') or '')
@@ -397,6 +403,41 @@ def verify_native_dispatch(failures):
                   and stuck.get('failure_frames') == [f'{relative_dir}/failure.png']
                   and tuple(native_alas.logger.handlers) == handlers_before,
                   f'{stuck}')
+            check(failures, '原生异常转 SystemExit 后仍登记根因、调用栈与失败帧',
+                  fatal.get('decision') == 'error'
+                  and fatal.get('native_success') is False
+                  and fatal.get('exit_code') == '1'
+                  and 'SystemExit: 1' in (fatal.get('error') or '')
+                  and 'MapDetectionError' in (fatal.get('error') or '')
+                  and bool(fatal.get('traceback_tail'))
+                  and all(line in fatal['error'] for line in fatal['traceback_tail'])
+                  and all('/' not in line and '\\' not in line
+                          for line in fatal['traceback_tail'])
+                  and fatal.get('native_error_dir') == relative_dir
+                  and fatal.get('native_error_log') == f'{relative_dir}/log.txt'
+                  and fatal.get('failure_frames') == [f'{relative_dir}/failure.png']
+                  and device.config is original_device_config
+                  and tuple(native_alas.logger.handlers) == handlers_before,
+                  f'{fatal}')
+
+            def plain_exit(self, command):
+                raise SystemExit(7)
+
+            with patch.object(native_alas.AzurLaneAutoScript, 'run', plain_exit):
+                bare_exit = call_op('periodic_run', {
+                    'task': 'reward', 'allow_actions': True, 'confirm': 'reward'})
+            check(failures, '无日志 SystemExit 保留自身栈且不串入上个任务证据',
+                  bare_exit.get('decision') == 'error'
+                  and bare_exit.get('exit_code') == '7'
+                  and 'SystemExit: 7' in (bare_exit.get('error') or '')
+                  and any('plain_exit' in line for line in bare_exit.get('traceback_tail', []))
+                  and all(line in bare_exit['error'] for line in bare_exit['traceback_tail'])
+                  and not bare_exit.get('failure_frames')
+                  and not bare_exit.get('native_error_dir')
+                  and 'MapDetectionError' not in bare_exit['error']
+                  and device.config is original_device_config
+                  and tuple(native_alas.logger.handlers) == handlers_before,
+                  f'{bare_exit}')
 
             native_run = native_alas.AzurLaneAutoScript.run
             try:

@@ -64,6 +64,8 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 `periodic_run` 同时要求动作会话、`input.allow_actions=true`，以及 `input.confirm` 与 `input.task` 完全一致。
 `periodic_preflight` 只检查放行条件，不执行任务。`overrides` 经上游 `config.override()` 作用于本次任务对象；
 上游对下次调度时间等状态的正常写入仍会发生。涉及领取、购买或补给时，先核对任务配置与实际资源消耗路径。
+原生调度返回 False、抛出异常或记录根因后转为 SystemExit 时，周期任务都保留错误调用栈、
+原生日志位置及已保存的失败帧；SystemExit 不退出共享宿主，也不将上一个任务的证据带入下一次执行。
 
 独立工具走 `AzurLaneAutoScript(instance).run(method, skip_first_screenshot=True)`，配置与设备按上游实际访问延迟构造；
 工具自行绑定任务配置，不套用周期任务的 `Scheduler.Command`。工具正常返回只证明原生执行完成，不能推导领取或通关。

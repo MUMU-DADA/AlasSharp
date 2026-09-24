@@ -1241,6 +1241,7 @@ def op_periodic_run(args):
     device = None
     old_device_config = None
     device_had_config = False
+    failure = None
     try:
         from alas import AzurLaneAutoScript
         from module.config.config import AzurLaneConfig
@@ -1283,8 +1284,35 @@ def op_periodic_run(args):
             out['decision'] = 'ran'
         else:
             out['decision'] = 'failed'
-            out['error'] = ('上游原生调度器未确认成功'
-                            + (f'（已记录 {failure.kind}）' if failure.kind else ''))
+            out['error'] = '上游原生调度器未确认成功'
+    except (Exception, SystemExit) as error:
+        out['ran'] = bool(out.get('ran'))
+        out['native_success'] = False
+        out['decision'] = 'error'
+        if isinstance(error, SystemExit):
+            out['exit_code'] = None if error.code is None else str(error.code)
+        out['error'] = f'{type(error).__name__}: {error}'
+        out['traceback_tail'] = [
+            f'{os.path.basename(frame.filename)}:{frame.lineno} {frame.name}'
+            for frame in traceback.extract_tb(error.__traceback__)[-8:]
+        ]
+    finally:
+        if device is not None:
+            try:
+                if device_had_config:
+                    device.config = old_device_config
+                else:
+                    delattr(device, 'config')
+            except Exception as restore_error:
+                out['decision'] = 'error'
+                out['native_success'] = False
+                message = f'恢复设备配置失败: {type(restore_error).__name__}: {restore_error}'
+                out['error'] = f"{out['error']}; {message}" if out.get('error') else message
+        # Native run may log the real cause and save frames before exiting. Collect
+        # them for every exit path, after the exception handler has set the outcome.
+        if failure is not None:
+            if failure.kind and out.get('error'):
+                out['error'] += f'（已记录 {failure.kind}）'
             if failure.traceback_tail:
                 out['traceback_tail'] = failure.traceback_tail
             if failure.error_directory is not None and failure.error_directory.is_dir():
@@ -1297,31 +1325,8 @@ def op_periodic_run(args):
                 log_file = directory / 'log.txt'
                 if log_file.is_file():
                     out['native_error_log'] = log_file.relative_to(FORK).as_posix()
-    except SystemExit as error:
-        out['ran'] = bool(out.get('ran'))
-        out['native_success'] = False
-        out['decision'] = 'error'
-        out['exit_code'] = None if error.code is None else str(error.code)
-        out['error'] = f'SystemExit: {error.code}'
-        import traceback
-        out['traceback_tail'] = traceback.format_exc().strip().splitlines()[-8:]
-    except Exception as error:
-        out['ran'] = bool(out.get('ran'))
-        out['native_success'] = False
-        out['decision'] = 'error'
-        out['error'] = f'{type(error).__name__}: {error}'
-        import traceback
-        out['traceback_tail'] = traceback.format_exc().strip().splitlines()[-8:]
-    finally:
-        if device is not None:
-            try:
-                if device_had_config:
-                    device.config = old_device_config
-                else:
-                    delattr(device, 'config')
-            except Exception as restore_error:
-                out['decision'] = 'error'
-                out['error'] = f'恢复设备配置失败: {type(restore_error).__name__}: {restore_error}'
+        if out.get('error') and out.get('traceback_tail'):
+            out['error'] += '\n' + '\n'.join(out['traceback_tail'])
         out['elapsed_s'] = round(time.time() - started, 1)
     return out
 
