@@ -760,6 +760,37 @@ def build_dry_run_cancellation_cases():
     return cases
 
 
+def build_campaign_mode_cases():
+    cases = []
+    for mode in ('normal', 'hard', None):
+        document = dict(cleared_document(CLEARED), requested_mode=mode,
+                        campaign_mode=mode or 'normal')
+        cases.append(dict(
+            name='campaign_mode_' + str(mode), dry_run=False, allow_actions=True,
+            serial='stub-1', artifacts=True,
+            tasks=[dict(id='batch', kind='campaign_batch', required=True,
+                        input=dict(chapters=[CLEARED], mode=mode))],
+            stub_responses={'s3_run_plan': [dict(
+                expected_args=dict(chapter=CLEARED, mode=mode), result=document)]},
+            expect=dict(outcome='succeeded', host_start_count=1, device_configure_count=1,
+                        backend_calls=3, stopped_early=False, tasks=[dict(
+                            id='batch', outcome='succeeded', error_kind='none',
+                            evidence_contains=['"requested_mode":' + json.dumps(mode),
+                                               '"campaign_mode":' + json.dumps(mode or 'normal')])]))
+        )
+    for index, mode in enumerate(('', 'Hard', 'auto', True, 1, [], {})):
+        cases.append(dict(
+            name=f'campaign_invalid_mode_{index}', dry_run=False, allow_actions=True,
+            serial='stub-1', artifacts=True,
+            tasks=[dict(id='batch', kind='campaign_batch', required=True,
+                        input=dict(chapters=[CLEARED], mode=mode))],
+            expect=dict(outcome='failed', host_start_count=1, device_configure_count=1,
+                        backend_calls=1, stopped_early=True, tasks=[dict(
+                            id='batch', outcome='failed', error_contains='input.mode')]))
+        )
+    return cases
+
+
 def main() -> int:
     if not EXE.is_file():
         print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先运行 dotnet build）')
@@ -772,7 +803,8 @@ def main() -> int:
 
 
 def verify_in_workspace(workspace: Path) -> int:
-    cases = build_cases() + build_queue_cases() + build_account_state_cases() + build_dry_run_cancellation_cases()
+    cases = (build_cases() + build_queue_cases() + build_account_state_cases()
+             + build_dry_run_cancellation_cases() + build_campaign_mode_cases())
     failures = []
     # 原生 UI 导航合同的替身用例，不复制上游页面点击路径。
     diagnostics = Path(__file__).resolve().parent

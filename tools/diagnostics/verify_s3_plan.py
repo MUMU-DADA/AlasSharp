@@ -233,7 +233,7 @@ class S3DryRunTests(unittest.TestCase):
                                  allow_actions=True, max_rounds=7, max_seconds=321,
                                  stop_after='map_init', battle_count=4,
                                  fleet1=3, fleet2=2, submarine_fleet=1,
-                                 clear_all=True, emotion_mode='calculate_ignore')
+                                 clear_all=True, emotion_mode='calculate_ignore', mode='hard')
             self.assertEqual(state.events, [('clear_stuck',), ('clear_click',),
                                             ('navigate', 'upstream-stage', 'normal'),
                                             ('clear_stuck',), ('clear_click',),
@@ -245,6 +245,9 @@ class S3DryRunTests(unittest.TestCase):
             self.assertEqual((options['fleet1'], options['fleet2'], options['submarine_fleet']),
                              (3, 2, 1))
             self.assertTrue(options['clear_all'])
+            self.assertEqual(options['mode'], 'hard')
+            self.assertEqual(result['requested_mode'], 'hard')
+            self.assertEqual(result['campaign_mode'], 'hard')
             self.assertEqual(result['stage'], 'upstream-stage')
             self.assertEqual(result['execution'], 'upstream_run')
             self.assertEqual([step['step'] for step in result['steps']],
@@ -253,6 +256,22 @@ class S3DryRunTests(unittest.TestCase):
             self.assertFalse(result['cleared'])
             self.assertNotIn('enter_map', vars(state.inst))
             self.assertEqual(state.inst.enter_map, state.original_enter)
+
+    def test_invalid_mode_fails_before_initialization_in_dry_or_live_run(self):
+        for dry in (True, False):
+            for mode in ('', 'Hard', 'auto', False, 1, [], {}):
+                with self.subTest(dry=dry, mode=mode), patch.object(self.av, 'op_s3_campaign_init') as init:
+                    with self.assertRaisesRegex(ValueError, 'mode'):
+                        self.av.op_s3_run_plan({'chapter': 'campaign.campaign_main.campaign_1_1',
+                                              'mode': mode, 'dry_run': dry, 'allow_actions': True})
+                    init.assert_not_called()
+
+    def test_mode_dry_run_metadata_does_not_construct_campaign(self):
+        with patch.object(self.av, 'op_s3_campaign_init') as init:
+            result = self.invoke(chapter='campaign.campaign_main.campaign_1_1', mode='hard')
+        self.assertEqual(result['requested_mode'], 'hard')
+        self.assertNotIn('campaign_mode', result)
+        init.assert_not_called()
 
     def test_protocol_navigation_failure_stops_before_native_run(self):
         with self.native_protocol(navigation_error='chapter navigation failed') as state:

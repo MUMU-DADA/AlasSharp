@@ -39,7 +39,7 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 
 | kind | 职责与主要输入 | 授权边界 |
 | --- | --- | --- |
-| `campaign_batch` | `chapters` 为完整上游模块名；支持舰队、轮次、时间和全清参数 | 真跑须动作会话，逐关结果过 `sortie-result/1` |
+| `campaign_batch` | `chapters` 为完整上游模块名；支持舰队、轮次、时间、全清及 `mode=normal/hard` | 真跑须动作会话，逐关结果过 `sortie-result/1` |
 | `account_state` | 只读页面、在图状态；`capture=true` 从设备取帧，存盘帧与现场帧来源明确区分 | 抓设备帧须设备会话 |
 | `observe` | `seconds`、`tick_seconds`；可加 `map=main/os` | 只读设备，tick 边界取消 |
 | `navigate` | `to`、`rounds`；`max_hops` 已停用，出现即拒绝 | 动作会话，调用上游 `UI.ui_ensure()` |
@@ -88,6 +88,9 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 ```
 
 章节差异由上游 `MAP / Config / Campaign.run()` 消费；IR 完整度不等于可运行或通关。
+`input.mode` 可选 `normal/hard`，省略或 null 沿用账号模式；显式模式经 `config.override()` 只作用于本次加载，
+不写入账号的模式字段。章节 Config 合并、导航钩子及运行时仍可按上游语义调整它；工件分别保留请求模式与实际模式。
+首次困难开荒使用主线章节模块和 `mode=hard`；上游每日 `hard` 任务要求已解锁周回，不应拿未满足此前提的执行替代开荒流程。
 `alashub plan-queue --out events.json --only-complete --limit 5` 生成普通任务队列；
 加 `--capture-after` 可在每关后插入实时账号状态任务，证明返页，不改变通关判据。
 

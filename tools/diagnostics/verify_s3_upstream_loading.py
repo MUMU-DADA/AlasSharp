@@ -119,6 +119,40 @@ class UpstreamLoadingTests(unittest.TestCase):
                 self.assertEqual(config_values(actual.config, module),
                                  config_values(expected_loader.campaign.config, module))
 
+    def test_explicit_mode_uses_native_override_before_chapter_merge(self):
+        chapter = 'campaign.campaign_main.campaign_1_1'
+        for requested in ('hard', 'normal', None):
+            with self.subTest(mode=requested):
+                config = template_config()
+                config.override(Campaign_Mode='hard')
+                persisted = copy.deepcopy(config.data)
+                expected = copy.deepcopy(config)
+                if requested is not None:
+                    expected.override(Campaign_Mode=requested)
+                expected_loader = CampaignRun(expected, self.device)
+                expected_loader.load_campaign('campaign_1_1')
+                with patch.object(av, '_device_engine', return_value=self.device), \
+                        patch.object(av, '_map_config', return_value=config):
+                    result = av.op_s3_campaign_init({'chapter': chapter, 'mode': requested})
+                self.assertNotIn('error', result, result)
+                actual = av._CAMPAIGN['obj']
+                self.assertEqual(actual.config.Campaign_Mode,
+                                 expected_loader.campaign.config.Campaign_Mode)
+                self.assertEqual(result['campaign_mode'], actual.config.Campaign_Mode)
+                self.assertEqual(config.data, persisted)
+                self.assertIs(actual.MAP, expected_loader.campaign.MAP)
+                self.assertEqual(config_values(actual.config, importlib.import_module(chapter)),
+                                 config_values(expected_loader.campaign.config, importlib.import_module(chapter)))
+
+    def test_invalid_mode_rejected_before_config_or_device(self):
+        for mode in ('', 'Hard', 'auto', False, 1, [], {}):
+            with self.subTest(mode=mode), patch.object(av, '_device_engine') as device, \
+                    patch.object(av, '_map_config') as config:
+                with self.assertRaisesRegex(ValueError, 'mode'):
+                    av.op_s3_campaign_init({'chapter': 'campaign.campaign_main.campaign_1_1', 'mode': mode})
+                device.assert_not_called()
+                config.assert_not_called()
+
     def test_diagnostic_config_matches_upstream_loader(self):
         # Keep the actual helper and its chapter merge; replace only config-file
         # construction, so this also catches diagnostics silently using defaults.

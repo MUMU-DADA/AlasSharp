@@ -2240,6 +2240,13 @@ def apply_clear_all_override(enabled=True):
         cls._alas_clear_all_compat = True
 
 
+def _campaign_mode(args):
+    mode = args.get('mode')
+    if mode is not None and mode not in ('normal', 'hard'):
+        raise ValueError('mode 必须是 normal、hard 或 null（沿用账号配置）')
+    return mode
+
+
 def op_s3_campaign_init(args):
     """实例化上游章节的 `Campaign`（**不执行任何游戏动作**）。
 
@@ -2247,6 +2254,7 @@ def op_s3_campaign_init(args):
     按铁律不能重写成 C#。探针已验证它在宿主里可实例化
     （`tools/diagnostics/s3_probe_campaign.py`）；本 op 把它接到协议上。
     """
+    mode = _campaign_mode(args)
     chapter = str(args.get('chapter') or 'campaign.campaign_main.campaign_2_1')
     apply_numpy2_compat()
     apply_points_empty_compat()
@@ -2330,6 +2338,8 @@ def op_s3_campaign_init(args):
         # 复用上游加载器：它先 deepcopy 账号配置，再合并该模块的 Config
         # （包括继承的 Config），最后构造 Campaign。直接构造会丢失地图规则。
         cfg.override(Campaign_Name=name, Campaign_Event=folder)
+        if mode is not None:
+            cfg.override(Campaign_Mode=mode)
         loader = CampaignRun(config=cfg, device=dev)
         loader.load_campaign(name, folder=folder)
         inst = loader.campaign
@@ -2354,6 +2364,7 @@ def op_s3_campaign_init(args):
     _CAMPAIGN['chapter'] = chapter
     _CAMPAIGN['loader'] = loader
     return {'chapter': chapter, 'instantiated': True, 'frame_seeded_ms': seeded,
+            'campaign_mode': inst.config.Campaign_Mode,
             'mro': [c.__name__ for c in type(inst).__mro__[:8]]}
 
 
@@ -2510,6 +2521,7 @@ def op_s3_run_plan(args):
     否则 `self.map` 等状态会丢（实测：换进程调用报 `'Campaign' object has no attribute 'map'`）。
     """
     import time as _t
+    mode = _campaign_mode(args)
     chapter = str(args.get('chapter') or 'campaign.campaign_main.campaign_2_1')
     dry = bool(args.get('dry_run', True))
     from sortie_contract import stamp
@@ -2528,6 +2540,7 @@ def op_s3_run_plan(args):
                                   .strip().splitlines()[-8:], 'frame': None}})
     stage = out['stage']
     out['dry_run'] = dry
+    out['requested_mode'] = mode
     if dry:
         out['note'] = ('dry_run：只读取规则，未初始化 Campaign 或设备。'
                        'plan_steps 是已导出的战斗方法，calls 是语义轨迹；'
@@ -2537,6 +2550,7 @@ def op_s3_run_plan(args):
 
     # 舰队选择也要能由调用方指定（不同账号/关卡要用不同舰队；此前只走 init 的默认值）。
     init = op_s3_campaign_init({'chapter': chapter,
+                                'mode': mode,
                                 'serial': args.get('serial'),
                                 'screenshot': args.get('screenshot'),
                                 'control': args.get('control'),
@@ -2556,6 +2570,7 @@ def op_s3_run_plan(args):
                                 'frame': None}})
         return stamp(out)
     inst = _CAMPAIGN.get('obj')
+    out['campaign_mode'] = inst.config.Campaign_Mode
     stage = _CAMPAIGN['loader'].stage
     out['stage'] = stage
 
@@ -2593,6 +2608,7 @@ def op_s3_run_plan(args):
         ui_step['navigation_end'] = r.get('outcome')
         ui_step['navigation_withdrawn'] = bool((r.get('end_evidence') or {}).get('withdrawn'))
     steps.append(ui_step)
+    out['campaign_mode'] = inst.config.Campaign_Mode
     if r.get('error'):
         out['steps'] = steps
         out['elapsed_s'] = round(_t.time() - t_start, 1)
@@ -2618,6 +2634,7 @@ def op_s3_run_plan(args):
     with campaign_button_color_compat():
         result = run_native_campaign(inst, **native_kwargs)
     out.update(result)
+    out['campaign_mode'] = inst.config.Campaign_Mode
     out['steps'] = steps + result['steps']
     out['elapsed_s'] = round(_t.time() - t_start, 1)
     return out

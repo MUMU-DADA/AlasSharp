@@ -96,7 +96,8 @@ public interface IVisionEngine : IDisposable
                                        int maxRounds = 20, bool repeatUntilCleared = true,
                                        int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0,
                                        bool clearAll = false, string? serial = null,
-                                       string? artifactsDir = null, string? withdrawFile = null);
+                                       string? artifactsDir = null, string? withdrawFile = null,
+                                       string? mode = null);
 }
 
 /// <summary>
@@ -107,6 +108,8 @@ public interface IVisionEngine : IDisposable
 /// </summary>
 public sealed class CampaignPlanResult : Alas.Campaign.SortieResult
 {
+    [JsonPropertyName("requested_mode")] public string? RequestedMode { get; set; }
+    [JsonPropertyName("campaign_mode")] public string? CampaignMode { get; set; }
     [JsonPropertyName("tier")] public string? Tier { get; set; }
     [JsonPropertyName("plan_steps")] public List<string>? PlanSteps { get; set; }
     [JsonPropertyName("semantic_trace")] public List<string>? SemanticTrace { get; set; }
@@ -278,7 +281,8 @@ public abstract class VisionEngineBase : IVisionEngine
                                               int maxRounds = 20, bool repeatUntilCleared = true,
                                               int fleet1 = 1, int fleet2 = 0, int submarineFleet = 0,
                                               bool clearAll = false, string? serial = null,
-                                              string? artifactsDir = null, string? withdrawFile = null)
+                                              string? artifactsDir = null, string? withdrawFile = null,
+                                              string? mode = null)
         => CallTyped<CampaignPlanResult>("s3_run_plan", new
         {
             chapter,
@@ -291,6 +295,7 @@ public abstract class VisionEngineBase : IVisionEngine
             fleet2,
             submarine_fleet = submarineFleet,
             clear_all = clearAll,
+            mode,
             serial,
             artifact_dir = artifactsDir,
             // **运行中请求撤退**：这个文件一旦出现，宿主会在**下一次战斗之前**调用上游自己的

@@ -150,3 +150,17 @@ False 返回、监听器移除、设备配置恢复与证据不串任务；原�
 否则使用主线图功能；本次日志显示没有自律选项。原生困难任务只加载通用困难 Config 并借用主线 MAP，
 保存帧的默认/困难配置探针均未检出垂直线，章节 Config 探针则报相机越界；静态探针不执行原生相机恢复，
 也不证明更换配置即可修复。困难首次开荒、周回前提和主线模式参数仍须沿原生调用链继续验收，不添加逐地图识别补丁。
+
+## 主线战役模式透传
+
+困难首次开荒排查确认 `campaign_batch` 原先没有上游模式参数，只能沿用本地账号的 `Campaign_Mode`。
+现在任务输入、Core 运行时和视觉协议逐层透传可选 `mode=normal/hard`，在原生 `load_campaign()` 前调用
+`config.override(Campaign_Mode=...)`，省略或 null 保持旧行为。加载器的 Config 合并、MAP、原生相机恢复及
+`Campaign.run()` 完全保留；章节导航钩子仍可修改模式，结果记录 `requested_mode/campaign_mode`，不改变通关合同。
+
+验证包含 10 组原生加载对照、22 组计划/协议、运行时新增 10 个参数及拒绝用例、7 组相机恢复、35 组结果合同；
+Core/DataTool/Server Release 构建 0 警告/0 错误，架构检查通过。真机目录
+`data/mainline-device/live-20260925-hard-campaign/artifacts/20260925T035913/` 中，主线 1-1 请求及实际模式均为 hard，
+原生入口先清理上一局，再完成两场战斗和 S 级成功结算，`sortie-result/1` 无违例、`withdrawn=false`；
+随后同队列实时抓帧确认 `page_campaign`、`in_map=false`。批次 80.8 秒，完整队列 81.4 秒。
+这是特定章节困难模式正样本，不代表每日困难周回已验证，也不外推到所有困难章节；之前两个失败记录原样保留。

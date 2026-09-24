@@ -59,6 +59,7 @@ public sealed class CampaignRunSettings
     public int MaxRounds { get; set; } = 20;
     public bool RepeatUntilCleared { get; set; } = true;
     public bool ClearAll { get; set; }
+    public string? Mode { get; set; }
     public int Fleet1 { get; set; } = 1;
     public int Fleet2 { get; set; }
     public int SubmarineFleet { get; set; }
@@ -158,6 +159,7 @@ public sealed class CampaignBatchRunner
                     fleet2: run.Fleet2,
                     submarineFleet: run.SubmarineFleet,
                     clearAll: run.ClearAll,
+                    mode: run.Mode,
                     serial: options.Serial,
                     artifactsDir: _session.RunDirectory,
                     // 运行中请求撤退：**约定路径** `<运行目录>\withdraw.request` —— 文件出现即请求，

@@ -15,6 +15,7 @@ namespace Alas.Tasks;
 ///   "max_seconds": 1500, "max_rounds": 20,
 ///   "repeat_until_cleared": true,   // 循环打到通关
 ///   "clear_all": false,             // 上游两套战斗流程二选一
+///   "mode": "hard",                 // 可选 normal/hard；省略沿用账号配置
 ///   "fleet1": 1, "fleet2": 0, "submarine": 0
 /// }
 /// </code>
@@ -28,6 +29,7 @@ public sealed class CampaignBatchTask : ITaskRunner
     {
         "chapters", "stop_on_failure", "max_seconds", "max_rounds",
         "repeat_until_cleared", "clear_all", "fleet1", "fleet2", "submarine",
+        "mode",
     };
 
     public string Kind => "campaign_batch";
@@ -57,6 +59,10 @@ public sealed class CampaignBatchTask : ITaskRunner
         ValidateBoolean(request, "stop_on_failure", problems);
         ValidateBoolean(request, "repeat_until_cleared", problems);
         ValidateBoolean(request, "clear_all", problems);
+        if (request.Input?["mode"] is JsonNode mode &&
+            (mode is not JsonValue modeValue || !modeValue.TryGetValue<string>(out var modeText)
+             || modeText is not ("normal" or "hard")))
+            problems.Add("input.mode 必须是 normal、hard 或 null（沿用账号配置）");
         ValidatePositiveNumber(request, "max_seconds", problems);
         ValidateInteger(request, "max_rounds", 1, problems);
         ValidateInteger(request, "fleet1", 1, problems);
@@ -138,6 +144,8 @@ public sealed class CampaignBatchTask : ITaskRunner
             {
                 ["chapter"] = stage.Chapter,
                 ["stage"] = stage.Stage,
+                ["requested_mode"] = stage.Result?.RequestedMode,
+                ["campaign_mode"] = stage.Result?.CampaignMode,
                 ["outcome"] = stage.Outcome,
                 ["cleared"] = stage.Cleared,
                 ["failed"] = stage.Failed,
@@ -211,6 +219,7 @@ public sealed class CampaignBatchTask : ITaskRunner
         settings.MaxRounds = (int?)Number(request, "max_rounds") ?? settings.MaxRounds;
         settings.RepeatUntilCleared = Bool(request, "repeat_until_cleared") ?? settings.RepeatUntilCleared;
         settings.ClearAll = Bool(request, "clear_all") ?? settings.ClearAll;
+        settings.Mode = request.Input?["mode"]?.GetValue<string>();
         settings.Fleet1 = (int?)Number(request, "fleet1") ?? settings.Fleet1;
         settings.Fleet2 = (int?)Number(request, "fleet2") ?? settings.Fleet2;
         settings.SubmarineFleet = (int?)Number(request, "submarine") ?? settings.SubmarineFleet;

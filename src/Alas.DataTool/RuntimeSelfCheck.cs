@@ -616,6 +616,10 @@ internal sealed class StubVisionEngine : VisionEngineBase
             if (_operationResponses?[op] is JsonArray { Count: > 0 } sequence)
             {
                 var response = sequence[Math.Min(count - 1, sequence.Count - 1)]!;
+                if (response["expected_args"] is JsonObject expectedArgs)
+                    foreach (var (key, expectedValue) in expectedArgs)
+                        if (!JsonNode.DeepEquals(payload[key], expectedValue))
+                            throw new InvalidOperationException($"{op} 参数 {key} 未按预期透传");
                 if (response["error"] is JsonNode error)
                     throw new VisionWorkerException(op, error.GetValue<string>(), "<stub>");
                 return response["result"]?.DeepClone() ?? new JsonObject();
