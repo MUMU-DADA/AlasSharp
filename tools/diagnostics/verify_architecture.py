@@ -414,6 +414,16 @@ def main() -> int:
             forbidden not in read(project)
             for project in ("src/Alas.Client/Alas.Client.csproj", "src/Alas.Contracts/Alas.Contracts.csproj")
             for forbidden in ("Alas.Core", "Alas.Server", "Alas.UI", "Avalonia", "Microsoft.AspNetCore")),
+        # UI transport boundary: native desktop composition calls Core directly;
+        # only the browser adapter is allowed to depend on ControlClient/HTTP.
+        "桌面 UI 直接调用 Core": "Alas.Runtime" in read("src/Alas.UI.Desktop/DirectCoreBackend.cs")
+                                 and not any(marker in read("src/Alas.UI.Desktop/DirectCoreBackend.cs")
+                                             for marker in ("ControlClient", "HttpClient", "http://", "https://", "/api/")),
+        "浏览器 UI 才使用网络适配器": "ControlClient" in read("src/Alas.UI.Browser/BrowserControlBackend.cs")
+                                     and "../Alas.Client/Alas.Client.csproj" in read("src/Alas.UI.Browser/Alas.UI.Browser.csproj"),
+        "UI 共享层不绑定传输": "ControlClient" not in read("src/Alas.UI/Alas.UI.csproj")
+                              and "Alas.Server" not in read("src/Alas.UI/Alas.UI.csproj"),
+        "路线记录 Core 与传输边界": "桌面 UI 在同一进程内通过能力接口调用 Core" in read("docs/architecture-roadmap.md"),
     }
     for label, ok in checks.items():
         if not ok:

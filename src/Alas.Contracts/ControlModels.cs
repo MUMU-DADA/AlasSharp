@@ -132,6 +132,21 @@ public sealed record InstanceDeleteRequest
     public required string Revision { get; init; }
 }
 
+public sealed record StatisticsRequest
+{
+    public required string Instance { get; init; }
+    public required string Category { get; init; }
+    public int Days { get; init; } = 7;
+    public string? Month { get; init; }
+    public string Period { get; init; } = "month";
+}
+
+public sealed record MeowfficerRequest
+{
+    public required string Instance { get; init; }
+    public int Limit { get; init; } = 100;
+}
+
 // Explicit generated metadata also works when WASM trimming disables reflection.
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
 [JsonSerializable(typeof(ControlState))]
@@ -147,6 +162,8 @@ public sealed record InstanceDeleteRequest
 [JsonSerializable(typeof(ConfigChange))]
 [JsonSerializable(typeof(InstanceCreateRequest))]
 [JsonSerializable(typeof(InstanceDeleteRequest))]
+[JsonSerializable(typeof(StatisticsRequest))]
+[JsonSerializable(typeof(MeowfficerRequest))]
 [JsonSerializable(typeof(IReadOnlyList<InstanceSummary>))]
 [JsonSerializable(typeof(IReadOnlyList<ConfigChange>))]
 [JsonSerializable(typeof(JsonObject))]

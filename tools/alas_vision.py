@@ -1067,6 +1067,55 @@ def op_config_get(args):
         'checked': len(keys),
     }
 
+
+def _api_config_service():
+    """Create the upstream data service for non-device API reads.
+
+    The service only reads the selected configuration and statistics files;
+    device operations remain in the registered task queue and are never
+    reached by these API operations.
+    """
+    from module.api.config_service import ConfigService
+    return ConfigService(Path(FORK))
+
+
+def op_statistics_report(args):
+    from module.api.statistics_service import report
+    service = _api_config_service()
+    instance = str(args.get('instance') or '')
+    category = str(args.get('category') or 'resources')
+    month = args.get('month')
+    days = int(args.get('days') or 7)
+    period = str(args.get('period') or 'month')
+    return report(service, instance, category, month, days, period)
+
+
+def op_statistics_refresh_loot(args):
+    from module.api.statistics_service import refresh_loot
+    service = _api_config_service()
+    return refresh_loot(service, str(args.get('instance') or ''))
+
+
+def op_meowfficer_report(args):
+    from module.api.meowfficer_service import report
+    service = _api_config_service()
+    limit = int(args.get('limit') or 100)
+    return report(service, str(args.get('instance') or ''), limit)
+
+
+def op_meowfficer_clear(args):
+    from module.api.meowfficer_service import clear
+    service = _api_config_service()
+    return clear(service, str(args.get('instance') or ''))
+
+
+def op_shop_strategy_validate(args):
+    from module.shop_strategy import validate_strategy
+    script = args.get('script')
+    if not isinstance(script, str) or len(script) > 20000:
+        raise ValueError('策略脚本必须是长度不超过 20000 的字符串')
+    return validate_strategy(script)
+
 class _LoggedNativeFailure(logging.Handler):
     def __init__(self):
         super().__init__(logging.WARNING)
@@ -3424,6 +3473,11 @@ OPS = {
     'periodic_preflight': op_periodic_preflight,
     'periodic_run': op_periodic_run,
     'config_get': op_config_get,
+    'statistics_report': op_statistics_report,
+    'statistics_refresh_loot': op_statistics_refresh_loot,
+    'meowfficer_report': op_meowfficer_report,
+    'meowfficer_clear': op_meowfficer_clear,
+    'shop_strategy_validate': op_shop_strategy_validate,
     'ui_page_graph': op_ui_page_graph,
     'cached_rule_check': op_cached_rule_check,
     'page_positive_control': op_page_positive_control,

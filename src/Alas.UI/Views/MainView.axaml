@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:Alas.UI.ViewModels" xmlns:views="using:Alas.UI.Views"
+             xmlns:vm="using:Alas.UI.ViewModels" xmlns:views="using:Alas.UI.Views" xmlns:statistics="using:Alas.UI.Statistics"
              x:Class="Alas.UI.Views.MainView" x:DataType="vm:ShellViewModel" Classes="shell"
              Classes.narrow="{Binding IsNarrow}" Classes.compact="{Binding IsCompact}"
              FontFamily="{DynamicResource AlasFontSans}" FontSize="14"
@@ -21,6 +21,9 @@
         <Panel x:Name="PageHost" MinHeight="{Binding ContentMinHeight}">
           <Panel x:Name="OverviewHost" IsVisible="{Binding IsOverviewActive}">
             <views:OverviewView x:Name="OverviewPage" DataContext="{Binding Overview}" />
+          </Panel>
+          <Panel x:Name="StatisticsHost" IsVisible="{Binding IsStatisticsActive}">
+            <statistics:StatisticsView x:Name="StatisticsPage" DataContext="{Binding Statistics}" />
           </Panel>
           <Panel x:Name="HomeHost" IsVisible="{Binding IsHomeActive}">
             <views:HomeView x:Name="HomePage" DataContext="{Binding Home}" />

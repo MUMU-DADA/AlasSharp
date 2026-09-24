@@ -100,6 +100,45 @@ public sealed partial class ControlClient : IDisposable
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Browser/remote transport for the statistics report. The server-side
+    /// handler invokes Alas.Core directly; this method only crosses a process
+    /// boundary when the caller is a web or remote client.
+    /// </summary>
+    public Task<JsonObject> GetStatisticsReportAsync(StatisticsRequest request,
+                                                     CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var query = "instance=" + Uri.EscapeDataString(request.Instance) +
+            "&category=" + Uri.EscapeDataString(request.Category) +
+            "&days=" + request.Days.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            "&month=" + Uri.EscapeDataString(request.Month ?? "") +
+            "&period=" + Uri.EscapeDataString(request.Period);
+        using var message = new HttpRequestMessage(HttpMethod.Get,
+            new Uri(_endpoint, "api/statistics/report?" + query));
+        return SendAsync(message, HttpStatusCode.OK, ControlJsonContext.Default.JsonObject, cancellationToken);
+    }
+
+    public Task<JsonObject> RefreshStatisticsLootAsync(string instance,
+                                                        CancellationToken cancellationToken = default)
+        => WriteReadJsonAsync("api/statistics/refresh-loot", new JsonObject { ["instance"] = instance },
+            HttpMethod.Post, HttpStatusCode.OK, cancellationToken);
+
+    public Task<JsonObject> GetMeowfficerReportAsync(MeowfficerRequest request,
+                                                     CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        string path = "api/meowfficer/report?instance=" + Uri.EscapeDataString(request.Instance) +
+            "&limit=" + request.Limit.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        using var message = new HttpRequestMessage(HttpMethod.Get, new Uri(_endpoint, path));
+        return SendAsync(message, HttpStatusCode.OK, ControlJsonContext.Default.JsonObject, cancellationToken);
+    }
+
+    public Task<JsonObject> ClearMeowfficerReportAsync(string instance,
+                                                       CancellationToken cancellationToken = default)
+        => WriteReadJsonAsync("api/meowfficer/clear", new JsonObject { ["instance"] = instance },
+            HttpMethod.Post, HttpStatusCode.OK, cancellationToken);
+
     public async Task<ConfigResponse> GetConfigAsync(string instance, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instance);
@@ -182,6 +221,22 @@ public sealed partial class ControlClient : IDisposable
         request.Content = new ByteArrayContent(bytes);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
         return await SendAsync(request, expected, responseType, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<JsonObject> WriteReadJsonAsync(string path, JsonObject body, HttpMethod method,
+                                                      HttpStatusCode expected, CancellationToken cancellationToken)
+    {
+        string token = Volatile.Read(ref _token)
+            ?? throw new InvalidOperationException("请先读取服务状态以取得当前服务的写令牌");
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(body, ControlJsonContext.Default.JsonObject);
+        if (bytes.Length > ControlProtocol.MaxRequestBodyBytes)
+            throw new ArgumentException("请求体不能超过 1 MiB", nameof(body));
+        using var request = new HttpRequestMessage(method, new Uri(_endpoint, path));
+        request.Headers.Add(ControlProtocol.TokenHeader, token);
+        request.Content = new ByteArrayContent(bytes);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+        return await SendAsync(request, expected, ControlJsonContext.Default.JsonObject, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async Task WriteAsync<T>(string path, T body, JsonTypeInfo<T> type,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -34,9 +35,12 @@ def main() -> int:
         raise SystemExit("先构建 src/Alas.Server/Alas.Server.csproj")
     with tempfile.TemporaryDirectory(prefix="alas-config-api-") as folder:
         root = Path(folder)
+        repo = root / "repo"
+        shutil.copytree(ROOT / ".runtime" / "engine" / "config", repo / "config", symlinks=True)
+        shutil.copytree(ROOT / ".runtime" / "engine" / "module" / "config", repo / "module" / "config", symlinks=True)
         port = 18877
         process = subprocess.Popen(
-            [str(EXE), "--root", str(ROOT), "--repo", str(ROOT / ".runtime" / "engine"),
+            [str(EXE), "--root", str(root), "--repo", str(repo),
              "--data", "data", "--tools", "tools", "--workspace", str(root / "workspace"),
              "--port", str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             cwd=ROOT)

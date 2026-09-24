@@ -5,6 +5,8 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using System.Text.Json.Nodes;
+using Alas.Contracts;
 
 namespace Alas.UI.ViewModels;
 
@@ -37,7 +39,7 @@ public interface IRefreshableInstanceSource : IInstanceSource
 /// 没有接服务时的默认实现：永远报告未连接、实例列表为空。
 /// 主页因此显示真实的断线空态，而不是任何演示实例。
 /// </summary>
-public sealed class DisconnectedInstanceSource : IInstanceSource
+public sealed class DisconnectedInstanceSource : IAlasUiBackend
 {
     public static DisconnectedInstanceSource Instance { get; } = new();
 
@@ -48,6 +50,28 @@ public sealed class DisconnectedInstanceSource : IInstanceSource
     public bool IsConnected => false;
 
     public IReadOnlyList<InstanceCardViewModel> Instances => Array.Empty<InstanceCardViewModel>();
+
+    public event EventHandler? Changed;
+
+    public void Refresh() => Changed?.Invoke(this, EventArgs.Empty);
+
+    private static InvalidOperationException Unavailable() => new("未连接 Alas 服务");
+    public Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());
+    public Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default) => Task.FromException<JsonObject?>(Unavailable());
+    public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default) => Task.FromException<SchemaResponse>(Unavailable());
+    public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<ConfigResponse>(Unavailable());
+    public Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default) => Task.FromException<ConfigResponse>(Unavailable());
+    public Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default) => Task.FromException<ConfigResponse>(Unavailable());
+    public Task DeleteInstanceAsync(InstanceDeleteRequest request, CancellationToken cancellationToken = default) => Task.FromException(Unavailable());
+    public Task SaveQueueAsync(JsonObject queue, CancellationToken cancellationToken = default) => Task.FromException(Unavailable());
+    public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default) => Task.FromException(Unavailable());
+    public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default) => Task.FromException<bool>(Unavailable());
+    public Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());
+    public Task<JsonObject> RefreshStatisticsLootAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());
+    public Task<JsonObject> ReadMeowfficerAsync(MeowfficerRequest request, CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());
+    public Task<JsonObject> ClearMeowfficerAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());
+
+    public void Dispose() { }
 }
 
 /// <summary>

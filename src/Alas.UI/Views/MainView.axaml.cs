@@ -24,10 +24,10 @@ public partial class MainView : UserControl
     {
     }
 
-    public MainView(Theming.IThemeStore themeStore)
+    public MainView(Theming.IThemeStore themeStore, IAlasUiBackend? backend = null)
     {
         InitializeComponent();
-        Model = new ShellViewModel(themeStore);
+        Model = new ShellViewModel(themeStore, backend, previewData: backend is null);
         DataContext = Model;
         Model.PropertyChanged += OnModelChanged;
         SizeChanged += (_, _) => Model.UpdateViewport(Bounds.Width, Bounds.Height);

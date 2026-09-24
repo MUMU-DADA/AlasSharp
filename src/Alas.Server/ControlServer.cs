@@ -1,4 +1,5 @@
 using System.Net;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -147,6 +148,21 @@ public sealed class ControlServer
                 await Reply(context, 200, Config(config));
                 return;
             }
+            if (HttpMethods.IsGet(request.Method) && path == "/api/statistics/report")
+            {
+                string instance = RequiredQuery(request, "instance");
+                string category = request.Query["category"].ToString();
+                int days = ParseQueryInt(request, "days", 7, 1, 365);
+                string month = request.Query["month"].ToString();
+                string period = string.IsNullOrWhiteSpace(request.Query["period"]) ? "month" : request.Query["period"].ToString();
+                var result = _workspace.ReadHostJson("statistics_report", new JsonObject
+                {
+                    ["instance"] = instance, ["category"] = category, ["days"] = days,
+                    ["month"] = string.IsNullOrWhiteSpace(month) ? null : month, ["period"] = period,
+                });
+                await Reply(context, 200, result);
+                return;
+            }
             if (HttpMethods.IsPost(request.Method) && path == "/api/instances")
             {
                 RequireToken(request);
@@ -156,6 +172,30 @@ public sealed class ControlServer
                 string? importFile = OptionalString(body, "import_file");
                 var created = _config.Create(instance, source, importFile);
                 await Reply(context, 201, Config(created));
+                return;
+            }
+            if (HttpMethods.IsPost(request.Method) && path == "/api/statistics/refresh-loot")
+            {
+                RequireToken(request);
+                var body = await ReadBody(request);
+                await Reply(context, 200, _workspace.ReadHostJson("statistics_refresh_loot",
+                    new JsonObject { ["instance"] = RequiredString(body, "instance") }));
+                return;
+            }
+            if (HttpMethods.IsGet(request.Method) && path == "/api/meowfficer/report")
+            {
+                string instance = RequiredQuery(request, "instance");
+                int limit = ParseQueryInt(request, "limit", 100, 1, 500);
+                await Reply(context, 200, _workspace.ReadHostJson("meowfficer_report",
+                    new JsonObject { ["instance"] = instance, ["limit"] = limit }));
+                return;
+            }
+            if (HttpMethods.IsPost(request.Method) && path == "/api/meowfficer/clear")
+            {
+                RequireToken(request);
+                var body = await ReadBody(request);
+                await Reply(context, 200, _workspace.ReadHostJson("meowfficer_clear",
+                    new JsonObject { ["instance"] = RequiredString(body, "instance") }));
                 return;
             }
             if (HttpMethods.IsPatch(request.Method) && TryInstancePath(path, "config", out configInstance))
@@ -345,6 +385,21 @@ public sealed class ControlServer
 
     private static string? OptionalString(JsonObject body, string key)
         => body[key] is null ? null : RequiredString(body, key);
+
+    private static string RequiredQuery(HttpRequest request, string key)
+    {
+        string value = request.Query[key].ToString().Trim();
+        return string.IsNullOrWhiteSpace(value) ? throw new ArgumentException($"缺少查询参数 {key}") : value;
+    }
+
+    private static int ParseQueryInt(HttpRequest request, string key, int fallback, int min, int max)
+    {
+        string text = request.Query[key].ToString();
+        if (string.IsNullOrWhiteSpace(text)) return fallback;
+        if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int value) || value < min || value > max)
+            throw new ArgumentException($"查询参数 {key} 超出范围");
+        return value;
+    }
 
     private static async Task Reply(HttpContext context, int status, JsonObject payload)
     {

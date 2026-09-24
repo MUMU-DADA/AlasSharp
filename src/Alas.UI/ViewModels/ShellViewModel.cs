@@ -6,6 +6,9 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using System.Text.Json.Nodes;
+using Alas.Contracts;
+using Alas.UI.Statistics;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Layout;
@@ -28,6 +31,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public const double CompactBreakpoint = 480;
 
     private readonly Dictionary<string, object?> _pages = new(StringComparer.Ordinal);
+    private readonly IAlasUiBackend _backend;
     private bool _isNarrow;
     private bool _isDrawerOpen;
     private bool _isRailOpen;
@@ -37,20 +41,26 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     private string _activeNavKey = "home";
 
     public ShellViewModel()
-        : this(new MemoryThemeStore())
+        : this(new MemoryThemeStore(), null, previewData: true)
     {
     }
 
-    public ShellViewModel(IThemeStore themeStore)
+    public ShellViewModel(IThemeStore themeStore, IAlasUiBackend? backend = null, bool previewData = false)
     {
         Theme = new ThemeService(themeStore);
         InterfaceSettings = new InterfaceSettingsViewModel(Theme);
-        Home = new HomeViewModel();
+        _backend = backend ?? DisconnectedInstanceSource.Instance;
+        Home = new HomeViewModel(_backend);
         Home.InstanceSelected += (_, instance) => SelectInstance(instance);
-        Overview = new OverviewViewModel();
+        Overview = new OverviewViewModel(previewData);
+        Statistics = new StatisticsViewModel(
+            async (query, cancellationToken) => await _backend.ReadStatisticsAsync(ToStatisticsRequest(query), cancellationToken).ConfigureAwait(true),
+            (instance, cancellationToken) => _backend.RefreshStatisticsLootAsync(instance, cancellationToken));
         Placeholder = new PlaceholderViewModel();
-        Rail = new RailViewModel(Overview);
-        Instances = new ObservableCollection<string> { "demo-main", "demo-alt", "demo-error" };
+        Rail = new RailViewModel(Overview, previewData);
+        Instances = new ObservableCollection<string>();
+        _backend.Changed += (_, _) => ReloadBackendInstances();
+        ReloadBackendInstances();
         SelectNavCommand = new PreviewCommand(parameter => SelectNav(parameter as string));
         GoHomeCommand = new PreviewCommand(_ => GoHome());
         OpenDrawerCommand = new PreviewCommand(_ => IsDrawerOpen = true);
@@ -76,13 +86,14 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public InterfaceSettingsViewModel InterfaceSettings { get; }
     public HomeViewModel Home { get; }
     public OverviewViewModel Overview { get; }
+    public StatisticsViewModel Statistics { get; }
     public RailViewModel Rail { get; }
     public PlaceholderViewModel Placeholder { get; }
     public ObservableCollection<NavEntry> PrimaryNav { get; } = new();
     public ObservableCollection<TaskGroupEntry> TaskGroups { get; } = new();
     public ObservableCollection<string> Instances { get; }
-    public string InstanceName => _instanceName ?? "demo-main";
-    public string InstancesSummary => $"{Instances.Count} 个演示实例";
+    public string InstanceName => _instanceName ?? "未选择实例";
+    public string InstancesSummary => $"{Instances.Count} 个实例";
 
     public ICommand SelectNavCommand { get; }
     public ICommand GoHomeCommand { get; }
@@ -209,6 +220,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
             if (!SetField(ref _activePage, value)) return;
             Notify(nameof(IsHomeActive));
             Notify(nameof(IsOverviewActive));
+            Notify(nameof(IsStatisticsActive));
             Notify(nameof(IsInterfaceSettingsActive));
             Notify(nameof(IsPlaceholderActive));
             Notify(nameof(MainPadding));
@@ -221,9 +233,10 @@ public sealed class ShellViewModel : INotifyPropertyChanged
 
     public bool IsHomeActive => _activePage == "home";
     public bool IsOverviewActive => _activePage == "overview";
+    public bool IsStatisticsActive => _activePage == "statistics";
 
     /// <summary>未实现的入口显示占位页。</summary>
-    public bool IsPlaceholderActive => !IsHomeActive && !IsOverviewActive && !IsInterfaceSettingsActive;
+    public bool IsPlaceholderActive => !IsHomeActive && !IsOverviewActive && !IsStatisticsActive && !IsInterfaceSettingsActive;
 
     /// <summary>界面设置页（上游 /interface）：六主题与本地首选项的唯一入口。</summary>
     public bool IsInterfaceSettingsActive => _activePage == "interface";
@@ -238,7 +251,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
 
     public string BreadcrumbTail => _activePage switch
     {
-        "overview" => "运行总览",
+            "overview" => "运行总览",
+            "statistics" => "资源统计",
         "interface" => "界面设置",
         "home" => string.Empty,
         _ => Placeholder.Title,
@@ -310,6 +324,10 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         _instanceName = instance;
         Notify(nameof(InstanceName));
         HasInstance = true;
+        Overview.SetInstance(instance);
+        Rail.SetInstance(instance);
+        Statistics.Instance = instance;
+        _ = LoadBackendStateAsync();
         _activeNavKey = "overview";
         BuildNavigation();
         ActivePage = "overview";
@@ -324,6 +342,26 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         BuildNavigation();
         ActivePage = "home";
         Notify(nameof(ActiveNavKey));
+    }
+
+    private void ReloadBackendInstances()
+    {
+        Instances.Clear();
+        foreach (var item in _backend.Instances) Instances.Add(item.Name);
+        Notify(nameof(InstancesSummary));
+    }
+
+    private async Task LoadBackendStateAsync()
+    {
+        if (!HasInstance || !_backend.IsConnected) return;
+        try
+        {
+            Overview.ApplyState(await _backend.ReadStateAsync().ConfigureAwait(true));
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException)
+        {
+            Overview.ReportBackendError(error.Message);
+        }
     }
 
     /// <summary>选择任务分组下的具体任务：本切片只切到明确的「未实现」页，不连服务、不跑游戏逻辑。</summary>
@@ -355,12 +393,23 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         {
             "home" => "home",
             "overview" => "overview",
+            "statistics" => "statistics",
             "interface" => "interface",
             _ => key,
         };
         if (IsPlaceholderActive) Placeholder.Load(key);
+        if (IsStatisticsActive) _ = Statistics.ActivateAsync();
         IsDrawerOpen = false;
     }
+
+    private static StatisticsRequest ToStatisticsRequest(JsonObject query) => new()
+    {
+        Instance = query["instance"]?.GetValue<string>() ?? string.Empty,
+        Category = query["category"]?.GetValue<string>() ?? "resources",
+        Days = query["days"]?.GetValue<int>() ?? 7,
+        Month = query["month"]?.GetValue<string>(),
+        Period = query["period"]?.GetValue<string>() ?? "month",
+    };
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
@@ -459,9 +508,11 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     private string _logLevel = "ALL";
     private double _contentHeight = 745.5;
     private readonly List<LogLineViewModel> _allLogs = new();
+    private readonly bool _previewData;
 
-    public OverviewViewModel()
+    public OverviewViewModel(bool previewData = false)
     {
+        _previewData = previewData;
         ToggleFilterCommand = new PreviewCommand(_ => IsFilterOpen = !IsFilterOpen);
         ToggleFollowCommand = new PreviewCommand(_ => IsFollowing = !IsFollowing);
         ToggleOrderCommand = new PreviewCommand(_ => IsDescending = !IsDescending);
@@ -469,19 +520,22 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         ShowLogsCommand = new PreviewCommand(_ => MonitorView = "logs");
         ShowPreviewCommand = new PreviewCommand(_ => MonitorView = "preview");
         ToggleSchedulerCommand = new PreviewCommand(_ => ToggleScheduler());
-        Resources = new ObservableCollection<ResourceCardViewModel>
-        {
-            new("石油", "Resources/oil", "14,200", "/ 25,000", "记录于 09-24 01:13:44", 0),
-            new("物资", "Resources/gold", "186,420", "/ 600,000", "记录于 09-24 01:13:44", 1),
-            new("钻石", "Resources/diamond", "2,468", null, "记录于 09-24 01:13:44", 2),
-            new("心智魔方", "Resources/cube", "384", null, "记录于 09-24 01:13:44", 3),
-        };
-        AppendLog("测试实例已就绪，所有操作均为模拟。");
+        Resources = previewData
+            ? new ObservableCollection<ResourceCardViewModel>
+            {
+                new("石油", "Resources/oil", "14,200", "/ 25,000", "记录于 09-24 01:13:44", 0),
+                new("物资", "Resources/gold", "186,420", "/ 600,000", "记录于 09-24 01:13:44", 1),
+                new("钻石", "Resources/diamond", "2,468", null, "记录于 09-24 01:13:44", 2),
+                new("心智魔方", "Resources/cube", "384", null, "记录于 09-24 01:13:44", 3),
+            }
+            : new ObservableCollection<ResourceCardViewModel>();
+        if (previewData) AppendLog("测试实例已就绪，所有操作均为模拟。");
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public string InstanceName => "demo-main";
+    private string _instanceName = "未选择实例";
+    public string InstanceName => _instanceName;
     public ObservableCollection<ResourceCardViewModel> Resources { get; }
 
     /// <summary>日志缓存上限：上游 LogPanel 按 id 合并后只保留最近 400 条。</summary>
@@ -557,6 +611,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
 
     public string SchedulerButtonText => IsSchedulerRunning ? "停止运行" : "启动调度器";
     public string SchedulerStatusText => IsSchedulerRunning ? "运行中" : "已停止";
+    public bool IsSchedulerControlEnabled => _previewData;
 
     /// <summary>本阶段未接后端的入口统一禁用，并用这条提示说明原因。</summary>
     public string PendingNotice => "第一阶段未接后端：该入口在后续切片实现，当前不可用。";
@@ -628,20 +683,56 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>只改本地模拟状态，与上游 mock 的 scheduler.start/stop 行为一致，不触发真实任务。</summary>
+    /// <summary>调度器合同尚未接入时保持状态不变，不能把本地切换伪装成真实运行。</summary>
     private void ToggleScheduler()
     {
-        IsSchedulerRunning = !IsSchedulerRunning;
-        AppendLog(IsSchedulerRunning ? "模拟调度器已启动。" : "模拟调度器已停止。");
+        if (_previewData)
+        {
+            IsSchedulerRunning = !IsSchedulerRunning;
+            AppendLog(IsSchedulerRunning ? "模拟调度器已启动。" : "模拟调度器已停止。");
+            return;
+        }
+        AppendLog("调度器控制尚未接入 Alas.Core，当前操作未执行。", "WARNING");
     }
+
+    public void SetInstance(string instance)
+    {
+        if (string.IsNullOrWhiteSpace(instance) || _instanceName == instance) return;
+        _instanceName = instance;
+        Notify(nameof(InstanceName));
+    }
+
+    public void ApplyState(JsonObject state)
+    {
+        if (state["active"] is not JsonObject active) return;
+        string status = active["status"]?.GetValue<string>() ?? "idle";
+        IsSchedulerRunning = status == "running";
+        _allLogs.Clear();
+        VisibleLogs.Clear();
+        if (state["recent_logs"] is JsonArray logs)
+        {
+            foreach (var item in logs.OfType<JsonObject>())
+            {
+                string timestamp = item["timestamp"]?.GetValue<string>() ?? string.Empty;
+                DateTime.TryParse(timestamp, out var parsed);
+                AppendLog(item["message"]?.GetValue<string>() ?? string.Empty,
+                    item["level"]?.GetValue<string>() ?? "INFO",
+                    parsed == default ? DateTime.Now : parsed);
+            }
+        }
+        Notify(nameof(SchedulerStatusText));
+    }
+
+    public void ReportBackendError(string message) => AppendLog(message, "ERROR");
 
     /// <summary>
     /// 追加一条日志：超出上限时丢弃最旧一条。逐条增量维护可见行（等价于上游按 id 合并增量），
     /// 只有搜索/级别/排序变化时才整体重建，避免每次追加都重建整个列表。
     /// </summary>
-    public void AppendLog(string message, string level = "INFO")
+    public void AppendLog(string message, string level = "INFO", DateTime? timestamp = null)
     {
-        var line = new LogLineViewModel("2026-09-24", "01:13:44", level, $"[{InstanceName}]", message);
+        var time = timestamp ?? DateTime.Now;
+        var line = new LogLineViewModel(time.ToString("yyyy-MM-dd"), time.ToString("HH:mm:ss"), level, $"[{InstanceName}]", message);
         _allLogs.Add(line);
         while (_allLogs.Count > LogCapacity)
         {
@@ -743,7 +834,7 @@ public sealed record LogLineViewModel(string Date, string Time, string Level, st
 /// <summary>右栏：调度器卡 + 任务计划三组（running/pending/waiting 固定顺序）。</summary>
 public sealed class RailViewModel : INotifyPropertyChanged
 {
-    public RailViewModel(OverviewViewModel overview)
+    public RailViewModel(OverviewViewModel overview, bool previewData = false)
     {
         Overview = overview;
         Overview.PropertyChanged += (_, args) =>
@@ -752,35 +843,50 @@ public sealed class RailViewModel : INotifyPropertyChanged
             Notify(nameof(RunningCount));
             Notify(nameof(IsStopped));
         };
-        Groups = new ObservableCollection<RailGroupViewModel>
-        {
-            new("正在运行", "running", "CirclePlay", "当前没有正在运行的任务", Array.Empty<RailTaskViewModel>()),
-            new("待运行", "pending", "ListTodo", "当前没有待运行任务", new[]
+        Groups = previewData
+            ? new ObservableCollection<RailGroupViewModel>
             {
-                new RailTaskViewModel("重启设置", "2020-01-01 00:00:00", "pending", "待运行"),
-                new RailTaskViewModel("委托", "2026-09-24 00:43:44", "pending", "待运行"),
-                new RailTaskViewModel("科研", "2026-09-24 01:13:44", "pending", "待运行"),
-                new RailTaskViewModel("收获", "2020-01-01 00:00:00", "pending", "待运行"),
-            }),
-            new("等待中", "waiting", "Hourglass", "当前没有等待中的任务", new[]
+                new("正在运行", "running", "CirclePlay", "当前没有正在运行的任务", Array.Empty<RailTaskViewModel>()),
+                new("待运行", "pending", "ListTodo", "当前没有待运行任务", new[]
+                {
+                    new RailTaskViewModel("重启设置", "2020-01-01 00:00:00", "pending", "待运行"),
+                    new RailTaskViewModel("委托", "2026-09-24 00:43:44", "pending", "待运行"),
+                    new RailTaskViewModel("科研", "2026-09-24 01:13:44", "pending", "待运行"),
+                    new RailTaskViewModel("收获", "2020-01-01 00:00:00", "pending", "待运行"),
+                }),
+                new("等待中", "waiting", "Hourglass", "当前没有等待中的任务", new[]
+                {
+                    new RailTaskViewModel("主线图-1Plus", "2026-09-24 02:13:44", "waiting", "等待中"),
+                    new RailTaskViewModel("后宅", "2026-09-24 01:43:44", "waiting", "等待中"),
+                }),
+            }
+            : new ObservableCollection<RailGroupViewModel>
             {
-                new RailTaskViewModel("主线图-1Plus", "2026-09-24 02:13:44", "waiting", "等待中"),
-                new RailTaskViewModel("后宅", "2026-09-24 01:43:44", "waiting", "等待中"),
-            }),
-        };
+                new("正在运行", "running", "CirclePlay", "当前没有正在运行的任务", Array.Empty<RailTaskViewModel>()),
+                new("待运行", "pending", "ListTodo", "当前没有待运行任务", Array.Empty<RailTaskViewModel>()),
+                new("等待中", "waiting", "Hourglass", "当前没有等待中的任务", Array.Empty<RailTaskViewModel>()),
+            };
     }
 
     public OverviewViewModel Overview { get; }
-    public string InstanceName => "demo-main";
-    public string PlanCountText => "6";
+    public string InstanceName => _instanceName;
+    public string PlanCountText => Groups.Sum(group => group.Tasks.Count).ToString(CultureInfo.InvariantCulture);
     public string RunningCount => Overview.IsSchedulerRunning ? "1" : "0";
-    public string PendingCount => "4";
-    public string WaitingCount => "2";
+    public string PendingCount => Groups.First(group => group.State == "pending").Tasks.Count.ToString(CultureInfo.InvariantCulture);
+    public string WaitingCount => Groups.First(group => group.State == "waiting").Tasks.Count.ToString(CultureInfo.InvariantCulture);
     public bool IsStopped => !Overview.IsSchedulerRunning;
     public ObservableCollection<RailGroupViewModel> Groups { get; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    public void SetInstance(string instance)
+    {
+        if (string.IsNullOrWhiteSpace(instance) || InstanceName == instance) return;
+        _instanceName = instance;
+        Notify(nameof(InstanceName));
+    }
+
+    private string _instanceName = "未选择实例";
     private void Notify(string propertyName) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }

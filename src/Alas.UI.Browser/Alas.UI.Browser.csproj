@@ -16,6 +16,7 @@
   <ItemGroup>
     <PackageReference Include="Avalonia.Browser" Version="12.1.3" />
     <ProjectReference Include="../Alas.UI/Alas.UI.csproj" />
+    <ProjectReference Include="../Alas.Client/Alas.Client.csproj" />
     <StaticWebAssetFingerprintPattern Include="JS" Pattern="*.js" Expression="#[.{fingerprint}]!" />
   </ItemGroup>
   <ItemGroup>

@@ -56,6 +56,15 @@ public interface IVisionEngine : IDisposable
     /// </summary>
     TaskCatalogResult TaskCatalog();
 
+    /// <summary>读取上游统计 API 的完整 report，不执行设备动作。</summary>
+    JsonObject StatisticsReport(string instance, string category, int days = 7,
+                                string? month = null, string period = "month");
+
+    JsonObject RefreshStatisticsLoot(string instance);
+    JsonObject MeowfficerReport(string instance, int limit = 100);
+    JsonObject ClearMeowfficerReport(string instance);
+    JsonObject ValidateShopStrategy(string script);
+
     /// <summary>
     /// 选择**引擎的设备后端**（截图后端 / 输入后端）。引擎自带多后端
     /// （adb、droidcast、maatouch、minitouch、scrcpy、hermit、nemu_ipc…），
@@ -240,6 +249,22 @@ public abstract class VisionEngineBase : IVisionEngine
             new { capture, screenshot = screenshotPath });
 
     public TaskCatalogResult TaskCatalog() => CallTyped<TaskCatalogResult>("task_catalog");
+
+    public JsonObject StatisticsReport(string instance, string category, int days = 7,
+                                       string? month = null, string period = "month")
+        => CallTyped<JsonObject>("statistics_report", new { instance, category, days, month, period });
+
+    public JsonObject RefreshStatisticsLoot(string instance)
+        => CallTyped<JsonObject>("statistics_refresh_loot", new { instance });
+
+    public JsonObject MeowfficerReport(string instance, int limit = 100)
+        => CallTyped<JsonObject>("meowfficer_report", new { instance, limit });
+
+    public JsonObject ClearMeowfficerReport(string instance)
+        => CallTyped<JsonObject>("meowfficer_clear", new { instance });
+
+    public JsonObject ValidateShopStrategy(string script)
+        => CallTyped<JsonObject>("shop_strategy_validate", new { script });
 
     public DeviceCaptureResult CaptureViaEngine(bool raw = true)
         => CallTyped<DeviceCaptureResult>("device_capture_set", new { raw });

@@ -11,6 +11,7 @@ internal static class Program
     {
         // 浏览器首选项写本源 localStorage（最小 JS 桥），与上游 azurpilot.* 同一存储域。
         App.ThemeStoreFactory = static () => new BrowserThemeStore();
+        App.BackendFactory = static () => new BrowserControlBackend();
         return AppBuilder.Configure<App>()
             .StartBrowserAppAsync("out");
     }
