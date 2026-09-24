@@ -52,6 +52,7 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 | `periodic_plan` | `task/tasks`，勘察上游命令与原生方法绑定 | 只读，不构造设备业务对象 |
 | `periodic_preflight` | `task`、`confirm`、`allow_actions`，检查计划与放行条件 | `executes=false`，放行不等于执行 |
 | `periodic_run` | 按上游配置执行任务，可使用一次性配置覆盖 | 动作会话及任务确认均须满足 |
+| `tool_run` | `instance`、`task` 来自上游 `get_available_func()`；独立工具原生分派 | 动作会话、`allow_actions=true`、`confirm=task` |
 
 具体字段与约束以各 `*Task.cs` 的输入校验和对应离线回归为准。
 `TaskEnd`、绑定、`opsi_*`、活动参数均由上游 `AzurLaneAutoScript.run()` 调度处理，
@@ -62,6 +63,10 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 `periodic_run` 同时要求动作会话、`input.allow_actions=true`，以及 `input.confirm` 与 `input.task` 完全一致。
 `periodic_preflight` 只检查放行条件，不执行任务。`overrides` 经上游 `config.override()` 作用于本次任务对象；
 上游对下次调度时间等状态的正常写入仍会发生。涉及领取、购买或补给时，先核对任务配置与实际资源消耗路径。
+
+独立工具走 `AzurLaneAutoScript(instance).run(method, skip_first_screenshot=True)`，配置与设备按上游实际访问延迟构造；
+工具自行绑定任务配置，不套用周期任务的 `Scheduler.Command`。工具正常返回只证明原生执行完成，不能推导领取或通关。
+取消在工具返回后的队列边界生效；持续运行的守护工具不会被强杀。尚未迁入当前引擎的工具明确拒绝，不以 UI 菜单代替注册表。
 
 ## 战役与活动
 
@@ -90,7 +95,7 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 
 `verify_runtime.py` 覆盖通用队列、导航和观测；各域由 `verify_account_state.py`、`verify_os_state.py`、
 `verify_os_action.py`、`verify_event_state.py`、`verify_task_catalog.py`、`verify_task_schedule.py`、
-`verify_config_get.py`、`verify_periodic_plan.py` 等离线检查覆盖。
+`verify_config_get.py`、`verify_periodic_plan.py`、`verify_native_tools.py` 等离线检查覆盖。
 地图故障边界由 `verify_map_detect_failures.py` 验证。
 
 当前真实样本与剩余缺口统一见[路线](architecture-roadmap.md)，不在此复制阶段状态。

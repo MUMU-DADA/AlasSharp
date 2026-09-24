@@ -183,6 +183,33 @@ def periodic_run_session_gate_intact() -> list[str]:
     return []
 
 
+def native_tool_boundary_intact() -> list[str]:
+    def read(path):
+        return (ROOT / path).read_text(encoding='utf-8')
+
+    text = read('tools/alas_vision.py')
+    body = text.split('def op_tool_run(args):', 1)[-1].split('\ndef _asset_id_map', 1)[0]
+    problems = []
+    construct = body.find('runner = ToolRunner(')
+    for marker in ('if not allow:', 'confirm != task', "op_tool_plan({'task': task})"):
+        position = body.find(marker)
+        if construct < 0 or position < 0 or position > construct:
+            problems.append(f'独立工具必须先验证授权/注册再构造: {marker}')
+    for marker in ("runner.run(plan['method'], skip_first_screenshot=True)",
+                   'class ToolRunner(AzurLaneAutoScript):', '_device_engine(config=self.config)'):
+        if marker not in body:
+            problems.append(f'独立工具偏离上游分派/设备语义: {marker}')
+    domain = read('src/Alas.Core/Tasks/ToolRunTask.cs')
+    gate = domain.find('Preconditions(request, context)')
+    call = domain.find('CallTyped<JsonObject>("tool_run"')
+    if gate < 0 or call < gate or not all(item in domain for item in
+                                        ('context.Options.DryRun', 'context.Options.AllowActions')):
+        problems.append('独立工具缺少调用前的会话级授权检查')
+    if '.Register(new ToolRunTask())' not in read('src/Alas.Core/Runtime/QueueExecution.cs'):
+        problems.append('独立工具未注册到 Core 通用任务队列')
+    return problems
+
+
 def cli_task_boundary_intact() -> list[str]:
     """CLI 只解析队列文件路径和公共参数；运行时持有会话与 runner 注册。
 
@@ -436,6 +463,7 @@ def main() -> int:
     problems.extend(withdraw_hook_present())
     problems.extend(periodic_run_gate_intact())
     problems.extend(periodic_run_session_gate_intact())
+    problems.extend(native_tool_boundary_intact())
     problems.extend(cli_task_boundary_intact())
     problems.extend(campaign_shims_installed())
     problems.extend(shims_all_called())

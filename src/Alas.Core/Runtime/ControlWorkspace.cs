@@ -225,7 +225,7 @@ public sealed class ControlWorkspace
     }
 
     /// <summary>
-    /// Submit a selected instance/task through the registered periodic domain.
+    /// Submit a selected instance/task through its native periodic or tool domain.
     /// UI and HTTP callers supply intent only; upstream owns command resolution
     /// and native dispatch, and the normal queue owns evidence and shutdown.
     /// </summary>
@@ -238,12 +238,20 @@ public sealed class ControlWorkspace
         var configs = new ConfigWorkspace(_repo);
         var snapshot = configs.Get(instance);
         var schema = configs.Schema();
-        if (schema.Args[task] is not JsonObject definition ||
-            definition["Scheduler"]?["Command"]?["value"] is not JsonValue commandNode ||
-            !commandNode.TryGetValue<string>(out var command) || string.IsNullOrWhiteSpace(command))
-            throw new ArgumentException("当前任务没有上游 Scheduler.Command，不能执行");
+        if (schema.Args[task] is not JsonObject definition)
+            throw new ArgumentException("当前任务不在上游配置目录中");
+        string? command = definition["Scheduler"]?["Command"]?["value"]?.GetValue<string>();
+        string kind = "periodic_run";
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            var plan = ReadHostJson("tool_plan", new JsonObject { ["task"] = task });
+            if (plan["found"]?.GetValue<bool>() != true)
+                throw new ArgumentException(plan["reason"]?.GetValue<string>() ?? "当前上游未注册此独立工具");
+            command = task;
+            kind = "tool_run";
+        }
         string? serial = snapshot.Values["Alas"]?["Emulator"]?["Serial"]?.GetValue<string>();
-        if (string.IsNullOrWhiteSpace(serial))
+        if (kind == "periodic_run" && string.IsNullOrWhiteSpace(serial))
             throw new ArgumentException("实例没有配置设备串号，不能执行任务");
         StartRun(new JsonObject
         {
@@ -254,7 +262,7 @@ public sealed class ControlWorkspace
             {
                 ["tasks"] = new JsonArray(new JsonObject
                 {
-                    ["id"] = "single-task", ["kind"] = "periodic_run", ["required"] = true,
+                    ["id"] = "single-task", ["kind"] = kind, ["required"] = true,
                     ["input"] = new JsonObject
                     {
                         ["instance"] = snapshot.Instance, ["task"] = command,
@@ -265,14 +273,14 @@ public sealed class ControlWorkspace
         });
     }
 
-    /// <summary>Read-only upstream API call sharing one process-local Python host.</summary>
+    /// <summary>Serialized upstream service call sharing the process-local Python host.</summary>
     public JsonObject ReadHostJson(string operation, JsonObject arguments)
     {
         lock (_gate)
         {
             if (_shuttingDown) throw new ControlWorkspaceUnavailableException("控制服务正在关闭");
             if (_worker is { IsCompleted: false })
-                throw new ControlWorkspaceUnavailableException("队列正在运行，暂不接受只读宿主调用");
+                throw new ControlWorkspaceUnavailableException("队列正在运行，暂不接受其他宿主调用");
             _session ??= AlasSession.Start(ApiSessionOptions());
             _log = _session.Log;
             return _session.Vision.CallTyped<JsonObject>(operation, arguments);

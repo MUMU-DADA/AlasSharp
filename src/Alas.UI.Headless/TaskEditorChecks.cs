@@ -100,6 +100,18 @@ public static class TaskEditorChecks
         Check(!await model.SaveAsync(cancellationToken) && model.HasConflicts, "backend conflict preserves draft");
         model.Fields.Single(f => f.HasConflict).ResolveConflict(true);
         Check(!model.HasConflicts && model.HasChanges, "conflict requires explicit resolution");
+
+        var toolSchema = (JsonObject)schema.DeepClone();
+        toolSchema["args"]!["Daily"]!.AsObject().Remove("Scheduler");
+        var toolModel = new TaskEditorViewModel { Backend = backend, AutoSave = false };
+        toolModel.Load("instance-a", "Daily", toolSchema, config);
+        Check(toolModel.IsTool && toolModel.CanRun, "upstream tools without Scheduler.Command can be submitted");
+        toolModel.RequestRun();
+        Check(await toolModel.ConfirmRunAsync(cancellationToken) && backend.Runs == 2,
+              "tool submission uses the same selected instance/task capability");
+        toolSchema["menu"] = new JsonObject();
+        toolModel.Load("instance-a", "Daily", toolSchema, config);
+        Check(!toolModel.CanRun, "config-only pages cannot run");
     }
 
     private static JsonObject Config(string instance, string revision, int count, string mode, string script) => new()

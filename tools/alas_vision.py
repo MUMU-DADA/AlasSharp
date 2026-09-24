@@ -1325,6 +1325,132 @@ def op_periodic_run(args):
         out['elapsed_s'] = round(time.time() - started, 1)
     return out
 
+def op_tool_plan(args):
+    """Discover standalone tools from the native registry without constructing tasks."""
+    import ast
+    import inflection
+    from module.submodule.utils import get_available_func
+
+    task = args.get('task')
+    registered = list(get_available_func())
+    out = {'task': task, 'registered': registered, 'found': False}
+    if not isinstance(task, str) or task not in registered:
+        out['reason'] = '当前上游未注册此独立工具'
+        return out
+    method = inflection.underscore(task)
+    tree = ast.parse((Path(FORK) / 'alas.py').read_text(encoding='utf-8'))
+    methods = {node.name for cls in tree.body if isinstance(cls, ast.ClassDef)
+               and cls.name == 'AzurLaneAutoScript' for node in cls.body
+               if isinstance(node, ast.FunctionDef)}
+    if method not in methods:
+        out['reason'] = '上游工具注册表与 alas.py 不一致'
+        return out
+    out.update(found=True, method=method, skip_first_screenshot=True)
+    return out
+
+
+def op_tool_run(args):
+    """Use the upstream webui tool dispatch, preserving lazy config/device access.
+
+    Tool methods bind their own task config. They must not be made into periodic
+    tasks, or receive the periodic entry's eager screenshot/device construction.
+    """
+    import time
+    task = args.get('task')
+    allow = args.get('allow_actions') is True
+    confirm = args.get('confirm')
+    out = {'task': task, 'allow_actions': allow, 'confirm_matches': confirm == task,
+           'constructed': False, 'ran': False, 'native_success': False}
+    if not allow:
+        out.update(decision='denied', reason='未授权：需要显式 allow_actions=true')
+        return out
+    if not isinstance(task, str) or not task or confirm != task:
+        out.update(decision='denied', reason='confirm 必须与上游工具名称完全一致')
+        return out
+    plan = op_tool_plan({'task': task})
+    out['plan'] = plan
+    if plan.get('found') is not True:
+        out.update(decision='denied', reason=plan['reason'])
+        return out
+    from module.api.config_service import validate_name
+    instance = args.get('instance')
+    try:
+        normalized = validate_name(instance)
+    except Exception:
+        normalized = None
+    config_root = (Path(FORK) / 'config').resolve()
+    if not isinstance(instance, str) or normalized != instance:
+        out.update(decision='denied', reason='实例名无效或不是规范名称')
+        return out
+    config_file = config_root / (instance + '.json')
+    if (not config_file.is_file() or config_file.is_symlink()
+            or config_file.resolve().parent != config_root):
+        out.update(decision='denied', reason='找不到有效的配置实例')
+        return out
+    out['instance'] = instance
+    out['target'] = {'module': 'alas', 'class': 'AzurLaneAutoScript',
+                     'method': plan['method']}
+    started = time.monotonic()
+    device = None
+    previous_config = None
+    failure = _LoggedNativeFailure()
+    from module.logger import logger
+    logger.addHandler(failure)
+    try:
+        from alas import AzurLaneAutoScript
+
+        class ToolRunner(AzurLaneAutoScript):
+            @property
+            def device(self):
+                nonlocal device, previous_config
+                if device is None:
+                    if not _DEVICE_ARGS.get('serial'):
+                        raise RuntimeError('工具需要设备，但会话未配置实例串号')
+                    device = _device_engine(config=self.config)
+                    previous_config = device.config
+                    device.config = self.config
+                    device.stuck_record_clear()
+                    device.click_record_clear()
+                return device
+
+        runner = ToolRunner(config_name=instance)
+        out['constructed'] = True
+        out['ran'] = True
+        native_success = runner.run(plan['method'], skip_first_screenshot=True)
+        out['native_success'] = native_success is True
+        out['decision'] = 'ran' if native_success is True else 'failed'
+        if native_success is not True:
+            out['error'] = '上游原生工具未确认成功'
+    except (Exception, SystemExit) as error:
+        out.update(decision='error', error=f'{type(error).__name__}: {error}',
+                   traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
+        if isinstance(error, SystemExit):
+            out['exit_code'] = None if error.code is None else str(error.code)
+    finally:
+        logger.removeHandler(failure)
+        failure.close()
+        if failure.traceback_tail:
+            out['traceback_tail'] = failure.traceback_tail
+            if out.get('error'):
+                out['error'] += f'（已记录 {failure.kind}）'
+        if failure.error_directory is not None and failure.error_directory.is_dir():
+            directory = failure.error_directory
+            out['native_error_dir'] = directory.relative_to(FORK).as_posix()
+            out['failure_frames'] = [frame.relative_to(FORK).as_posix()
+                                     for frame in sorted(directory.glob('*.png')) if frame.is_file()]
+            if (directory / 'log.txt').is_file():
+                out['native_error_log'] = (directory / 'log.txt').relative_to(FORK).as_posix()
+        if device is not None:
+            try:
+                device.config = previous_config
+            except Exception as restore_error:
+                out.update(decision='error', native_success=False,
+                           error=f'恢复设备配置失败: {type(restore_error).__name__}: {restore_error}',
+                           traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
+        out['elapsed_s'] = round(time.monotonic() - started, 3)
+    return out
+
+
 def _asset_id_map():
     """id(Button 对象) -> '子模块/资产名'，实时扫描已导入的 module.*.assets。
 
@@ -3529,6 +3655,8 @@ OPS = {
     'periodic_plan': op_periodic_plan,
     'periodic_preflight': op_periodic_preflight,
     'periodic_run': op_periodic_run,
+    'tool_plan': op_tool_plan,
+    'tool_run': op_tool_run,
     'config_get': op_config_get,
     'statistics_report': op_statistics_report,
     'statistics_refresh_loot': op_statistics_refresh_loot,
