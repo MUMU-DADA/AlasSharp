@@ -141,6 +141,22 @@
       </Style>
     </ControlTheme>
 
+    <ControlTheme x:Key="DangerButtonTheme" TargetType="Button" BasedOn="{StaticResource GhostButtonTheme}">
+      <Setter Property="Background" Value="{DynamicResource AlasDangerBrush}" />
+      <Setter Property="Foreground" Value="White" />
+      <Style Selector="^:pointerover /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasDangerBrush}" />
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="DangerSubtleButtonTheme" TargetType="Button" BasedOn="{StaticResource GhostButtonTheme}">
+      <Setter Property="Background" Value="{DynamicResource AlasDangerSoftBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasDangerBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AlasDangerSoftBrush}" />
+      <Style Selector="^:pointerover /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasDangerSoftBrush}" />
+      </Style>
+    </ControlTheme>
+
     <ControlTheme x:Key="TextButtonTheme" TargetType="Button">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="{DynamicResource AlasAccentBrush}" />

@@ -338,9 +338,8 @@ internal static class HomeChecks
             Click(window, cards[1]);
             Check(selected == "fixture-alt", $"点击卡片把选中的实例名交给外部（实际 {selected ?? "null"}）");
 
-            // 演示夹具是「已连接」：这时新建实例的禁用原因应换成未实现说明，而不是未连接。
-            Check(!Find<Button>(home, "NewInstanceButton").IsEnabled && model.CreateInstanceNotice.Contains("后续切片"),
-                "已连接时禁用原因切换为「后续切片未实现」");
+            Check(!Find<Button>(home, "NewInstanceButton").IsEnabled && model.CreateInstanceNotice.Contains("当前环境无法"),
+                "已连接但未提供创建能力时说明操作不可用");
         }
         finally
         {

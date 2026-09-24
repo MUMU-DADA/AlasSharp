@@ -19,18 +19,34 @@ public partial class MainView : UserControl
     private static readonly TranslateTransform DrawerOpen = new(0, 0);
     private static readonly TranslateTransform None = new(0, 0);
     private readonly Avalonia.Threading.DispatcherTimer _stateTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private long _homeCreateVersion;
 
     public MainView()
         : this(new Theming.MemoryThemeStore())
     {
     }
 
-    public MainView(Theming.IThemeStore themeStore, IAlasUiBackend? backend = null)
+    public MainView(Theming.IThemeStore themeStore, IAlasUiBackend? backend = null, Platform.IUiFiles? files = null)
     {
         InitializeComponent();
-        Model = new ShellViewModel(themeStore, backend, previewData: backend is null);
+        files ??= new Platform.UiFiles(() => TopLevel.GetTopLevel(this)?.StorageProvider);
+        Model = new ShellViewModel(themeStore, backend, previewData: backend is null, files: files);
         DataContext = Model;
         Model.PropertyChanged += OnModelChanged;
+        ConfigManagerPage.ModalHost = Root;
+        ConfigManagerPage.Model.Connected = Model.IsBackendConnected;
+        ConfigManagerPage.Backend = Model.ConfigManagerBackend;
+        ConfigManagerPage.Model.OpenOverview = Model.SelectInstance;
+        ConfigManagerPage.Model.ExportFileAsync = files.SaveTextAsync;
+        ConfigManagerPage.Model.PickImportFileAsync = files.OpenJsonAsync;
+        Model.Home.CreateInstance = async import =>
+        {
+            long request = ++_homeCreateVersion;
+            bool ready = await ConfigManagerPage.Model.RefreshAsync();
+            if (request != _homeCreateVersion || !Model.IsHomeActive) return;
+            if (ready) ConfigManagerPage.Model.OpenCreateForm(import);
+            else Model.Home.Report(ConfigManagerPage.Model.Error);
+        };
         MeowfficerPage.Backend = Model.MeowfficerBackend;
         UpdateMeowfficerPage();
         _stateTimer.Tick += async (_, _) => await Model.RefreshBackendStateAsync();
@@ -61,6 +77,17 @@ public partial class MainView : UserControl
 
     private void OnModelChanged(object? sender, PropertyChangedEventArgs args)
     {
+        if (args.PropertyName == nameof(ShellViewModel.IsHomeActive)) _homeCreateVersion++;
+        if (args.PropertyName == nameof(ShellViewModel.IsBackendConnected))
+        {
+            ConfigManagerPage.Model.Connected = Model.IsBackendConnected;
+            if (Model.IsBackendConnected && Model.IsConfigManagerActive) _ = ConfigManagerPage.Model.RefreshAsync();
+        }
+        if (args.PropertyName == nameof(ShellViewModel.IsConfigManagerActive))
+        {
+            if (Model.IsConfigManagerActive) _ = ConfigManagerPage.Model.RefreshAsync();
+            else ConfigManagerPage.Model.CloseForm();
+        }
         if (args.PropertyName is nameof(ShellViewModel.IsNarrow) or nameof(ShellViewModel.HasInstance)
             or nameof(ShellViewModel.IsDrawerOpen)
             or nameof(ShellViewModel.IsRailOpen) or nameof(ShellViewModel.IsRailVisible)

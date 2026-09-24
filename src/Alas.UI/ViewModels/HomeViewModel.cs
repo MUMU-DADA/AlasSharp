@@ -57,6 +57,7 @@ public sealed class DisconnectedInstanceSource : IAlasUiBackend
 
     private static InvalidOperationException Unavailable() => new("未连接 Alas 服务");
     public Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());
+    public Task<InstanceListResponse> ReadInstancesAsync(CancellationToken cancellationToken = default) => Task.FromException<InstanceListResponse>(Unavailable());
     public Task<JsonObject> ReadInstanceStateAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());
     public Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default) => Task.FromException<JsonObject?>(Unavailable());
     public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default) => Task.FromException<SchemaResponse>(Unavailable());
@@ -176,6 +177,18 @@ public sealed class HomeViewModel : INotifyPropertyChanged
     private bool _canToggleLegacyUi;
     private bool _isLegacyUi;
     private string _statusMessage = string.Empty;
+    private Func<bool, Task>? _createInstance;
+
+    public Func<bool, Task>? CreateInstance
+    {
+        get => _createInstance;
+        set
+        {
+            _createInstance = value;
+            Notify(nameof(CanCreateInstance)); Notify(nameof(CanImportInstance));
+            Notify(nameof(CreateInstanceNotice)); Notify(nameof(ImportInstanceNotice));
+        }
+    }
 
     public HomeViewModel()
         : this(DisconnectedInstanceSource.Instance)
@@ -191,6 +204,8 @@ public sealed class HomeViewModel : INotifyPropertyChanged
             if (parameter is InstanceCardViewModel card) SelectInstance(card);
         });
         ToggleLegacyUiCommand = new HomeCommand(_ => RequestLegacyUiToggle());
+        CreateInstanceCommand = new HomeCommand(_ => _ = RequestCreateAsync(false));
+        ImportInstanceCommand = new HomeCommand(_ => _ = RequestCreateAsync(true));
         if (source is IRefreshableInstanceSource refreshable)
             refreshable.Changed += (_, _) => Reload();
         Reload();
@@ -207,6 +222,8 @@ public sealed class HomeViewModel : INotifyPropertyChanged
     public ICommand RetryCommand { get; }
     public ICommand SelectInstanceCommand { get; }
     public ICommand ToggleLegacyUiCommand { get; }
+    public ICommand CreateInstanceCommand { get; }
+    public ICommand ImportInstanceCommand { get; }
 
     /// <summary>实例卡列表（上游 <c>.home-instance-grid</c> 的渲染来源）。</summary>
     public ObservableCollection<InstanceCardViewModel> Instances { get; } = new();
@@ -286,16 +303,16 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         "主页的实例列表来自 Alas 服务。当前没有可用连接，因此这里不显示任何实例，也不会把演示数据当成运行中的实例。";
     public string RetryLabel => "重试连接";
 
-    // ---- 动作可用性：本切片未接后端，全部禁用并给出原因（不留点了没反应的死按钮） ----
+    // ---- 动作可用性由连接状态与外壳注入能力共同决定 ----
 
-    public bool CanCreateInstance => false;
-    public bool CanImportInstance => false;
+    public bool CanCreateInstance => IsConnected && CreateInstance is not null;
+    public bool CanImportInstance => CanCreateInstance;
     public bool CanDeleteInstance => false;
     public bool CanSwitchInstance => false;
     public bool CanOpenInstanceSettings => false;
 
-    public string CreateInstanceNotice => IsConnected ? PendingFeatureNotice : NotConnectedNotice;
-    public string ImportInstanceNotice => IsConnected ? PendingFeatureNotice : NotConnectedNotice;
+    public string CreateInstanceNotice => CanCreateInstance ? "创建独立的配置实例" : IsConnected ? "当前环境无法创建实例。" : NotConnectedNotice;
+    public string ImportInstanceNotice => CanImportInstance ? "从配置文件导入实例" : IsConnected ? "当前环境无法导入实例。" : NotConnectedNotice;
     public string DeleteInstanceNotice => PendingFeatureNotice;
     public string SwitchInstanceNotice => PendingFeatureNotice;
     public string InstanceSettingsNotice => PendingFeatureNotice;
@@ -334,6 +351,16 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         Notify(nameof(ErrorText));
         Notify(nameof(CreateInstanceNotice));
         Notify(nameof(ImportInstanceNotice));
+        Notify(nameof(CanCreateInstance));
+        Notify(nameof(CanImportInstance));
+    }
+
+    private async Task RequestCreateAsync(bool import)
+    {
+        if (!CanCreateInstance) return;
+        try { await CreateInstance!(import); }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { StatusMessage = error.Message; }
     }
 
     private string Count(string status)

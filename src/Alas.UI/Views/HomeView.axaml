@@ -307,6 +307,7 @@
             <StackPanel x:Name="HeadingActions" Grid.Column="1" Orientation="Horizontal" Spacing="8"
                         HorizontalAlignment="Right" VerticalAlignment="Bottom">
               <Button x:Name="ImportInstanceButton" Theme="{StaticResource IconButtonTheme}" Classes="home-action icon-button"
+                      Command="{Binding ImportInstanceCommand}"
                       IsEnabled="{Binding CanImportInstance}" ToolTip.Tip="{Binding ImportInstanceNotice}"
                       AutomationProperties.Name="{Binding ImportInstanceLabel}">
                 <controls:Icon Data="{StaticResource IconDownload}" Size="16" />
@@ -327,6 +328,7 @@
                 <controls:Icon Data="{StaticResource IconSettings2}" Size="16" />
               </Button>
               <Button x:Name="NewInstanceButton" Theme="{StaticResource PrimaryButtonTheme}" Classes="home-primary" Width="112" Height="40"
+                      Command="{Binding CreateInstanceCommand}"
                       Padding="17,9" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                       IsEnabled="{Binding CanCreateInstance}" ToolTip.Tip="{Binding CreateInstanceNotice}"
                       AutomationProperties.Name="{Binding NewInstanceLabel}">
@@ -414,6 +416,7 @@
 
           <!-- 已连接但还没有实例：上游 .home-instance-empty -->
           <Button x:Name="EmptyStatePanel" Classes="home-empty" IsVisible="{Binding ShowEmptyState}"
+                  Command="{Binding CreateInstanceCommand}"
                   IsEnabled="{Binding CanCreateInstance}" ToolTip.Tip="{Binding CreateInstanceNotice}"
                   AutomationProperties.Name="{Binding CreateFirstInstanceLabel}">
             <Panel MinHeight="180">

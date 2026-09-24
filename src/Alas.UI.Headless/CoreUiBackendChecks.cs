@@ -39,6 +39,7 @@ internal static class CoreUiBackendChecks
         VerifyObservation();
         VerifyInstanceProjection();
         VerifyLateInstanceResponse();
+        await VerifyConfigAdapter();
         Console.WriteLine("PASS: shared Core adapters preserve upstream report fields and strict strategy diagnostics");
     }
 
@@ -186,18 +187,50 @@ internal static class CoreUiBackendChecks
         Console.WriteLine("PASS: idle instance overview, native precedence, final logs and delayed instance switch isolation");
     }
 
-    private sealed class FixtureBackend : IAlasUiBackend
+    private static async Task VerifyConfigAdapter()
+    {
+        var backend = new FixtureBackend
+        {
+            Listed = [new() { Instance = "fixture", Revision = "rev", Server = "en", Serial = "fixture-device", Status = "running" },
+                new() { Instance = "disabled", Revision = "rev", Server = "disabled" }],
+        };
+        var adapter = new CoreConfigInstancesBackend(backend);
+        var list = await adapter.ListInstancesAsync();
+        Check(list[0] is { Name: "fixture", Server: "国际服", Serial: "fixture-device", Status: "running" }
+            && list[1].Server == "", "instance list preserves live status and uses upstream server translations");
+        var config = await adapter.ReadConfigAsync("fixture");
+        Check(config.Revision == "rev-fixture" && JsonNode.DeepEquals(JsonNode.Parse(config.ValuesJson), backend.ConfigValues),
+            "export contains only configuration values and deletion retains the revision");
+        Check(await adapter.CreateInstanceAsync("normalized ", "source", null) == "normalized" &&
+            backend.Created is { Instance: "normalized ", Source: "source", ImportFile: null }, "create preserves source and uses normalized result");
+        await adapter.CreateInstanceAsync("imported", null, "upload");
+        Check(backend.Created is { Source: null, ImportFile: "upload" }, "import source stays distinct from template source");
+        await adapter.ImportConfigAsync("upload", "{\"Alas\":{}}");
+        Check(backend.Imported is { Name: "upload", Content: "{\"Alas\":{}}" } &&
+            (await adapter.ListImportsAsync()).Single().Name == "upload", "local import passes content and refreshes candidate sources");
+        await adapter.DeleteInstanceAsync("fixture", config.Revision);
+        Check(backend.Deleted is { Instance: "fixture", Revision: "rev-fixture" } && backend.RefreshCalls == 3,
+            "revision-safe delete and create update the shared instance source");
+    }
+
+    internal sealed class FixtureBackend : IAlasUiBackend
     {
         public bool IsConnected => true;
         public IReadOnlyList<InstanceCardViewModel> Instances => [];
         public event EventHandler? Changed { add { } remove { } }
-        public void Refresh() { }
+        public int RefreshCalls;
+        public void Refresh() { RefreshCalls++; }
         public void Dispose() { }
         public Func<string, Task<JsonObject>>? InstanceRead;
         public string? Cleared;
         public InstanceTaskRunRequest? Started;
         public InstanceSchedulerRunRequest? SchedulerStarted;
         public int StopRequests;
+        public IReadOnlyList<InstanceSummary> Listed = [];
+        public InstanceCreateRequest? Created;
+        public InstanceDeleteRequest? Deleted;
+        public InstanceImportRequest? Imported;
+        public JsonObject ConfigValues = new() { ["Alas"] = new JsonObject() };
         public JsonObject State = new() { ["active"] = new JsonObject { ["status"] = "idle" } };
         public JsonObject Validation = JsonNode.Parse("""
             {"valid":false,"diagnostics":[{"code":"forbidden_statement","message":"fixture diagnostic","line":2,"column":3}]}
@@ -225,16 +258,26 @@ internal static class CoreUiBackendChecks
             return Task.CompletedTask;
         }
         public Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default) => Task.FromResult((JsonObject)State.DeepClone());
+        public Task<InstanceListResponse> ReadInstancesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new InstanceListResponse { Instances = Listed });
         public Task<JsonObject> ReadInstanceStateAsync(string instance, CancellationToken cancellationToken = default)
             => InstanceRead?.Invoke(instance) ?? ReadStateAsync(cancellationToken);
         public Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default) =>
+            Task.FromResult(new SchemaResponse { Menu = [], Args = [],
+                Translations = new JsonObject { ["Emulator.ServerName.en"] = "国际服" } });
+        public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ConfigResponse { Instance = instance, Revision = "rev-" + instance, Values = (JsonObject)ConfigValues.DeepClone() });
         public Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task DeleteInstanceAsync(InstanceDeleteRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<InstanceImportListResponse> ReadInstanceImportsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default)
+        { Created = request; return ReadConfigAsync(request.Instance.Trim(), cancellationToken); }
+        public Task DeleteInstanceAsync(InstanceDeleteRequest request, CancellationToken cancellationToken = default)
+        { Deleted = request; return Task.CompletedTask; }
+        public Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default)
+        { Imported = request; return Task.FromResult(new InstanceImportSource { Name = request.Name, ModifiedAt = DateTimeOffset.UnixEpoch }); }
+        public Task<InstanceImportListResponse> ReadInstanceImportsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new InstanceImportListResponse { Sources = Imported is null ? [] :
+                [new InstanceImportSource { Name = Imported.Name, ModifiedAt = DateTimeOffset.UnixEpoch }] });
         public Task SaveQueueAsync(JsonObject queue, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)

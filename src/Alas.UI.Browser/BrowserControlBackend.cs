@@ -77,6 +77,9 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
     public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default)
         => _client.GetConfigAsync(instance, cancellationToken);
 
+    public Task<InstanceListResponse> ReadInstancesAsync(CancellationToken cancellationToken = default)
+        => _client.ListInstancesAsync(cancellationToken);
+
     public Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default)
         => _client.PatchConfigAsync(request, cancellationToken);
 

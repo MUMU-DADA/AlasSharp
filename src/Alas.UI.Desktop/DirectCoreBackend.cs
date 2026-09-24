@@ -49,6 +49,16 @@ internal sealed class DirectCoreBackend : IAlasUiBackend
     public Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().State(), cancellationToken);
 
+    public Task<InstanceListResponse> ReadInstancesAsync(CancellationToken cancellationToken = default)
+        => Task.Run(() => new InstanceListResponse
+        {
+            Instances = WorkspaceOrThrow().Instances(ConfigsOrThrow()).Select(item => new InstanceSummary
+            {
+                Instance = item.Instance, Revision = item.Revision, Status = item.Status,
+                CurrentTask = item.CurrentTask, Serial = item.Serial, Server = item.Server,
+            }).ToArray(),
+        }, cancellationToken);
+
     public Task<JsonObject> ReadInstanceStateAsync(string instance, CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().State(instance), cancellationToken);
 

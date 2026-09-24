@@ -52,17 +52,21 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     {
     }
 
-    public ShellViewModel(IThemeStore themeStore, IAlasUiBackend? backend = null, bool previewData = false)
+    public ShellViewModel(IThemeStore themeStore, IAlasUiBackend? backend = null, bool previewData = false,
+        Platform.IUiFiles? files = null)
     {
         Theme = new ThemeService(themeStore);
         InterfaceSettings = new InterfaceSettingsViewModel(Theme);
         _backend = backend ?? DisconnectedInstanceSource.Instance;
+        ConfigManagerBackend = new CoreConfigInstancesBackend(_backend);
         Home = new HomeViewModel(_backend);
         Home.InstanceSelected += (_, instance) => SelectInstance(instance);
         Overview = new OverviewViewModel(previewData, previewData ? null : _backend);
         Statistics = new StatisticsViewModel(
             async (query, cancellationToken) => await _backend.ReadStatisticsAsync(ToStatisticsRequest(query), cancellationToken).ConfigureAwait(true),
-            (instance, cancellationToken) => _backend.RefreshStatisticsLootAsync(instance, cancellationToken));
+            (instance, cancellationToken) => _backend.RefreshStatisticsLootAsync(instance, cancellationToken),
+            files is null ? null : (export, cancellationToken) => files.SaveAsync(
+                export.FileName, export.MediaType, () => Task.FromResult(export.Content), cancellationToken));
         TaskEditor = new TaskEditorViewModel { Backend = new CoreTaskEditorBackend(_backend) };
         MeowfficerBackend = new CoreMeowfficerReportBackend(_backend);
         Placeholder = new PlaceholderViewModel();
@@ -95,6 +99,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public InterfaceSettingsViewModel InterfaceSettings { get; }
     public HomeViewModel Home { get; }
     public OverviewViewModel Overview { get; }
+    public CoreConfigInstancesBackend ConfigManagerBackend { get; }
+    public bool IsBackendConnected => _backend.IsConnected;
     public StatisticsViewModel Statistics { get; }
     public TaskEditorViewModel TaskEditor { get; private set; }
     public IMeowfficerReportBackend MeowfficerBackend { get; }
@@ -234,6 +240,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
             Notify(nameof(IsStatisticsActive));
             Notify(nameof(IsTaskEditorActive));
             Notify(nameof(IsMeowfficerActive));
+            Notify(nameof(IsConfigManagerActive));
             Notify(nameof(IsInterfaceSettingsActive));
             Notify(nameof(IsPlaceholderActive));
             Notify(nameof(MainPadding));
@@ -249,10 +256,11 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public bool IsStatisticsActive => _activePage == "statistics";
     public bool IsTaskEditorActive => _activePage == "task";
     public bool IsMeowfficerActive => _activePage == "meowfficer";
+    public bool IsConfigManagerActive => _activePage == "configs";
 
     /// <summary>未实现的入口显示占位页。</summary>
     public bool IsPlaceholderActive => !IsHomeActive && !IsOverviewActive && !IsStatisticsActive &&
-        !IsInterfaceSettingsActive && !IsTaskEditorActive && !IsMeowfficerActive;
+        !IsInterfaceSettingsActive && !IsTaskEditorActive && !IsMeowfficerActive && !IsConfigManagerActive;
 
     /// <summary>界面设置页（上游 /interface）：六主题与本地首选项的唯一入口。</summary>
     public bool IsInterfaceSettingsActive => _activePage == "interface";
@@ -272,6 +280,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         "interface" => "界面设置",
         "task" => TaskEditor.Title,
         "meowfficer" => "指挥喵评分",
+        "configs" => "配置管理",
         "home" => string.Empty,
         _ => Placeholder.Title,
     };
@@ -371,6 +380,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         Instances.Clear();
         foreach (var item in _backend.Instances) Instances.Add(item.Name);
         Notify(nameof(InstancesSummary));
+        Notify(nameof(IsBackendConnected));
     }
 
     public async Task RefreshBackendStateAsync()

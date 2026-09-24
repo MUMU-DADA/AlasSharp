@@ -31,6 +31,7 @@ internal static class Program
         try
         {
             ThemePreferenceChecks.Verify();
+            await UiFilesChecks.Verify();
             await TaskEditorChecks.Verify();
             await CoreUiBackendChecks.Verify();
             // Dispatch may complete inline on its own worker. Async disposal lets that worker
@@ -51,6 +52,7 @@ internal static class Program
     private static void Verify(string output)
     {
         TaskEditorChecks.VerifyControls();
+        ConfigManagerChecks.Run(output);
         // 1) 对照帧：每种尺寸/主题用全新的视图与窗口，避免交互状态（筛选行、日志条数、指针悬停）进入对照图。
         CaptureClean(output, 1280, 820, dark: false, "overview-light-1280x820.png");
         CaptureClean(output, 1280, 820, dark: true, "overview-dark-1280x820.png");
