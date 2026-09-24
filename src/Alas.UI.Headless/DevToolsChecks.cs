@@ -33,14 +33,8 @@ internal static class DevToolsChecks
     }
 
     /// <summary>
-    /// 035/037 的 B 补修验收。根因是"控件存在、状态正确，但用户够不着"：
-    /// ① 页面自己没有滚动容器，超长展示页依赖外层给一个，没有就整块够不着；
-    /// ② Modal 覆盖层曾被放进滚动内容里，打开后弹窗落在滚动区中部（视口外），还要再滚一次才点得到取消；
-    /// ③ 此前的 Click 辅助调用 RaiseEvent(ClickEvent)，等于绕过命中测试，
-    ///    所以"打开按钮在视口外"和"弹窗不在视口内"两件事都测不出来。
-    ///
-    /// 因此这里全部改用**视口内的真实指针与键盘输入**：点开、取消、确认、Tab 循环、输入、Esc 关闭
-    /// 都必须由窗口输入管线命中真实控件；断言覆盖"打开按钮可达"和"打开后无需再滚动即可取消/确认"。
+    /// 用视口内真实指针和键盘验证可达性：页面自行滚动，模态覆盖层固定在视口，
+    /// 打开后无需再次滚动即可输入、取消或确认，Tab/Esc 与焦点恢复通过输入管线触发。
     /// </summary>
     private static void RepairAcceptance()
     {
@@ -97,7 +91,7 @@ internal static class DevToolsChecks
             var scrolledBefore = scroller.Offset.Y;
 
             // 先滚动到「打开 Modal」所在的“按钮与操作”面板，再取被遮罩挡住那块的坐标：
-            // 打开按钮本身在这一页也曾在视口外（035 就是这个缺陷），所以"打开前先滚"是用户真实路径。
+            // 先滚动页面使打开按钮可达；弹窗打开后不再滚动。
             ScrollIntoViewport(openButton, window);
 
             // ⓪ 先证明这个位置**真的能点到内容**（否则"遮罩拦住了"可能只是因为本来就点不到）。
@@ -377,7 +371,7 @@ internal static class DevToolsChecks
     private static void PanelsAndControls()
     {
         var view = new DevToolsView(new FakeBackend(new DevToolsStatus(true, null, false)));
-        // 页面自己持有滚动容器（035 的 B 补修），这里不再包一层外层 ScrollViewer：
+        // 页面自己持有滚动容器，宿主提供有限视口：
         // 外层滚动只会在无头里给出"内层视口等于整段内容"的假尺寸，反而让指针坐标失去意义。
         var window = new Window { Width = 1280, Height = 1200, Content = view };
         window.Show();
@@ -486,7 +480,7 @@ internal static class DevToolsChecks
             var model = view.Model;
             Check(!model.Enabled, "disconnected dev tools are not enabled");
             Check(!Find<TextBlock>(view, "DevToolsEnabledLabel").IsVisible, "no enabled banner while unconnected");
-            Check(Find<TextBlock>(view, "DevToolsNotice").IsVisible && model.Notice.Contains("尚未接线"),
+            Check(Find<TextBlock>(view, "DevToolsNotice").IsVisible && model.Notice == DisconnectedDevToolsBackend.Notice,
                 "disconnected dev tools explain why they are unavailable");
             Check(!model.CanUseTools && !Find<Button>(view, "DevToolsSimulateRunningButton").IsEnabled
                 && !Find<Button>(view, "DevToolsThrowButton").IsEnabled, "every dev tool button is disabled while unconnected");

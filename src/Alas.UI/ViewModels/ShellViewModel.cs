@@ -241,6 +241,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
             Notify(nameof(IsTaskEditorActive));
             Notify(nameof(IsMeowfficerActive));
             Notify(nameof(IsConfigManagerActive));
+            Notify(nameof(IsDevToolsActive));
+            Notify(nameof(UsesMainScroll));
             Notify(nameof(IsInterfaceSettingsActive));
             Notify(nameof(IsPlaceholderActive));
             Notify(nameof(MainPadding));
@@ -257,10 +259,12 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public bool IsTaskEditorActive => _activePage == "task";
     public bool IsMeowfficerActive => _activePage == "meowfficer";
     public bool IsConfigManagerActive => _activePage == "configs";
+    public bool IsDevToolsActive => _activePage == "dev";
+    public bool UsesMainScroll => !IsConfigManagerActive && !IsDevToolsActive;
 
     /// <summary>未实现的入口显示占位页。</summary>
     public bool IsPlaceholderActive => !IsHomeActive && !IsOverviewActive && !IsStatisticsActive &&
-        !IsInterfaceSettingsActive && !IsTaskEditorActive && !IsMeowfficerActive && !IsConfigManagerActive;
+        !IsInterfaceSettingsActive && !IsTaskEditorActive && !IsMeowfficerActive && !IsConfigManagerActive && !IsDevToolsActive;
 
     /// <summary>界面设置页（上游 /interface）：六主题与本地首选项的唯一入口。</summary>
     public bool IsInterfaceSettingsActive => _activePage == "interface";
@@ -281,6 +285,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         "task" => TaskEditor.Title,
         "meowfficer" => "指挥喵评分",
         "configs" => "配置管理",
+        "dev" => "开发者工具",
         "home" => string.Empty,
         _ => Placeholder.Title,
     };

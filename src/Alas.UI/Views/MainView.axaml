@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:Alas.UI.ViewModels" xmlns:views="using:Alas.UI.Views" xmlns:statistics="using:Alas.UI.Statistics" xmlns:taskeditor="using:Alas.UI.TaskEditor" xmlns:configs="using:Alas.UI.ConfigManager"
+             xmlns:vm="using:Alas.UI.ViewModels" xmlns:views="using:Alas.UI.Views" xmlns:statistics="using:Alas.UI.Statistics" xmlns:taskeditor="using:Alas.UI.TaskEditor" xmlns:configs="using:Alas.UI.ConfigManager" xmlns:dev="using:Alas.UI.DevTools"
              x:Class="Alas.UI.Views.MainView" x:DataType="vm:ShellViewModel" Classes="shell"
              Classes.narrow="{Binding IsNarrow}" Classes.compact="{Binding IsCompact}"
              FontFamily="{DynamicResource AlasFontSans}" FontSize="14"
@@ -17,7 +17,7 @@
       </Border>
 
       <ScrollViewer x:Name="MainScroll" Grid.Row="1" Grid.Column="1" Padding="{Binding MainPadding}"
-                    IsVisible="{Binding !IsConfigManagerActive}"
+                    IsVisible="{Binding UsesMainScroll}"
                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Panel x:Name="PageHost" MinHeight="{Binding ContentMinHeight}">
           <Panel x:Name="OverviewHost" IsVisible="{Binding IsOverviewActive}">
@@ -46,6 +46,9 @@
       </ScrollViewer>
       <Panel x:Name="ConfigManagerHost" Grid.Row="1" Grid.Column="1" IsVisible="{Binding IsConfigManagerActive}">
         <configs:ConfigManagerPage x:Name="ConfigManagerPage" />
+      </Panel>
+      <Panel x:Name="DevToolsHost" Grid.Row="1" Grid.Column="1" IsVisible="{Binding IsDevToolsActive}" Margin="{Binding MainPadding}">
+        <dev:DevToolsView x:Name="DevToolsPage" />
       </Panel>
 
       <Border x:Name="RailPanel" Grid.Row="1" Grid.Column="2" Classes="rail" HorizontalAlignment="Right"

@@ -34,6 +34,8 @@ public partial class MainView : UserControl
         DataContext = Model;
         Model.PropertyChanged += OnModelChanged;
         ConfigManagerPage.ModalHost = Root;
+        DevToolsPage.ModalHost = Root;
+        DevToolsPage.UiTheme = Model.CurrentTheme;
         ConfigManagerPage.Model.Connected = Model.IsBackendConnected;
         ConfigManagerPage.Backend = Model.ConfigManagerBackend;
         ConfigManagerPage.Model.OpenOverview = Model.SelectInstance;
@@ -77,6 +79,9 @@ public partial class MainView : UserControl
 
     private void OnModelChanged(object? sender, PropertyChangedEventArgs args)
     {
+        if (args.PropertyName == nameof(ShellViewModel.CurrentTheme)) DevToolsPage.UiTheme = Model.CurrentTheme;
+        if (args.PropertyName == nameof(ShellViewModel.IsDevToolsActive) && !Model.IsDevToolsActive)
+            DevToolsPage.CloseModal();
         if (args.PropertyName == nameof(ShellViewModel.IsHomeActive)) _homeCreateVersion++;
         if (args.PropertyName == nameof(ShellViewModel.IsBackendConnected))
         {

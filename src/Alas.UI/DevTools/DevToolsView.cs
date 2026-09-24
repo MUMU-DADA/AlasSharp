@@ -57,7 +57,7 @@ public sealed class DisconnectedDevToolsBackend : IDevToolsBackend
 {
     public static DisconnectedDevToolsBackend Instance { get; } = new();
 
-    public const string Notice = "开发者工具尚未接线：需要外壳注入开发者工具能力后可用。";
+    public const string Notice = "开发者模拟功能暂不可用。";
 
     private static DevToolsStatus Off => new(false, null, false, Notice);
 
@@ -83,6 +83,15 @@ public sealed class DevToolsView : UserControl
     private Panel? _modalHost;
     private ScrollViewer? _scroller;
     private Border? _overlay;
+    private Button? _openModalButton;
+
+    public void CloseModal()
+    {
+        if (_overlay is null || !_overlay.IsVisible) return;
+        _overlay.IsVisible = false;
+        if (_scroller is not null) _scroller.IsHitTestVisible = true;
+        _openModalButton?.Focus();
+    }
 
     public DevToolsView()
         : this(DisconnectedDevToolsBackend.Instance)
@@ -269,13 +278,9 @@ public sealed class DevToolsView : UserControl
             Child = modalCard,
         };
         _overlay = modalOverlay;
+        modalOverlay.ZIndex = 100;
         var openModalButton = Themed("DevToolsOpenModalButton", "GhostButtonTheme", "打开 Modal");
-        void CloseModal()
-        {
-            modalOverlay.IsVisible = false;
-            SetContentHitTestable(true);
-            openModalButton.Focus();   // 关闭后焦点回到打开它的控件
-        }
+        _openModalButton = openModalButton;
         openModalButton.Click += (_, _) =>
         {
             modalOverlay.IsVisible = true;
@@ -654,7 +659,7 @@ public sealed class DevToolsView : UserControl
                             new TextBox
                             {
                                 Name = "DevToolsTableSearch", Width = 220, FontSize = 12,
-                                Watermark = "搜索任务、配置或实例…",
+                                PlaceholderText = "搜索任务、配置或实例…",
                             },
                             new TextBlock { Text = "3 条记录", FontSize = 12, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center },
                         },
@@ -710,13 +715,7 @@ public sealed class DevToolsView : UserControl
     }
 
     /// <summary>
-    /// 把覆盖层对齐到**当前视口**矩形。
-    ///
-    /// 覆盖层的父节点是分层容器：它本身撑满宿主时，覆盖层跟着它走就是对的（外壳注入整壳根部时
-    /// 属于这种情况）；但父节点若处在可滚动/带偏移的容器里，直接撑满父节点会把弹窗摆到视口之外。
-    /// 这里按父节点相对顶层视口的位置补偿偏移，统一得到"覆盖整个可见区域、弹窗居中"的结果，
-    /// 不需要外壳把注入点放在哪个特定层级上。父节点被裁剪（例如被放进 ScrollViewer）时，
-    /// 裁剪来自外壳的挂载选择，页面不做逐容器兜底。
+    /// 页面放在有限视口中，整壳模态通过 ModalHost 挂载到外壳根部。
     /// </summary>
     private void AlignOverlayToViewport()
     {
@@ -1254,12 +1253,12 @@ public sealed class DevToolsViewModel : INotifyPropertyChanged
     public DevToolsViewModel(IDevToolsBackend backend)
     {
         _backend = backend;
-        SimulateRunningCommand = new DevCommand(_ => Run(() => _backend.SimulateAsync("running")));
-        SimulateErrorCommand = new DevCommand(_ => Run(() => _backend.SimulateAsync("error")));
-        SimulateUpdatingCommand = new DevCommand(_ => Run(() => _backend.SimulateAsync("updating")));
-        ClearCommand = new DevCommand(_ => Run(() => _backend.ClearSimulationAsync()));
-        ToggleUpdateNoticeCommand = new DevCommand(_ => Run(() => _backend.SetUpdateNoticeAsync(!UpdateNoticePreview)));
-        ThrowCommand = new DevCommand(_ => Run(async () =>
+        SimulateRunningCommand = new DevCommand(parameter => _ = Run(() => _backend.SimulateAsync("running")));
+        SimulateErrorCommand = new DevCommand(parameter => _ = Run(() => _backend.SimulateAsync("error")));
+        SimulateUpdatingCommand = new DevCommand(parameter => _ = Run(() => _backend.SimulateAsync("updating")));
+        ClearCommand = new DevCommand(parameter => _ = Run(() => _backend.ClearSimulationAsync()));
+        ToggleUpdateNoticeCommand = new DevCommand(parameter => _ = Run(() => _backend.SetUpdateNoticeAsync(!UpdateNoticePreview)));
+        ThrowCommand = new DevCommand(parameter => _ = Run(async () =>
         {
             await _backend.ThrowTestAsync();
             // 自检抛错：把真实异常交给页面显示，不假装“自检通过”。
