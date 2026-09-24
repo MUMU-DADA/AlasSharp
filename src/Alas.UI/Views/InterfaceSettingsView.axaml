@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Alas.UI.ViewModels"
+             xmlns:views="using:Alas.UI.Views"
              x:Class="Alas.UI.Views.InterfaceSettingsView"
              x:DataType="vm:InterfaceSettingsViewModel">
   <UserControl.Styles>
@@ -32,7 +33,11 @@
     </Style>
   </UserControl.Styles>
 
-  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+  <!-- 页面根部是**分层容器**：滚动内容在下、配色编辑模态在上。
+       覆盖层必须是滚动容器**之外**的兄弟节点，否则它会变成滚动内容的一部分——
+       页面一长"打开后弹窗在视口外、还要再滚一次才点得到保存"，那就不算模态。 -->
+  <Grid x:Name="InterfaceSettingsRoot">
+  <ScrollViewer x:Name="InterfaceSettingsContent" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Margin="32,0,32,32" Spacing="18">
       <TextBlock Classes="page-title" Text="{Binding Title}" Margin="0,32,0,0" />
 
@@ -59,6 +64,8 @@
             <StackPanel Spacing="10">
               <TextBlock Classes="field-label" Text="配色方案" />
               <TextBlock Classes="field-help" Text="主色用于主要操作与选中状态，副色用于辅助信息。" />
+              <!-- 上游 fieldset.palette-options：每个方案是一个 radio + 双色块 swatch，
+                   末尾一个 palette-add（达到上限时禁用）。选中自定义方案时才出现行内编辑/删除。 -->
               <ItemsControl x:Name="PaletteGrid" ItemsSource="{Binding Palettes}">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate>
@@ -67,30 +74,42 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:PaletteOption">
-                    <Border Classes="palette-swatch" Padding="6" CornerRadius="10" Width="64">
-                      <!-- 上游 .palette-swatch { display:inline-flex; flex-shrink:0; gap:2px }：色块间距 2，不是 4 -->
-                      <StackPanel Spacing="2">
-                        <StackPanel Orientation="Horizontal" Spacing="2">
-                          <Border Width="22" Height="22" CornerRadius="6" Background="{Binding AccentBrush}" />
-                          <Border Width="22" Height="22" CornerRadius="6" Background="{Binding SecondaryBrush}" />
+                    <StackPanel Name="PaletteOption" Spacing="2">
+                      <RadioButton x:Name="PaletteChoice" GroupName="palette" FontSize="11"
+                                   IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                   Command="{Binding $parent[ItemsControl].((vm:InterfaceSettingsViewModel)DataContext).SelectPaletteCommand}"
+                                   CommandParameter="{Binding}"
+                                   AutomationProperties.Name="{Binding Name}">
+                        <StackPanel Spacing="2">
+                          <!-- 上游 .palette-swatch { display:inline-flex; gap:2px }：色块间距 2，不是 4 -->
+                          <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Border Width="22" Height="22" CornerRadius="6" Background="{Binding AccentBrush}" />
+                            <Border Width="22" Height="22" CornerRadius="6" Background="{Binding SecondaryBrush}" />
+                          </StackPanel>
+                          <TextBlock Text="{Binding Name}" FontSize="11" />
                         </StackPanel>
-                        <Button Theme="{StaticResource TextButtonTheme}" FontSize="11" Padding="0"
-                                Content="编辑" IsVisible="{Binding IsCustom}"
-                                Command="{Binding $parent[UserControl].((vm:InterfaceSettingsViewModel)DataContext).EditPaletteCommand}"
+                      </RadioButton>
+                      <!-- 上游：只有**选中**的自定义方案才显示行内「编辑方案 / 删除方案」 -->
+                      <StackPanel Orientation="Horizontal" Spacing="6"
+                                  IsVisible="{Binding ShowsRowActions}">
+                        <Button x:Name="PaletteEditButton" Theme="{StaticResource TextButtonTheme}" FontSize="11" Padding="0"
+                                Content="编辑方案"
+                                Command="{Binding $parent[ItemsControl].((vm:InterfaceSettingsViewModel)DataContext).EditPaletteCommand}"
                                 CommandParameter="{Binding}" />
                         <!-- 上游 settings.deletePalette =「删除方案」；此前 DeletePaletteCommand 没有界面入口 ✗ -->
                         <Button x:Name="PaletteDeleteButton" Theme="{StaticResource TextButtonTheme}" FontSize="11" Padding="0"
-                                Content="删除方案" IsVisible="{Binding IsCustom}"
-                                Command="{Binding $parent[UserControl].((vm:InterfaceSettingsViewModel)DataContext).DeletePaletteCommand}"
+                                Content="删除方案"
+                                Command="{Binding $parent[ItemsControl].((vm:InterfaceSettingsViewModel)DataContext).DeletePaletteCommand}"
                                 CommandParameter="{Binding}" />
                       </StackPanel>
-                    </Border>
+                    </StackPanel>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
               <StackPanel Orientation="Horizontal" Spacing="10">
                 <Button x:Name="AddPaletteButton" Theme="{StaticResource GhostButtonTheme}" Padding="12,7"
-                        Content="添加自定义配色" Command="{Binding AddPaletteCommand}" />
+                        Content="添加自定义配色" IsEnabled="{Binding CanAddPalette}"
+                        Command="{Binding AddPaletteCommand}" />
                 <TextBlock Classes="field-help" Text="{Binding PaletteLimitNotice}" VerticalAlignment="Center" />
               </StackPanel>
             </StackPanel>
@@ -178,18 +197,37 @@
           </Border>
         </StackPanel>
       </Border>
+    </StackPanel>
+  </ScrollViewer>
 
-      <!-- 自定义配色编辑弹窗：取消丢弃草稿（上游 e2e 明确断言） -->
-      <Border x:Name="PaletteDialog" Classes="panel" IsVisible="{Binding IsPaletteDialogOpen}"
-              HorizontalAlignment="Center" Width="420">
+  <!--
+    自定义配色编辑**模态**（上游 components/ui.tsx 的 Modal + ThemePreferences 的 CustomPaletteEditor）：
+    - 覆盖层是滚动容器的兄弟节点，按视口覆盖并居中，页面很长时也不会被滚走；
+    - 窄屏（390）下弹窗不越视口：宽度自适应、内容可滚动；
+    - 焦点约束、Escape 关闭、关闭后焦点回到打开它的控件，都在代码后置里实现。
+    取色控件是 ColorField（真实取色 + 十六进制双向同步）。
+  -->
+  <Border x:Name="PaletteDialogOverlay" IsVisible="false" Background="#66000000"
+          HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <ScrollViewer x:Name="PaletteDialogScroller" VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+      <Border x:Name="PaletteDialog" Classes="panel" MaxWidth="420" Margin="16"
+              HorizontalAlignment="Center" VerticalAlignment="Center">
         <StackPanel Spacing="12" Margin="4">
-          <TextBlock Text="{Binding DraftTitle}" FontSize="16" FontWeight="SemiBold" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock x:Name="PaletteDialogTitle" Text="{Binding DraftTitle}" FontSize="16" FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+            <!-- 上游 Modal 标题栏带关闭按钮；与「取消」同义（丢弃草稿）。 -->
+            <Button x:Name="PaletteDialogCloseButton" Grid.Column="1" Theme="{StaticResource IconButtonTheme}"
+                    Content="✕" Command="{Binding CancelPaletteCommand}"
+                    AutomationProperties.Name="关闭" />
+          </Grid>
           <TextBlock Classes="field-label" Text="名称" />
           <TextBox x:Name="PaletteNameInput" Text="{Binding DraftName, Mode=TwoWay}" AutomationProperties.Name="配色名称" />
           <TextBlock Classes="field-label" Text="主色" />
-          <TextBox x:Name="PalettePrimaryInput" Text="{Binding DraftPrimary, Mode=TwoWay}" AutomationProperties.Name="主色" />
+          <views:ColorField x:Name="PalettePrimaryField" ColorHex="{Binding DraftPrimary, Mode=TwoWay}" />
           <TextBlock Classes="field-label" Text="副色" />
-          <TextBox x:Name="PaletteSecondaryInput" Text="{Binding DraftSecondary, Mode=TwoWay}" AutomationProperties.Name="副色" />
+          <views:ColorField x:Name="PaletteSecondaryField" ColorHex="{Binding DraftSecondary, Mode=TwoWay}" />
           <StackPanel Orientation="Horizontal" Spacing="10">
             <Border Width="28" Height="28" CornerRadius="8" Background="{Binding DraftPreview}" />
             <TextBlock x:Name="PaletteDraftError" Classes="field-help" Text="{Binding DraftError}"
@@ -198,11 +236,15 @@
           <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
             <Button x:Name="PaletteCancelButton" Theme="{StaticResource GhostButtonTheme}" Padding="14,9"
                     Content="取消" Command="{Binding CancelPaletteCommand}" />
+            <!-- 上游：颜色非法时「保存配色」禁用（required + pattern 的等效行为）。
+                 绑 CanSavePalette（把草稿版本号也作为输入），保证每次草稿编辑都重算可用状态。 -->
             <Button x:Name="PaletteSaveButton" Theme="{StaticResource PrimaryButtonTheme}" Padding="14,9"
-                    Content="保存并应用" Command="{Binding SavePaletteCommand}" />
+                    Content="保存配色" IsEnabled="{Binding CanSavePalette}"
+                    Command="{Binding SavePaletteCommand}" />
           </StackPanel>
         </StackPanel>
       </Border>
-    </StackPanel>
-  </ScrollViewer>
+    </ScrollViewer>
+  </Border>
+  </Grid>
 </UserControl>

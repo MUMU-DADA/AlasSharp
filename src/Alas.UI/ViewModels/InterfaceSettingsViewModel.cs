@@ -21,6 +21,7 @@ public sealed class InterfaceSettingsViewModel : System.ComponentModel.INotifyPr
         _theme = theme;
         _applyTheme = new PreviewCommand(_ => ApplyCurrent());
         AddPaletteCommand = new PreviewCommand(_ => OpenPaletteDialog(null));
+        SelectPaletteCommand = new PreviewCommand(parameter => SelectPalette(parameter as PaletteOption));
         EditPaletteCommand = new PreviewCommand(parameter => OpenPaletteDialog(parameter as PaletteOption));
         DeletePaletteCommand = new PreviewCommand(parameter => DeletePalette(parameter as PaletteOption));
         SavePaletteCommand = new PreviewCommand(_ => SavePalette());
@@ -147,6 +148,9 @@ public sealed class InterfaceSettingsViewModel : System.ComponentModel.INotifyPr
     public bool HasPersistenceProblem => !string.IsNullOrEmpty(_theme.Status);
 
     public ICommand AddPaletteCommand { get; }
+
+    /// <summary>选中某个配色（上游 palette-options 里的 radio）——选中即写偏好并落盘。</summary>
+    public ICommand SelectPaletteCommand { get; }
     public ICommand EditPaletteCommand { get; }
     public ICommand DeletePaletteCommand { get; }
     public ICommand SavePaletteCommand { get; }
@@ -160,9 +164,73 @@ public sealed class InterfaceSettingsViewModel : System.ComponentModel.INotifyPr
     }
 
     public string DraftTitle => _editing is null ? "添加自定义配色" : "编辑方案";
-    public string DraftName { get => _draftName; set => SetField(ref _draftName, value); }
-    public string DraftPrimary { get => _draftPrimary; set { if (SetField(ref _draftPrimary, value)) Notify(nameof(DraftPreview)); } }
-    public string DraftSecondary { get => _draftSecondary; set { if (SetField(ref _draftSecondary, value)) Notify(nameof(DraftPreview)); } }
+    public string DraftName { get => _draftName; set { if (SetField(ref _draftName, value)) BumpDraftVersion(); } }
+    public string DraftPrimary
+    {
+        get => _draftPrimary;
+        set
+        {
+            if (!SetField(ref _draftPrimary, value)) return;
+            Notify(nameof(DraftPreview));
+            Notify(nameof(IsPaletteDraftValid));
+            BumpDraftVersion();
+        }
+    }
+
+    public string DraftSecondary
+    {
+        get => _draftSecondary;
+        set
+        {
+            if (!SetField(ref _draftSecondary, value)) return;
+            Notify(nameof(DraftPreview));
+            Notify(nameof(IsPaletteDraftValid));
+            BumpDraftVersion();
+        }
+    }
+
+    /// <summary>
+    /// 草稿版本号：每次草稿变化都 +1，界面据此**无条件重算**「保存」的可用状态。
+    /// 只 raise <c>IsPaletteDraftValid</c> 是不够的——绑定在草稿对象的属性变化上时不会重新求值
+    /// （实测：非法十六进制没有让「保存配色」变灰）。
+    /// </summary>
+    public int DraftVersion => _draftVersion;
+
+    private void BumpDraftVersion()
+    {
+        _draftVersion++;
+        Notify(nameof(DraftVersion));
+        Notify(nameof(CanSavePalette));
+    }
+
+    /// <summary>
+    /// 上游 CustomPaletteEditor：两个颜色都合法（<c>/^#[\da-f]{6}$/i</c>）时「保存配色」才可用。
+    /// 名称非法由保存时的 DRAFT_ERROR 文案说明（上游 id 由随机值生成，本项目的 id 需要名称）。
+    ///
+    /// 这里同时看**草稿里已有的文本**与取色控件报来的非法标记：十六进制框里打了非法值时，
+    /// 取色控件不会用非法文本覆盖颜色（颜色仍是上一个合法值），因此只比颜色会让保存键保持可用。
+    /// </summary>
+    public bool IsPaletteDraftValid =>
+        UiPalettes.IsValidColor(DraftPrimary) && UiPalettes.IsValidColor(DraftSecondary)
+        && !HasInvalidColorText;
+
+    /// <summary>取色控件报告「十六进制框内容非法」（弹窗打开期间由代码后置维护）。</summary>
+    public bool HasInvalidColorText
+    {
+        get => _hasInvalidColorText;
+        set
+        {
+            if (!SetField(ref _hasInvalidColorText, value)) return;
+            Notify(nameof(IsPaletteDraftValid));
+            Notify(nameof(CanSavePalette));
+        }
+    }
+
+    /// <summary>
+    /// 「保存配色」的可用状态：把草稿版本号也作为输入，任何草稿编辑都会触发重算。
+    /// 只绑 <see cref="IsPaletteDraftValid"/> 时绑定不会重新求值（实测：非法十六进制没让保存变灰）。
+    /// </summary>
+    public bool CanSavePalette => DraftVersion >= 0 && IsPaletteDraftValid;
 
     public IBrush DraftPreview => new SolidColorBrush(
         UiPalettes.IsValidColor(DraftPrimary) ? Color.Parse(DraftPrimary) : Colors.Transparent);
@@ -175,6 +243,9 @@ public sealed class InterfaceSettingsViewModel : System.ComponentModel.INotifyPr
 
     public string PaletteLimitNotice =>
         $"最多 {UiPalettes.MaxCustom} 个自定义配色，当前 {CustomPalettes.Count} 个。";
+
+    /// <summary>上游 palette-add 在达到 32 个上限时禁用。</summary>
+    public bool CanAddPalette => CustomPalettes.Count < UiPalettes.MaxCustom;
 
     private List<UiPalette> CustomPalettes => _theme.Preference.CustomPalettes.ToList();
 
@@ -196,16 +267,18 @@ public sealed class InterfaceSettingsViewModel : System.ComponentModel.INotifyPr
 
     private void ReloadPalettes()
     {
+        var selected = _theme.Preference.Palette;
         Palettes.Clear();
         foreach (var preset in UiPalettes.Presets)
         {
-            Palettes.Add(PaletteOption.From(preset, _theme.IsDark, isCustom: false));
+            Palettes.Add(PaletteOption.From(preset, _theme.IsDark, isCustom: false, selected == preset.Id));
         }
         foreach (var custom in _theme.Preference.CustomPalettes)
         {
-            Palettes.Add(PaletteOption.From(custom, _theme.IsDark, isCustom: true));
+            Palettes.Add(PaletteOption.From(custom, _theme.IsDark, isCustom: true, selected == custom.Id));
         }
         Notify(nameof(PaletteLimitNotice));
+        Notify(nameof(CanAddPalette));
     }
 
     private void OpenPaletteDialog(PaletteOption? option)
@@ -215,9 +288,11 @@ public sealed class InterfaceSettingsViewModel : System.ComponentModel.INotifyPr
         DraftPrimary = option?.Accent ?? "#245DBE";
         DraftSecondary = option?.Secondary ?? "#13777C";
         DraftError = string.Empty;
+        HasInvalidColorText = false;
         IsPaletteDialogOpen = true;
         Notify(nameof(DraftTitle));
         Notify(nameof(DraftPreview));
+        Notify(nameof(CanSavePalette));
     }
 
     private void ClosePaletteDialog()
@@ -228,13 +303,14 @@ public sealed class InterfaceSettingsViewModel : System.ComponentModel.INotifyPr
         DraftName = string.Empty;
         DraftPrimary = string.Empty;
         DraftSecondary = string.Empty;
+        HasInvalidColorText = false;
         DraftError = string.Empty;
         Notify(nameof(DraftTitle));
     }
 
     private void SavePalette()
     {
-        if (!UiPalettes.IsValidColor(DraftPrimary) || !UiPalettes.IsValidColor(DraftSecondary))
+        if (!IsPaletteDraftValid)
         {
             DraftError = "请使用 #RRGGBB 格式的颜色。";
             return;
@@ -262,8 +338,14 @@ public sealed class InterfaceSettingsViewModel : System.ComponentModel.INotifyPr
         ApplyPreference(_theme.Preference);
     }
 
-    private void DeletePalette(PaletteOption? option)
+    /// <summary>选中一个配色（上游 radio 的 onChange → setPalette）。</summary>
+    private void SelectPalette(PaletteOption? option)
     {
+        if (option is null || option.Id == _theme.Preference.Palette) return;
+        ApplyPreference(_theme.Preference with { Palette = option.Id });
+    }
+
+    private void DeletePalette(PaletteOption? option)    {
         if (option?.IsCustom != true) return;
         var rest = CustomPalettes.Where(item => item.Id != option.Id).ToList();
         // 上游：删除当前配色时回落到 ocean。
@@ -307,6 +389,8 @@ public sealed class InterfaceSettingsViewModel : System.ComponentModel.INotifyPr
     private string _draftName = string.Empty;
     private string _draftPrimary = string.Empty;
     private string _draftSecondary = string.Empty;
+    private int _draftVersion;
+    private bool _hasInvalidColorText;
     private string _draftError = string.Empty;
 
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
@@ -327,13 +411,46 @@ public sealed record ThemeOption(string Id, string Label);
 
 public sealed record LabeledOption(string Id, string Label);
 
-/// <summary>配色格子：显示主/副两个色块，自定义配色额外显示编辑/删除。</summary>
-public sealed record PaletteOption(string Id, string Accent, string Secondary, bool IsCustom, IBrush AccentBrush, IBrush SecondaryBrush)
+/// <summary>
+/// 配色格子：显示主/副两个色块。上游是 radio + swatch 的结构，
+/// 因此选中状态与「是否显示行内编辑/删除」都由这里给出，而不是另加一组按钮。
+/// </summary>
+public sealed record PaletteOption(
+    string Id,
+    string Name,
+    string Accent,
+    string Secondary,
+    bool IsCustom,
+    IBrush AccentBrush,
+    IBrush SecondaryBrush) : System.ComponentModel.INotifyPropertyChanged
 {
-    public static PaletteOption From(UiPalette palette, bool dark, bool isCustom)
+    private bool _isSelected;
+
+    /// <summary>当前是否被选中（radio 的 IsChecked 绑定）。</summary>
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value) return;
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsSelected)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(ShowsRowActions)));
+        }
+    }
+
+    /// <summary>上游：只有**选中的自定义方案**才显示行内「编辑方案 / 删除方案」。</summary>
+    public bool ShowsRowActions => IsCustom && IsSelected;
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    public static PaletteOption From(UiPalette palette, bool dark, bool isCustom, bool selected)
     {
         var colors = palette.For(dark);
-        return new PaletteOption(palette.Id, colors.Accent, colors.Secondary, isCustom,
-            new SolidColorBrush(Color.Parse(colors.Accent)), new SolidColorBrush(Color.Parse(colors.Secondary)));
+        return new PaletteOption(palette.Id, palette.Name, colors.Accent, colors.Secondary, isCustom,
+            new SolidColorBrush(Color.Parse(colors.Accent)), new SolidColorBrush(Color.Parse(colors.Secondary)))
+        {
+            IsSelected = selected,
+        };
     }
 }
