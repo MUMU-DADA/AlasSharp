@@ -26,6 +26,7 @@ public static class TaskEditorChecks
         Pump();
         try
         {
+            Click(window, Find<Button>(view, "ConfigJump_General"));
             var count = Find<TextBox>(view, "Field_Daily.General.Count");
             count.Focus(); count.SelectAll(); window.KeyTextInput("7"); Pump();
             Check(count.Text == "7", "real keyboard input updated field");

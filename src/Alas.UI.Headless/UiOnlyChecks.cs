@@ -134,6 +134,11 @@ internal static class UiOnlyChecks
                 view.Model.TaskEditor.AutoSave = false;
             }
             Pump();
+            var search = view.GetVisualDescendants().OfType<TextBox>()
+                .FirstOrDefault(box => box.Name == "TaskConfigSearch");
+            Check(search is not null, "task editor search is reachable through the visual tree");
+            search!.Text = "Note";
+            Pump();
             var field = view.GetVisualDescendants().OfType<TextBox>().First(box => box.Name?.EndsWith(".Sample.Note", StringComparison.Ordinal) == true);
             field.BringIntoView(); Pump(); field.Focus(); field.SelectAll(); window.KeyTextInput("隔离输入"); Pump();
             Check(view.Model.TaskEditor.Fields.Single(item => item.Argument == "Note").Text == "隔离输入", "real keyboard updates local draft");

@@ -30,10 +30,24 @@ internal static class Program
         bool isolatedPerformance = args.Contains("--perf-ui-only", StringComparer.Ordinal);
         bool logAnchors = args.Contains("--log-anchors", StringComparer.Ordinal);
         bool anchorPerformance = args.Contains("--perf-log-anchors", StringComparer.Ordinal);
+        bool taskLoad = args.Contains("--perf-task-load", StringComparer.Ordinal);
+        bool taskLoadCold = args.Contains("--perf-task-load-cold", StringComparer.Ordinal);
         string output = Path.GetFullPath(args.FirstOrDefault(arg => !arg.StartsWith("--", StringComparison.Ordinal)) ?? ".runtime/ui-headless");
         Directory.CreateDirectory(output);
         try
         {
+            if (taskLoadCold)
+            {
+                await using var coldSession = HeadlessUnitTestSession.StartNew(typeof(Program));
+                await coldSession.Dispatch(() => TaskEditorLoadChecks.RunCold(output), CancellationToken.None);
+                return 0;
+            }
+            if (taskLoad)
+            {
+                await using var taskLoadSession = HeadlessUnitTestSession.StartNew(typeof(Program));
+                await taskLoadSession.Dispatch(() => TaskEditorLoadChecks.Run(output), CancellationToken.None);
+                return 0;
+            }
             if (logAnchors || anchorPerformance)
             {
                 await using var anchorSession = HeadlessUnitTestSession.StartNew(typeof(Program));
