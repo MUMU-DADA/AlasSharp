@@ -138,14 +138,17 @@ public sealed class TaskEditorView : UserControl
         if (field.Kind == TaskFieldKind.Lua)
         {
             var check = Button("检查脚本", "Check_" + field.Path);
+            var apply = Button("应用脚本", "Apply_" + field.Path, primary: true);
             check.Click += async (_, _) => await _model.CheckScriptAsync(field);
+            apply.Click += async (_, _) => await _model.ApplyScriptAsync(field);
             var scriptStatus = Text("", 12);
             var diagnostics = Text("", 12);
             Resource(diagnostics, TextBlock.ForegroundProperty, "AlasDangerBrush");
-            controls.Children.Add(check); controls.Children.Add(scriptStatus); controls.Children.Add(diagnostics);
+            controls.Children.Add(new WrapPanel { Children = { check, apply } }); controls.Children.Add(scriptStatus); controls.Children.Add(diagnostics);
             _refreshFields.Add(() =>
             {
                 check.IsEnabled = !field.ReadOnly && !field.IsChecking && !_model.IsBusy && _model.Backend is not null;
+                apply.IsEnabled = !field.ReadOnly && !field.IsChecking && !_model.IsBusy && field.ScriptValidated && _model.Backend is not null;
                 scriptStatus.Text = field.ScriptStatus;
                 diagnostics.Text = string.Join(Environment.NewLine, field.Diagnostics.Select(d =>
                     (d.Line is { } line ? $"{line}:{d.Column ?? 1} " : "") + $"{d.Severity}: {d.Message}"));

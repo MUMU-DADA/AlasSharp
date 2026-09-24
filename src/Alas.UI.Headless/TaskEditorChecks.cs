@@ -1,4 +1,9 @@
 using System.Text.Json.Nodes;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 using Alas.UI.TaskEditor;
 
 namespace Alas.UI.Headless;
@@ -9,10 +14,36 @@ namespace Alas.UI.Headless;
 /// </summary>
 public static class TaskEditorChecks
 {
+    /// <summary>Must be called on the Avalonia UI thread inside a HeadlessUnitTestSession.</summary>
+    public static void VerifyControls()
+    {
+        var backend = new FakeBackend();
+        var model = new TaskEditorViewModel { Backend = backend, AutoSave = false };
+        model.Load("instance-a", "Daily", Schema(), Config("instance-a", "r1", 1, "safe", "return true"));
+        var view = new TaskEditorView { Model = model };
+        var window = new Window { Width = 900, Height = 800, Content = view };
+        window.Show();
+        Pump();
+        try
+        {
+            var count = Find<TextBox>(view, "Field_Daily.General.Count");
+            count.Focus(); count.SelectAll(); window.KeyTextInput("7"); Pump();
+            Check(count.Text == "7", "real keyboard input updated field");
+            Click(window, Find<Button>(view, "TaskConfigSave"));
+            Check(backend.Saves == 1 && !model.HasChanges, "real save click submitted values");
+            Click(window, Find<Button>(view, "TaskConfigRun"));
+            Check(model.ConfirmRun, "real run click opened confirmation");
+            Click(window, Find<Button>(view, "TaskConfigCancelRun"));
+            Check(!model.ConfirmRun, "real cancel click closed confirmation");
+        }
+        finally { window.Close(); }
+    }
+
     public static async Task Verify(CancellationToken cancellationToken = default)
     {
         var backend = new FakeBackend();
         var model = new TaskEditorViewModel { Backend = backend };
+        model.AutoSave = false;
         var schema = new JsonObject
         {
             ["translations"] = new JsonObject
@@ -55,9 +86,10 @@ public static class TaskEditorChecks
         Check(backend.Saves == 1 && backend.LastChanges.Count == 2, "only changed fields are sent");
         var script = model.Groups[0].Fields.Single(f => f.Argument == "Script");
         script.SetText("return false");
-        Check(!model.CanSave, "Lua requires validation");
+        Check(model.CanRun == false && model.CanSave == false, "Lua draft is separate from ordinary save");
         await model.CheckScriptAsync(script, cancellationToken);
-        Check(model.CanSave, "valid Lua validation unlocks save");
+        Check(model.CanRun == false && model.CanSave == false, "Lua validation does not replace apply");
+        Check(await model.ApplyScriptAsync(script, cancellationToken), "Lua apply uses a single config patch");
         model.RequestRun();
         Check(model.ConfirmRun, "run requires explicit confirmation");
         Check(await model.ConfirmRunAsync(cancellationToken) && backend.Runs == 1, "confirmed run delegates to backend");
@@ -75,6 +107,34 @@ public static class TaskEditorChecks
         ["values"] = new JsonObject { ["Daily"] = new JsonObject { ["General"] = new JsonObject
         { ["Count"] = count, ["Mode"] = mode, ["Script"] = script } } },
     };
+
+    private static JsonObject Schema() => new()
+    {
+        ["translations"] = new JsonObject
+        {
+            ["Task.Daily.name"] = "每日任务", ["General._info.name"] = "常规",
+            ["General.Count.name"] = "数量", ["General.Count.help"] = "范围帮助",
+        },
+        ["menu"] = new JsonObject(),
+        ["args"] = new JsonObject { ["Daily"] = new JsonObject { ["General"] = new JsonObject
+        { ["Count"] = new JsonObject { ["type"] = "int", ["value"] = 1, ["validate"] = new JsonArray(1, 10) } } } },
+    };
+
+    private static T Find<T>(Visual root, string name) where T : Control =>
+        root.GetVisualDescendants().OfType<T>().FirstOrDefault(control => control.Name == name)
+        ?? throw new InvalidOperationException("TaskEditor: missing control " + name);
+    private static void Click(Window window, Control control)
+    {
+        var point = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)
+            ?? throw new InvalidOperationException("TaskEditor: detached control " + control.Name);
+        window.MouseMove(point); Pump(); window.MouseDown(point, MouseButton.Left); window.MouseUp(point, MouseButton.Left); Pump();
+    }
+    private static void Pump()
+    {
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
 
     private static void Check(bool value, string message)
     { if (!value) throw new InvalidOperationException("TaskEditor: " + message); }

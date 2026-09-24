@@ -17,6 +17,26 @@ public sealed record ScriptDiagnostic(string Message, int? Line = null, int? Col
     string Severity = "error");
 public sealed record ScriptValidation(bool Valid, IReadOnlyList<ScriptDiagnostic> Diagnostics, string Summary = "");
 
+public sealed record MeowfficerScoreReport(string Instance, string GeneratedAt, int Count,
+    IReadOnlyList<MeowfficerCat> Cats);
+public sealed record MeowfficerCat(string Cat, IReadOnlyList<string>? Tags = null, int? Level = null,
+    bool Fixed = false, bool Maxed = false, string? Note = null, string? Source = null,
+    int? PointsSpent = null, IReadOnlyList<MeowfficerTalent>? Talents = null,
+    IReadOnlyList<MeowfficerRubric>? Rubrics = null, MeowfficerAdvice? Advice = null);
+public sealed record MeowfficerTalent(string Name, int? Level = null, string? Kind = null, bool Inferred = false);
+public sealed record MeowfficerRubric(string Label, string? Tier = null, double? Score = null,
+    double? X = null, double? Y = null, string? XLabel = null, string? YLabel = null,
+    IReadOnlyList<string>? XHits = null, IReadOnlyList<string>? YHits = null,
+    IReadOnlyList<string>? Notes = null, string? Source = null, bool Primary = false);
+public sealed record MeowfficerAdvice(string Verdict, string Headline, string Reason,
+    string? CostText = null, IReadOnlyList<string>? Targets = null);
+
+public interface IMeowfficerReportBackend
+{
+    Task<MeowfficerScoreReport?> LoadAsync(string instance, CancellationToken cancellationToken);
+    Task ClearAsync(string instance, CancellationToken cancellationToken);
+}
+
 /// <summary>A transport adapter maps a revision conflict to this exception, without retrying the write.</summary>
 public sealed class TaskEditorConflictException(JsonObject currentConfig)
     : Exception("配置已在其他位置修改。请检查冲突并选择要保留的值。")

@@ -73,7 +73,9 @@ public sealed class TaskFieldViewModel : EditorObservable
     public bool IsDirty => !JsonNode.DeepEquals(_value, _original) || Error.Length > 0;
     public bool IsMultiline => Kind is TaskFieldKind.Multiline or TaskFieldKind.Json or TaskFieldKind.Yaml or TaskFieldKind.Lua or TaskFieldKind.Storage;
     public bool CanResetSchedule => Group == "Scheduler" && Argument == "NextRun" && !ReadOnly;
-    public bool CanClearStorage => Kind == TaskFieldKind.Storage && String(_definition["display"]) is not ("disabled" or "readonly");
+    // The upstream StorageField deliberately keeps its clear action enabled even when the
+    // stored value itself is read-only: clearing is a supported server-side mutation.
+    public bool CanClearStorage => Kind == TaskFieldKind.Storage;
     public string Error { get; private set; } = "";
     public string Text => _text;
     public JsonNode? Value => _value?.DeepClone();
@@ -172,6 +174,19 @@ public sealed class TaskFieldViewModel : EditorObservable
             if (_version == version) _validation = new ScriptValidation(false, [new(error.Message)], "脚本检查失败");
         }
         finally { IsChecking = false; NotifyAll(); _changed(); }
+    }
+
+    internal void AcceptScript(JsonNode? saved)
+    {
+        _original = saved?.DeepClone();
+        _value = saved?.DeepClone();
+        _text = Display(saved);
+        Error = "";
+        _checkedScript = null;
+        _validation = null;
+        HasConflict = false;
+        NotifyAll();
+        _changed();
     }
 
     internal void AcceptSaved(JsonNode? saved, JsonNode? submitted)
