@@ -7,7 +7,17 @@ public static class ControlProtocol
 {
     public const int MaxRequestBodyBytes = 1024 * 1024;
     public const string TokenHeader = "X-Alas-Token";
+    public const string EventsContract = "control-state/1";
+
+    public static bool IsEventCursor(string? value) => value is { Length: >= 34 and <= 53 }
+        && value[32] == ':' && value.Take(32).All(char.IsAsciiHexDigit)
+        && value.Skip(33).All(char.IsAsciiDigit)
+        && long.TryParse(value.AsSpan(33), System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out long revision) && revision > 0;
 }
+
+/// <summary>Every event replaces the entire snapshot; never append its recent_logs as deltas.</summary>
+public sealed record ControlStateUpdate(string Cursor, bool Reset, ControlState State);
 
 // These are transport envelopes only. Queue inputs, reports and task evidence are
 // preserved verbatim; interpreting them remains the runtime's responsibility.

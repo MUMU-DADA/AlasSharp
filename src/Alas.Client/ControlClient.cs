@@ -12,27 +12,38 @@ namespace Alas.Client;
 /// an injected HttpClient and must disable redirects/retries on that transport.
 /// A cancelled request never sends a stop command or retries a write.
 /// </summary>
-public sealed class ControlClient : IDisposable
+public sealed partial class ControlClient : IDisposable
 {
     private readonly HttpClient _http;
     private readonly Uri _endpoint;
     private readonly bool _ownsHttp;
+    private readonly TimeSpan _requestTimeout;
     private string? _token;
 
     /// <summary>Creates an owned transport with automatic redirects disabled.</summary>
-    public ControlClient(Uri endpoint)
+    public ControlClient(Uri endpoint, TimeSpan? requestTimeout = null)
     {
         _endpoint = ValidateEndpoint(endpoint);
+        _requestTimeout = ValidateTimeout(requestTimeout);
         _http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
         _ownsHttp = true;
     }
 
     /// <summary>Borrow a transport configured without automatic redirects or retries.</summary>
-    public ControlClient(HttpClient http, Uri endpoint)
+    public ControlClient(HttpClient http, Uri endpoint, TimeSpan? requestTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(http);
         _endpoint = ValidateEndpoint(endpoint);
+        _requestTimeout = ValidateTimeout(requestTimeout);
         _http = http;
+    }
+
+    private static TimeSpan ValidateTimeout(TimeSpan? timeout)
+    {
+        var value = timeout ?? TimeSpan.FromSeconds(30);
+        if (value <= TimeSpan.Zero || value.TotalMilliseconds > uint.MaxValue - 1)
+            throw new ArgumentOutOfRangeException(nameof(timeout), "请求期限必须为正的有限时长");
+        return value;
     }
 
     private static Uri ValidateEndpoint(Uri endpoint)
@@ -56,11 +67,16 @@ public sealed class ControlClient : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_endpoint, "api/state"));
         var state = await SendAsync(request, HttpStatusCode.OK, ControlJsonContext.Default.ControlState, cancellationToken)
             .ConfigureAwait(false);
+        AcceptState(state);
+        return state;
+    }
+
+    private void AcceptState(ControlState state)
+    {
         if (string.IsNullOrWhiteSpace(state.Token) || state.Queue is null || state.Active is null ||
             string.IsNullOrWhiteSpace(state.Active.Status) || state.LiveTasks is null || state.RecentLogs is null || state.Runs is null)
             throw new ControlProtocolException("服务状态缺少必需字段");
         Volatile.Write(ref _token, state.Token);
-        return state;
     }
 
     public Task<JsonObject> GetReportAsync(string stamp, CancellationToken cancellationToken = default)
@@ -118,8 +134,31 @@ public sealed class ControlClient : IDisposable
     private async Task<T> SendAsync<T>(HttpRequestMessage request, HttpStatusCode expected,
                                      JsonTypeInfo<T> type, CancellationToken cancellationToken)
     {
+        // HttpClient.Timeout ends after headers with ResponseHeadersRead. Keep a
+        // deadline across the JSON body as well; an ambiguous write is never retried.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(_requestTimeout);
+        cancellationToken = deadline.Token;
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
             .ConfigureAwait(false);
+        await RequireStatusAsync(response, expected, cancellationToken).ConfigureAwait(false);
+        if (response.Content.Headers.ContentType?.MediaType != "application/json")
+            throw new ControlProtocolException("控制服务响应不是 JSON");
+        try
+        {
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            return await JsonSerializer.DeserializeAsync(stream, type, cancellationToken).ConfigureAwait(false)
+                ?? throw new ControlProtocolException("控制服务响应为空");
+        }
+        catch (JsonException error)
+        {
+            throw new ControlProtocolException("控制服务 JSON 响应不符合合同", error);
+        }
+    }
+
+    private static async Task RequireStatusAsync(HttpResponseMessage response, HttpStatusCode expected,
+                                                CancellationToken cancellationToken)
+    {
         if (response.StatusCode != expected)
         {
             string message = $"控制服务返回 HTTP {(int)response.StatusCode}";
@@ -135,18 +174,6 @@ public sealed class ControlClient : IDisposable
             }
             catch (JsonException) { } // Preserve HTTP status even for a broken error envelope.
             throw new ControlApiException(response.StatusCode, message);
-        }
-        if (response.Content.Headers.ContentType?.MediaType != "application/json")
-            throw new ControlProtocolException("控制服务响应不是 JSON");
-        try
-        {
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            return await JsonSerializer.DeserializeAsync(stream, type, cancellationToken).ConfigureAwait(false)
-                ?? throw new ControlProtocolException("控制服务响应为空");
-        }
-        catch (JsonException error)
-        {
-            throw new ControlProtocolException("控制服务 JSON 响应不符合合同", error);
         }
     }
 }

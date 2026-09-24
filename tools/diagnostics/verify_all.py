@@ -72,6 +72,7 @@ STEPS = [
     ('verify_control.py', 'R4 本地控制原型（真实 HTTP / dry-run / 授权 / 边界停止）', False, 300),
     ('verify_control_shutdown.py', 'R4 Kestrel 关闭（拒绝延迟请求 / 边界取消 / 工件落盘）', False, 180),
     ('verify_control_client.py', 'R4 共享客户端（真实 HTTP / 无反射 JSON / 取消与重试边界）', False, 300),
+    ('verify_control_events.py', 'R4 状态流（游标 / 日志尾部 / 慢订阅 / 关闭 / 工件共享读取）', False, 180),
     ('verify_control_ui.py', 'R4 本地控制页结构（浏览器交互另运行 --browser）', False, 120),
     ('verify_os_state.py', 'R2 大世界/海域只读探针（存盘帧；capture 前置条件口径）', False, 600),
     ('verify_os_action.py', 'R2 大世界动作入口（真实 CLI dry-run 拒绝动作并留工件）', False, 300),

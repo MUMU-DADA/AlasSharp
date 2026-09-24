@@ -42,6 +42,13 @@ public sealed class SessionLog
         get { lock (_gate) return _entries.ToArray(); }
     }
 
+    /// <summary>只复制显示所需的日志尾部；不改变完整日志及最终落盘。</summary>
+    public IReadOnlyList<SessionLogEntry> Recent(int limit)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(limit);
+        lock (_gate) return _entries.TakeLast(limit).ToArray();
+    }
+
     public SessionLogEntry Add(string level, string scope, string message,
                                IReadOnlyDictionary<string, object?>? fields = null)
     {

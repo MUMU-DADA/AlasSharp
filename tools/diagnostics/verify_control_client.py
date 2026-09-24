@@ -123,6 +123,20 @@ using (var cancelled = new CancellationTokenSource())
     await Throws<OperationCanceledException>(() => pending);
 }
 Check(fault.Writes == 2 && fault.Stops == 0, "Cancelled HTTP request must not retry or request queue cancellation");
+fault.Behavior = "body-stall";
+using (var bounded = new ControlClient(transport, endpoint, TimeSpan.FromMilliseconds(200)))
+{
+    fault.Behavior = "state";
+    await bounded.GetStateAsync();
+    fault.Behavior = "body-stall";
+    await Throws<OperationCanceledException>(() => bounded.GetStateAsync());
+    int sent = fault.Writes;
+    await Throws<OperationCanceledException>(() => bounded.StartRunAsync(new() { Queue = queue }));
+    Check(fault.Writes == sent + 1 && fault.Stops == 0, "Body timeout after acceptance must not retry or send stop");
+    fault.Behavior = "stream-stall";
+    await using var stalledEvents = bounded.WatchStateAsync().GetAsyncEnumerator();
+    await Throws<OperationCanceledException>(() => stalledEvents.MoveNextAsync().AsTask());
+}
 int before = fault.Writes;
 await Throws<ArgumentException>(() => probe.SaveQueueAsync(new JsonObject { ["text"] = new string('中', 400000) }));
 Check(fault.Writes == before, "Request size is bounded in UTF-8 bytes before sending");
@@ -160,6 +174,14 @@ sealed class FaultHandler(string fixture) : HttpMessageHandler
             WriteToken = request.Headers.GetValues(ControlProtocol.TokenHeader).Single();
         }
         if (Behavior == "drop") throw new HttpRequestException("Simulated loss after possible acceptance");
+        if (Behavior is "body-stall" or "stream-stall")
+        {
+            var stalled = new HttpResponseMessage(request.Method == HttpMethod.Post ? HttpStatusCode.Accepted : HttpStatusCode.OK)
+                { Content = new StreamContent(new StalledBody()) };
+            stalled.Content.Headers.ContentType = new(Behavior == "stream-stall" ? "text/event-stream" : "application/json");
+            if (Behavior == "stream-stall") stalled.Headers.Add("X-Alas-Events", ControlProtocol.EventsContract);
+            return stalled;
+        }
         if (Behavior == "cancel")
         {
             Entered.TrySetResult();
@@ -168,6 +190,25 @@ sealed class FaultHandler(string fixture) : HttpMessageHandler
         string content = Behavior switch { "malformed" => "{", "missing" => "{}", "html" => "<html/>", "false-ack" => "{\"ok\":false}", _ => fixture };
         return new(HttpStatusCode.OK) { Content = new StringContent(content, Encoding.UTF8, Behavior == "html" ? "text/html" : "application/json") };
     }
+}
+
+sealed class StalledBody : Stream
+{
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+    public override void Flush() { }
+    public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
+    {
+        await Task.Delay(Timeout.Infinite, token);
+        return 0;
+    }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }
 '''
 

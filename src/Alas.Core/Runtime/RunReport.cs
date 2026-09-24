@@ -263,7 +263,7 @@ public sealed class RunReport
         string logPath = Path.Combine(report.RunDirectory, "session-log.jsonl");
         if (File.Exists(logPath))
         {
-            foreach (var line in File.ReadLines(logPath))
+            foreach (var line in ArtifactReader.ReadLines(logPath))
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
                 report.LogEntries++;
@@ -328,7 +328,7 @@ public sealed class RunReport
         if (!File.Exists(path)) return null;
         try
         {
-            if (JsonNode.Parse(File.ReadAllText(path)) is JsonObject document)
+            if (JsonNode.Parse(ArtifactReader.ReadAllText(path)) is JsonObject document)
                 return document;
             report.Findings.Add(new RunFinding("unreadable_artifact",
                 $"{Path.GetFileName(path)} 必须是 JSON 对象", path));

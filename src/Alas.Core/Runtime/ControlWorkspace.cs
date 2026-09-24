@@ -15,6 +15,7 @@ public sealed class ControlWorkspace
     private readonly string _control;
     private readonly object _gate = new();
     private Task? _worker;
+    private SessionLog? _log;
     private CancellationTokenSource? _stopSignal;
     private string? _mode;
     private string? _startedAt;
@@ -47,6 +48,7 @@ public sealed class ControlWorkspace
         string? error;
         bool running;
         bool stopRequested;
+        SessionLog? log;
         lock (_gate)
         {
             runDirectory = _runDirectory;
@@ -56,6 +58,7 @@ public sealed class ControlWorkspace
             finished = _finishedAt;
             error = _error;
             stopRequested = _stopRequested;
+            log = _log;
         }
         var active = new JsonObject
         {
@@ -75,7 +78,8 @@ public sealed class ControlWorkspace
             ["active"] = active,
             ["report"] = report,
             ["live_tasks"] = LiveTasks(runDirectory),
-            ["recent_logs"] = RecentLogs(runDirectory),
+            ["recent_logs"] = log is null ? RecentLogs(runDirectory)
+                : new JsonArray(log.Recent(80).Select(entry => (JsonNode)entry.ToJson()).ToArray()),
             ["runs"] = RunReport.Summarize(_artifacts, 20),
         };
     }
@@ -179,6 +183,8 @@ public sealed class ControlWorkspace
             _finishedAt = null;
             _error = null;
             _stopRequested = false;
+            var log = new SessionLog();
+            _log = log;
             var stopSignal = new CancellationTokenSource();
             _stopSignal = stopSignal;
             _worker = Task.Run(() =>
@@ -189,7 +195,7 @@ public sealed class ControlWorkspace
                         resume: resume, stopFile: _stopPath, token: stopSignal.Token, onSessionStarted: directory =>
                         {
                             lock (_gate) _runDirectory = directory;
-                        });
+                        }, log: log);
                 }
                 catch (Exception error)
                 {
@@ -235,7 +241,7 @@ public sealed class ControlWorkspace
         {
             try
             {
-                if (JsonNode.Parse(File.ReadAllText(path)) is JsonObject task)
+                if (JsonNode.Parse(ArtifactReader.ReadAllText(path)) is JsonObject task)
                     tasks.Add(task);
             }
             catch (IOException) { }
@@ -252,7 +258,7 @@ public sealed class ControlWorkspace
         if (!File.Exists(path)) return logs;
         try
         {
-            foreach (string line in File.ReadLines(path).TakeLast(80))
+            foreach (string line in ArtifactReader.ReadLines(path).TakeLast(80))
                 if (JsonNode.Parse(line) is JsonObject entry) logs.Add(entry);
         }
         catch (IOException) { }

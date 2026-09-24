@@ -47,7 +47,8 @@ public sealed class ControlServer
             options.Limits.MaxRequestBodySize = BodyLimit;
         });
         await using var app = builder.Build();
-        app.Run(Handle);
+        await using var events = new ControlStateFeed(() => ReadState().ToJsonString(), app.Lifetime.ApplicationStopping);
+        app.Run(context => Handle(context, events, app.Lifetime.ApplicationStopping));
         // The same gate rejects in-flight POSTs that finish reading after shutdown.
         using var stopping = app.Lifetime.ApplicationStopping.Register(() => _workspace.BeginShutdown());
         try
@@ -65,7 +66,14 @@ public sealed class ControlServer
         return 0;
     }
 
-    private async Task Handle(HttpContext context)
+    private JsonObject ReadState()
+    {
+        var state = _workspace.State();
+        state["token"] = _token;
+        return state;
+    }
+
+    private async Task Handle(HttpContext context, ControlStateFeed events, CancellationToken stopping)
     {
         context.Response.Headers.CacheControl = "no-store";
         context.Response.Headers.XContentTypeOptions = "nosniff";
@@ -96,9 +104,12 @@ public sealed class ControlServer
             }
             if (HttpMethods.IsGet(request.Method) && path == "/api/state")
             {
-                var state = _workspace.State();
-                state["token"] = _token;
-                await Reply(context, 200, state);
+                await Reply(context, 200, ReadState());
+                return;
+            }
+            if (HttpMethods.IsGet(request.Method) && path == "/api/events")
+            {
+                await StreamState(context, events, stopping);
                 return;
             }
             if (HttpMethods.IsGet(request.Method) && path == "/api/report")
@@ -129,7 +140,7 @@ public sealed class ControlServer
             }
             await Reply(context, 404, Error("未知接口"));
         }
-        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested || stopping.IsCancellationRequested) { }
         catch (IOException) when (context.RequestAborted.IsCancellationRequested) { }
         catch (BadHttpRequestException error) { await Reply(context, error.StatusCode, Error("无效的 HTTP 请求")); }
         catch (ControlWorkspaceUnavailableException error) { await Reply(context, 409, Error(error.Message)); }
@@ -141,7 +152,58 @@ public sealed class ControlServer
         catch (Exception error)
         {
             Console.Error.WriteLine(error);
+            if (context.Response.HasStarted) { context.Abort(); return; }
             await Reply(context, 500, Error("控制服务内部错误"));
+        }
+    }
+
+    private static async Task StreamState(HttpContext context, ControlStateFeed feed, CancellationToken stopping)
+    {
+        string cursor = context.Request.Headers["Last-Event-ID"].ToString();
+        if (cursor.Length != 0 && !ControlProtocol.IsEventCursor(cursor))
+            throw new ArgumentException("事件游标无效");
+        using var subscription = feed.Subscribe();
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, stopping);
+        context.Response.ContentType = "text/event-stream; charset=utf-8";
+        context.Response.Headers["X-Alas-Events"] = ControlProtocol.EventsContract;
+        context.Response.Headers["X-Accel-Buffering"] = "no";
+        bool first = true;
+        while (!lifetime.IsCancellationRequested)
+        {
+            ControlStateFeed.Snapshot? snapshot = null;
+            using (var heartbeat = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token))
+            {
+                heartbeat.CancelAfter(TimeSpan.FromSeconds(15));
+                try { snapshot = await subscription.Pending.Reader.ReadAsync(heartbeat.Token); }
+                catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { }
+                catch (System.Threading.Channels.ChannelClosedException) when (stopping.IsCancellationRequested) { break; }
+                catch (System.Threading.Channels.ChannelClosedException error)
+                {
+                    Console.Error.WriteLine($"控制状态流采样失败: {error.InnerException ?? error}");
+                    context.Abort();
+                    return;
+                }
+            }
+            string frame = ": keep-alive\n\n";
+            if (snapshot is not null)
+            {
+                string kind = first && cursor != snapshot.Cursor ? "reset" : "snapshot";
+                frame = $"id: {snapshot.Cursor}\nevent: {kind}\ndata: {snapshot.Json}\n\n";
+                cursor = snapshot.Cursor;
+                first = false;
+            }
+            using var write = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+            write.CancelAfter(TimeSpan.FromSeconds(10));
+            try
+            {
+                await context.Response.WriteAsync(frame, write.Token);
+                await context.Response.Body.FlushAsync(write.Token);
+            }
+            catch (OperationCanceledException) when (!lifetime.IsCancellationRequested)
+            {
+                context.Abort(); // Slow HTTP client: release its subscription, never stop the queue.
+                return;
+            }
         }
     }
 

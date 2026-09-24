@@ -95,7 +95,7 @@ SDK 固定为 10.0.401，依赖保存在 `.runtime/dotnet`、`.runtime/nuget`，
 
 尚未验收：真实浏览器/系统输入法、DPI、无障碍、首载与内存、复杂编辑器/玻璃效果、双端现场视觉一致性。
 本地控制 API 已迁入 `Alas.Server` 的 Kestrel，仍由 `alashub control` 启动；编排收口至 `Alas.Core/Runtime/ControlWorkspace`，合同见[运行时](runtime.md)。
-共享 HTTP 客户端已通过真实服务与禁用反射序列化的离线回归，尚未接入 UI；WASM 实际传输、事件流、远程认证、独立服务发行与其他平台/架构仍待实现或验证。Headless 结果不能替代这些结论。状态统一见[路线](architecture-roadmap.md)。
+共享 HTTP 客户端及 SSE 完整状态快照流已通过真实服务离线回归，尚未接入 UI；快照有游标、重连基准和慢订阅合并，不承诺审计事件重放。WASM 实际传输、远程认证、独立服务发行与其他平台/架构仍待实现或验证。Headless 结果不能替代这些结论。状态统一见[路线](architecture-roadmap.md)。
 
 ## 依据
 

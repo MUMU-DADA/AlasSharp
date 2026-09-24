@@ -81,6 +81,7 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 | 接口 | 行为 |
 | --- | --- |
 | `GET /api/state` | `token`、`queue`、`active`、`report`、`live_tasks`、`recent_logs`、`runs` |
+| `GET /api/events` | `control-state/1` SSE 完整状态快照，沿用同源/回环限制；可带 `Last-Event-ID` |
 | `GET /api/report?stamp=` | 指定运行报告；标识只允许 ASCII 字母数字、`-`、`_`，不存在返回 404 |
 | `POST /api/queue` | 保存 `{queue: ...}` 草稿，成功 200；不改变已接受运行的快照 |
 | `POST /api/run` | `{queue, mode?, confirm_actions?, serial?, max_seconds?, max_rounds?, resume?, continue_on_error?}`；默认 dry-run，接受返回 202 |
@@ -96,7 +97,15 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 队列、报告、任务证据保持原始 JSON；`runs` 是包含 `artifacts_root/exists/returned/runs` 的对象，不是裸数组。
 序列化使用生成元数据，请求提供明确 UTF-8 字节长度。默认传输禁用重定向；注入自定义 `HttpClient` 时也必须禁用自动重定向和重试。
 取消 HTTP 请求或释放客户端不会发送停止命令；网络错误可能发生在接单之后，应重新查询状态，不自动重放写请求。
-服务重启后需重新读取状态获取令牌。当前没有幂等请求键、自动重连或事件流；UI 尚未接入该客户端。
+服务重启后需重新读取状态获取令牌。普通 JSON 请求有覆盖响应头与正文的 30 秒期限，可在构造客户端时调整；超时不重发写请求。
+当前没有幂等请求键；UI 尚未接入该客户端。
+
+状态流由 `WatchStateAsync(lastCursor, token)` 消费：每条消息完整替换显示状态（含日志窗口），不能把 `recent_logs` 当增量追加。
+游标为服务实例标识与递增观测版本。初次或过期/异实例游标返回 `reset`；游标仍是当前版本时返回 `snapshot`。断线/EOF 后调用方用最后游标重新订阅，客户端不自动重连或重放命令。
+所有观察者共用一个至多每秒采样器，无订阅时不扫描；每订阅只缓存一份待发快照，慢客户端可跳过中间版本，不能据此还原全部事件。
+服务每 15 秒发送空闲心跳，写入超过 10 秒的客户端被断开；客户端每次网络读取有默认 30 秒空闲期限。服务关闭立即结束订阅，再独立等待队列释放，不保证 SSE 最后一帧送达。
+`recent_logs` 从每次运行的内存日志读取最近 80 条，包含运行中记录；它是 C# 运行时日志窗口，不代表完整 Python 控制台输出。最终 JSONL 和任务报告仍是完整审计入口。
+观察工件时使用允许并发写入的文件共享方式，避免 Windows 读锁打断断点写入；半写 JSON 仍产生原有 `unreadable_artifact` 等发现，运行结束后重新查询最终证据。
 
 ## 验证
 
@@ -108,10 +117,12 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 | 工件与报告 | `verify_artifact_paths.py`、`verify_report.py`、`verify_report_html.py` |
 | 控制服务 | `verify_control.py`、`verify_control_shutdown.py` |
 | 共享客户端 | `verify_control_client.py`（真实 HTTP、禁用反射序列化、传输错误及取消） |
+| 状态事件流 | `verify_control_events.py`（共享采样、游标、运行中日志、断流/重启及工件读取） |
 | 旧控制页静态结构 | `verify_control_ui.py`（不打开浏览器） |
 | 结构边界与隐私 | `verify_architecture.py`、`verify_privacy.py` |
 
 控制台离线回归通过真实 HTTP 执行 dry-run，断言设备配置次数为零；不证明真实游戏任务效果。
 关闭回归通过公开 shutdown token 实测延迟 POST 拒绝、停止标记 IO 失败和完整落盘；系统 Ctrl-C/SIGTERM 与长于 HTTP 关闭期限的实战仍需分别验收。
 客户端回归验证已接受队列在客户端释放后完成、dry-run 结果原样保留、边界停止和全部工件，以及不跟随 307、不重试写请求；不代替 WASM 浏览器传输或系统输入验收。
+状态流回归含 200 个 dry-run 任务的并发观测、慢订阅合并、采样失败恢复、实际服务重启和关闭；不证明中间状态无损重放，也未验证 WASM 流式传输。
 真机记录见[队列审计](archive/reports/queue-evidence.md)。

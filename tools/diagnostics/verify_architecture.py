@@ -348,6 +348,10 @@ def main() -> int:
         "运行报告验收": ROOT / "tools/diagnostics/verify_report.py",
         "控制工作区运行时": ROOT / "src/Alas.Core/Runtime/ControlWorkspace.cs",
         "Kestrel 控制传输层": ROOT / "src/Alas.Server/ControlServer.cs",
+        "共享控制合同": ROOT / "src/Alas.Contracts/ControlModels.cs",
+        "共享控制客户端": ROOT / "src/Alas.Client/ControlClient.cs",
+        "控制状态事件流": ROOT / "src/Alas.Server/ControlStateFeed.cs",
+        "并发工件读取": ROOT / "src/Alas.Core/Runtime/ArtifactReader.cs",
     }
     for label, path in required.items():
         if not path.is_file():
