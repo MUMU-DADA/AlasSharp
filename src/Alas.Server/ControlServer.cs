@@ -182,6 +182,24 @@ public sealed class ControlServer
                     new JsonObject { ["instance"] = RequiredString(body, "instance") }));
                 return;
             }
+            if (HttpMethods.IsGet(request.Method) && path == "/api/instances/importable")
+            {
+                await Reply(context, 200, new JsonObject
+                {
+                    ["sources"] = new JsonArray(_config.ListImports().Select(item => (JsonNode)new JsonObject
+                    { ["name"] = item.Name, ["modified_at"] = item.ModifiedAt.ToString("O") }).ToArray()),
+                });
+                return;
+            }
+            if (HttpMethods.IsPost(request.Method) && path == "/api/instances/import")
+            {
+                RequireToken(request);
+                var body = await ReadBody(request);
+                var imported = _config.Import(RequiredString(body, "name"), RequiredString(body, "content"));
+                await Reply(context, 200, new JsonObject
+                { ["name"] = imported.Name, ["modified_at"] = imported.ModifiedAt.ToString("O") });
+                return;
+            }
             if (HttpMethods.IsGet(request.Method) && path == "/api/meowfficer/report")
             {
                 string instance = RequiredQuery(request, "instance");

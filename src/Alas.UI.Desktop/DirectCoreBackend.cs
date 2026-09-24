@@ -122,6 +122,20 @@ internal sealed class DirectCoreBackend : IAlasUiBackend
     public Task<JsonObject> ValidateShopStrategyAsync(string script, CancellationToken cancellationToken = default)
         => ReadHostAsync("shop_strategy_validate", new JsonObject { ["script"] = script }, cancellationToken);
 
+    public Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default)
+        => Task.Run(() =>
+        {
+            var imported = ConfigsOrThrow().Import(request.Name, request.Content);
+            return new InstanceImportSource { Name = imported.Name, ModifiedAt = imported.ModifiedAt };
+        }, cancellationToken);
+
+    public Task<InstanceImportListResponse> ReadInstanceImportsAsync(CancellationToken cancellationToken = default)
+        => Task.Run(() => new InstanceImportListResponse
+        {
+            Sources = ConfigsOrThrow().ListImports().Select(item => new InstanceImportSource
+                { Name = item.Name, ModifiedAt = item.ModifiedAt }).ToArray(),
+        }, cancellationToken);
+
     public void Refresh()
     {
         if (_disposed || _configs is null)

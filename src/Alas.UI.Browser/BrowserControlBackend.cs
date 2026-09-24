@@ -109,6 +109,12 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
     public Task<JsonObject> ValidateShopStrategyAsync(string script, CancellationToken cancellationToken = default)
         => _client.ValidateShopStrategyAsync(script, cancellationToken);
 
+    public Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default)
+        => _client.ImportInstanceAsync(request, cancellationToken);
+
+    public Task<InstanceImportListResponse> ReadInstanceImportsAsync(CancellationToken cancellationToken = default)
+        => _client.GetInstanceImportsAsync(cancellationToken);
+
     public void Dispose()
     {
         if (_disposed) return;

@@ -169,6 +169,17 @@ public sealed partial class ControlClient : IDisposable
         => WriteAsync("api/instances/" + Uri.EscapeDataString(request.Instance), request,
             ControlJsonContext.Default.InstanceDeleteRequest, HttpMethod.Delete, HttpStatusCode.OK, cancellationToken);
 
+    public Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default)
+        => WriteReadAsync("api/instances/import", request, ControlJsonContext.Default.InstanceImportRequest,
+            ControlJsonContext.Default.InstanceImportSource, HttpMethod.Post, HttpStatusCode.OK, cancellationToken);
+
+    public async Task<InstanceImportListResponse> GetInstanceImportsAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_endpoint, "api/instances/importable"));
+        return await SendAsync(request, HttpStatusCode.OK, ControlJsonContext.Default.InstanceImportListResponse, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private async Task<JsonObject> ReadReportAsync(string stamp, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get,

@@ -149,6 +149,23 @@ public sealed record StatisticsRequest
     public string Period { get; init; } = "month";
 }
 
+public sealed record InstanceImportRequest
+{
+    public required string Name { get; init; }
+    public required string Content { get; init; }
+}
+
+public sealed record InstanceImportSource
+{
+    public required string Name { get; init; }
+    public DateTimeOffset ModifiedAt { get; init; }
+}
+
+public sealed record InstanceImportListResponse
+{
+    public required IReadOnlyList<InstanceImportSource> Sources { get; init; }
+}
+
 public sealed record MeowfficerRequest
 {
     public required string Instance { get; init; }
@@ -171,6 +188,9 @@ public sealed record MeowfficerRequest
 [JsonSerializable(typeof(ConfigChange))]
 [JsonSerializable(typeof(InstanceCreateRequest))]
 [JsonSerializable(typeof(InstanceDeleteRequest))]
+[JsonSerializable(typeof(InstanceImportRequest))]
+[JsonSerializable(typeof(InstanceImportSource))]
+[JsonSerializable(typeof(InstanceImportListResponse))]
 [JsonSerializable(typeof(StatisticsRequest))]
 [JsonSerializable(typeof(MeowfficerRequest))]
 [JsonSerializable(typeof(IReadOnlyList<InstanceSummary>))]

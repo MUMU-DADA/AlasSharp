@@ -55,10 +55,11 @@ public sealed class ConfigWorkspace
                     var values = ReadMerged(name, out string revision);
                     result.Add(new ConfigInstance(name, revision,
                         ReadString(values, "Alas", "Emulator", "Serial"),
-                        ReadString(values, "Alas", "Server")));
+                        ReadString(values, "Alas", "Emulator", "ServerName")));
                 }
                 catch (IOException) { /* A concurrently removed invalid file is not an instance. */ }
                 catch (JsonException) { /* Keep the list usable; the bad file is reported by get. */ }
+                catch (ConfigWorkspaceException) { /* Invalid JSON objects are not runnable instances. */ }
             }
             return result;
         }
@@ -161,6 +162,55 @@ public sealed class ConfigWorkspace
         }
     }
 
+    /// <summary>Stage an uploaded instance configuration; never accept a server path.</summary>
+    public ConfigImport Import(string instance, string content)
+    {
+        string name = ValidateName(instance);
+        if (string.IsNullOrEmpty(content) || content.Length > 2_000_000)
+            throw new ArgumentException("导入配置必须是长度不超过 2000000 的 JSON 文本");
+        var data = JsonNode.Parse(content) as JsonObject;
+        if (data?["Alas"] is not JsonObject)
+            throw new ConfigWorkspaceException("INVALID_CONFIG", "导入配置缺少 Alas 段");
+        lock (_gate)
+        {
+            string directory = Path.Combine(_config, "import");
+            EnsureDirectory(directory);
+            string path = Path.Combine(directory, name + ".json");
+            RejectLink(path);
+            string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temporary, data.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
+                File.Move(temporary, path, true);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            return new ConfigImport(name, File.GetLastWriteTimeUtc(path));
+        }
+    }
+
+    public IReadOnlyList<ConfigImport> ListImports()
+    {
+        lock (_gate)
+        {
+            string directory = Path.Combine(_config, "import");
+            RejectLink(directory);
+            if (!Directory.Exists(directory)) return [];
+            var result = new List<ConfigImport>();
+            foreach (string path in Directory.EnumerateFiles(directory, "*.json").Order(StringComparer.Ordinal))
+            {
+                string name = Path.GetFileNameWithoutExtension(path);
+                if (!TryValidateName(name) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) continue;
+                try
+                {
+                    if (ReadObject(path)["Alas"] is JsonObject)
+                        result.Add(new ConfigImport(name, File.GetLastWriteTimeUtc(path)));
+                }
+                catch (Exception error) when (error is IOException or JsonException or ConfigWorkspaceException) { }
+            }
+            return result;
+        }
+    }
+
     private JsonObject ReadMerged(string name, out string revision)
     {
         using var transaction = AcquireTransaction(name);
@@ -175,8 +225,9 @@ public sealed class ConfigWorkspace
         if (!File.Exists(path)) throw new ConfigWorkspaceException("NOT_FOUND", "找不到配置实例");
         byte[] bytes = File.ReadAllBytes(path);
         revision = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-        return JsonNode.Parse(bytes) as JsonObject
-            ?? throw new ConfigWorkspaceException("INVALID_CONFIG", "配置文件不是 JSON 对象");
+        if (JsonNode.Parse(bytes) is not JsonObject data || data["Alas"] is not JsonObject)
+            throw new ConfigWorkspaceException("INVALID_CONFIG", "配置文件必须包含 Alas 对象");
+        return data;
     }
 
     private JsonObject MergeTemplate(JsonObject raw)
@@ -239,7 +290,7 @@ public sealed class ConfigWorkspace
     private string ConfigPath(string name) => Path.Combine(_config, ValidateName(name) + ".json");
 
     private static string ValidateName(string value)
-        => TryValidateName(value) ? value.TrimEnd(' ', '.') : throw new ArgumentException("实例名无效");
+        => TryValidateName(value) ? value.Trim().TrimEnd(' ', '.') : throw new ArgumentException("实例名无效");
 
     private static bool TryValidateName(string? value)
     {
@@ -359,6 +410,7 @@ public sealed class ConfigWorkspace
 }
 
 public sealed record ConfigInstance(string Instance, string Revision, string? Serial, string? Server);
+public sealed record ConfigImport(string Name, DateTimeOffset ModifiedAt);
 public sealed record ConfigSnapshot(string Instance, string Revision, JsonObject Values);
 public sealed record ConfigSchema(JsonObject Menu, JsonObject Args, JsonObject Translations);
 public sealed class ConfigChange(string path, JsonNode? value)

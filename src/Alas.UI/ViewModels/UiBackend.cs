@@ -16,6 +16,8 @@ public interface IAlasControlBackend
     Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default);
     Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default);
     Task DeleteInstanceAsync(InstanceDeleteRequest request, CancellationToken cancellationToken = default);
+    Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default);
+    Task<InstanceImportListResponse> ReadInstanceImportsAsync(CancellationToken cancellationToken = default);
     Task SaveQueueAsync(JsonObject queue, CancellationToken cancellationToken = default);
     Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default);
     Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default);

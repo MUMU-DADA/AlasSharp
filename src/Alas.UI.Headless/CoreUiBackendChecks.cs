@@ -77,6 +77,8 @@ internal static class CoreUiBackendChecks
         public Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task DeleteInstanceAsync(InstanceDeleteRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<InstanceImportListResponse> ReadInstanceImportsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task SaveQueueAsync(JsonObject queue, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
