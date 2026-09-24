@@ -1,0 +1,523 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    外壳控件的 ControlTheme 与样式。类名与上游 AzurPilot 的 CSS 类对应：
+    .primary-nav a → NavItemTheme，.task-group-button → TaskGroupTheme，.icon-button → IconButtonTheme，
+    .button.primary → PrimaryButtonTheme，.resource-card/.panel → Border 类样式。
+  -->
+  <Styles.Resources>
+    <ControlTheme x:Key="NavItemTheme" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="12,11" />
+      <Setter Property="CornerRadius" Value="{DynamicResource AlasNavItemRadius}" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasTextBrush}" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasNavHoverBrush}" />
+      </Style>
+      <Style Selector="^:pressed /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasNavActiveBrush}" />
+      </Style>
+      <Style Selector="^.active">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource AlasAccentBrush}" />
+      </Style>
+      <Style Selector="^.active /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasNavActiveBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="TaskGroupTheme" TargetType="Button" BasedOn="{StaticResource NavItemTheme}">
+      <Setter Property="Padding" Value="9,10" />
+      <Setter Property="CornerRadius" Value="11" />
+      <Setter Property="MinHeight" Value="43" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </ControlTheme>
+
+    <ControlTheme x:Key="IconButtonTheme" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Root" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasNavHoverBrush}" />
+      </Style>
+      <Style Selector="^.active /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasNavActiveBrush}" />
+      </Style>
+      <Style Selector="^.active">
+        <Setter Property="Foreground" Value="{DynamicResource AlasAccentBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="PrimaryButtonTheme" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource AlasAccentBrush}" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="17,9" />
+      <Setter Property="MinHeight" Value="40" />
+      <Setter Property="CornerRadius" Value="{DynamicResource AlasButtonRadius}" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Root" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasAccentHoverBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="GhostButtonTheme" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource AlasSurfaceMutedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasTextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AlasBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="17,9" />
+      <Setter Property="MinHeight" Value="40" />
+      <Setter Property="CornerRadius" Value="{DynamicResource AlasButtonRadius}" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasNavHoverBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="TextButtonTheme" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasAccentBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="8,6" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Root" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasNavHoverBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="RailTaskItemTheme" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="12,10,10,10" />
+      <Setter Property="Margin" Value="0,2" />
+      <Setter Property="CornerRadius" Value="{DynamicResource AlasTaskItemRadius}" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasTextBrush}" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Root" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasNavHoverBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="SegmentTabTheme" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource AlasTextBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="14,8" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="Root" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^.active /template/ Border#Root">
+        <Setter Property="Background" Value="{DynamicResource AlasSegmentIndicatorBrush}" />
+        <Setter Property="BoxShadow" Value="{DynamicResource AlasSegmentIndicatorShadow}" />
+      </Style>
+    </ControlTheme>
+  </Styles.Resources>
+
+  <!-- 滚动条：对应上游 ::-webkit-scrollbar 的 5px 宽与半透明滑块。 -->
+  <Style Selector="ScrollBar:vertical">
+    <Setter Property="Width" Value="5" />
+    <Setter Property="MinWidth" Value="5" />
+  </Style>
+  <Style Selector="ScrollBar:horizontal">
+    <Setter Property="Height" Value="5" />
+    <Setter Property="MinHeight" Value="5" />
+  </Style>
+  <Style Selector="ScrollBar /template/ Thumb">
+    <Setter Property="Background" Value="{DynamicResource AlasScrollThumbBrush}" />
+  </Style>
+  <Style Selector="ScrollBar /template/ RepeatButton">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+  <!-- 窄屏专用控件：宽屏隐藏，≤950px 显示（上游 .mobile-toggle / .mobile-close / .mobile-rail-*） -->
+  <Style Selector="Button.narrow-toggle">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="Button.narrow-toggle.narrow">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <!-- 宽屏专用控件（例如顶栏的主题入口）：窄屏隐藏，保持窄屏顶栏与上游一致。 -->
+  <Style Selector="Button.wide-only">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="Button.wide-only.wide">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <Style Selector="UserControl.shell">
+    <Setter Property="FontFamily" Value="{DynamicResource AlasFontSans}" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasTextBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AlasBgBrush}" />
+  </Style>
+
+  <!--
+    窄屏档位（上游 apple.css:305-345 的 ≤950px 与 ≤480px 两级）：
+    ≤950px 放大触摸目标、缩小面包屑、页标题 40px、监控面板固定 520px；
+    ≤480px 继续压缩监控页签与工具栏。
+  -->
+  <Style Selector="UserControl.shell.narrow Button.icon-button">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="44" />
+    <Setter Property="CornerRadius" Value="22" />
+  </Style>
+  <Style Selector="UserControl.shell.narrow Button.sidebar-search">
+    <Setter Property="Width" Value="36" />
+    <Setter Property="Height" Value="36" />
+    <Setter Property="CornerRadius" Value="18" />
+  </Style>
+  <Style Selector="UserControl.shell.narrow TextBlock.breadcrumb-link">
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+  <Style Selector="UserControl.shell.narrow TextBlock.breadcrumb-separator">
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+  <Style Selector="UserControl.shell.narrow TextBlock.breadcrumb-current">
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+  <Style Selector="UserControl.shell.narrow TextBlock.page-title">
+    <Setter Property="FontSize" Value="40" />
+    <Setter Property="LetterSpacing" Value="-1.1" />
+  </Style>
+  <Style Selector="Button.monitor-action">
+    <Setter Property="Width" Value="36" />
+    <Setter Property="Height" Value="36" />
+    <Setter Property="CornerRadius" Value="18" />
+  </Style>
+  <Style Selector="UserControl.shell.narrow Button.task-group">
+    <Setter Property="MinHeight" Value="44" />
+  </Style>
+  <Style Selector="UserControl.shell.narrow Button.monitor-action">
+    <Setter Property="Width" Value="36" />
+    <Setter Property="Height" Value="36" />
+    <Setter Property="CornerRadius" Value="18" />
+  </Style>
+  <Style Selector="UserControl.shell.narrow Button.segment-tab">
+    <Setter Property="MinWidth" Value="92" />
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="Padding" Value="12,0" />
+  </Style>
+  <Style Selector="UserControl.shell.narrow Grid.monitor-tabs">
+    <Setter Property="Height" Value="66" />
+    <Setter Property="Margin" Value="12,8" />
+  </Style>
+  <Style Selector="UserControl.shell.compact Button.monitor-action">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="CornerRadius" Value="16" />
+  </Style>
+  <Style Selector="UserControl.shell.compact Button.segment-tab">
+    <Setter Property="MinWidth" Value="70" />
+    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="Padding" Value="8,0" />
+  </Style>
+  <Style Selector="UserControl.shell.compact Grid.monitor-tabs">
+    <Setter Property="Height" Value="60" />
+    <Setter Property="Margin" Value="10,8" />
+  </Style>
+
+  <!-- 侧栏 -->
+  <Style Selector="Border.sidebar">
+    <Setter Property="Background" Value="{DynamicResource AlasSidebarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AlasGlassEdgeBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="0,26,26,0" />
+    <Setter Property="BoxShadow" Value="{DynamicResource AlasSidebarShadow}" />
+    <Setter Property="Padding" Value="14,0,14,14" />
+  </Style>
+  <Style Selector="TextBlock.brand-title">
+    <Setter Property="FontSize" Value="23" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="LetterSpacing" Value="-0.7" />
+  </Style>
+  <Style Selector="Border.update-notice">
+    <Setter Property="Background" Value="{DynamicResource AlasDangerBrush}" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Padding" Value="8,4" />
+  </Style>
+  <Style Selector="Border.update-notice TextBlock">
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="LetterSpacing" Value="0.2" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="TextBlock.sidebar-label">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.task-group-title">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+
+  <!-- 顶栏 -->
+  <Style Selector="Border.topbar">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AlasGlassEdgeBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="26,0,0,26" />
+    <Setter Property="BoxShadow" Value="{DynamicResource AlasPanelShadow}" />
+  </Style>
+  <Style Selector="TextBlock.breadcrumb-link">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.breadcrumb-separator">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.breadcrumb-current">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasTextBrush}" />
+  </Style>
+
+  <!-- 面板与卡片 -->
+  <Style Selector="Border.panel">
+    <Setter Property="Background" Value="{DynamicResource AlasSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AlasGlassEdgeBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource AlasPanelRadius}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource AlasPanelShadow}" />
+  </Style>
+  <Style Selector="Border.resource-card">
+    <Setter Property="Background" Value="{DynamicResource AlasSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AlasGlassEdgeBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource AlasPanelRadius}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource AlasPanelShadow}" />
+    <Setter Property="Padding" Value="16,9,16,8" />
+  </Style>
+  <Style Selector="TextBlock.resource-name">
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.resource-value">
+    <Setter Property="FontSize" Value="23" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="-1" />
+  </Style>
+  <Style Selector="TextBlock.resource-limit">
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.resource-foot">
+    <Setter Property="FontSize" Value="8" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.page-title">
+    <Setter Property="FontSize" Value="32" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="LetterSpacing" Value="-1" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasTextBrush}" />
+  </Style>
+
+  <!-- 右栏 -->
+  <Style Selector="Border.rail">
+    <Setter Property="Background" Value="{DynamicResource AlasSurfaceBrush}" />
+    <Setter Property="CornerRadius" Value="0,0,0,26" />
+    <Setter Property="BoxShadow" Value="{DynamicResource AlasRailShadow}" />
+  </Style>
+  <Style Selector="TextBlock.rail-eyebrow">
+    <Setter Property="FontSize" Value="9" />
+    <Setter Property="LetterSpacing" Value="0.9" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.rail-instance">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+  <Style Selector="Border.scheduler">
+    <Setter Property="Background" Value="{DynamicResource AlasSurfaceMutedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AlasBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource AlasSchedulerRadius}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource AlasSchedulerShadow}" />
+    <Setter Property="Padding" Value="14" />
+    <Setter Property="Margin" Value="14,14,14,12" />
+  </Style>
+  <Style Selector="Border.scheduler-stat">
+    <Setter Property="Background" Value="{DynamicResource AlasSurfaceBrush}" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="10,8" />
+  </Style>
+  <Style Selector="TextBlock.scheduler-stat-label">
+    <Setter Property="FontSize" Value="9" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.scheduler-stat-value">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Border.rail-group">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AlasRailGroupBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource AlasSchedulerRadius}" />
+    <Setter Property="Background" Value="{DynamicResource AlasRailPendingBgBrush}" />
+  </Style>
+  <Style Selector="Border.rail-group.running">
+    <Setter Property="Background" Value="{DynamicResource AlasRailRunningBgBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AlasRailRunningBorderBrush}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource AlasRailRunningShadow}" />
+  </Style>
+  <Style Selector="Border.rail-group.waiting">
+    <Setter Property="Background" Value="{DynamicResource AlasRailWaitingBgBrush}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource AlasRailWaitingShadow}" />
+  </Style>
+  <Style Selector="Border.task-state">
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Padding" Value="7,4" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AlasBadgeBorderBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AlasBadgePendingBgBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.task-state TextBlock">
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasBadgePendingFgBrush}" />
+  </Style>
+  <Style Selector="Border.task-state.waiting">
+    <Setter Property="Background" Value="{DynamicResource AlasBadgeWaitingBgBrush}" />
+  </Style>
+  <Style Selector="Border.task-state.waiting TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource AlasBadgeWaitingFgBrush}" />
+  </Style>
+  <Style Selector="TextBlock.rail-task-name">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="TextBlock.rail-task-time">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+  </Style>
+
+  <!-- 监控面板与日志 -->
+  <Style Selector="Border.segmented">
+    <Setter Property="Background" Value="{DynamicResource AlasSegmentBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AlasSegmentBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Padding" Value="3" />
+  </Style>
+  <Style Selector="Border.log-content">
+    <Setter Property="Background" Value="{DynamicResource AlasLogContentBgBrush}" />
+  </Style>
+  <Style Selector="TextBlock.log-line">
+    <Setter Property="FontFamily" Value="{DynamicResource AlasFontMono}" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+  <Style Selector="TextBlock.log-time">
+    <Setter Property="FontFamily" Value="{DynamicResource AlasFontMono}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasLogTimeBrush}" />
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+  </Style>
+  <Style Selector="TextBlock.eyebrow">
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
+  </Style>
+</Styles>

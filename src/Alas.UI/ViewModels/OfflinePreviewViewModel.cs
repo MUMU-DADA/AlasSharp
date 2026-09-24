@@ -9,8 +9,12 @@ using System.Windows.Input;
 
 namespace Alas.UI.ViewModels;
 
-/// <summary>共享界面的离线演示状态，不连接服务或执行任务。</summary>
-public sealed class WorkspaceViewModel : INotifyPropertyChanged
+/// <summary>
+/// 旧原型的离线预览状态：工作区名双向绑定、任务队列 JSON 校验与上限 2,000 条的日志列表。
+/// 外壳复刻（ee030f0）不再展示这一页，但能力与其无窗口回归保留下来，
+/// 作为后续「配置管理」「日志」等上游页面的实现基础；不连接服务或设备，也不执行任务。
+/// </summary>
+public sealed class OfflinePreviewViewModel : INotifyPropertyChanged
 {
     private const int LogLimit = 2000;
     private string _workspaceName = "演示工作区";
@@ -29,7 +33,7 @@ public sealed class WorkspaceViewModel : INotifyPropertyChanged
         """;
     private string _validationMessage = "仅检查 JSON 结构；模拟数据，未连接设备。";
 
-    public WorkspaceViewModel()
+    public OfflinePreviewViewModel()
     {
         ShowOverviewCommand = new PreviewCommand(SelectOverview);
         ShowSettingsCommand = new PreviewCommand(() => Page = "settings");

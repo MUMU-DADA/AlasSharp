@@ -1,0 +1,206 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Alas.UI.ViewModels" xmlns:controls="using:Alas.UI.Controls"
+             x:Class="Alas.UI.Views.OverviewView" x:DataType="vm:OverviewViewModel">
+  <UserControl.Styles>
+    <Style Selector="Border.resource-icon">
+      <Setter Property="Width" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="CornerRadius" Value="10" />
+    </Style>
+    <Style Selector="Border.resource-icon.tint0 controls|Icon">
+      <Setter Property="Foreground" Value="{DynamicResource AlasIconTintForeground0Brush}" />
+    </Style>
+    <Style Selector="Border.resource-icon.tint1 controls|Icon">
+      <Setter Property="Foreground" Value="{DynamicResource AlasIconTintForeground1Brush}" />
+    </Style>
+    <Style Selector="Border.resource-icon.tint2 controls|Icon">
+      <Setter Property="Foreground" Value="{DynamicResource AlasIconTintForeground2Brush}" />
+    </Style>
+    <Style Selector="Border.resource-icon.tint3 controls|Icon">
+      <Setter Property="Foreground" Value="{DynamicResource AlasIconTintForeground3Brush}" />
+    </Style>
+    <Style Selector="Border.title-actions">
+      <Setter Property="Background" Value="{DynamicResource AlasSurfaceMutedBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="22" />
+      <Setter Property="Padding" Value="5" />
+      <Setter Property="BoxShadow" Value="{DynamicResource AlasTitleActionsShadow}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*">
+    <Grid x:Name="PageTitle" Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,48,0,14">
+      <Border x:Name="TitleGlass" Background="{StaticResource AlasTitleFillBrush}" VerticalAlignment="Center">
+        <TextBlock x:Name="TitleText" Classes="page-title" Text="{Binding InstanceName}" />
+      </Border>
+      <Border Grid.Column="2" Classes="title-actions" VerticalAlignment="Center">
+        <Button x:Name="InstanceSettingsButton" Theme="{StaticResource GhostButtonTheme}" Padding="15,9"
+                IsEnabled="False" ToolTip.Tip="{Binding PendingNotice}" AutomationProperties.Name="实例设置">
+          <controls:Icon Data="{StaticResource IconSettings2}" Size="16" />
+        </Button>
+      </Border>
+    </Grid>
+
+    <ItemsControl x:Name="ResourceCards" Grid.Row="1" ItemsSource="{Binding Resources}" Margin="0,0,0,10">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <controls:CardGrid MinItemWidth="150" ItemGap="8" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ResourceCardViewModel">
+            <Border Classes="resource-card">
+              <StackPanel>
+                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,3">
+                  <TextBlock x:Name="NameText" Classes="resource-name" Text="{Binding Name}"
+                             VerticalAlignment="Center" />
+                  <Border Grid.Column="1" Classes="resource-icon" Classes.tint0="{Binding IsTint0}"
+                          Classes.tint1="{Binding IsTint1}" Classes.tint2="{Binding IsTint2}"
+                          Classes.tint3="{Binding IsTint3}">
+                    <Panel>
+                      <Image Width="24" Height="24" Source="{Binding Image}" IsVisible="{Binding HasImage}"
+                             AutomationProperties.Name="{Binding Name}" />
+                      <controls:Icon Data="{StaticResource IconBox}" Size="18" IsVisible="{Binding HasFallback}" />
+                    </Panel>
+                  </Border>
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="4" MinHeight="25">
+                  <!-- 内置 Noto CJK 的行盒比上游系统字体高约 9px；用负外边距把行盒占用收回上游实测的 25px，
+                       字形本身仍完整绘制（TextBlock 不裁剪），避免照抄 CSS 紧凑行高造成的上下裁切。 -->
+                  <TextBlock x:Name="ValueText" Classes="resource-value" Text="{Binding Value}" Margin="0,-5" />
+                  <TextBlock Classes="resource-limit" Text="{Binding Limit}" IsVisible="{Binding HasLimit}"
+                             VerticalAlignment="Bottom" Margin="0,0,0,4" />
+                </StackPanel>
+                <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource AlasBorderBrush}" Margin="0,5,0,0"
+                        Padding="0,5,0,0">
+                  <TextBlock x:Name="FootText" Classes="resource-foot" Text="{Binding Foot}" />
+                </Border>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <Border x:Name="MonitorPanel" Grid.Row="2" Classes="panel" ClipToBounds="True" MinHeight="320"
+            Height="{Binding PanelHeight}">
+      <Grid RowDefinitions="Auto,*">
+        <Grid x:Name="MonitorTabs" Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="16,10" Classes="monitor-tabs">
+          <Border Classes="segmented">
+            <StackPanel Orientation="Horizontal" Spacing="2">
+              <Button x:Name="LogsTab" Theme="{StaticResource SegmentTabTheme}" Classes="segment-tab" Classes.active="{Binding IsLogsView}"
+                      Command="{Binding ShowLogsCommand}" AutomationProperties.Name="日志">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <controls:Icon Data="{StaticResource IconTerminal}" Size="15" VerticalAlignment="Center" />
+                  <TextBlock Text="日志" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button x:Name="PreviewTab" Theme="{StaticResource SegmentTabTheme}" Classes="segment-tab" Classes.active="{Binding IsPreviewView}"
+                      Command="{Binding ShowPreviewCommand}" AutomationProperties.Name="截图">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <controls:Icon Data="{StaticResource IconImage}" Size="15" VerticalAlignment="Center" />
+                  <TextBlock Text="截图" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </Border>
+          <StackPanel x:Name="LogToolbar" Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <Button x:Name="FilterButton" Theme="{StaticResource IconButtonTheme}" Classes="monitor-action"
+                    Classes.active="{Binding IsFilterOpen}" Command="{Binding ToggleFilterCommand}"
+                    AutomationProperties.Name="搜索和筛选">
+              <controls:Icon Data="{StaticResource IconSearch}" Size="16" />
+            </Button>
+            <Button x:Name="FollowButton" Theme="{StaticResource IconButtonTheme}" Classes="monitor-action"
+                    Command="{Binding ToggleFollowCommand}" AutomationProperties.Name="暂停自动滚动">
+              <controls:Icon Data="{StaticResource IconPause}" Size="16" />
+            </Button>
+            <Button x:Name="OrderButton" Theme="{StaticResource IconButtonTheme}" Classes="monitor-action"
+                    Classes.active="{Binding IsDescending}" Command="{Binding ToggleOrderCommand}"
+                    AutomationProperties.Name="切换日志排序">
+              <controls:Icon Data="{StaticResource IconArrowDownUp}" Size="16" />
+            </Button>
+            <Button x:Name="ClearButton" Theme="{StaticResource IconButtonTheme}" Classes="monitor-action"
+                    Command="{Binding ClearCommand}" AutomationProperties.Name="清空当前日志视图">
+              <controls:Icon Data="{StaticResource IconTrash2}" Size="16" />
+            </Button>
+            <Button x:Name="ExportButton" Theme="{StaticResource TextButtonTheme}"
+                    IsEnabled="False" ToolTip.Tip="{Binding PendingNotice}" AutomationProperties.Name="导出日志">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <controls:Icon Data="{StaticResource IconDownload}" Size="14" VerticalAlignment="Center" />
+                <TextBlock Text="导出" VerticalAlignment="Center" IsVisible="{Binding IsWideLayout}" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1">
+          <Grid x:Name="LogsView" RowDefinitions="Auto,*" IsVisible="{Binding IsLogsView}">
+            <Border x:Name="LogFilters" Grid.Row="0" Margin="16,0,16,8" Padding="0,0,0,8"
+                    IsVisible="{Binding IsFilterOpen}">
+              <!-- 上游 ≤950px 时 .log-filters 会换行；这里用 WrapPanel，窄屏下搜索框与级别下拉自动折行，
+                   三个控件都保持可点、可达。 -->
+              <WrapPanel x:Name="LogFilterRow" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
+                <TextBox x:Name="LogSearchBox" Width="260" Height="32" PlaceholderText="搜索日志内容…"
+                         Text="{Binding SearchText, Mode=TwoWay}" AutomationProperties.Name="搜索日志" />
+                <ComboBox x:Name="LogLevelBox" Width="130" Height="32" ItemsSource="{Binding Levels}"
+                          SelectedItem="{Binding LogLevel, Mode=TwoWay}" AutomationProperties.Name="日志级别" />
+                <TextBlock x:Name="LogCountText" Text="{Binding RecentCountText}" FontSize="11"
+                           VerticalAlignment="Center" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource AlasMutedBrush}" />
+              </WrapPanel>
+            </Border>
+            <Border Grid.Row="1" Classes="log-content" Margin="16,0,16,16">
+              <Panel>
+                <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" Padding="16,18">
+                  <ItemsControl x:Name="LogList" ItemsSource="{Binding VisibleLogs}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:LogLineViewModel">
+                        <!-- 平台无关：横向 StackPanel 会按无限宽测量子元素，TextWrapping 永远不生效，
+                             长中文日志在窄屏会被裁掉。改用 Grid 的 Auto/Auto/Auto/* 列，
+                             正文列有确定宽度才能真正换行。 -->
+                        <Grid ColumnDefinitions="Auto,Auto,Auto,*">
+                          <TextBlock Classes="log-line" Text="{Binding Date}" />
+                          <TextBlock Grid.Column="1" Classes="log-time" Text="{Binding Time}" Margin="5,0,0,0" />
+                          <TextBlock Grid.Column="2" Classes="log-line" Text="{Binding Scope}" Margin="6,0,0,0"
+                                     Foreground="{DynamicResource AlasAccentBrush}" />
+                          <TextBlock x:Name="LogMessage" Grid.Column="3" Classes="log-line" Text="{Binding Message}"
+                                     Margin="6,0,0,0" TextWrapping="Wrap" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+                <StackPanel x:Name="LogEmpty" IsVisible="{Binding !HasVisibleLogs}" VerticalAlignment="Center"
+                            HorizontalAlignment="Center" Spacing="6">
+                  <controls:Icon Data="{StaticResource IconTerminal}" Size="28" HorizontalAlignment="Center"
+                                 Foreground="{DynamicResource AlasMutedBrush}" />
+                  <TextBlock x:Name="LogEmptyTitle" Text="{Binding EmptyLogTitle}" FontWeight="SemiBold"
+                             HorizontalAlignment="Center" />
+                  <TextBlock Text="{Binding EmptyLogText}" FontSize="12" HorizontalAlignment="Center"
+                             Foreground="{DynamicResource AlasMutedBrush}" />
+                </StackPanel>
+              </Panel>
+            </Border>
+          </Grid>
+
+          <StackPanel x:Name="PreviewView" IsVisible="{Binding IsPreviewView}" Spacing="10" Margin="16,4,16,16"
+                      VerticalAlignment="Top">
+            <Border Background="{DynamicResource AlasSurfaceMutedBrush}" CornerRadius="12" Padding="12,10">
+              <TextBlock FontSize="11" Foreground="{DynamicResource AlasMutedBrush}"
+                         Text="2026-09-24 01:13:44 [demo-main] 测试实例已就绪，所有操作均为模拟。" />
+            </Border>
+            <Border Background="{DynamicResource AlasSurfaceMutedBrush}" CornerRadius="12" MinHeight="300">
+              <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
+                <controls:Icon Data="{StaticResource IconImage}" Size="36" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource AlasMutedBrush}" />
+                <TextBlock Text="等待任务截图" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                <TextBlock Text="任务截图后自动更新；空闲时保留最后画面。" FontSize="12" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource AlasMutedBrush}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

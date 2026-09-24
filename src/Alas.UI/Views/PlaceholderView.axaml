@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Alas.UI.ViewModels" xmlns:controls="using:Alas.UI.Controls"
+             x:Class="Alas.UI.Views.PlaceholderView" x:DataType="vm:PlaceholderViewModel">
+  <Border Classes="panel" Padding="24" Margin="0,48,0,0" VerticalAlignment="Top">
+    <StackPanel Spacing="10">
+      <TextBlock Classes="page-title" FontSize="26" Text="{Binding Title}" />
+      <TextBlock Text="第一阶段未实现" FontWeight="SemiBold" Foreground="{DynamicResource AlasWarningBrush}" />
+      <TextBlock Text="{Binding Hint}" TextWrapping="Wrap" Foreground="{DynamicResource AlasMutedBrush}" />
+    </StackPanel>
+  </Border>
+</UserControl>

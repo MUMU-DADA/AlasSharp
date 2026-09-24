@@ -1,0 +1,32 @@
+# 第三方素材与许可（随发行包分发）
+
+本文件随桌面与网页发行包一起分发（`Assets/Notices/` 下的全部文件都会复制到发布输出；网页目标在站点根 `wwwroot/Assets/Notices/`）。
+界面复刻自上游 **AzurPilot**（<https://github.com/wess09/AzurPilot>，提交 `f67259dcd`）。
+
+| 素材 | 文件 | 许可 | 许可全文 |
+| --- | --- | --- | --- |
+| 图标几何（44 个，由 lucide-react 1.45.0 的 24×24 路径生成） | `Assets/Icons.axaml` | ISC（Lucide，Copyright (c) 2026 Lucide Icons and Contributors）；其中源自 Feather 的图标另按 MIT（Copyright (c) 2013-present Cole Bemis） | `LICENSE-lucide.txt` |
+| 内置中文字体 Noto Sans CJK SC 2.004 | `Assets/Fonts/NotoSansCJKsc-Regular.otf` | SIL Open Font License 1.1（Copyright © 2014–2021 Adobe） | `LICENSE-NotoSansCJK-OFL.txt` |
+| 品牌标识（`azurpilot.svg` 及其 64/128px 位图） | `Assets/Brand/` | GPL-3.0（上游项目） | 上游仓库 LICENSE |
+| 资源图标位图（oil/gold/diamond/cube.webp） | `Assets/Resources/` | GPL-3.0（上游项目） | 上游仓库 LICENSE |
+| 任务目录（分组与任务名） | `ViewModels/TaskCatalog.cs`（生成物） | GPL-3.0（上游 `module/config` 数据） | 上游仓库 LICENSE |
+
+## 生成方式（生成脚本不随包分发，仅保留在源码树）
+
+```powershell
+node src/Alas.UI/Assets/Icons/generate-icons.mjs <lucide-react 包目录> src/Alas.UI/Assets/Icons.axaml
+node src/Alas.UI/Assets/Catalog/generate-task-catalog.mjs <上游仓库根> src/Alas.UI/ViewModels/TaskCatalog.cs
+node src/Alas.UI/Assets/Brand/rasterize-logo.mjs src/Alas.UI/Assets/Brand/azurpilot.svg src/Alas.UI/Assets/Brand/azurpilot-64.png 64
+```
+
+脚本只做坐标搬运与格式改写（SVG→Avalonia 路径语法、JSON→C# 目录、SVG→PNG 栅格化），不修改图形与名称。
+
+## 分发边界
+
+- 文件用 `.txt` 后缀：`Alas.Server` 的静态托管只服务白名单扩展名（`.txt` 在内、`.md` 不在），
+  用 `.txt` 才能被网页端直接取到；两份许可本身就是 `.txt`。
+
+- 上述 notices 与两份许可全文通过 `Alas.UI.csproj` 的 `Content` 声明复制到发布输出，桌面与网页两个目标都可读取。
+- 图标/目录的**生成脚本**、上游清单草稿、`SOURCE.md` 说明文档不进发行包（只随源码树审阅）。
+- 运行时只读取 `Assets/Fonts/*.otf`、`Assets/Icons.axaml`、`Assets/Brand/*.png`、`Assets/Resources/*.webp`
+  四类内嵌资源（见 csproj 的 `AvaloniaResource` 声明）。

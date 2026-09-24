@@ -8,6 +8,24 @@
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />
-    <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
+  <ItemGroup>
+    <!--
+      只把运行时真正读取的资源打进程序集：内置字体、图标几何、品牌标识位图与资源图标位图。
+      生成脚本（*.mjs）、来源说明（SOURCE.md）、许可证文本（LICENSE-*.txt）与未使用的 SVG 原件
+      留在源码树供审阅，不作为运行时资源随发布包分发。
+    -->
+    <AvaloniaResource Include="Assets/Fonts/*.otf" />
+    <AvaloniaResource Include="Assets/Icons.axaml" />
+    <AvaloniaResource Include="Assets/Brand/*.png" />
+    <AvaloniaResource Include="Assets/Resources/*.webp" />
+  </ItemGroup>
+  <ItemGroup>
+    <!--
+      发行许可必须随包分发：第三方 notices 与两份许可全文作为可读取文件复制到发布输出根目录，
+      桌面（Alas.UI.Desktop）与网页（Alas.UI.Browser 的 wwwroot/站点根）两个目标都通过引用本工程获得。
+      注意：Assets/Notices/** 是 Content，不是 AvaloniaResource，因此不会被编进程序集内部。
+    -->
+    <Content Include="Assets/Notices/**" CopyToOutputDirectory="PreserveNewest" Visible="true" />
   </ItemGroup>
 </Project>

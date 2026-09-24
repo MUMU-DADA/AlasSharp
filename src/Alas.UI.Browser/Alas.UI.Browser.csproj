@@ -18,4 +18,14 @@
     <ProjectReference Include="../Alas.UI/Alas.UI.csproj" />
     <StaticWebAssetFingerprintPattern Include="JS" Pattern="*.js" Expression="#[.{fingerprint}]!" />
   </ItemGroup>
+  <ItemGroup>
+    <!--
+      发行许可随包分发：把 Alas.UI 的 Assets/Notices/** 复制到网页站点根目录下的 Assets/Notices/
+      （WASM 发布时站点内容在 wwwroot/，因此 Link 必须落在 wwwroot 之下才随站点一起发布、可被浏览器取到）。
+      库工程自身的 Content 不会自动流到引用方的发布输出，因此这里显式声明。
+    -->
+    <Content Include="../Alas.UI/Assets/Notices/**"
+             Link="wwwroot/Assets/Notices/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

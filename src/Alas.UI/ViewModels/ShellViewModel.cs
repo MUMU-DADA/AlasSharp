@@ -1,0 +1,786 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.ComponentModel;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Windows.Input;
+using Avalonia;
+using Avalonia.Media;
+using Avalonia.Layout;
+using Avalonia.Media.Imaging;
+using Avalonia.Styling;
+
+namespace Alas.UI.ViewModels;
+
+/// <summary>
+/// 共享外壳状态：主题、视口断点、抽屉、一级/任务导航、当前页面与右栏。
+/// 所有数据都是离线演示数据（对齐上游 mock/state.mjs），不连接服务或设备，也不执行任务。
+/// </summary>
+public sealed class ShellViewModel : INotifyPropertyChanged
+{
+    /// <summary>上游 layout.css 的主外壳断点：≤950px 时侧栏与右栏改为浮层抽屉。</summary>
+    public const double NarrowBreakpoint = 950;
+
+    /// <summary>上游 apple.css:339 的第二档断点：≤480px 时监控页签、工具栏与分段按钮继续压缩。</summary>
+    public const double CompactBreakpoint = 480;
+
+    private readonly Dictionary<string, object?> _pages = new(StringComparer.Ordinal);
+    private bool _isDark;
+    private bool _isNarrow;
+    private bool _isDrawerOpen;
+    private bool _isRailOpen;
+    private bool _isOverviewActive = true;
+    private string _activeNavKey = "overview";
+
+    public ShellViewModel()
+    {
+        Overview = new OverviewViewModel();
+        Placeholder = new PlaceholderViewModel();
+        Rail = new RailViewModel(Overview);
+        Instances = new ObservableCollection<string> { "demo-main", "demo-alt", "demo-error" };
+        SelectNavCommand = new PreviewCommand(parameter => SelectNav(parameter as string));
+        ToggleThemeCommand = new PreviewCommand(_ => IsDark = !IsDark);
+        OpenDrawerCommand = new PreviewCommand(_ => IsDrawerOpen = true);
+        CloseDrawerCommand = new PreviewCommand(_ => { IsDrawerOpen = false; IsRailOpen = false; });
+        ToggleRailCommand = new PreviewCommand(_ => IsRailOpen = !IsRailOpen);
+        ToggleTaskGroupCommand = new PreviewCommand(parameter =>
+        {
+            if (parameter is TaskGroupEntry group) group.IsExpanded = !group.IsExpanded;
+        });
+        SelectTaskCommand = new PreviewCommand(parameter => SelectTask(parameter as TaskEntry));
+        BuildNavigation();
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public OverviewViewModel Overview { get; }
+    public RailViewModel Rail { get; }
+    public PlaceholderViewModel Placeholder { get; }
+    public ObservableCollection<NavEntry> PrimaryNav { get; } = new();
+    public ObservableCollection<TaskGroupEntry> TaskGroups { get; } = new();
+    public ObservableCollection<string> Instances { get; }
+    public string InstanceName => "demo-main";
+    public string InstancesSummary => $"{Instances.Count} 个演示实例";
+
+    public ICommand SelectNavCommand { get; }
+    public ICommand ToggleThemeCommand { get; }
+    public ICommand OpenDrawerCommand { get; }
+    public ICommand CloseDrawerCommand { get; }
+    public ICommand ToggleRailCommand { get; }
+    public ICommand ToggleTaskGroupCommand { get; }
+    public ICommand SelectTaskCommand { get; }
+
+    /// <summary>演示数据说明，用于无障碍读屏与工具提示，避免把模拟状态当成真实运行。</summary>
+    public string DemoNotice => "离线演示数据：不连接服务或设备，按钮只改变本页模拟状态。";
+
+    /// <summary>本阶段未接后端的入口统一禁用，并用这条提示说明原因，避免出现点了没反应的死按钮。</summary>
+    public string PendingNotice => "第一阶段未接后端：该入口在后续切片实现，当前不可用。";
+
+    public bool IsDark
+    {
+        get => _isDark;
+        set
+        {
+            if (!SetField(ref _isDark, value)) return;
+            if (Application.Current is { } application)
+                application.RequestedThemeVariant = value ? ThemeVariant.Dark : ThemeVariant.Light;
+        }
+    }
+
+    public bool IsNarrow
+    {
+        get => _isNarrow;
+        private set
+        {
+            if (!SetField(ref _isNarrow, value)) return;
+            Notify(nameof(IsWide));
+            Notify(nameof(TopbarSpacing));
+            Notify(nameof(BreadcrumbAlignment));
+            Notify(nameof(TopbarHeight));
+            Notify(nameof(MainPadding));
+            Notify(nameof(ContentMinHeight));
+            if (!value) { IsDrawerOpen = false; IsRailOpen = false; }
+        }
+    }
+
+    public bool IsWide => !IsNarrow;
+    public bool IsCompact => ViewportWidth <= CompactBreakpoint;
+    public double RailWidth => IsNarrow ? 360 : ViewportWidth > 1562.5 ? 320 : 292;
+    public double TopbarSpacing => IsNarrow ? 6 : 16;
+
+    /// <summary>窄屏顶栏把面包屑贴右（上游 ≤950px 的顶栏布局），宽屏紧跟左侧开关。</summary>
+    public HorizontalAlignment BreadcrumbAlignment => IsNarrow ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+    public double ViewportWidth { get; private set; } = 1280;
+    public double ViewportHeight { get; private set; } = 820;
+
+    /// <summary>顶栏行高：宽屏取上游 41.5px，窄屏 56px（apple.css:306）。</summary>
+    public double TopbarHeight => IsNarrow ? 56 : 41.5;
+
+    /// <summary>内容区内边距：宽屏 0 32 32、窄屏 28 18（apple.css:96 / 314，经典主题窄屏覆盖共享层）。</summary>
+    public Thickness MainPadding => IsNarrow ? new Thickness(18, 28, 18, 28) : new Thickness(32, 0, 32, 32);
+
+    /// <summary>
+    /// 内容区至少可用的高度。上游 <c>main</c> 是 flex 列、总览的监控面板 <c>flex:1</c> 撑满剩余空间；
+    /// Avalonia 的滚动容器按无限高测量，所以这里给出「视口 - 顶栏 - 内容内边距」作为最小高度，
+    /// 让总览页的第三行（监控面板）能像上游一样填满，同时在内容更高时照常滚动。
+    /// </summary>
+    public double ContentMinHeight =>
+        // 减 2px 吸收布局取整：内容正好等于最小高度时，round 后的 extent 会比 viewport 略大而弹出滚动条。
+        Math.Max(200, ViewportHeight - TopbarHeight - MainPadding.Top - MainPadding.Bottom - 2);
+
+
+    public bool IsDrawerOpen
+    {
+        get => _isDrawerOpen;
+        set => SetField(ref _isDrawerOpen, value);
+    }
+
+    public bool IsRailOpen
+    {
+        get => _isRailOpen;
+        set => SetField(ref _isRailOpen, value);
+    }
+
+    public bool IsScrimVisible => IsNarrow && (IsDrawerOpen || IsRailOpen);
+    public bool IsRailVisible => IsWide || IsRailOpen;
+    public bool IsSidebarVisible => IsWide || IsDrawerOpen;
+
+    public bool IsOverviewActive
+    {
+        get => _isOverviewActive;
+        private set => SetField(ref _isOverviewActive, value);
+    }
+
+    public string ActiveNavKey
+    {
+        get => _activeNavKey;
+        private set => SetField(ref _activeNavKey, value);
+    }
+
+    public string BreadcrumbHome => "主页";
+
+    public string BreadcrumbTail => IsOverviewActive ? "运行总览" : Placeholder.Title;
+
+    /// <summary>窄屏时隐藏面包屑（上游 apple.css:338 的 ≤300px 兜底与窄屏压缩）。</summary>
+    public bool IsBreadcrumbVisible => ViewportWidth > 300;
+
+    public void UpdateViewport(double width, double height)
+    {
+        if (Math.Abs(ViewportWidth - width) < 0.01 && Math.Abs(ViewportHeight - height) < 0.01) return;
+        ViewportWidth = width;
+        ViewportHeight = height > 0 ? height : ViewportHeight;
+        IsNarrow = width <= NarrowBreakpoint;
+        Notify(nameof(IsCompact));
+        Overview.IsWideLayout = !IsNarrow;
+        Overview.ContentHeight = ContentMinHeight;
+        Notify(nameof(BreadcrumbAlignment));
+        Notify(nameof(ViewportWidth));
+        Notify(nameof(ViewportHeight));
+        Notify(nameof(TopbarHeight));
+        Notify(nameof(MainPadding));
+        Notify(nameof(ContentMinHeight));
+        Notify(nameof(RailWidth));
+        Notify(nameof(IsBreadcrumbVisible));
+    }
+
+    private void BuildNavigation()
+    {
+        PrimaryNav.Clear();
+        PrimaryNav.Add(new NavEntry("overview", "运行总览", "LayoutDashboard", true));
+        PrimaryNav.Add(new NavEntry("statistics", "资源统计", "ChartNoAxesCombined", false));
+
+        TaskGroups.Clear();
+        // 分组与任务来自上游静态目录 menu.json + zh-CN i18n，顺序原样保留。
+        foreach (var (group, groupLabel, icon, tasks, labels) in TaskCatalog.Groups)
+        {
+            var entries = new List<TaskEntry>();
+            for (var index = 0; index < tasks.Length; index++)
+                entries.Add(new TaskEntry(tasks[index], labels[index], groupLabel));
+            TaskGroups.Add(new TaskGroupEntry(group, groupLabel, icon, entries));
+        }
+    }
+
+    /// <summary>选择任务分组下的具体任务：本切片只切到明确的「未实现」页，不连服务、不跑游戏逻辑。</summary>
+    private void SelectTask(TaskEntry? task)
+    {
+        if (task is null) return;
+        foreach (var entry in PrimaryNav) entry.IsActive = false;
+        ActiveNavKey = $"task:{task.Key}";
+        IsOverviewActive = false;
+        Placeholder.LoadTask(task.GroupTitle, task.Label);
+        Notify(nameof(BreadcrumbTail));
+        IsDrawerOpen = false;
+    }
+
+    private void SelectNav(string? key)
+    {
+        if (key is null) return;
+        foreach (var entry in PrimaryNav) entry.IsActive = entry.Key == key;
+        ActiveNavKey = key;
+        // 第一阶段只实现运行总览；其余入口如实显示未实现，不伪造页面内容。
+        IsOverviewActive = key == "overview";
+        if (!IsOverviewActive) Placeholder.Load(key);
+        Notify(nameof(BreadcrumbTail));
+        IsDrawerOpen = false;
+    }
+
+    private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
+        field = value;
+        Notify(propertyName);
+        return true;
+    }
+
+    private void Notify([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        if (propertyName is nameof(IsNarrow) or nameof(IsDrawerOpen) or nameof(IsRailOpen))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsScrimVisible)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRailVisible)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSidebarVisible)));
+        }
+    }
+}
+
+public sealed class NavEntry : INotifyPropertyChanged
+{
+    private bool _isActive;
+
+    public NavEntry(string key, string label, string iconKey, bool isActive)
+    {
+        Key = key;
+        Label = label;
+        Icon = IconLookup.Resolve(iconKey);
+        _isActive = isActive;
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string Key { get; }
+    public string Label { get; }
+    public Geometry? Icon { get; }
+
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (_isActive == value) return;
+            _isActive = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActive)));
+        }
+    }
+}
+
+public sealed class TaskGroupEntry : INotifyPropertyChanged
+{
+    private bool _isExpanded;
+
+    public TaskGroupEntry(string key, string title, string iconKey, IReadOnlyList<TaskEntry> tasks)
+    {
+        Key = key;
+        Title = title;
+        Tasks = tasks;
+        Icon = IconLookup.Resolve(iconKey);
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string Key { get; }
+    public string Title { get; }
+    public IReadOnlyList<TaskEntry> Tasks { get; }
+    public Geometry? Icon { get; }
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            if (_isExpanded == value) return;
+            _isExpanded = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
+        }
+    }
+}
+
+/// <summary>侧栏任务分组下的一个任务（名称来自上游 Task.<key>.name）。</summary>
+public sealed record TaskEntry(string Key, string Label, string GroupTitle);
+
+/// <summary>运行总览页：资源卡与运行监控（对齐上游 Overview.tsx + ResourceCards + MonitorPanel）。</summary>
+public sealed class OverviewViewModel : INotifyPropertyChanged
+{
+    private string _monitorView = "logs";
+    private bool _isFilterOpen;
+    private bool _isFollowing = true;
+    private bool _isDescending;
+    private bool _isSchedulerRunning;
+    private bool _isWideLayout = true;
+    private string _searchText = string.Empty;
+    private string _logLevel = "ALL";
+    private double _contentHeight = 745.5;
+    private readonly List<LogLineViewModel> _allLogs = new();
+
+    public OverviewViewModel()
+    {
+        ToggleFilterCommand = new PreviewCommand(_ => IsFilterOpen = !IsFilterOpen);
+        ToggleFollowCommand = new PreviewCommand(_ => IsFollowing = !IsFollowing);
+        ToggleOrderCommand = new PreviewCommand(_ => IsDescending = !IsDescending);
+        ClearCommand = new PreviewCommand(_ => ClearLogs());
+        ShowLogsCommand = new PreviewCommand(_ => MonitorView = "logs");
+        ShowPreviewCommand = new PreviewCommand(_ => MonitorView = "preview");
+        ToggleSchedulerCommand = new PreviewCommand(_ => ToggleScheduler());
+        Resources = new ObservableCollection<ResourceCardViewModel>
+        {
+            new("石油", "Resources/oil", "14,200", "/ 25,000", "记录于 09-24 01:13:44", 0),
+            new("物资", "Resources/gold", "186,420", "/ 600,000", "记录于 09-24 01:13:44", 1),
+            new("钻石", "Resources/diamond", "2,468", null, "记录于 09-24 01:13:44", 2),
+            new("心智魔方", "Resources/cube", "384", null, "记录于 09-24 01:13:44", 3),
+        };
+        AppendLog("测试实例已就绪，所有操作均为模拟。");
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string InstanceName => "demo-main";
+    public ObservableCollection<ResourceCardViewModel> Resources { get; }
+
+    /// <summary>日志缓存上限：上游 LogPanel 按 id 合并后只保留最近 400 条。</summary>
+    public const int LogCapacity = 400;
+
+    /// <summary>按当前搜索词、级别与排序过滤后的可见行（上游 .log-content 的渲染来源）。</summary>
+    public ObservableCollection<LogLineViewModel> VisibleLogs { get; } = new();
+
+    /// <summary>级别下拉的取值，顺序与上游 Select 一致。</summary>
+    public IReadOnlyList<string> Levels { get; } = new[] { "ALL", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL" };
+
+    /// <summary>可见行变化后触发，由视图决定是否跟随滚动到底部。</summary>
+    public event EventHandler? VisibleLogsChanged;
+
+    public int CachedLogCount => _allLogs.Count;
+
+    public ICommand ToggleFilterCommand { get; }
+    public ICommand ToggleFollowCommand { get; }
+    public ICommand ToggleOrderCommand { get; }
+    public ICommand ClearCommand { get; }
+    public ICommand ShowLogsCommand { get; }
+    public ICommand ShowPreviewCommand { get; }
+    public ICommand ToggleSchedulerCommand { get; }
+
+    public string MonitorView
+    {
+        get => _monitorView;
+        set
+        {
+            if (_monitorView == value) return;
+            _monitorView = value;
+            Notify(nameof(MonitorView));
+            Notify(nameof(IsLogsView));
+            Notify(nameof(IsPreviewView));
+        }
+    }
+
+    public bool IsLogsView => _monitorView == "logs";
+    public bool IsPreviewView => _monitorView == "preview";
+
+    public bool IsFilterOpen
+    {
+        get => _isFilterOpen;
+        set => SetField(ref _isFilterOpen, value);
+    }
+
+    public bool IsFollowing
+    {
+        get => _isFollowing;
+        set => SetField(ref _isFollowing, value);
+    }
+
+    public bool IsDescending
+    {
+        get => _isDescending;
+        set
+        {
+            if (!SetField(ref _isDescending, value)) return;
+            RebuildVisibleLogs();
+        }
+    }
+
+    public bool IsSchedulerRunning
+    {
+        get => _isSchedulerRunning;
+        private set
+        {
+            if (!SetField(ref _isSchedulerRunning, value)) return;
+            Notify(nameof(SchedulerButtonText));
+            Notify(nameof(SchedulerStatusText));
+        }
+    }
+
+    public string SchedulerButtonText => IsSchedulerRunning ? "停止运行" : "启动调度器";
+    public string SchedulerStatusText => IsSchedulerRunning ? "运行中" : "已停止";
+
+    /// <summary>本阶段未接后端的入口统一禁用，并用这条提示说明原因。</summary>
+    public string PendingNotice => "第一阶段未接后端：该入口在后续切片实现，当前不可用。";
+
+    /// <summary>上游筛选行的「最近 {count} 条」显示的是缓存条数，不是可见条数。</summary>
+    public string RecentCountText => $"最近 {CachedLogCount} 条";
+
+    public bool HasVisibleLogs => VisibleLogs.Count > 0;
+    public string EmptyLogTitle => CachedLogCount == 0 ? "日志通道已就绪" : "没有匹配的日志";
+    public string EmptyLogText => CachedLogCount == 0 ? "启动任务后，日志将在这里显示。" : "尝试调整筛选条件。";
+
+    /// <summary>日志搜索词：直接过滤可见行（上游 log.search）。</summary>
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (!SetField(ref _searchText, value)) return;
+            RebuildVisibleLogs();
+        }
+    }
+
+    /// <summary>日志级别筛选：ALL 或 DEBUG/INFO/WARNING/ERROR/CRITICAL。</summary>
+    public string LogLevel
+    {
+        get => _logLevel;
+        set
+        {
+            if (!SetField(ref _logLevel, value)) return;
+            RebuildVisibleLogs();
+        }
+    }
+
+    /// <summary>宽屏时日志工具栏显示「导出」文字；窄屏只留图标（上游窄屏工具栏压缩）。</summary>
+    public bool IsWideLayout
+    {
+        get => _isWideLayout;
+        set
+        {
+            if (!SetField(ref _isWideLayout, value)) return;
+            Notify(nameof(PanelHeight));
+        }
+    }
+
+    /// <summary>总览页标题区高度：48 上边距 + 50 标题行 + 14 下边距（上游实测）。</summary>
+    private const double OverviewTitleBlockHeight = 112;
+
+    /// <summary>资源卡区高度：95 卡高 + 10 下边距（上游实测）。</summary>
+    private const double OverviewCardsBlockHeight = 106;
+
+    /// <summary>
+    /// 监控面板高度。宽屏取「内容区高度 - 标题区 - 资源卡区」，等于上游 <c>.monitor-panel{flex:1}</c> 的结果；
+    /// 这里给确定值而不是 NaN：面板内的日志区需要被约束住才能自己滚动，
+    /// 否则 Avalonia 的滚动容器按无限高测量，日志会把整块面板顶高、页面反而出现滚动条。
+    /// 窄屏按上游 apple.css:331 的 ≤950px 规则固定 520px。
+    /// </summary>
+    public double PanelHeight => IsWideLayout
+        ? Math.Max(320, ContentHeight - OverviewTitleBlockHeight - OverviewCardsBlockHeight)
+        : 520;
+
+    /// <summary>内容区可用高度，由外壳在视口变化时写入（上游 main 的高度预算）。</summary>
+    public double ContentHeight
+    {
+        get => _contentHeight;
+        set
+        {
+            if (!SetField(ref _contentHeight, value)) return;
+            Notify(nameof(PanelHeight));
+        }
+    }
+
+    /// <summary>只改本地模拟状态，与上游 mock 的 scheduler.start/stop 行为一致，不触发真实任务。</summary>
+    private void ToggleScheduler()
+    {
+        IsSchedulerRunning = !IsSchedulerRunning;
+        AppendLog(IsSchedulerRunning ? "模拟调度器已启动。" : "模拟调度器已停止。");
+    }
+
+    /// <summary>
+    /// 追加一条日志：超出上限时丢弃最旧一条。逐条增量维护可见行（等价于上游按 id 合并增量），
+    /// 只有搜索/级别/排序变化时才整体重建，避免每次追加都重建整个列表。
+    /// </summary>
+    public void AppendLog(string message, string level = "INFO")
+    {
+        var line = new LogLineViewModel("2026-09-24", "01:13:44", level, $"[{InstanceName}]", message);
+        _allLogs.Add(line);
+        while (_allLogs.Count > LogCapacity)
+        {
+            var dropped = _allLogs[0];
+            _allLogs.RemoveAt(0);
+            // 被淘汰的是缓存里最旧的一条，它在可见列表里的位置取决于排序与筛选：
+            // 正序在头部、倒序在尾部、被筛掉时根本不在列表里，因此按对象移除，不能只删 VisibleLogs[0]。
+            VisibleLogs.Remove(dropped);
+        }
+        if (MatchesFilter(line))
+        {
+            if (IsDescending) VisibleLogs.Insert(0, line);
+            else VisibleLogs.Add(line);
+        }
+        NotifyLogCounters();
+        VisibleLogsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>清空当前视图：上游把 floor 设为最后一条，这里等价于丢弃已缓存内容。</summary>
+    private void ClearLogs()
+    {
+        _allLogs.Clear();
+        RebuildVisibleLogs();
+    }
+
+    /// <summary>按搜索词与级别判断某一行是否可见。</summary>
+    private bool MatchesFilter(LogLineViewModel line)
+    {
+        var search = SearchText?.Trim();
+        if (!string.IsNullOrEmpty(search)
+            && !line.Message.Contains(search, StringComparison.OrdinalIgnoreCase)
+            && !line.Scope.Contains(search, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return string.Equals(LogLevel, "ALL", StringComparison.Ordinal)
+            || string.Equals(line.Level, LogLevel, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>按搜索词、级别与排序重建可见行；排序只改渲染顺序，不改缓存。</summary>
+    private void RebuildVisibleLogs()
+    {
+        var rows = _allLogs.Where(MatchesFilter).ToList();
+        if (IsDescending) rows.Reverse();
+        VisibleLogs.Clear();
+        foreach (var row in rows) VisibleLogs.Add(row);
+        NotifyLogCounters();
+        VisibleLogsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void NotifyLogCounters()
+    {
+        Notify(nameof(RecentCountText));
+        Notify(nameof(HasVisibleLogs));
+        Notify(nameof(EmptyLogTitle));
+        Notify(nameof(EmptyLogText));
+    }
+
+    private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
+        field = value;
+        Notify(propertyName);
+        return true;
+    }
+
+    private void Notify([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+}
+
+/// <summary>资源卡：底色由显示下标 %4 决定，数值与上限文案按上游 ResourceCards 规则拼接。</summary>
+public sealed class ResourceCardViewModel
+{
+    public ResourceCardViewModel(string name, string imagePath, string value, string? limit, string foot, int tintIndex)
+    {
+        Name = name;
+        Value = value;
+        Limit = limit;
+        Foot = foot;
+        TintIndex = tintIndex % 4;
+        Image = UIAssets.TryLoadBitmap($"avares://Alas.UI/Assets/{imagePath}.webp");
+    }
+
+    public string Name { get; }
+    public string Value { get; }
+    public string? Limit { get; }
+    public bool HasLimit => !string.IsNullOrEmpty(Limit);
+    public string Foot { get; }
+    public int TintIndex { get; }
+    public bool IsTint0 => TintIndex == 0;
+    public bool IsTint1 => TintIndex == 1;
+    public bool IsTint2 => TintIndex == 2;
+    public bool IsTint3 => TintIndex == 3;
+    public Bitmap? Image { get; }
+    public bool HasImage => Image is not null;
+    public bool HasFallback => Image is null;
+}
+
+public sealed record LogLineViewModel(string Date, string Time, string Level, string Scope, string Message);
+
+/// <summary>右栏：调度器卡 + 任务计划三组（running/pending/waiting 固定顺序）。</summary>
+public sealed class RailViewModel : INotifyPropertyChanged
+{
+    public RailViewModel(OverviewViewModel overview)
+    {
+        Overview = overview;
+        Overview.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is not (nameof(OverviewViewModel.IsSchedulerRunning))) return;
+            Notify(nameof(RunningCount));
+            Notify(nameof(IsStopped));
+        };
+        Groups = new ObservableCollection<RailGroupViewModel>
+        {
+            new("正在运行", "running", "CirclePlay", "当前没有正在运行的任务", Array.Empty<RailTaskViewModel>()),
+            new("待运行", "pending", "ListTodo", "当前没有待运行任务", new[]
+            {
+                new RailTaskViewModel("重启设置", "2020-01-01 00:00:00", "pending", "待运行"),
+                new RailTaskViewModel("委托", "2026-09-24 00:43:44", "pending", "待运行"),
+                new RailTaskViewModel("科研", "2026-09-24 01:13:44", "pending", "待运行"),
+                new RailTaskViewModel("收获", "2020-01-01 00:00:00", "pending", "待运行"),
+            }),
+            new("等待中", "waiting", "Hourglass", "当前没有等待中的任务", new[]
+            {
+                new RailTaskViewModel("主线图-1Plus", "2026-09-24 02:13:44", "waiting", "等待中"),
+                new RailTaskViewModel("后宅", "2026-09-24 01:43:44", "waiting", "等待中"),
+            }),
+        };
+    }
+
+    public OverviewViewModel Overview { get; }
+    public string InstanceName => "demo-main";
+    public string PlanCountText => "6";
+    public string RunningCount => Overview.IsSchedulerRunning ? "1" : "0";
+    public string PendingCount => "4";
+    public string WaitingCount => "2";
+    public bool IsStopped => !Overview.IsSchedulerRunning;
+    public ObservableCollection<RailGroupViewModel> Groups { get; }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void Notify(string propertyName) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+}
+
+public sealed class RailGroupViewModel
+{
+    public RailGroupViewModel(string title, string state, string iconKey, string emptyText, IReadOnlyList<RailTaskViewModel> tasks)
+    {
+        Title = title;
+        State = state;
+        Icon = IconLookup.Resolve(iconKey);
+        EmptyText = emptyText;
+        Tasks = new ObservableCollection<RailTaskViewModel>(tasks);
+    }
+
+    public string Title { get; }
+    public string State { get; }
+    public Geometry? Icon { get; }
+    public string EmptyText { get; }
+    public bool IsEmpty => Tasks.Count == 0;
+    public bool IsRunning => State == "running";
+    public bool IsWaiting => State == "waiting";
+    public string CountText => Tasks.Count.ToString(CultureInfo.InvariantCulture);
+    public ObservableCollection<RailTaskViewModel> Tasks { get; }
+}
+
+public sealed class RailTaskViewModel
+{
+    public RailTaskViewModel(string name, string time, string state, string stateLabel)
+    {
+        Name = name;
+        Time = time;
+        State = state;
+        StateLabel = stateLabel;
+        Icon = IconLookup.Resolve(state switch
+        {
+            "running" => "CirclePlay",
+            "pending" => "ListTodo",
+            _ => "Hourglass",
+        });
+    }
+
+    public string Name { get; }
+    public string Time { get; }
+    public string State { get; }
+    public string StateLabel { get; }
+    public bool IsWaiting => State == "waiting";
+    public Geometry? Icon { get; }
+}
+
+/// <summary>第一阶段未实现的页面：只显示入口名与说明，不伪造内容。</summary>
+public sealed class PlaceholderViewModel : INotifyPropertyChanged
+{
+    private string _title = "资源统计";
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string Title
+    {
+        get => _title;
+        private set
+        {
+            if (_title == value) return;
+            _title = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Title)));
+        }
+    }
+
+    public string Hint => string.IsNullOrEmpty(Group)
+        ? "该页面属于后续阶段：外壳与运行总览完成并复核后再按同一基准逐页实现。"
+        : $"任务配置页（{Group} → {Title}）属于后续阶段：本切片只做经典外壳与运行总览，不连接服务、不执行任务。";
+
+    private string Group { get; set; } = string.Empty;
+
+    /// <summary>选中侧栏任务后切到该任务的未实现页；只改导航状态，不触发任何运行。</summary>
+    public void LoadTask(string group, string task)
+    {
+        Group = group;
+        Title = task;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Hint)));
+    }
+
+    public void Load(string key)
+    {
+        Group = string.Empty;
+        Title = key switch
+        {
+            "home" => "主页",
+            "statistics" => "资源统计",
+            "updater" => "更新器",
+            "interface" => "界面设置",
+            "remote" => "远程访问",
+            "configs" => "配置管理",
+            "settings" => "系统设置",
+            "dev" => "开发者工具",
+            _ => "页面",
+        };
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Hint)));
+    }
+}
+
+/// <summary>从应用资源字典按图标名取几何；缺失时返回 null，由控件跳过绘制。</summary>
+internal static class IconLookup
+{
+    public static Geometry? Resolve(string key)
+    {
+        if (Application.Current is { } application
+            && application.TryGetResource($"Icon{key}", null, out var value)
+            && value is Geometry geometry)
+            return geometry;
+        return null;
+    }
+}
+
+internal static class UIAssets
+{
+    public static Bitmap? TryLoadBitmap(string uri)
+    {
+        try
+        {
+            return new Bitmap(Avalonia.Platform.AssetLoader.Open(new Uri(uri)));
+        }
+        catch (Exception)
+        {
+            // 位图解码不可用时退回矢量占位；不因素材问题让整个界面失败。
+            return null;
+        }
+    }
+}
+
+/// <summary>演示用命令：只更新本地预览状态，不调度任务、不访问服务。</summary>
+internal sealed class PreviewCommand(Action<object?> execute) : ICommand
+{
+    public event EventHandler? CanExecuteChanged { add { } remove { } }
+
+    public bool CanExecute(object? parameter) => true;
+
+    public void Execute(object? parameter) => execute(parameter);
+}

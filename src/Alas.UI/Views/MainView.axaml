@@ -1,117 +1,42 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:Alas.UI.ViewModels" xmlns:local="using:Alas.UI.Views"
-             x:Class="Alas.UI.Views.MainView" x:DataType="vm:WorkspaceViewModel" Classes="workspace">
-  <Grid x:Name="Shell" ColumnDefinitions="220,*" RowDefinitions="Auto,*" Background="{DynamicResource WorkspaceBackground}">
-    <Border x:Name="Navigation" Grid.RowSpan="2" Background="{DynamicResource WorkspaceSurface}"
-            BorderBrush="{DynamicResource WorkspaceBorder}" BorderThickness="0,0,1,0" Padding="18,24">
-      <DockPanel LastChildFill="True">
-        <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="6,0,0,28">
-          <TextBlock Text="ALAS SHARP" FontWeight="Bold" FontSize="21" />
-          <TextBlock Text="自动化工作区" Classes="muted" />
-        </StackPanel>
-        <StackPanel DockPanel.Dock="Bottom" Spacing="8">
-          <TextBlock Text="界面预览" FontWeight="SemiBold" />
-          <TextBlock Text="模拟数据 · 不连接设备" Classes="muted" FontSize="12" />
-        </StackPanel>
-        <StackPanel>
-          <TextBlock Text="工作区" Classes="muted" Margin="12,0,0,10" FontSize="12" />
-          <Button x:Name="OverviewButton" Content="工作区总览" Classes="nav" Classes.selected="{Binding IsOverview}" Command="{Binding ShowOverviewCommand}" />
-          <Button x:Name="SettingsButton" Content="配置编辑" Classes="nav" Classes.selected="{Binding IsSettings}" Command="{Binding ShowSettingsCommand}" />
-          <Button x:Name="LogsButton" Content="日志预览" Classes="nav" Classes.selected="{Binding IsLogs}" Command="{Binding ShowLogsCommand}" />
-        </StackPanel>
-      </DockPanel>
-    </Border>
-    <Border Grid.Column="1" Padding="24,14" Background="{DynamicResource WorkspaceSurface}"
-            BorderBrush="{DynamicResource WorkspaceBorder}" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="*,Auto">
-        <StackPanel VerticalAlignment="Center" Spacing="3">
-          <TextBlock Text="{Binding WorkspaceName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
-          <TextBlock Text="离线预览 · 模拟数据" Classes="muted" FontSize="12" />
-        </StackPanel>
-        <Button x:Name="ThemeButton" Grid.Column="1" Content="明暗主题" Command="{Binding ToggleThemeCommand}" AutomationProperties.Name="切换明暗主题" />
-      </Grid>
-    </Border>
-    <Grid Grid.Column="1" Grid.Row="1" RowDefinitions="Auto,*">
-      <StackPanel x:Name="CompactNavigation" IsVisible="False" Orientation="Horizontal" Spacing="6" Margin="16,12,16,0">
-        <Button x:Name="CompactOverviewButton" Content="总览" Command="{Binding ShowOverviewCommand}" />
-        <Button x:Name="CompactSettingsButton" Content="配置" Command="{Binding ShowSettingsCommand}" />
-        <Button x:Name="CompactLogsButton" Content="日志" Command="{Binding ShowLogsCommand}" />
-      </StackPanel>
-      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="24" Spacing="20">
-          <TextBlock Text="{Binding PageTitle}" Classes="title" />
-          <StackPanel IsVisible="{Binding IsOverview}" Spacing="20">
-            <Border Classes="card">
-              <StackPanel Spacing="8">
-                <TextBlock Text="界面就绪，等待连接" Classes="heading" />
-                <TextBlock Text="这是布局与交互预览。下面的任务、图表和日志均为演示内容。" TextWrapping="Wrap" Classes="muted" />
-              </StackPanel>
-            </Border>
-            <Grid ColumnDefinitions="*,16,*">
-              <Border Classes="card"><StackPanel Spacing="8"><TextBlock Text="演示任务" Classes="muted" /><TextBlock Text="3" FontSize="32" /><TextBlock Text="未执行" Classes="muted" /></StackPanel></Border>
-              <Border Grid.Column="2" Classes="card"><StackPanel Spacing="8"><TextBlock Text="设备连接" Classes="muted" /><TextBlock Text="0" FontSize="32" /><TextBlock Text="离线预览" Classes="muted" /></StackPanel></Border>
-            </Grid>
-            <Border Classes="card">
-              <StackPanel Spacing="14">
-                <TextBlock Text="任务计划" Classes="heading" />
-                <ItemsControl ItemsSource="{Binding Tasks}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:PreviewTask">
-                      <Grid ColumnDefinitions="*,Auto" Margin="0,8">
-                        <StackPanel Spacing="4"><TextBlock Text="{Binding Name}" /><TextBlock Text="{Binding Kind}" Classes="muted" FontSize="12" /></StackPanel>
-                        <TextBlock Grid.Column="1" Text="{Binding State}" Classes="muted" VerticalAlignment="Center" FontSize="12" />
-                      </Grid>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </StackPanel>
-            </Border>
-            <Border Classes="card">
-              <StackPanel Spacing="10">
-                <TextBlock Text="趋势图预览" Classes="heading" />
-                <TextBlock Text="固定演示序列，不代表游戏运行统计" Classes="muted" FontSize="12" />
-                <local:PreviewChart x:Name="TrendChart" Height="110" AutomationProperties.Name="固定演示趋势：上升后回落，不是运行统计" />
-              </StackPanel>
-            </Border>
-          </StackPanel>
-          <StackPanel IsVisible="{Binding IsSettings}" Spacing="20">
-            <Border Classes="card">
-              <StackPanel Spacing="12">
-                <TextBlock Text="工作区名称" Classes="heading" />
-                <TextBox x:Name="WorkspaceNameInput" Text="{Binding WorkspaceName, Mode=TwoWay}" PlaceholderText="输入工作区名称" AutomationProperties.Name="工作区名称" />
-                <TextBlock Text="修改仅保留在本次预览中。" Classes="muted" />
-              </StackPanel>
-            </Border>
-            <Border Classes="card">
-              <StackPanel Spacing="12">
-                <TextBlock Text="任务队列 JSON" Classes="heading" />
-                <TextBox x:Name="QueueEditor" Text="{Binding QueueJson, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="220" AutomationProperties.Name="任务队列 JSON" />
-                <Button x:Name="ValidateButton" Classes="primary" Content="检查 JSON 结构" Command="{Binding ValidateQueueCommand}" />
-                <TextBlock x:Name="ValidationText" Text="{Binding ValidationMessage}" TextWrapping="Wrap" Classes="muted" />
-              </StackPanel>
-            </Border>
-          </StackPanel>
-          <Border IsVisible="{Binding IsLogs}" Classes="card">
-            <Grid RowDefinitions="Auto,Auto,*">
-              <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
-                <TextBlock Text="日志流" Classes="heading" VerticalAlignment="Center" />
-                <Button x:Name="AddLogsButton" Grid.Column="1" Content="追加 100 行" Command="{Binding AddLogsCommand}" />
-              </Grid>
-              <TextBlock Grid.Row="1" Text="模拟日志 · 最多保留 2,000 行" Classes="muted" Margin="0,0,0,12" />
-              <ListBox x:Name="LogList" Grid.Row="2" ItemsSource="{Binding Logs}" Height="420" Background="Transparent" BorderThickness="0" AutomationProperties.Name="模拟日志">
-                <ListBox.ItemTemplate>
-                  <DataTemplate x:DataType="vm:PreviewLog">
-                    <StackPanel Spacing="3" Margin="0,5">
-                      <TextBlock Classes="muted" FontSize="12"><Run Text="{Binding Time}" /><Run Text="  " /><Run Text="{Binding Level}" /></TextBlock>
-                      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
-                    </StackPanel>
-                  </DataTemplate>
-                </ListBox.ItemTemplate>
-              </ListBox>
-            </Grid>
-          </Border>
-        </StackPanel>
+             xmlns:vm="using:Alas.UI.ViewModels" xmlns:views="using:Alas.UI.Views"
+             x:Class="Alas.UI.Views.MainView" x:DataType="vm:ShellViewModel" Classes="shell"
+             Classes.narrow="{Binding IsNarrow}" Classes.compact="{Binding IsCompact}"
+             FontFamily="{DynamicResource AlasFontSans}" FontSize="14"
+             Foreground="{DynamicResource AlasTextBrush}" Background="{DynamicResource AlasBgBrush}">
+  <Grid x:Name="Root">
+    <Grid x:Name="Layout" RowDefinitions="Auto,*" ColumnSpacing="{DynamicResource AlasShellGap}">
+      <Border x:Name="SidebarPanel" Grid.RowSpan="2" Grid.Column="0" Classes="sidebar" Width="232"
+              HorizontalAlignment="Left">
+        <views:SidebarView x:Name="Sidebar" />
+      </Border>
+
+      <Border x:Name="TopbarPanel" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" Classes="topbar"
+              Height="41.5" Margin="24,0,0,0" Padding="18,5.75" VerticalAlignment="Top">
+        <views:TopBarView x:Name="Topbar" />
+      </Border>
+
+      <ScrollViewer x:Name="MainScroll" Grid.Row="1" Grid.Column="1" Padding="{Binding MainPadding}"
+                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Panel x:Name="PageHost" MinHeight="{Binding ContentMinHeight}">
+          <Panel x:Name="OverviewHost" IsVisible="{Binding IsOverviewActive}">
+            <views:OverviewView x:Name="OverviewPage" DataContext="{Binding Overview}" />
+          </Panel>
+          <Panel x:Name="PlaceholderHost" IsVisible="{Binding !IsOverviewActive}">
+            <views:PlaceholderView x:Name="PlaceholderPage" DataContext="{Binding Placeholder}" />
+          </Panel>
+        </Panel>
       </ScrollViewer>
+
+      <Border x:Name="RailPanel" Grid.Row="1" Grid.Column="2" Classes="rail" HorizontalAlignment="Right"
+              IsVisible="{Binding IsRailVisible}">
+        <views:RightRailView x:Name="Rail" />
+      </Border>
+
+      <!-- 窄屏浮层的点击遮罩：必须和浮层是同一层级的兄弟节点，ZIndex 低于侧栏/右栏（各为 10），
+           否则遮罩会盖住浮层本身、把浮层里的点击也一并吃掉。保持透明以不改变像素。 -->
+      <Border x:Name="Scrim" Grid.RowSpan="2" Grid.ColumnSpan="3" Background="Transparent" ZIndex="5"
+              IsVisible="{Binding IsScrimVisible}" AutomationProperties.Name="关闭浮层" />
     </Grid>
   </Grid>
 </UserControl>

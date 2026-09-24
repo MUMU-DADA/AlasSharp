@@ -1,0 +1,60 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Alas.UI.ViewModels" xmlns:controls="using:Alas.UI.Controls"
+             x:Class="Alas.UI.Views.TopBarView" x:DataType="vm:ShellViewModel">
+  <Grid ColumnDefinitions="Auto,*,Auto">
+    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="{Binding TopbarSpacing}" VerticalAlignment="Center">
+      <Button x:Name="MobileToggle" Theme="{StaticResource IconButtonTheme}" Classes="narrow-toggle"
+              Classes.narrow="{Binding IsNarrow}" Command="{Binding OpenDrawerCommand}"
+              AutomationProperties.Name="打开导航">
+        <controls:Icon Data="{StaticResource IconMenu}" Size="20" />
+      </Button>
+      <Button x:Name="RailToggle" Theme="{StaticResource IconButtonTheme}" Classes="narrow-toggle"
+              Classes.narrow="{Binding IsNarrow}" Command="{Binding ToggleRailCommand}"
+              AutomationProperties.Name="打开调度与任务">
+        <controls:Icon Data="{StaticResource IconCalendarClock}" Size="18" />
+      </Button>
+    </StackPanel>
+    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{Binding TopbarSpacing}"
+                HorizontalAlignment="{Binding BreadcrumbAlignment}" VerticalAlignment="Center">
+    <StackPanel x:Name="TopbarActions" Classes="topbar-actions" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+      <!-- 上游这里还有「标签模式 / 标签字号」两个悬停展开的开关；它们作用于实例标签条，
+           而标签条属于后续切片，本阶段没有任何可用行为，因此不渲染（显示禁用图标同样是伪交互），
+           等标签条落地时一并补回。 -->
+      <Button x:Name="HomeLink" Theme="{StaticResource TextButtonTheme}" FontSize="13"
+              Foreground="{DynamicResource AlasMutedBrush}" Padding="8,6"
+              Command="{Binding SelectNavCommand}" CommandParameter="home" AutomationProperties.Name="主页">
+        <TextBlock Text="主页" />
+      </Button>
+    </StackPanel>
+    <TextBlock Classes="breadcrumb-separator" Text="/" VerticalAlignment="Center" />
+    <Border CornerRadius="9" Padding="2">
+      <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+        <Button x:Name="InstanceCaption" Theme="{StaticResource TextButtonTheme}" Padding="6,4" IsEnabled="False"
+                ToolTip.Tip="{Binding PendingNotice}" AutomationProperties.Name="当前实例">
+          <TextBlock Classes="breadcrumb-current" Text="{Binding InstanceName}" />
+        </Button>
+        <Button x:Name="InstanceSwitch" Theme="{StaticResource IconButtonTheme}" Width="22" Height="20" CornerRadius="4"
+                IsEnabled="False" ToolTip.Tip="{Binding PendingNotice}" AutomationProperties.Name="切换实例">
+          <controls:Icon Data="{StaticResource IconChevronDown}" Size="14" />
+        </Button>
+      </StackPanel>
+    </Border>
+    <TextBlock Classes="breadcrumb-separator" Text="/" VerticalAlignment="Center"
+               IsVisible="{Binding !IsOverviewActive}" />
+    <TextBlock x:Name="BreadcrumbTail" Classes="breadcrumb-current" Text="{Binding BreadcrumbTail}"
+               VerticalAlignment="Center" IsVisible="{Binding !IsOverviewActive}" />
+    </StackPanel>
+    <!-- 主题入口：上游把主题切换放在「界面设置」页，本阶段该页未实现。这里放在顶栏右端的空白处
+         （宽屏顶栏右端本来没有内容，因此不会移动面包屑），窄屏隐藏以保持窄屏顶栏与上游一致；
+         已登记为对上游的已知增补。 -->
+    <Button x:Name="ThemeToggle" Grid.Column="2" Theme="{StaticResource IconButtonTheme}"
+            Classes="wide-only" Classes.wide="{Binding IsWide}"
+            Command="{Binding ToggleThemeCommand}" AutomationProperties.Name="切换明暗主题"
+            ToolTip.Tip="切换明暗主题（本阶段由顶栏提供；上游在界面设置页）">
+      <Panel>
+        <controls:Icon Data="{StaticResource IconSun}" Size="17" IsVisible="{Binding IsDark}" />
+        <controls:Icon Data="{StaticResource IconMoon}" Size="17" IsVisible="{Binding !IsDark}" />
+      </Panel>
+    </Button>
+  </Grid>
+</UserControl>

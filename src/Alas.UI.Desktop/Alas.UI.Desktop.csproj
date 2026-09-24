@@ -9,4 +9,14 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
     <ProjectReference Include="../Alas.UI/Alas.UI.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!--
+      发行许可随包分发：把 Alas.UI 的 Assets/Notices/** 复制到桌面发布输出的 Assets/Notices/。
+      库工程自身的 Content 不会自动流到引用方的发布输出，因此这里显式声明；
+      Notices 只是文本文件，不参与程序集内嵌资源。
+    -->
+    <Content Include="../Alas.UI/Assets/Notices/**"
+             Link="Assets/Notices/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

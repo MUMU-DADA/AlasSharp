@@ -1,0 +1,120 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Alas.UI.ViewModels" xmlns:local="using:Alas.UI.Views"
+             x:Class="Alas.UI.Views.OfflinePreviewView" x:DataType="vm:OfflinePreviewViewModel">
+  <!--
+    旧原型的离线预览页：工作区名双向绑定、任务队列 JSON 校验与 2,000 行日志列表。
+    外壳复刻后不再作为产品页面展示，但实现与无窗口回归保留，作为后续上游页面的基础。
+  -->
+  <StackPanel Margin="24" Spacing="20">
+    <TextBlock Text="离线预览（非上游界面）" Classes="page-title" FontSize="24" />
+    <TextBlock Text="仅用于保留旧原型的离线能力与回归：不连接服务或设备，按钮只改本地预览状态。" Classes="muted"
+               TextWrapping="Wrap" />
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <Button x:Name="PreviewOverviewButton" Content="总览" Command="{Binding ShowOverviewCommand}" />
+      <Button x:Name="PreviewSettingsButton" Content="配置编辑" Command="{Binding ShowSettingsCommand}" />
+      <Button x:Name="PreviewLogsButton" Content="日志预览" Command="{Binding ShowLogsCommand}" />
+      <Button x:Name="ThemeButton" Content="明暗主题" Command="{Binding ToggleThemeCommand}"
+              AutomationProperties.Name="切换明暗主题" />
+    </StackPanel>
+    <TextBlock Text="{Binding PageTitle}" Classes="heading" />
+
+    <StackPanel IsVisible="{Binding IsOverview}" Spacing="20">
+      <Border Classes="panel" Padding="20">
+        <StackPanel Spacing="8">
+          <TextBlock Text="界面就绪，等待连接" Classes="heading" />
+          <TextBlock Text="这是布局与交互预览。下面的任务、图表和日志均为演示内容。" TextWrapping="Wrap"
+                     Classes="muted" />
+        </StackPanel>
+      </Border>
+      <Grid ColumnDefinitions="*,16,*">
+        <Border Classes="panel" Padding="20">
+          <StackPanel Spacing="8">
+            <TextBlock Text="演示任务" Classes="muted" />
+            <TextBlock Text="3" FontSize="32" />
+            <TextBlock Text="未执行" Classes="muted" />
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="2" Classes="panel" Padding="20">
+          <StackPanel Spacing="8">
+            <TextBlock Text="设备连接" Classes="muted" />
+            <TextBlock Text="0" FontSize="32" />
+            <TextBlock Text="离线预览" Classes="muted" />
+          </StackPanel>
+        </Border>
+      </Grid>
+      <Border Classes="panel" Padding="20">
+        <StackPanel Spacing="14">
+          <TextBlock Text="任务计划" Classes="heading" />
+          <ItemsControl ItemsSource="{Binding Tasks}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:PreviewTask">
+                <Grid ColumnDefinitions="*,Auto" Margin="0,8">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="{Binding Name}" />
+                    <TextBlock Text="{Binding Kind}" Classes="muted" FontSize="12" />
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Text="{Binding State}" Classes="muted" VerticalAlignment="Center"
+                             FontSize="12" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+      <Border Classes="panel" Padding="20">
+        <StackPanel Spacing="10">
+          <TextBlock Text="趋势图预览" Classes="heading" />
+          <TextBlock Text="固定演示序列，不代表游戏运行统计" Classes="muted" FontSize="12" />
+          <local:PreviewChart x:Name="TrendChart" Height="110"
+                              AutomationProperties.Name="固定演示趋势：上升后回落，不是运行统计" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+
+    <StackPanel IsVisible="{Binding IsSettings}" Spacing="20">
+      <Border Classes="panel" Padding="20">
+        <StackPanel Spacing="12">
+          <TextBlock Text="工作区名称" Classes="heading" />
+          <TextBox x:Name="WorkspaceNameInput" Text="{Binding WorkspaceName, Mode=TwoWay}"
+                   PlaceholderText="输入工作区名称" AutomationProperties.Name="工作区名称" />
+          <TextBlock Text="修改仅保留在本次预览中。" Classes="muted" />
+        </StackPanel>
+      </Border>
+      <Border Classes="panel" Padding="20">
+        <StackPanel Spacing="12">
+          <TextBlock Text="任务队列 JSON" Classes="heading" />
+          <TextBox x:Name="QueueEditor" Text="{Binding QueueJson, Mode=TwoWay}" AcceptsReturn="True"
+                   TextWrapping="Wrap" MinHeight="220" AutomationProperties.Name="任务队列 JSON" />
+          <Button x:Name="ValidateButton" Theme="{StaticResource PrimaryButtonTheme}" Content="检查 JSON 结构"
+                  Command="{Binding ValidateQueueCommand}" HorizontalAlignment="Left" />
+          <TextBlock x:Name="ValidationText" Text="{Binding ValidationMessage}" TextWrapping="Wrap" Classes="muted" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+
+    <Border IsVisible="{Binding IsLogs}" Classes="panel" Padding="20">
+      <Grid RowDefinitions="Auto,Auto,*">
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+          <TextBlock Text="日志流" Classes="heading" VerticalAlignment="Center" />
+          <Button x:Name="AddLogsButton" Grid.Column="1" Content="追加 100 行" Command="{Binding AddLogsCommand}" />
+        </Grid>
+        <TextBlock Grid.Row="1" Text="模拟日志 · 最多保留 2,000 行" Classes="muted" Margin="0,0,0,12" />
+        <ListBox x:Name="LogList" Grid.Row="2" ItemsSource="{Binding Logs}" Height="420" Background="Transparent"
+                 BorderThickness="0" AutomationProperties.Name="模拟日志">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:PreviewLog">
+              <StackPanel Spacing="3" Margin="0,5">
+                <TextBlock Classes="muted" FontSize="12">
+                  <Run Text="{Binding Time}" />
+                  <Run Text="  " />
+                  <Run Text="{Binding Level}" />
+                </TextBlock>
+                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+    </Border>
+  </StackPanel>
+</UserControl>

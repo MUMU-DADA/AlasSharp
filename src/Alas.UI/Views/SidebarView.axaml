@@ -1,0 +1,97 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Alas.UI.ViewModels" xmlns:controls="using:Alas.UI.Controls"
+             x:Class="Alas.UI.Views.SidebarView" x:DataType="vm:ShellViewModel">
+  <DockPanel LastChildFill="True">
+    <Grid DockPanel.Dock="Top" Height="56" Margin="10,0,10,10" ColumnDefinitions="Auto,*,Auto">
+      <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+        <Border Width="32" Height="32" CornerRadius="{DynamicResource AlasLogoRadius}" ClipToBounds="True"
+                VerticalAlignment="Center">
+          <Image x:Name="BrandLogo" Width="32" Height="32" Source="avares://Alas.UI/Assets/Brand/azurpilot-64.png"
+                 AutomationProperties.Name="AzurPilot 标识" />
+        </Border>
+        <TextBlock Classes="brand-title" Text="AzurPilot" VerticalAlignment="Center" />
+        <Border Classes="update-notice" VerticalAlignment="Center">
+          <TextBlock Text="新" />
+        </Border>
+      </StackPanel>
+      <Button x:Name="DrawerCloseButton" Grid.Column="2" Theme="{StaticResource IconButtonTheme}"
+              IsVisible="{Binding IsNarrow}" Command="{Binding CloseDrawerCommand}"
+              AutomationProperties.Name="关闭导航">
+        <controls:Icon Data="{StaticResource IconX}" Size="18" />
+      </Button>
+    </Grid>
+
+    <ItemsControl x:Name="PrimaryNav" DockPanel.Dock="Top" ItemsSource="{Binding PrimaryNav}" Margin="0,0,0,28">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Spacing="5" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:NavEntry">
+          <Button Theme="{StaticResource NavItemTheme}" Classes.active="{Binding IsActive}"
+                  Command="{Binding $parent[UserControl].((vm:ShellViewModel)DataContext).SelectNavCommand}"
+                  CommandParameter="{Binding Key}" AutomationProperties.Name="{Binding Label}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <controls:Icon Data="{Binding Icon}" Size="20" Foreground="{DynamicResource AlasAccentBrush}" />
+              <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <StackPanel DockPanel.Dock="Top">
+      <Grid Height="28" Margin="0,0,0,8" ColumnDefinitions="Auto,*,Auto">
+        <TextBlock Classes="sidebar-label" Text="任务配置" VerticalAlignment="Center" Margin="10,0,0,0" />
+        <Button x:Name="TaskSearchButton" Grid.Column="2" Theme="{StaticResource IconButtonTheme}" Classes="sidebar-search"
+                AutomationProperties.Name="搜索任务">
+          <controls:Icon Data="{StaticResource IconSearch}" Size="15" />
+        </Button>
+      </Grid>
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="2,0,2,15">
+        <ItemsControl x:Name="TaskNav" ItemsSource="{Binding TaskGroups}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="2" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:TaskGroupEntry">
+              <StackPanel>
+                <Button Theme="{StaticResource TaskGroupTheme}" Classes="task-group"
+                        Command="{Binding $parent[UserControl].((vm:ShellViewModel)DataContext).ToggleTaskGroupCommand}"
+                        CommandParameter="{Binding}" AutomationProperties.Name="{Binding Title}">
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <controls:Icon Data="{Binding Icon}" Size="17" VerticalAlignment="Center" Foreground="{DynamicResource AlasAccentBrush}" />
+                    <TextBlock Grid.Column="1" Classes="task-group-title" Text="{Binding Title}"
+                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                    <controls:Icon Grid.Column="2" Data="{StaticResource IconChevronRight}" Size="14"
+                                   Foreground="{DynamicResource AlasMutedBrush}" VerticalAlignment="Center"
+                                   IsVisible="{Binding !IsExpanded}" />
+                    <controls:Icon Grid.Column="2" Data="{StaticResource IconChevronDown}" Size="14"
+                                   Foreground="{DynamicResource AlasMutedBrush}" VerticalAlignment="Center"
+                                   IsVisible="{Binding IsExpanded}" />
+                  </Grid>
+                </Button>
+                <!-- 展开后按上游静态目录列出该分组的任务；每一项切到明确的「未实现」页。 -->
+                <ItemsControl x:Name="TaskSubmenu" ItemsSource="{Binding Tasks}" IsVisible="{Binding IsExpanded}"
+                              Margin="22,2,0,4">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:TaskEntry">
+                      <Button Theme="{StaticResource TaskGroupTheme}" Classes="task-submenu-item"
+                              Command="{Binding $parent[UserControl].((vm:ShellViewModel)DataContext).SelectTaskCommand}"
+                              CommandParameter="{Binding}" AutomationProperties.Name="{Binding Label}">
+                        <TextBlock Text="{Binding Label}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </StackPanel>
+  </DockPanel>
+</UserControl>
