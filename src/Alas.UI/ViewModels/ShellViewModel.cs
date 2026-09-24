@@ -759,9 +759,9 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
                 new("心智魔方", "Resources/cube", "384", null, "记录于 09-24 01:13:44", 3),
             }
             : new ObservableCollection<ResourceCardViewModel>();
-        Selection.PropertyChanged += (_, _) =>
+        Selection.PropertyChanged += (_, args) =>
         {
-            if (_previewData) return;
+            if (_previewData || args.PropertyName is not (null or nameof(ResourceSelection.Selected))) return;
             Resources.Clear();
             foreach (var choice in Selection.Selected) Resources.Add(choice.Card);
         };

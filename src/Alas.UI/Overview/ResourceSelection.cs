@@ -38,6 +38,8 @@ public sealed class ResourceSelection(IResourceSelectionStore store) : INotifyPr
     public void SetInstance(string instance)
     {
         if (_instance == instance) return;
+        var previousKeys = _keys;
+        var previousError = StorageError;
         _instance = instance;
         _observation = null;
         _keys = [.. Defaults];
@@ -53,6 +55,7 @@ public sealed class ResourceSelection(IResourceSelectionStore store) : INotifyPr
         catch (Exception error) when (error is not OutOfMemoryException)
         { StorageError = "无法读取资源卡片偏好，本次使用默认搭配。"; }
         Refresh();
+        NotifyPreferenceChanges(previousKeys, previousError);
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -84,24 +87,58 @@ public sealed class ResourceSelection(IResourceSelectionStore store) : INotifyPr
     private void Change(string[] keys)
     {
         if (_instance.Length == 0) return;
+        var previousKeys = _keys;
+        var previousError = StorageError;
         _keys = keys.Distinct(StringComparer.Ordinal).ToArray();
         StorageError = "";
         try { store.Write(_instance, new JsonArray(_keys.Select(key => (JsonNode?)JsonValue.Create(key)).ToArray()).ToJsonString()); }
         catch (Exception error) when (error is not OutOfMemoryException)
         { StorageError = "无法保存资源卡片偏好，当前选择仅在本次页面内有效。"; }
         Refresh();
+        NotifyPreferenceChanges(previousKeys, previousError);
         SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void NotifyPreferenceChanges(string[] previousKeys, string previousError)
+    {
+        if (!previousKeys.SequenceEqual(_keys, StringComparer.Ordinal))
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Keys)));
+        if (previousError != StorageError)
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StorageError)));
     }
 
     private void Refresh()
     {
         var cards = SchedulerObservation.Resources(_observation, _keys);
-        Selected = _keys.Select((key, index) => new ResourceChoice(key, cards[index].Name, cards[index])).ToArray();
+        var selected = _keys.Select((key, index) => new ResourceChoice(key, cards[index].Name, cards[index])).ToArray();
         var availableKeys = (_observation?["resources"] as JsonArray)?.OfType<JsonObject>()
             .Select(item => item["name"] is JsonValue name && name.TryGetValue<string>(out var key) ? key : null)
             .OfType<string>().Distinct(StringComparer.Ordinal).Where(key => !_keys.Contains(key, StringComparer.Ordinal)).ToArray() ?? [];
         var availableCards = SchedulerObservation.Resources(_observation, availableKeys);
-        Available = availableKeys.Select((key, index) => new ResourceChoice(key, availableCards[index].Name, availableCards[index])).ToArray();
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
+        var available = availableKeys.Select((key, index) => new ResourceChoice(key, availableCards[index].Name, availableCards[index])).ToArray();
+        // Compare the projected display values, not mutable JSON identity or the whole observation.
+        // Log-only snapshots must retain card/list identities so bound templates are not rebuilt.
+        var selectedChanged = !SameDisplay(Selected, selected);
+        var availableChanged = !SameDisplay(Available, available);
+        if (selectedChanged) Selected = selected;
+        if (availableChanged) Available = available;
+        if (selectedChanged) PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Selected)));
+        if (availableChanged) PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Available)));
+    }
+
+    private static bool SameDisplay(IReadOnlyList<ResourceChoice> current, IReadOnlyList<ResourceChoice> next)
+    {
+        if (current.Count != next.Count) return false;
+        for (var index = 0; index < current.Count; index++)
+        {
+            var before = current[index];
+            var after = next[index];
+            if (before.Key != after.Key || before.Label != after.Label
+                || before.Card.Name != after.Card.Name || before.Card.Value != after.Card.Value
+                || before.Card.Limit != after.Card.Limit || before.Card.Foot != after.Card.Foot
+                || before.Card.TintIndex != after.Card.TintIndex || !ReferenceEquals(before.Card.Image, after.Card.Image))
+                return false;
+        }
+        return true;
     }
 }

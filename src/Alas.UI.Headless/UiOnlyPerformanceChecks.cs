@@ -38,6 +38,8 @@ internal static class UiOnlyPerformanceChecks
             var logs = view.GetVisualDescendants().OfType<LogViewport>().Single(control => control.Name == "LogList");
             var scroll = view.GetVisualDescendants().OfType<ScrollViewer>().Single(control => control.Name == "LogScroll");
             var model = view.Model.Overview;
+            int resourceCollectionChanges = 0;
+            model.Resources.CollectionChanged += (_, _) => resourceCollectionChanges++;
             foreach (int width in new[] { 1280, 390 })
             {
                 window.Width = width;
@@ -55,6 +57,10 @@ internal static class UiOnlyPerformanceChecks
                     int builtBefore = logs.RowsBuilt;
                     int rentedBefore = logs.RowsRented;
                     int measuredBefore = logs.RowsMeasured;
+                    int resourcesChangedBefore = resourceCollectionChanges;
+                    var selectedBefore = model.Selection.Selected;
+                    var availableBefore = model.Selection.Available;
+                    var resourceCardsBefore = model.Resources.ToArray();
                     for (int i = 0; i < samples; i++)
                     {
                         long allocated = GC.GetAllocatedBytesForCurrentThread();
@@ -72,6 +78,11 @@ internal static class UiOnlyPerformanceChecks
                             + $"offset={scroll.Offset.Y}, extent={scroll.Extent.Height}, viewport={scroll.Viewport.Height}, "
                             + $"scrollHeight={scroll.Bounds.Height}, realized={logs.FirstRealizedIndex}..{logs.LastRealizedIndex}");
                     }
+                    Check(resourceCollectionChanges == resourcesChangedBefore
+                        && ReferenceEquals(model.Selection.Selected, selectedBefore)
+                        && ReferenceEquals(model.Selection.Available, availableBefore)
+                        && resourceCardsBefore.SequenceEqual(model.Resources),
+                        "log-only snapshots preserve resource list and card identities without collection changes");
                     timings.Sort(); allocations.Sort();
                     results.Add(new
                     {
@@ -84,6 +95,7 @@ internal static class UiOnlyPerformanceChecks
                         built = logs.RowsBuilt - builtBefore,
                         rented = logs.RowsRented - rentedBefore,
                         measured = logs.RowsMeasured - measuredBefore,
+                        resource_collection_changes = resourceCollectionChanges - resourcesChangedBefore,
                     });
                 }
             }
