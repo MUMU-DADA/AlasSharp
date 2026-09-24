@@ -18,6 +18,7 @@ public sealed class ControlServer
 {
     private const int BodyLimit = ControlProtocol.MaxRequestBodyBytes;
     private readonly ControlWorkspace _workspace;
+    private readonly ConfigWorkspace _config;
     private readonly string _tools;
     private readonly StaticUiFiles? _ui;
     private readonly int _port;
@@ -31,6 +32,7 @@ public sealed class ControlServer
         _port = port;
         _ui = uiRoot is null ? null : new StaticUiFiles(uiRoot);
         _workspace = new ControlWorkspace(root, repo, data, tools, artifacts, workspace);
+        _config = new ConfigWorkspace(repo);
     }
 
     public int Run() => RunAsync().GetAwaiter().GetResult();
@@ -122,13 +124,63 @@ public sealed class ControlServer
                 await Reply(context, report is null ? 404 : 200, report ?? Error("找不到运行报告"));
                 return;
             }
+            if (HttpMethods.IsGet(request.Method) && path == "/api/instances")
+            {
+                await Reply(context, 200, Instances(_config.List()));
+                return;
+            }
+            if (HttpMethods.IsGet(request.Method) && path == "/api/schema")
+            {
+                string language = request.Query["language"].ToString();
+                var schema = _config.Schema(string.IsNullOrWhiteSpace(language) ? "zh-CN" : language);
+                await Reply(context, 200, new JsonObject
+                {
+                    ["menu"] = schema.Menu,
+                    ["args"] = schema.Args,
+                    ["translations"] = schema.Translations,
+                });
+                return;
+            }
+            if (HttpMethods.IsGet(request.Method) && TryInstancePath(path, "config", out string? configInstance))
+            {
+                var config = _config.Get(configInstance);
+                await Reply(context, 200, Config(config));
+                return;
+            }
+            if (HttpMethods.IsPost(request.Method) && path == "/api/instances")
+            {
+                RequireToken(request);
+                var body = await ReadBody(request);
+                string instance = RequiredString(body, "instance");
+                string? source = OptionalString(body, "source");
+                string? importFile = OptionalString(body, "import_file");
+                var created = _config.Create(instance, source, importFile);
+                await Reply(context, 201, Config(created));
+                return;
+            }
+            if (HttpMethods.IsPatch(request.Method) && TryInstancePath(path, "config", out configInstance))
+            {
+                RequireToken(request);
+                var body = await ReadBody(request);
+                string? revision = OptionalString(body, "revision");
+                if (body["changes"] is not JsonArray changes || changes.Count is < 1 or > 200)
+                    throw new ArgumentException("changes 必须包含 1 到 200 项");
+                var parsed = changes.Select(ParseChange).ToArray();
+                var updated = _config.Patch(configInstance, revision, parsed);
+                await Reply(context, 200, Config(updated));
+                return;
+            }
+            if (HttpMethods.IsDelete(request.Method) && TryInstancePath(path, "instances", out string? deleteInstance))
+            {
+                RequireToken(request);
+                var body = await ReadBody(request);
+                _config.Delete(deleteInstance, RequiredString(body, "revision"));
+                await Reply(context, 200, new JsonObject { ["deleted"] = deleteInstance });
+                return;
+            }
             if (HttpMethods.IsPost(request.Method) && path is "/api/queue" or "/api/run" or "/api/stop")
             {
-                if (request.Headers[ControlProtocol.TokenHeader] != _token)
-                {
-                    await Reply(context, 403, Error("请求令牌无效"));
-                    return;
-                }
+                RequireToken(request);
                 if (path == "/api/stop")
                 {
                     bool stopped = _workspace.RequestStop();
@@ -148,6 +200,11 @@ public sealed class ControlServer
         catch (IOException) when (context.RequestAborted.IsCancellationRequested) { }
         catch (BadHttpRequestException error) { await Reply(context, error.StatusCode, Error("无效的 HTTP 请求")); }
         catch (ControlWorkspaceUnavailableException error) { await Reply(context, 409, Error(error.Message)); }
+        catch (ConfigWorkspaceException error)
+        {
+            int status = error.Code switch { "FORBIDDEN" => 403, "CONFLICT" => 409, "NOT_FOUND" => 404, _ => 400 };
+            await Reply(context, status, Error(error.Message));
+        }
         catch (ArgumentException error) { await Reply(context, 400, Error(error.Message)); }
         catch (Exception error) when (error is JsonException or FormatException or InvalidOperationException)
         {
@@ -236,6 +293,58 @@ public sealed class ControlServer
     }
 
     private static JsonObject Error(string message) => new() { ["error"] = message };
+
+    private void RequireToken(HttpRequest request)
+    {
+        if (request.Headers[ControlProtocol.TokenHeader] != _token)
+            throw new ConfigWorkspaceException("FORBIDDEN", "请求令牌无效");
+    }
+
+    private static bool TryInstancePath(string path, string prefix, out string instance)
+    {
+        string marker = "/api/" + prefix + "/";
+        if (path.StartsWith(marker, StringComparison.Ordinal) && path.Length > marker.Length)
+        {
+            instance = Uri.UnescapeDataString(path[marker.Length..]);
+            return instance.Length > 0 && !instance.Contains('/');
+        }
+        instance = "";
+        return false;
+    }
+
+    private static JsonObject Instances(IReadOnlyList<ConfigInstance> instances) => new()
+    {
+        ["instances"] = new JsonArray(instances.Select(item => new JsonObject
+        {
+            ["instance"] = item.Instance,
+            ["revision"] = item.Revision,
+            ["serial"] = item.Serial,
+            ["server"] = item.Server,
+        }).ToArray()),
+    };
+
+    private static JsonObject Config(ConfigSnapshot config) => new()
+    {
+        ["instance"] = config.Instance,
+        ["revision"] = config.Revision,
+        ["values"] = config.Values,
+    };
+
+    private static Alas.Runtime.ConfigChange ParseChange(JsonNode? node)
+    {
+        if (node is not JsonObject change) throw new ArgumentException("配置修改项必须是对象");
+        string path = RequiredString(change, "path");
+        return new Alas.Runtime.ConfigChange(path, change["value"]?.DeepClone());
+    }
+
+    private static string RequiredString(JsonObject body, string key)
+    {
+        string? value = body[key]?.GetValue<string>()?.Trim();
+        return string.IsNullOrWhiteSpace(value) ? throw new ArgumentException($"缺少 {key}") : value;
+    }
+
+    private static string? OptionalString(JsonObject body, string key)
+        => body[key] is null ? null : RequiredString(body, key);
 
     private static async Task Reply(HttpContext context, int status, JsonObject payload)
     {

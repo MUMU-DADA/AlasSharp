@@ -85,6 +85,43 @@ public sealed partial class ControlClient : IDisposable
         return ReadReportAsync(stamp, cancellationToken);
     }
 
+    public async Task<InstanceListResponse> ListInstancesAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_endpoint, "api/instances"));
+        return await SendAsync(request, HttpStatusCode.OK, ControlJsonContext.Default.InstanceListResponse, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<SchemaResponse> GetSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            new Uri(_endpoint, "api/schema?language=" + Uri.EscapeDataString(language)));
+        return await SendAsync(request, HttpStatusCode.OK, ControlJsonContext.Default.SchemaResponse, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<ConfigResponse> GetConfigAsync(string instance, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instance);
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            new Uri(_endpoint, "api/config/" + Uri.EscapeDataString(instance)));
+        return await SendAsync(request, HttpStatusCode.OK, ControlJsonContext.Default.ConfigResponse, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default)
+        => WriteReadAsync("api/config/" + Uri.EscapeDataString(request.Instance), request,
+            ControlJsonContext.Default.ConfigPatchRequest, ControlJsonContext.Default.ConfigResponse,
+            HttpMethod.Patch, HttpStatusCode.OK, cancellationToken);
+
+    public Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default)
+        => WriteReadAsync("api/instances", request, ControlJsonContext.Default.InstanceCreateRequest,
+            ControlJsonContext.Default.ConfigResponse, HttpMethod.Post, HttpStatusCode.Created, cancellationToken);
+
+    public Task DeleteInstanceAsync(InstanceDeleteRequest request, CancellationToken cancellationToken = default)
+        => WriteAsync("api/instances/" + Uri.EscapeDataString(request.Instance), request,
+            ControlJsonContext.Default.InstanceDeleteRequest, HttpMethod.Delete, HttpStatusCode.OK, cancellationToken);
+
     private async Task<JsonObject> ReadReportAsync(string stamp, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get,
@@ -129,6 +166,38 @@ public sealed partial class ControlClient : IDisposable
         var response = await SendAsync(request, expected, ControlJsonContext.Default.ControlAcknowledgement, cancellationToken)
             .ConfigureAwait(false);
         if (!response.Ok) throw new ControlProtocolException("服务未确认操作已接受");
+    }
+
+    private async Task<TResponse> WriteReadAsync<TRequest, TResponse>(
+        string path, TRequest body, JsonTypeInfo<TRequest> requestType, JsonTypeInfo<TResponse> responseType,
+        HttpMethod method, HttpStatusCode expected, CancellationToken cancellationToken)
+    {
+        string token = Volatile.Read(ref _token)
+            ?? throw new InvalidOperationException("请先读取服务状态以取得当前服务的写令牌");
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(body, requestType);
+        if (bytes.Length > ControlProtocol.MaxRequestBodyBytes)
+            throw new ArgumentException("请求体不能超过 1 MiB", nameof(body));
+        using var request = new HttpRequestMessage(method, new Uri(_endpoint, path));
+        request.Headers.Add(ControlProtocol.TokenHeader, token);
+        request.Content = new ByteArrayContent(bytes);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+        return await SendAsync(request, expected, responseType, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task WriteAsync<T>(string path, T body, JsonTypeInfo<T> type,
+                                     HttpMethod method, HttpStatusCode expected, CancellationToken cancellationToken)
+    {
+        string token = Volatile.Read(ref _token)
+            ?? throw new InvalidOperationException("请先读取服务状态以取得当前服务的写令牌");
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(body, type);
+        if (bytes.Length > ControlProtocol.MaxRequestBodyBytes)
+            throw new ArgumentException("请求体不能超过 1 MiB", nameof(body));
+        using var request = new HttpRequestMessage(method, new Uri(_endpoint, path));
+        request.Headers.Add(ControlProtocol.TokenHeader, token);
+        request.Content = new ByteArrayContent(bytes);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+        _ = await SendAsync(request, expected, ControlJsonContext.Default.JsonObject, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async Task<T> SendAsync<T>(HttpRequestMessage request, HttpStatusCode expected,

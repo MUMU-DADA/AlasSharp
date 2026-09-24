@@ -79,6 +79,59 @@ public sealed record ControlError
     public required string Error { get; init; }
 }
 
+public sealed record InstanceSummary
+{
+    public required string Instance { get; init; }
+    public required string Revision { get; init; }
+    public string? Serial { get; init; }
+    public string? Server { get; init; }
+}
+
+public sealed record InstanceListResponse
+{
+    public required IReadOnlyList<InstanceSummary> Instances { get; init; }
+}
+
+public sealed record ConfigResponse
+{
+    public required string Instance { get; init; }
+    public required string Revision { get; init; }
+    public required JsonObject Values { get; init; }
+}
+
+public sealed record SchemaResponse
+{
+    public required JsonObject Menu { get; init; }
+    public required JsonObject Args { get; init; }
+    public required JsonObject Translations { get; init; }
+}
+
+public sealed record ConfigChange
+{
+    public required string Path { get; init; }
+    public required JsonNode? Value { get; init; }
+}
+
+public sealed record ConfigPatchRequest
+{
+    public required string Instance { get; init; }
+    public string? Revision { get; init; }
+    public required IReadOnlyList<ConfigChange> Changes { get; init; }
+}
+
+public sealed record InstanceCreateRequest
+{
+    public required string Instance { get; init; }
+    public string? Source { get; init; }
+    public string? ImportFile { get; init; }
+}
+
+public sealed record InstanceDeleteRequest
+{
+    public required string Instance { get; init; }
+    public required string Revision { get; init; }
+}
+
 // Explicit generated metadata also works when WASM trimming disables reflection.
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
 [JsonSerializable(typeof(ControlState))]
@@ -86,5 +139,15 @@ public sealed record ControlError
 [JsonSerializable(typeof(ControlRunRequest))]
 [JsonSerializable(typeof(ControlAcknowledgement))]
 [JsonSerializable(typeof(ControlError))]
+[JsonSerializable(typeof(InstanceSummary))]
+[JsonSerializable(typeof(InstanceListResponse))]
+[JsonSerializable(typeof(ConfigResponse))]
+[JsonSerializable(typeof(SchemaResponse))]
+[JsonSerializable(typeof(ConfigPatchRequest))]
+[JsonSerializable(typeof(ConfigChange))]
+[JsonSerializable(typeof(InstanceCreateRequest))]
+[JsonSerializable(typeof(InstanceDeleteRequest))]
+[JsonSerializable(typeof(IReadOnlyList<InstanceSummary>))]
+[JsonSerializable(typeof(IReadOnlyList<ConfigChange>))]
 [JsonSerializable(typeof(JsonObject))]
 public partial class ControlJsonContext : JsonSerializerContext;
