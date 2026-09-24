@@ -77,7 +77,7 @@ Linux/macOS 需补对应 libpython 和依赖布局；x64/ARM64 还需匹配 Pyth
 `Alas.UI.slnx` 独立于 CLI 方案，使用 Avalonia 12.1.3、.NET 10。
 `Alas.UI` 的同一 AXAML/样式/ViewModel 供 Desktop 与 Browser 引用。已集成页面及剩余功能统一记在迁移路线；离线演示和真实 Core 数据必须明确区分。中文字体内置 Noto CJK 2.004（OFL），来源见字体目录。
 配置管理与首页共用创建/导入表单，删除保留 revision 校验，配置导出只写 values；桌面与网页共享 Avalonia 文件选择能力。保存先请求选择器，再读取内容并写入；JSON/CSV/PNG、取消与读取失败已离线验证，真实浏览器文件选择器未验收。
-主题使用编译期类型化资源字典，偏好使用无反射 JSON 读写；升级兼容旧版 PascalCase 字段与自定义配色。Headless 覆盖主题切换、偏好往返和自定义配色删除，不据此宣称全部主题布局均已与上游一致。
+主题使用编译期类型化资源字典，偏好使用无反射 JSON 读写；升级兼容旧版 PascalCase 字段与自定义配色。Headless 已覆盖六主题外壳尺寸、Legacy 内容栏、窄屏输入、任务搜索、资源卡四列/两列布局，以及偏好往返和自定义配色删除；双端现场视觉一致性仍待验收。
 
 Windows + PowerShell 7 的构建入口（不会启动桌面或浏览器窗口）：
 
