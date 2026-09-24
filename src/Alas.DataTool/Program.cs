@@ -156,6 +156,7 @@ internal static class Program
                 int port = 8765;
                 string? artifacts = null;
                 string? workspace = null;
+                string? uiRoot = null;
                 for (int i = 1; i < args.Length; i++)
                 {
                     switch (args[i])
@@ -170,6 +171,9 @@ internal static class Program
                         case "--workspace":
                             workspace = RequireOptionValue(args, ref i, "--workspace");
                             break;
+                        case "--ui-root":
+                            uiRoot = RequireOptionValue(args, ref i, "--ui-root");
+                            break;
                         case "--data":
                         case "--repo":
                             RequireOptionValue(args, ref i, args[i]);
@@ -179,7 +183,7 @@ internal static class Program
                     }
                 }
                 return new ControlServer(paths.RootDirectory, repoDir, dataDir,
-                    paths.ToolsDirectory, artifacts, workspace, port).Run();
+                    paths.ToolsDirectory, artifacts, workspace, port, uiRoot).Run();
             }
             if (command == "plan-queue")
             {

@@ -64,13 +64,18 @@ python tools/report_html.py <运行目录>
 报告生成成功只证明可读取，不代表任务成功；dry-run 和跳过不能被展示成业务失败。
 CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用合同和批次输出。
 
-本地控制台使用 .NET 10 Kestrel，仅监听 `127.0.0.1`，忽略环境中的 URL/端点覆盖配置。
+本地控制台使用 .NET 10 Kestrel，仅监听 `127.0.0.1`，忽略环境中的 URL/端点覆盖配置。可由
+`alashub control` 或独立的 `Alas.Server` 进程启动；独立进程用 `--root`、`--repo`、`--data`、
+`--tools`、`--workspace`、`--artifacts` 和 `--port` 明确运行布局，避免从发布目录猜测源码根。
 请求校验 Host/端口，带 Origin 的请求必须同源；原生客户端可不带 Origin。写操作要求本次服务的 `X-Alas-Token`。
 页面编辑普通队列 JSON，
 提供 dry-run、只读与显式动作授权三种模式，通过 `QueueExecution.RunFile` 执行。
 运行中展示已写入的任务工件，结束后生成完整报告；停止使用同一边界停止原语。
 草稿与工件默认位于 `.runtime/control/`，可用 `--workspace`、`--artifacts` 调整。
-它尚不支持远程部署；目标方案见[统一 UI](r4-ui-architecture.md)。
+独立服务可用 `--ui-root <预构建 wwwroot>` 同源托管 Avalonia WASM；未指定时仍提供旧控制页。
+静态目录必须有 `index.html`，拒绝目录浏览、路径穿越和链接逃逸，只读取有限 MIME 类型；服务仍只监听
+回环地址，静态托管不等于远程认证或 HTTPS。业务依赖（`tools`、`data`、上游仓库和 Python 环境）
+仍需由发布布局显式提供。
 
 关闭服务时先原子拒绝新运行/草稿、请求边界停止，再等待已接受的队列和日志落盘；HTTP 断连与 HTTP 关闭期限不会取消正在进行的上游出击。
 停止先通过每次运行独立的内存信号进入现有边界取消入口，再写停止标记；标记写入失败会报告错误，仍等待队列退出，不能绕过落盘。
@@ -119,6 +124,7 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 | 共享客户端 | `verify_control_client.py`（真实 HTTP、禁用反射序列化、传输错误及取消） |
 | 状态事件流 | `verify_control_events.py`（共享采样、游标、运行中日志、断流/重启及工件读取） |
 | 旧控制页静态结构 | `verify_control_ui.py`（不打开浏览器） |
+| 独立服务与静态网页 | `verify_server_static.py`（临时目录、无窗口） |
 | 结构边界与隐私 | `verify_architecture.py`、`verify_privacy.py` |
 
 控制台离线回归通过真实 HTTP 执行 dry-run，断言设备配置次数为零；不证明真实游戏任务效果。

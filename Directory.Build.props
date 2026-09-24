@@ -2,8 +2,8 @@
   <PropertyGroup>
     <RestorePackagesPath>$(MSBuildThisFileDirectory).runtime/nuget/packages</RestorePackagesPath>
   </PropertyGroup>
-  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectName)').StartsWith('Alas.UI')) Or '$(MSBuildProjectName)' == 'Alas.Client' Or '$(MSBuildProjectName)' == 'Alas.Contracts'">
-    <!-- UI and shared client binaries may be distributed; omit personal checkout paths. -->
+  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectName)').StartsWith('Alas.'))">
+    <!-- All product binaries may be distributed; omit personal checkout paths. -->
     <PathMap>$(MSBuildThisFileDirectory)=/_/</PathMap>
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
     <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>

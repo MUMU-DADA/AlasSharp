@@ -19,15 +19,17 @@ public sealed class ControlServer
     private const int BodyLimit = ControlProtocol.MaxRequestBodyBytes;
     private readonly ControlWorkspace _workspace;
     private readonly string _tools;
+    private readonly StaticUiFiles? _ui;
     private readonly int _port;
     private readonly string _token = RandomNumberGenerator.GetHexString(32);
 
     public ControlServer(string root, string repo, string data, string tools,
-                         string? artifacts, string? workspace, int port)
+                         string? artifacts, string? workspace, int port, string? uiRoot = null)
     {
         if (port is < 1 or > 65535) throw new ArgumentException("port 必须在 1–65535 之间");
         _tools = Path.GetFullPath(tools);
         _port = port;
+        _ui = uiRoot is null ? null : new StaticUiFiles(uiRoot);
         _workspace = new ControlWorkspace(root, repo, data, tools, artifacts, workspace);
     }
 
@@ -88,7 +90,9 @@ public sealed class ControlServer
                 await Reply(context, 403, Error("仅允许本机同源访问"));
                 return;
             }
-            if (HttpMethods.IsGet(request.Method) && path == "/")
+            if (_ui is not null && !path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) &&
+                path != "/api" && await _ui.TryServe(context)) return;
+            if (_ui is null && HttpMethods.IsGet(request.Method) && path == "/")
             {
                 string page = Path.Combine(_tools, "control_ui.html");
                 if (!File.Exists(page))
