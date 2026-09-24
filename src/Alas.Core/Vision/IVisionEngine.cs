@@ -39,7 +39,10 @@ public interface IVisionEngine : IDisposable
     ButtonMatchResult ButtonMatch(string asset, int offset = 30, double similarity = 0.85,
                                   bool probeScore = false);
     TemplateMatchResult TemplateMatch(string asset, string? name = null);
-    string Ocr(double[] area, string lang = "azur_lane", string? letter = null);
+    /// <summary>调用上游 Ocr：letter 为 RGB 字色，alphabet 为字符白名单；
+    /// null 参数保留上游默认值，裁剪、预处理和服务器语言选择由上游执行。</summary>
+    string Ocr(double[] area, string lang = "azur_lane", int[]? letter = null,
+               int? threshold = null, string? alphabet = null, string? name = null);
     /// <summary>通用 op 调用（结果反序列化为 T）：S2 地图识别等尚未定型的 op 用它。</summary>
     T CallTyped<T>(string op, object? args = null);
 
@@ -322,8 +325,9 @@ public abstract class VisionEngineBase : IVisionEngine
         => Call<ButtonMatchResult>("button_match", new { asset, offset, similarity, probe_score = probeScore });
     public TemplateMatchResult TemplateMatch(string asset, string? name = null)
         => Call<TemplateMatchResult>("template_match", new { asset, name });
-    public string Ocr(double[] area, string lang = "azur_lane", string? letter = null)
-        => Call("ocr", new { area, lang, letter })["text"]!.GetValue<string>();
+    public string Ocr(double[] area, string lang = "azur_lane", int[]? letter = null,
+                      int? threshold = null, string? alphabet = null, string? name = null)
+        => Call("ocr", new { area, lang, letter, threshold, alphabet, name })["text"]!.GetValue<string>();
 
     public virtual void Dispose()
     {

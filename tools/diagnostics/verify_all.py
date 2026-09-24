@@ -54,6 +54,7 @@ STEPS = [
     ('verify_device_capture_color.py', '设备抓帧 raw/普通路径像素通道一致（离线）', False, 120),
     ('verify_native_ui_ensure.py', '上游原生页面导航宿主合同（动作门禁/复用设备/异常）', False, 120),
     ('verify_native_page_rules.py', '全部页面四服原生判据与服务器素材释放（离线）', False, 120),
+    ('verify_native_ocr.py', 'OCR 原生字色/阈值/白名单/四服预处理与 C# 参数合同（离线）', False, 300),
     ('verify_ui_rule_catalog.py', '上游控件继承/别名/延迟构造发现与错误合同（离线）', False, 120),
     ('verify_upstream_coverage.py', '全部章节/素材/页面/导航/控件/调度入口；源缺陷也失败', False, 900),
     ('verify_native_tools.py', '上游独立工具原生分派与队列工件（离线）', False, 300),

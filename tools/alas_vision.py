@@ -625,9 +625,17 @@ def op_ocr(args):
     from module.ocr.ocr import Ocr
     a = args['area']
     btn = Button(area=tuple(a), color=(), button=tuple(a), name=args.get('name', 'probe'))
-    # letter 必须是**可迭代对象**：上游 Ocr 会按字母表过滤，传 None 会在遍历时抛
-    # `TypeError: 'NoneType' object is not iterable`（实测踩过，且不报"参数错"而报遍历错，很误导）。
-    ocr = Ocr(btn, lang=args.get('lang', 'azur_lane'), letter=args.get('letter') or ())
+    # Ocr.letter 是 RGB 字色，alphabet 才是字符白名单。缺省/null 不覆盖
+    # 上游构造器默认值；空字符串白名单等显式值必须原样传递。
+    options = {key: args[key] for key in ('lang', 'letter', 'threshold', 'alphabet', 'name')
+               if args.get(key) is not None}
+    if 'letter' in options:
+        letter = options['letter']
+        if (not isinstance(letter, (list, tuple)) or len(letter) != 3
+                or any(type(channel) is not int or not 0 <= channel <= 255 for channel in letter)):
+            raise ValueError('letter must be an RGB array of three integers from 0 to 255; use alphabet for characters')
+        options['letter'] = tuple(letter)
+    ocr = Ocr(btn, **options)
     return {'text': ocr.ocr(image)}
 
 
