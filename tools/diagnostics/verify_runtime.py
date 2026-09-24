@@ -715,6 +715,51 @@ def build_queue_cases() -> list[dict]:
     ]
 
 
+def build_account_state_cases():
+    """Valid negative recognition differs from a native recognition/config fault."""
+    cases = []
+    for field, error in [(None, None), ('page_errors', ['fixture template missing']),
+                         ('in_map_error', 'fixture recognition error'),
+                         ('config_error', 'fixture configuration error')]:
+        response = dict(frame=dict(available=True), pages=[], page_errors=[], in_map=False, config={})
+        if field:
+            response[field] = error
+        outcome = 'failed' if field else 'succeeded'
+        expected = dict(id='snapshot', outcome=outcome, error_kind='upstream_error' if field else 'none',
+                        evidence_equals={field: error} if field else {'pages': [], 'in_map': False})
+        cases.append(dict(name='account_state_' + (field or 'normal_negative'), dry_run=True,
+                          artifacts=True, tasks=[dict(id='snapshot', kind='account_state', input={})],
+                          stub_responses={'account_state': [dict(result=response)]},
+                          expect=dict(outcome=outcome, host_start_count=1, device_configure_count=0,
+                                      stopped_early=bool(field), tasks=[expected])))
+    return cases
+
+
+def build_dry_run_cancellation_cases():
+    cases = []
+    for phase, operation, failure in [('before_first_chapter', 'account_state', False),
+                                       ('between_chapters', 's3_run_plan', False),
+                                       ('after_read_failure', 's3_run_plan', True)]:
+        task = dict(id='batch', kind='campaign_batch', input=dict(
+            chapters=[CLEARED, CLEARED2], stop_on_failure=False))
+        if failure:
+            task['errors'] = {CLEARED: 'fixture read failure'}
+        else:
+            task['documents'] = {CLEARED: dry_run_document(CLEARED)}
+        cancelled = not failure
+        cases.append(dict(name='dry_run_cancel_' + phase, dry_run=True, artifacts=True,
+                          cancel_after_op=operation, tasks=[task, dict(id='next', kind='campaign_batch',
+                              input={'chapters': [CLEARED3]})],
+                          expect=dict(outcome='cancelled' if cancelled else 'failed',
+                                      host_start_count=1, device_configure_count=0, stopped_early=True,
+                                      tasks=[dict(id='batch', outcome='skipped' if cancelled else 'failed',
+                                                  error_kind='cancelled' if cancelled else 'upstream_error',
+                                                  evidence_equals={'batch_outcome': 'cancelled' if cancelled else 'error'}),
+                                             dict(id='next', outcome='skipped')],
+                                      artifacts=['queue.json', 'state.json', 'task-batch.json', 'task-next.json'])))
+    return cases
+
+
 def main() -> int:
     if not EXE.is_file():
         print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先运行 dotnet build）')
@@ -727,7 +772,7 @@ def main() -> int:
 
 
 def verify_in_workspace(workspace: Path) -> int:
-    cases = build_cases() + build_queue_cases()
+    cases = build_cases() + build_queue_cases() + build_account_state_cases() + build_dry_run_cancellation_cases()
     failures = []
     # 原生 UI 导航合同的替身用例，不复制上游页面点击路径。
     diagnostics = Path(__file__).resolve().parent

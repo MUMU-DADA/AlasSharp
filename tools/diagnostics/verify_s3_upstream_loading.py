@@ -93,6 +93,17 @@ class UpstreamLoadingTests(unittest.TestCase):
         self.assertEqual(self.device_calls,
                          ['stuck_record_clear', 'click_record_clear', 'screenshot'])
 
+    def test_invalid_native_dependencies_fail_before_device_construction(self):
+        for chapter in ('invalid.module', 'campaign.campaign_main.missing',
+                        'campaign.event_20200227_cn.c2', 'campaign.event_20200312_cn.sp3'):
+            with self.subTest(chapter=chapter), \
+                    patch.object(av, '_device_engine') as device:
+                result = av.op_s3_campaign_init({'chapter': chapter})
+                self.assertFalse(result['instantiated'])
+                self.assertTrue(result['error'])
+                self.assertTrue(result['traceback_tail'])
+                device.assert_not_called()
+
     def test_production_initializer_matches_upstream_loader(self):
         # Includes a Config imported from another chapter (1-4), changed geometry
         # (7-1), and later chapters with different map capabilities.

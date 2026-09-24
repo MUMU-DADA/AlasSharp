@@ -1,13 +1,14 @@
 # 界面识别验证记录（真机导航）
 
-判定口径：通常从主界面按上游 `module/ui/page.py` 的页面图逐段导航，点击后用 **全量
+历史判定口径：旧逐段点击诊断通常从主界面进入目标页，点击后用 **全量
 页面扫描**（`ui_rules_sweep`）看目标页规则是否在该页上真正返回真。
 「可驱动」（不抛异常）不算通过 —— 只有**在它自己的页面上命中**才算。
 少数手工进入后命中的规则单独列出，不能据此声称产品导航可达。
 
 设备：MuMu 模拟器 1280x720 @ `127.0.0.1:16384`（国服，新主界面 UI）。
 生成脚本：`tools/diagnostics/report_pages.py`（数据源 `docs/archive/reports/page-verification.json`，
-由 `tools/diagnostics/verify_pages.py` 逐批累积）。
+由已退役的 `tools/diagnostics/verify_pages.py` 逐批累积，原始记录保持不变）。
+旧驱动含本地变体择优与固定点击流程，不能证明当前上游原生导航通过；当前入口见 `regress_pages.py`。
 
 ## 汇总
 
@@ -102,24 +103,16 @@
 | --- | --- |
 | `page_event_list` | 点主界面右上角「活动汇总」卡片 (1235,125) 进入，`EVENT_LIST_CHECK` 实测 0.9958 命中。但上游的白版素材 `MAIN_GOTO_EVENT_LIST_WHITE` 在本客户端只有 0.088（新版 UI 的卡片样式变了），导航器点不中它 —— 即"页面规则已验证、导航边还缺客户端素材" |
 
-## 复现方式
+## 归档与当前验证入口
 
 ```powershell
-$env:STUB_ADB = "<adb.exe 路径>"
-$env:SEGMENTS = '[{"from":"page_main","button":"ui/MAIN_GOTO_REWARD","expect":"page_reward"}]'
-python tools/diagnostics/verify_pages.py      # 逐段导航并记录
 python tools/diagnostics/report_pages.py      # 重新生成本文件
+python tools/diagnostics/verify_native_page_rules.py  # 离线原生判据对照
+python tools/diagnostics/regress_pages.py     # 当前原生导航回归；会操作游戏
 ```
 
-## 验证器里三个必须保留的安全约束
+## 历史驱动与当前边界
 
-1. **起点页必须在屏幕上。** 资产里的坐标是写死的，`asset_button_center` 不做检测；
-   在错误的页面上盲点会点到别的东西（实测误点出「个人信息」页）。
-2. **点击要落在模板匹配到的实际位置。** 上游 `Button.button` 在 match 后返回
-   `_button_offset`，ALAS 的 appear+click 点的就是这个点，不是资产里的标称中心。
-3. **同名资产要按实测分择优。** 本机跑的是新版主界面：`ui/MAIN_GOTO_X` 旧模板实测
-   ≤ 0.25（早已不在屏上），真正在屏的是 `ui_white/MAIN_GOTO_X_WHITE`（0.94~0.997）。
-   点旧坐标只会点到空气 —— 早期批次里 `MAIN_GOTO_CAMPAIGN` 就是这么"无变化"的。
-
-   实测分数用**上游 `Button.match` 自身二分反解**（`match` 的语义是 `sim > similarity`，
-   单调），不复制匹配算法，避免诊断口径与真实判定两套实现漂移。
+旧驱动的白版素材推测、按分择优和固定点击顺序已删除；不再作为验证入口或可复用导航算法。
+当前导航只通过队列调用上游 `UI.ui_ensure()`，识别使用原生 `UI.ui_page_appear()`。
+本报告中的历史命中、导航失败和手工入口分别保留，不能由单帧分数推断整个界面操作成功。

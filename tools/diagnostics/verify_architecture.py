@@ -442,6 +442,21 @@ def main() -> int:
         "导航生产路径调用上游 UI": '"ui_ensure"' in read("src/Alas.Core/Tasks/NavigateTask.cs")
                               and "PageNavigator(" not in read("src/Alas.Core/Tasks/NavigateTask.cs")
                               and "ui.ui_ensure(destination" in read("tools/alas_vision.py"),
+        "页面识别直接调用上游判据": "UI.ui_page_appear(main, page, offset=offset)" in read("tools/alas_vision.py")
+                               and "def _variants(" not in read("tools/alas_vision.py"),
+        "关卡入口不运行固定坐标旁路": not any(marker in read("tools/alas_vision.py") for marker in (
+            "_UNFINISHED_RED_BOX", "_proactive_abort_worker", "enter_with_dialog_handler")),
+        "C# 不保留独立导航点击算法": not any("class PageNavigator" in p.read_text(encoding="utf-8")
+            for p in (ROOT / "src/Alas.Core/Navigation").glob("*.cs")),
+        "服务器切换由上游释放全部资源": "server_module.set_server(s)" in read("tools/alas_vision.py"),
+        "控件发现来自上游继承声明": "discover_controls(FORK)" in read("tools/alas_vision.py")
+                               and (ROOT / "tools/ui_rule_catalog.py").is_file(),
+        "全量原生规则覆盖进入总验收": "verify_upstream_coverage.py" in read("tools/diagnostics/verify_all.py"),
+        "旧控件逐页驱动不再执行": not any(marker in read("tools/diagnostics/verify_controls.py")
+            for marker in ("import alas_vision", "import subprocess", "click_xy", "PLAN =", "def swipe(")),
+        "旧页面逐段驱动不再执行": not any(marker in read(path)
+            for path in ("tools/diagnostics/verify_page.py", "tools/diagnostics/verify_pages.py")
+            for marker in ("import alas_vision", "import subprocess", "def tap(", "def candidates(", "TARGET_BUTTON")),
         "真机设备诊断只读": "public static int RunReal(" in device_check
                           and "public static int Run(" in device_check
                           and not any(action in real_device_check for action in (

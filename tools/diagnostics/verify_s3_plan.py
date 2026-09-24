@@ -207,6 +207,7 @@ class S3DryRunTests(unittest.TestCase):
         original_enter = inst.enter_map
 
         def execute(campaign, **options):
+            self.assertEqual(campaign.enter_map, original_enter)
             events.append(('native', campaign.ENTRANCE, campaign.config.Campaign_Mode))
             if native_error:
                 raise RuntimeError(native_error)
@@ -218,18 +219,13 @@ class S3DryRunTests(unittest.TestCase):
                 'obj': inst, 'loader': SimpleNamespace(stage='upstream-stage')}))
             initialize = stack.enter_context(patch.object(
                 self.av, 'op_s3_campaign_init', return_value={'instantiated': True}))
-            abort = stack.enter_context(patch.object(
-                self.av, 'op_s3_abort_unfinished', return_value={'unfinished_dialog': False}))
             device = stack.enter_context(patch.object(
                 self.av, '_device_engine', side_effect=AssertionError('unexpected device access')))
-            watcher = stack.enter_context(patch.object(
-                self.av, '_proactive_abort_worker', side_effect=AssertionError('unexpected watcher')))
             native = stack.enter_context(patch(
                 's3_campaign_execution.run_native_campaign', side_effect=execute))
             yield SimpleNamespace(inst=inst, events=events, native=native, initialize=initialize,
-                                  original_enter=original_enter, abort=abort)
+                                  original_enter=original_enter)
             device.assert_not_called()
-            watcher.assert_not_called()
 
     def test_protocol_navigates_then_forwards_limits_to_native_run(self):
         with self.native_protocol() as state:
@@ -252,7 +248,7 @@ class S3DryRunTests(unittest.TestCase):
             self.assertEqual(result['stage'], 'upstream-stage')
             self.assertEqual(result['execution'], 'upstream_run')
             self.assertEqual([step['step'] for step in result['steps']],
-                             ['prepare_campaign_navigation', 'abort_unfinished',
+                             ['prepare_campaign_navigation',
                               'ensure_campaign_ui', 'prepare_campaign_run', 'run'])
             self.assertFalse(result['cleared'])
             self.assertNotIn('enter_map', vars(state.inst))
@@ -275,7 +271,6 @@ class S3DryRunTests(unittest.TestCase):
             state.initialize.return_value = {'error': 'configuration failed'}
             result = self.invoke(chapter='campaign.campaign_main.campaign_2_1',
                                  dry_run=False, allow_actions=True)
-            state.abort.assert_not_called()
             state.native.assert_not_called()
             self.assertEqual(state.events, [])
             self.assertEqual(result['stage'], 'init')
@@ -288,7 +283,7 @@ class S3DryRunTests(unittest.TestCase):
             self.assertEqual(state.native.call_args.kwargs['max_rounds'], 1)
             self.assertIs(state.inst.enter_map, state.original_enter)
 
-    def test_protocol_restores_entry_when_native_runner_raises(self):
+    def test_protocol_preserves_entry_when_native_runner_raises(self):
         with self.native_protocol(native_error='runner failed', own_enter=True) as state:
             response = json.loads(self.av.handle_line(json.dumps({
                 'id': 1, 'op': 's3_run_plan', 'args': {
@@ -315,7 +310,6 @@ class S3DryRunTests(unittest.TestCase):
             result = self.invoke(chapter='campaign.campaign_main.campaign_2_1',
                                  dry_run=False, allow_actions=True)
             state.native.assert_not_called()
-            state.abort.assert_not_called()
             self.assertEqual(state.events, [('clear_stuck',), ('clear_click',),
                                             ('withdraw_previous',)])
             self.assertEqual(result['outcome'], 'error')

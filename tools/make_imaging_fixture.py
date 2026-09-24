@@ -26,12 +26,8 @@ import os
 import sys
 from collections import Counter
 
-FORK_DEFAULT = os.path.normpath(os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), '..', '..',
-    'source project', 'AzurLaneAutoScript'))
-
-sys.path.insert(0, FORK_DEFAULT)
-os.chdir(FORK_DEFAULT)
+from fixture_runtime import initialize, invocation_path
+FORK_DEFAULT = initialize()
 import module.device.pkg_resources  # noqa: F401  桩需先导入（见 AGENTS.local.md）
 
 import numpy as np
@@ -175,6 +171,10 @@ def main():
     ap.add_argument('--out', default=None)
     ap.add_argument('--limit', type=int, default=None)
     args = ap.parse_args()
+    args.data = invocation_path(args.data)
+    args.out = invocation_path(args.out) if args.out else None
+    # Imports and asset paths must use the same normalized source.
+    args.repo = FORK_DEFAULT
 
     out = args.out or os.path.join(args.data, 'fixtures', 'imaging.json')
     os.makedirs(os.path.dirname(out), exist_ok=True)

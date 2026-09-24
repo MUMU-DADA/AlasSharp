@@ -176,7 +176,8 @@ def main() -> int:
             state = wait_state(base, lambda s: s['active']['status'] != 'running'
                                and s['active']['stop_requested'])
             report = state['report']
-            assert report['queue_outcome'] == 'cancelled'
+            assert report['queue_outcome'] == 'cancelled', {
+                key: report.get(key) for key in ('queue_outcome', 'stop_reason', 'totals')}
             assert report['stopped_early'] is True
             # 停止在任务边界生效；请求送达前可能已有少量 dry-run 任务完成。
             assert report['totals']['tasks'] == 200

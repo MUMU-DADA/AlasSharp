@@ -5,6 +5,7 @@ import io
 import json
 import threading
 import time
+from time import sleep as _replacement_pause
 
 from rich.console import Console
 from module.logger import RichRenderableHandler
@@ -13,7 +14,17 @@ from module.logger import RichRenderableHandler
 def write_snapshot(directory, name, value):
     temporary = directory / (name + '.tmp')
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
-    temporary.replace(directory / name)
+    # Windows readers may briefly deny delete/replace access. Retry only the
+    # same already-written snapshot; keep the previous JSON intact until the
+    # atomic replacement succeeds. Permanent faults still reach the caller.
+    for attempt in range(6):
+        try:
+            temporary.replace(directory / name)
+            return
+        except PermissionError as error:
+            if getattr(error, 'winerror', None) not in (5, 32, 33) or attempt == 5:
+                raise
+            _replacement_pause(.02 * (attempt + 1))
 
 
 def observe_config(config):
@@ -83,10 +94,12 @@ class NativeLogCapture(RichRenderableHandler):
             self._updated = time.monotonic()
 
     def close(self):
-        with self._gate:
-            if not self._output.closed:
-                try:
-                    self.flush_snapshot()
-                finally:
-                    self._output.close()
-        super().close()
+        try:
+            with self._gate:
+                if not self._output.closed:
+                    try:
+                        self.flush_snapshot()
+                    finally:
+                        self._output.close()
+        finally:
+            super().close()

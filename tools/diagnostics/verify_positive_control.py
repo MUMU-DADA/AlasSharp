@@ -28,12 +28,7 @@ def op(name, **args):
 
 
 def main():
-    # 先给宿主一张真截图（否则 _require_image 会拒绝），正对照内部会临时换掉它
-    probe = os.path.join(HERE, '..', 'data', '_probe.png')
-    if not os.path.exists(probe):
-        print('缺少 %s：先跑一次会截图的脚本（或 regress_pages.py）' % probe)
-        return 2
-    op('screenshot_load', path=probe)
+    # 正对照在内部构造画布，不读取账号截图，也不操作设备。
 
     r = op('page_positive_control')
     print('=== 页面规则合成正对照：%d 条 ===' % r['total'])
@@ -77,10 +72,8 @@ def main():
         '',
         '它证明的是"规则是活的"：素材文件能加载、区域与模板配对正确、判定方向没写反。',
         '',
-        '为什么值得单独做：受账号进度/活动/客户端版本所限，有 %d 个页面在真机上到不了。'
-        % (53 - len(verified) - len(blocked)),
-        '这些页面是"到不了"还是"规则本身坏了"，光靠真机验证分不清 —— 正对照把它们分开：',
-        '正对照过不了的规则一定是实现问题（素材路径错、模板空、区域写错），必须查。',
+        '本次清单中有 %d 个页面没有历史真机命中证据。' % len(unreachable_ok),
+        '正对照只能证明合成输入上的原生判定；真实画面、导航入口和业务结果仍需各自验证。',
         '',
         '生成：`tools/diagnostics/verify_positive_control.py`；数据 `data/positive_control.json`。',
         '',
@@ -102,7 +95,7 @@ def main():
         for x in fails:
             lines.append('| `%s` | %s |' % (x['page'], x['detail']))
     else:
-        lines.append('无。53 条页面规则在正对照下全部返回真（除合成实体 `page_unknown`）。')
+        lines.append('无。本次 %d 条页面规则返回真，%d 条跳过。' % (r['passed'], r['skipped']))
     lines += [
         '',
         '## 跳过项',
@@ -126,10 +119,10 @@ def main():
         '| --- | --- |',
         '| 模块级规则总数 | %d |' % rc['total'],
         '| Switch 正对照通过 | **%d** |' % rc['passed'],
-        '| 跳过（Scroll：判定依赖颜色/掩码，贴模板图构造不出来） | %d |' % rc['skipped'],
+        '| 跳过（颜色掩码或子类原生识别流程不适用模板贴图） | %d |' % rc['skipped'],
         '| 失败 | %d |' % rc['failed'],
         '',
-        '通过的开关（含真机上到不了的）：',
+        '合成正对照通过的开关：',
         '',
         '| 开关 | 每个状态贴图后的 get() 结果 |',
         '| --- | --- |',
@@ -137,23 +130,19 @@ def main():
     for x in rc['results']:
         if x['verdict'] == 'pass':
             lines.append('| `%s` | %s |' % (x['rule'], x['detail']))
+    lines += ['', '## 控件跳过或失败', '', '| 规则 | 结果 | 原因 |', '| --- | --- | --- |']
+    for x in rc['results']:
+        if x['verdict'] != 'pass':
+            lines.append('| `%s` | %s | %s |' % (x['rule'], x['verdict'], x['detail']))
     lines += [
-        '',
-        '注意 `equipping_filter` / `FLEET_LOCK` / `FORMATION` / `SUBMARINE_HUNT` /',
-        '`SUBMARINE_VIEW` / `ISLAND_DOCK_SORTING` / `SWITCH_LOCK` 这几条在真机上到不了，',
-        '但正对照全过 —— 说明它们的**状态判定是活的**，缺的只是游戏走到那一屏的条件。',
-        '',
-        '10 个 Scroll 无法用贴图构造（`at_top`/`at_bottom` 比的是滚动条颜色掩码）；',
-        '其中 6 个已在真机上命中过（见 `controls.md`），剩 4 个受阻塞。',
         '',
         '## 与真机结果的关系',
         '',
-        '正对照通过但真机没验过的页面共 %d 个 —— 它们都是受外部条件阻塞的：' % len(unreachable_ok),
+        '正对照通过但没有历史真机命中证据的页面共 %d 个：' % len(unreachable_ok),
         '',
         '、'.join('`%s`' % p for p in unreachable_ok) if unreachable_ok else '（无）',
         '',
-        '也就是说：**这些页面的规则本身是好的，缺的只是"让游戏走到那一屏"的条件**',
-        '（账号解锁岛屿/大舰队/指挥喵/大型作战、或对应类型的活动在跑、或客户端版本支持）。',
+        '未覆盖原因需查对应现场证据；不能由合成模板命中推断真实客户端兼容或导航可达。',
         '',
         '## 复现',
         '',
@@ -166,7 +155,7 @@ def main():
     with open(path, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
     print('报告: %s' % os.path.abspath(path))
-    return 0 if not fails else 1
+    return 0 if not fails and not rc['failed'] else 1
 
 
 if __name__ == '__main__':

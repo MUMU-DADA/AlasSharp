@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import types
 from unittest.mock import patch
 
@@ -21,6 +22,69 @@ import alas_vision as host
 from alas import AzurLaneAutoScript
 from module.exception import GameNotRunningError
 from module.logger import logger
+import native_telemetry
+
+
+def snapshot_io_cases(root):
+    """Reproduce Windows sharing failures with real handles, no device I/O."""
+    directory = root / 'snapshot-io'
+    directory.mkdir()
+    target = directory / 'state.json'
+    native_telemetry.write_snapshot(directory, target.name, {'before': True})
+    original = target.read_bytes()
+    # Unrelated filesystem errors must not be retried or erase the prior file.
+    with patch.object(Path, 'replace', side_effect=OSError('fixture full disk')) as replace, \
+            patch.object(native_telemetry, '_replacement_pause') as pause:
+        try:
+            native_telemetry.write_snapshot(directory, target.name, {'after': True})
+        except OSError:
+            pass
+        else:
+            raise AssertionError('permanent write error was swallowed')
+        assert replace.call_count == 1 and not pause.called
+    assert target.read_bytes() == original
+    if os.name != 'nt':
+        print('SKIP: real Windows sharing-lock cases require Windows')
+        return
+
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                  ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+
+    def lock_target():
+        # Read and write sharing allowed; delete sharing intentionally omitted.
+        handle = kernel.CreateFileW(str(target), 0x80000000, 3, None, 3, 0x80, None)
+        if handle == ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        return handle
+
+    handle = lock_target()
+    timer = threading.Timer(.06, lambda: kernel.CloseHandle(handle))
+    timer.start()
+    try:
+        native_telemetry.write_snapshot(directory, target.name, {'after': True})
+    finally:
+        timer.join()
+    assert json.loads(target.read_text(encoding='utf-8')) == {'after': True}
+    before_locked = target.read_bytes()
+    handle = lock_target()
+    try:
+        try:
+            native_telemetry.write_snapshot(directory, target.name, {'blocked': True})
+        except PermissionError:
+            pass
+        else:
+            raise AssertionError('persistent sharing lock was swallowed')
+        assert target.read_bytes() == before_locked
+        assert json.loads((directory / 'state.json.tmp').read_text(encoding='utf-8')) == {'blocked': True}
+    finally:
+        kernel.CloseHandle(handle)
+    print('PASS: snapshot transient sharing lock recovered; permanent lock/error preserves evidence and fails')
 
 
 def native_case(root, mode):
@@ -130,13 +194,28 @@ def native_case(root, mode):
                'module.commission.commission': types.SimpleNamespace(RewardCommission=Reward)}
     if mode == 'prestop':
         stop.write_text('stop')
+    native_write = native_telemetry.write_snapshot
+    captures = []
+    native_close = native_telemetry.NativeLogCapture.close
+
+    def write_with_final_failure(directory, name, value):
+        if mode == 'artifact_failure' and name == 'logs.json' and stop.is_file():
+            raise OSError('fixture final log write failure')
+        return native_write(directory, name, value)
+
+    def track_close(capture):
+        captures.append(capture)
+        return native_close(capture)
+
     with patch.object(host, 'FORK', str(root)), patch.object(host, '_DEVICE_ARGS', {'serial': 'fixture-device'}), \
          patch.object(host, '_device_engine', lambda config: device), patch('alas.AzurLaneConfig', Config), \
          patch.object(AzurLaneAutoScript, 'checker', property(lambda _: checker)), \
          patch('alas.handle_notify'), patch.dict(sys.modules, modules), \
          patch('module.base.resource.release_resources'), patch('alas.time.sleep'), \
          patch.object(logger, 'handlers', []), patch.object(logger, 'propagate', False), \
-         patch.object(logger, 'set_file_logger'):
+         patch.object(logger, 'set_file_logger'), \
+         patch.object(native_telemetry, 'write_snapshot', side_effect=write_with_final_failure), \
+         patch.object(native_telemetry.NativeLogCapture, 'close', track_close):
         args = dict(instance='fixture', allow_actions=True, confirm='fixture', artifact_directory=str(directory))
         for update in ({'allow_actions': False}, {'confirm': 'wrong'}, {'instance': '../fixture'}):
             bad = dict(args, **update)
@@ -144,7 +223,7 @@ def native_case(root, mode):
         assert not events
         got = host.op_scheduler_run(args)
         assert not logger.handlers, 'scheduler telemetry handler leaked'
-    expected = 'error' if mode == 'failure_retry' else 'failed' if mode == 'no_retry' else 'stopped'
+    expected = 'error' if mode in ('failure_retry', 'artifact_failure') else 'failed' if mode == 'no_retry' else 'stopped'
     assert got['decision'] == expected, (mode, got, events)
     assert device.config is initial_config, mode
     records = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(directory.glob('dispatch-*.json'))]
@@ -153,7 +232,13 @@ def native_case(root, mode):
     assert json.loads((directory / 'state.json').read_text(encoding='utf-8'))['phase'] == expected
     logs = json.loads((directory / 'logs.json').read_text(encoding='utf-8'))
     complete = [json.loads(line) for line in (directory / 'native-log.jsonl').read_text(encoding='utf-8').splitlines()]
-    assert logs['instance'] == 'fixture' and logs['cursor'] == len(complete)
+    assert logs['instance'] == 'fixture'
+    if mode == 'artifact_failure':
+        assert got['artifact_errors'] and got['traceback_tail'] and 'fixture final log write failure' in got['error']
+        assert captures and all(capture._output.closed for capture in captures)
+        assert logs['cursor'] <= len(complete), 'stale snapshot cannot invent raw entries'
+    else:
+        assert logs['cursor'] == len(complete)
     assert [entry['id'] for entry in complete] == list(range(1, len(complete) + 1))
     if records:
         assert any(entry['level'] == 'WARNING' and 'fixture native warning' in entry['message'] for entry in complete)
@@ -231,6 +316,7 @@ def main():
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='scheduler-', dir=root) as folder:
         workspace = Path(folder)
+        snapshot_io_cases(workspace)
         (workspace / 'config').mkdir()
         (workspace / 'config/fixture.json').write_text('{"Alas":{}}', encoding='utf-8')
         from native_telemetry import NativeLogCapture
@@ -247,7 +333,8 @@ def main():
         assert len(raw) == 406 and len(tail['entries']) == 400 and tail['cursor'] == 406
         assert len(tail['entries'][-1]['message']) == 12000 and len(raw[-1]['message']) >= 13000
         print('PASS: native log ring is bounded, cursors stable, full raw evidence retained')
-        for mode in ('sequence', 'failure_retry', 'no_retry', 'wait_cancel', 'reload', 'recovered', 'prestop'):
+        for mode in ('sequence', 'failure_retry', 'no_retry', 'wait_cancel', 'reload', 'recovered', 'prestop',
+                     'artifact_failure'):
             native_case(workspace, mode)
         queue_cases(workspace)
 

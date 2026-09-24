@@ -551,12 +551,104 @@ internal static class Program
         Console.WriteLine($"关卡          : {catalog.Campaign.Chapters.Count}");
         Console.WriteLine();
 
+        // Compare the exported inventory and provenance with the selected source.
+        string relative(string path) => Path.GetRelativePath(repoDir, path).Replace('\\', '/');
+        var assetSources = Directory.EnumerateFiles(Path.Combine(repoDir, "module"), "assets.py",
+            SearchOption.AllDirectories).Select(relative).ToHashSet(StringComparer.Ordinal);
+        var campaignSources = Directory.EnumerateFiles(Path.Combine(repoDir, "campaign"), "*.py",
+            SearchOption.AllDirectories).Where(p => Path.GetFileName(p) != "__init__.py"
+                && !p.Split(Path.DirectorySeparatorChar).Contains("__pycache__"))
+            .Select(relative).ToHashSet(StringComparer.Ordinal);
+        var indexSources = catalog.Campaign.Chapters.Select(c => c.Source).ToList();
+        string[] exportServers = ["cn", "en", "jp", "tw"];
+        if (catalog.Assets.Servers.Count != exportServers.Length
+            || !exportServers.ToHashSet(StringComparer.Ordinal).SetEquals(catalog.Assets.Servers))
+            problems.Add("素材目录服务器清单缺失、重复或与导出契约不一致");
+        if (indexSources.Distinct(StringComparer.Ordinal).Count() != indexSources.Count
+            || !campaignSources.SetEquals(indexSources))
+            problems.Add("关卡索引缺失、重复或包含非上游来源");
+        if (catalog.Manifest is null)
+            problems.Add("缺少导出 manifest");
+        else
+        {
+            var manifest = catalog.Manifest.RootElement;
+            foreach (var (section, sources) in new[] { ("assets", assetSources), ("campaign", campaignSources) })
+            {
+                if (!manifest.TryGetProperty(section, out var summary)
+                    || !summary.TryGetProperty("source_hashes", out var hashes)
+                    || hashes.ValueKind != System.Text.Json.JsonValueKind.Object
+                    || !sources.SetEquals(hashes.EnumerateObject().Select(p => p.Name)))
+                {
+                    problems.Add($"{section} 源哈希清单缺失或不一致");
+                    continue;
+                }
+                foreach (var source in sources)
+                {
+                    var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+                        File.ReadAllBytes(Path.Combine(repoDir, source))));
+                    if (hashes.GetProperty(source).GetString() != hash)
+                        problems.Add($"{section} 源哈希变化: {source}");
+                }
+                if (!summary.TryGetProperty("source_files", out var sourceCount)
+                    || sourceCount.GetInt32() != sources.Count)
+                    problems.Add($"{section} 源文件计数不一致");
+            }
+            if (!manifest.TryGetProperty("assets", out var assets)
+                || !assets.TryGetProperty("count", out var count)
+                || count.GetInt32() != catalog.Assets.Assets.Count)
+                problems.Add("素材 manifest 计数不一致");
+            else
+            {
+                if (!assets.TryGetProperty("all_four_servers", out var completeCount)
+                    || completeCount.GetInt32() != catalog.Assets.Assets.Values.Count(a => a.AllServers))
+                    problems.Add("素材 manifest 四服完整计数不一致");
+                foreach (var (key, groups) in new[] {
+                    ("by_kind", catalog.Assets.Assets.Values.GroupBy(a => a.Kind)),
+                    ("by_module", catalog.Assets.Assets.Values.GroupBy(a => a.Module)) })
+                {
+                    var expected = groups.ToDictionary(g => g.Key, g => g.Count());
+                    if (!assets.TryGetProperty(key, out var counts)
+                        || counts.EnumerateObject().Count() != expected.Count
+                        || counts.EnumerateObject().Any(p => !expected.TryGetValue(p.Name, out var total)
+                            || p.Value.GetInt32() != total))
+                        problems.Add($"素材 manifest {key} 不一致");
+                }
+                if (!assets.TryGetProperty("unresolved", out var unresolved) || unresolved.GetArrayLength() != 0)
+                    problems.Add("素材存在未解析项");
+            }
+            if (!manifest.TryGetProperty("errors", out var errors) || errors.GetArrayLength() != 0)
+                problems.Add("导出源错误清单缺失或非空");
+            if (!manifest.TryGetProperty("campaign", out var campaign)
+                || !campaign.TryGetProperty("files", out var files)
+                || files.GetInt32() != catalog.Campaign.Chapters.Count)
+                problems.Add("关卡 manifest 计数不一致");
+        }
+
         // ---- 素材：文件存在性 + 字段完整性
         // 注意：上游 Template 只有 file（无 area/color/button），area 只对 Button/Mask 是必需的。
-        int missingFiles = 0, noServers = 0, noArea = 0, noFile = 0;
+        int missingFiles = 0, noServers = 0, noArea = 0, noFile = 0, invalidBindings = 0;
         var missingSample = new List<string>();
         foreach (var (id, a) in catalog.Assets.Assets)
         {
+            var servers = a.Servers.ToHashSet(StringComparer.Ordinal);
+            bool sameServers<T>(Dictionary<string, T>? values) => values is not null
+                && servers.SetEquals(values.Keys);
+            bool validVectors(Dictionary<string, int[]>? values, int size) => values is not null
+                && values.Values.All(value => value is not null && value.Length == size);
+            if (id != a.Id || id != $"{a.Module}/{a.Name}"
+                || a.Source != $"module/{a.Module.Replace('.', '/')}/assets.py"
+                || !assetSources.Contains(a.Source)
+                || a.Kind is not ("Button" or "Template" or "Mask")
+                || servers.Count != a.Servers.Count
+                || !servers.IsSubsetOf(catalog.Assets.Servers)
+                || a.AllServers != servers.IsSupersetOf(catalog.Assets.Servers)
+                || !sameServers(a.File)
+                || a.File?.Values.Any(string.IsNullOrWhiteSpace) == true
+                || (a.Kind == "Button" && (!sameServers(a.Area)
+                    || !sameServers(a.Color) || !sameServers(a.Button)
+                    || !validVectors(a.Area, 4) || !validVectors(a.Color, 3) || !validVectors(a.Button, 4)))
+                || (a.Kind == "Mask" && (!sameServers(a.Area) || !validVectors(a.Area, 4))))
+                invalidBindings++;
             bool needsArea = a.Kind is "Button" or "Mask";
             if (a.Servers.Count == 0) noServers++;
             if (needsArea && (a.Area is null || a.Area.Count == 0)) noArea++;
@@ -583,6 +675,7 @@ internal static class Program
         if (noFile > 0) problems.Add($"{noFile} 个素材没有 file（无法加载图片）");
         if (noServers > 0) problems.Add($"{noServers} 个素材没有任何服务器变体");
         if (noArea > 0) problems.Add($"{noArea} 个 Button/Mask 没有 area（无法定位）");
+        if (invalidBindings > 0) problems.Add($"{invalidBindings} 个素材来源或服务器字段不完整");
 
         // ---- 关卡：网格自洽 + Config 导出 + 计划不变量 + 分级
         var tiers = new Dictionary<string, int>();
@@ -601,6 +694,8 @@ internal static class Program
             foreach (var m in entry.NativeOverrides) overrideMethods.Add(m);
 
             var ir = catalog.LoadCampaign(entry);
+            if (ir.Source != entry.Source || entry.Json != entry.Source[..^3] + ".json")
+                problems.Add($"关卡索引与 IR 来源不一致: {entry.Source}");
 
             if (ir.ConfigMeta.Present)
             {
@@ -669,12 +764,12 @@ internal static class Program
 
         // ---- 分级（决定 S3 的工作量构成）
         Console.WriteLine();
-        Console.WriteLine("[分级] A = JSON 规则表即可；B = 计划完整但用词表外算子；C = 需插件/原生实现");
+        Console.WriteLine("[分级] 仅表示离线摘要完整度；所有战役均由上游原生流程执行");
         foreach (var t in tiers.OrderBy(kv => kv.Key))
             Console.WriteLine($"       tier {t.Key}: {t.Value,5}  ({t.Value * 100.0 / catalog.Campaign.Chapters.Count:F1}%)");
 
         Console.WriteLine();
-        Console.WriteLine("[引擎钩子] 非 battle_* 的覆写 —— S3 必须逐个在 C# 里实现");
+        Console.WriteLine("[引擎钩子] 非 battle_* 的覆写 —— 由原生 Campaign 继承与调度保留");
         Console.WriteLine($"       涉及关卡 {chaptersWithOverrides}，"
                           + $"去重后 {overrideMethods.Count} 个钩子方法，"
                           + $"另有 {superDelegateCount} 处纯 super 委托（无需新增逻辑）");

@@ -21,6 +21,28 @@ class CampaignRuleError(ValueError):
         self.code = code
 
 
+def resolve_native_campaign(chapter: str):
+    """Validate native dependencies before constructing a device for a sortie.
+
+    Called only by the live initializer. Dry runs continue to read metadata
+    without importing game modules. The original loader still owns Config merge
+    and Campaign construction; this check never supplies replacement rules.
+    """
+    import importlib
+    from module.map.map_base import CampaignMap
+
+    parts = chapter.split('.')
+    if len(parts) != 3 or parts[0] != 'campaign' or not all(p.isidentifier() for p in parts):
+        raise CampaignRuleError('invalid_chapter', '章节必须是完整的 campaign 模块名')
+    module = importlib.import_module(chapter)
+    campaign = getattr(module, 'Campaign', None)
+    if not isinstance(campaign, type) or not isinstance(getattr(campaign, 'MAP', None), CampaignMap):
+        raise CampaignRuleError('not_a_chapter', '上游模块没有可运行的 Campaign.MAP（可能是辅助基类）')
+    if not callable(getattr(module, 'Config', None)):
+        raise CampaignRuleError('missing_native_config', '上游章节缺少 Config')
+    return module
+
+
 def load_campaign_rules(chapter: str, data_dir: Path | str = CAMPAIGN_DATA) -> dict:
     """Load exactly ``campaign.<package>.<chapter>`` and check its source.
 

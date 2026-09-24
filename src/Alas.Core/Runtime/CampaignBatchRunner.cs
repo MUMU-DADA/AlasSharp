@@ -252,10 +252,24 @@ public sealed class CampaignBatchRunner
     {
         if (batch.DryRun)
         {
-            // dry-run 没有"通关"这个概念：只有"规则读没读到"。
-            batch.Outcome = batch.Stages.Any(s => s.Result is null) ? "error" : "dry_run";
-            batch.ErrorKind = batch.Outcome == "error"
-                ? batch.Stages.First(s => s.Result is null).ErrorKind : RuntimeErrorKind.None;
+            // A boundary cancellation produces skipped stages without a result.
+            // Preserve real read/contract errors first, then cancellation.
+            var readFailure = batch.Stages.FirstOrDefault(s => !s.Skipped && s.Failed);
+            if (readFailure is not null)
+            {
+                batch.Outcome = "error";
+                batch.ErrorKind = readFailure.ErrorKind;
+            }
+            else if (batch.Stages.Any(s => s.Skipped && s.ErrorKind == RuntimeErrorKind.Cancelled))
+            {
+                batch.Outcome = "cancelled";
+                batch.ErrorKind = RuntimeErrorKind.Cancelled;
+            }
+            else
+            {
+                batch.Outcome = "dry_run";
+                batch.ErrorKind = RuntimeErrorKind.None;
+            }
             return;
         }
         var failed = batch.Stages.FirstOrDefault(s => s.Failed);

@@ -84,6 +84,18 @@ public sealed class AccountStateTask : ITaskRunner
             return result;
         }
 
+        var faults = (state.PageErrors ?? new List<string>()).ToList();
+        if (state.InMapError is not null) faults.Add(state.InMapError);
+        if (state.ConfigError is not null) faults.Add(state.ConfigError);
+        if (faults.Count > 0)
+        {
+            result.Outcome = TaskOutcome.Failed;
+            result.ErrorKind = RuntimeErrorKind.UpstreamError;
+            result.Error = "账号状态读取不完整: " + string.Join("; ", faults);
+            result.Evidence = Evidence(state, capture, screenshot);
+            return result;
+        }
+
         result.Outcome = TaskOutcome.Succeeded;
         result.Evidence = Evidence(state, capture, screenshot);
         return result;
@@ -105,6 +117,7 @@ public sealed class AccountStateTask : ITaskRunner
             ["page_errors"] = new JsonArray((state.PageErrors ?? new List<string>())
                 .Select(p => (JsonNode)JsonValue.Create(p)!).ToArray()),
             ["in_map"] = state.InMap,
+            ["in_map_error"] = state.InMapError,
             ["in_map_tolerance"] = tolerance is null ? null : JsonValue.Create(Math.Round(tolerance.Value, 2)),
             ["frame"] = state.Frame is null ? null : new JsonObject
             {
@@ -120,6 +133,7 @@ public sealed class AccountStateTask : ITaskRunner
             ["config"] = state.Config is null ? null : JsonNode.Parse(
                 System.Text.Json.JsonSerializer.Serialize(state.Config)),
             ["config_name"] = state.ConfigName,
+            ["config_error"] = state.ConfigError,
         };
     }
 }

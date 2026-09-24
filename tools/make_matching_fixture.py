@@ -23,12 +23,8 @@ import os
 import sys
 from collections import Counter
 
-FORK_DEFAULT = os.path.normpath(os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), '..', '..',
-    'source project', 'AzurLaneAutoScript'))
-
-sys.path.insert(0, FORK_DEFAULT)
-os.chdir(FORK_DEFAULT)
+from fixture_runtime import initialize, invocation_path
+FORK_DEFAULT = initialize()
 import module.device.pkg_resources  # noqa: F401
 
 import cv2
@@ -201,6 +197,7 @@ def gif_cases(assets, limit):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument('--repo', default=FORK_DEFAULT)
     ap.add_argument('--data', default=os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')))
     ap.add_argument('--out', default=None)
@@ -208,6 +205,8 @@ def main():
     ap.add_argument('--match-cases', type=int, default=400)
     ap.add_argument('--gif-cases', type=int, default=40)
     args = ap.parse_args()
+    args.data = invocation_path(args.data)
+    args.out = invocation_path(args.out) if args.out else None
 
     out = args.out or os.path.join(args.data, 'fixtures', 'matching.json')
     os.makedirs(os.path.dirname(out), exist_ok=True)

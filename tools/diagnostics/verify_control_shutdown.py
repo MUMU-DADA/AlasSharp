@@ -138,7 +138,8 @@ def main() -> int:
                 records = list((work / 'runs').glob('*/queue.json'))
                 assert len(records) == 1, '关闭期间不能启动第二个队列'
                 result = json.loads(records[0].read_text(encoding='utf-8'))
-                assert result['outcome'] == 'cancelled' and result['stopped_early']
+                assert result['outcome'] == 'cancelled' and result['stopped_early'], {
+                    key: result.get(key) for key in ('outcome', 'stop_reason', 'stopped_early')}
                 assert len(result['tasks']) == 200
                 assert any(task['outcome'] == 'skipped' for task in result['tasks'])
                 assert all(task['outcome'] != 'failed' for task in result['tasks'])

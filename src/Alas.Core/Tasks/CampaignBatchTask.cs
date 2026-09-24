@@ -84,14 +84,14 @@ public sealed class CampaignBatchTask : ITaskRunner
             StopReason = batch.StopReason,
             Evidence = Evidence(batch),
         };
-        if (batch.DryRun)
+        if (batch.DryRun && batch.Outcome != "cancelled")
         {
-            result.Outcome = batch.Stages.Any(s => s.Result is null)
+            result.Outcome = batch.Stages.Any(s => !s.Skipped && s.Failed)
                 ? TaskOutcome.Failed : TaskOutcome.DryRun;
             if (result.Outcome == TaskOutcome.Failed)
             {
-                result.ErrorKind = RuntimeErrorKind.UpstreamError;
-                result.Error = batch.Stages.First(s => s.Result is null).Error;
+                result.ErrorKind = batch.ErrorKind;
+                result.Error = batch.Stages.First(s => !s.Skipped && s.Failed).Error;
             }
             return result;
         }

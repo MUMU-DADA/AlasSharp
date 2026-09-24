@@ -1,588 +1,79 @@
-# -*- coding: utf-8 -*-
-"""控件识别 + 控制能力验证（真机）。
+"""Archive existing control observations without any game or device action.
 
-页面识别已经在 docs/archive/reports/page-verification.md 里逐页验完；这里验**控件**：
-
-- 20 个模块级 Switch / Scroll 规则，挑本账号可达的目标页逐个真机命中检查；
-- 并在 Scroll 自己的区域里**真滑一次**，看 at_top/at_bottom 是否随之翻转 ——
-  这一步同时验了"滑动控制"这条控制能力，而不只是识别。
-
-判定口径与页面验证一致：**在它自己的页面上命中**才算通过。不在该页的规则
-（岛屿/大世界/指挥喵等）在页面上必然不命中，属于受游戏状态阻塞，单列出来。
-
-导航用产品队列的 `navigate` 任务：这样每一步都顺带回归
-Navigation 的实现。
+The former page-specific driver used guessed coordinates and asset variants.
+It is retired. Current native rule coverage is verify_upstream_coverage.py;
+new action evidence must come from native tasks through the product queue.
 """
+from collections import Counter
+import argparse
+import hashlib
 import json
-import os
-import subprocess
-import sys
-import time
+from pathlib import Path
 
-HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, HERE)
-import alas_vision as av  # noqa: E402
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from queue_navigation import run_navigation  # noqa: E402
+from verify_privacy import PATTERNS
 
-ADB = os.environ['STUB_ADB']
-SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
-PROBE = os.path.join(HERE, '..', 'data', '_probe.png')
-ALASHUB = os.environ.get('ALASHUB', os.path.join(
-    HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe'))
-# 红线关键词：命中即拒绝点击。开战会消耗石油、"确认"不可逆 ——
-# 用户授权里明确排除了这两类，所以做成**代码级守卫**，而不是靠"记得别点"。
-# 注意 RETIRE 本身不在列表里：用户明确授权"可以打开退役弹窗、不点确认"，
-# 退役的**入口**（RETIRE_APPEAR_*）只是开一个弹窗，真正的不可逆动作是带 CONFIRM 的按钮。
-# 本流程对入口**只点一次**，之后只读判定 + 按返回，绝不点第二下
-# （第二下可能正好落在弹窗的确认按钮上 —— 这是这类验证最危险的地方）。
-DANGER = ('START', 'BATTLE', 'FIGHT', 'ATTACK', 'ASSAULT', 'CONFIRM', 'COMMIT')
-
-# 每页要验的规则；swipe 为真时在该页的 Scroll 区域内真滑
-PLAN = [
-    {'page': 'page_storage',
-     'rules': [('module.storage.storage', 'MATERIAL_SCROLL')],
-     'swipe': ('module.storage.storage', 'MATERIAL_SCROLL')},
-    {'page': 'page_dock',
-     'rules': [('module.retire.dock', 'DOCK_SCROLL'),
-               ('module.retire.dock', 'DOCK_SORTING'),
-               ('module.retire.dock', 'DOCK_FAVOURITE')]},
-    {'page': 'page_commission',
-     'rules': [('module.commission.commission', 'COMMISSION_SCROLL'),
-               ('module.commission.commission', 'COMMISSION_SWITCH')]},
-    {'page': 'page_fleet',
-     'rules': [('module.handler.strategy', 'FORMATION'),
-               ('module.handler.strategy', 'SUBMARINE_HUNT'),
-               ('module.handler.strategy', 'SUBMARINE_VIEW'),
-               ('module.handler.fast_forward', 'FLEET_LOCK')]},
-    # cached_property 规则：必须构造 UI 实例才能拿到，判据也与模块级不同
-    {'page': 'page_shop',
-     'cached': [('module.shop.ui', 'ShopUI', '_shop_bottom_navbar'),
-                ('module.shop.ui', 'ShopUI', 'shop_nav_250814'),
-                ('module.shop.ui', 'ShopUI', 'shop_tab_250814')],
-     'rules': [('module.shop.shop_voucher', 'VOUCHER_SHOP_SCROLL')]},
-    {'page': 'page_storage',
-     'cached': [('module.storage.ui', 'StorageUI', 'storage_filter')]},
-    {'page': 'page_dock',
-     'cached': [('module.retire.dock', 'Dock', 'dock_filter')],
-     'switches': [('module.retire.dock', 'DOCK_SORTING'),
-                  ('module.retire.dock', 'DOCK_FAVOURITE')]},
-    {'page': 'page_game_room',
-     'rules': [('module.minigame.minigame', 'MINIGAME_SCROLL')]},
-    # 未建模但可达：船坞长按舰船卡片进「角色详情」（上游 ship_info_enter 的入口），
-    # 装备类规则在这里才命中。**必须先进 page_dock**：长按点在船坞的舰船卡片上，
-    # 上一版没写 goto，结果在游戏房里长按，白做一轮。
-    {'page': 'ship_detail', 'enter': {'goto': 'page_dock', 'long_press': (640, 300)},
-     'rules': [('module.equipment.equipment_change', 'EQUIPMENT_SCROLL')],
-     'leave': 'back'},
-    # 角色详情页上再点上游自己的 EQUIPMENT_OPEN（该页实测 score 0.9922）进装备选择浮层
-    {'page': 'equip_change',
-     'enter': {'goto': 'page_dock', 'long_press': (640, 300),
-               'click': 'equipment/EQUIPMENT_OPEN'},
-     'rules': [('module.equipment.equipment_change', 'equipping_filter')],
-     'leave': 'back'},
-    # 舰队详情/出击准备：FLEET_LOCK 与阵型、潜艇面板都在这一层
-    {'page': 'fleet_detail',
-     'enter': {'goto': 'page_fleet', 'click': 'equipment/FLEET_DETAIL'},
-     'rules': [('module.handler.fast_forward', 'FLEET_LOCK'),
-               ('module.handler.strategy', 'FORMATION'),
-               ('module.handler.strategy', 'SUBMARINE_HUNT'),
-               ('module.handler.strategy', 'SUBMARINE_VIEW')],
-     'leave': 'back'},
-    # 新账号解锁后才可达的控件：指挥喵的锁定开关、大世界的两个滚动区
-    {'page': 'page_meowfficer',
-     'rules': [('module.meowfficer.collect', 'SWITCH_LOCK')]},
-    {'page': 'page_os',
-     'rules': [('module.os_handler.storage', 'SCROLL_STORAGE'),
-               ('module.os_handler.strategic', 'STRATEGIC_SEARCH_SCROLL')]},
-    # 装备选择浮层重试：新账号槽位里有装备，点**已装备**的槽位才会开更换浮层
-    # （旧账号槽位是空的，"点击添加装备"占位点不出筛选开关）
-    {'page': 'equip_select2',
-     'enter': {'goto': 'page_dock', 'long_press': (640, 300), 'click_xy': (995, 375)},
-     'rules': [('module.equipment.equipment_change', 'equipping_filter')],
-     'leave': 'back'},
-    # 装备选择浮层重试（第 3 次，这次用**上游自己的几何**）：
-    # module/equipment/equipment_change.py 的 EQUIPMENT_GRID = ButtonGrid(origin=(696,170),
-    # delta=(86.25,0), button_shape=(32,32)) → 槽位中心 y≈186、x≈712/798/884/971/1057。
-    # 前两次用的 (792,156)/(995,375) 是我从截图目测的，偏了约 30px。
-    {'page': 'equip_select3',
-     'enter': {'goto': 'page_dock', 'long_press': (640, 300), 'click_xy': (712, 186)},
-     'rules': [('module.equipment.equipment_change', 'equipping_filter')],
-     'leave': 'back'},
-    {'page': 'retire_dialog',
-     # 退役确认弹窗（用户明确授权"只开弹窗、不点确认"）：
-     # 1) 点一艘舰船卡片＝选中（无害）；2) 点退役入口 RETIRE_APPEAR_* 开弹窗（只点一次）；
-     # 3) 只读判定 RETIRE_CONFIRM_SCROLL；4) 按返回退出。全程不碰任何带 CONFIRM 的素材。
-     'enter': {'goto': 'page_dock', 'click_xy': (640, 300),
-               'click': 'retire/RETIRE_APPEAR_1', 'require_confident': True},
-     'rules': [('module.retire.retirement', 'RETIRE_CONFIRM_SCROLL')],
-     'leave': 'back'},
-    # 阵型/潜艇开关：在**战役地图**上点 STRATEGY_OPEN 打开策略面板即可（上游 strategy_open
-    # 就是这个流程：IN_MAP → click(STRATEGY_OPEN) → STRATEGY_OPENED）。
-    # 完全不需要进出击准备、更不碰任何战斗按钮；require_confident 保证只点确信在屏的素材。
-    {'page': 'page_campaign#strategy',
-     'enter': {'goto': 'page_campaign', 'click': 'handler/STRATEGY_OPEN',
-               'require_confident': True},
-     'rules': [('module.handler.strategy', 'FORMATION'),
-               ('module.handler.strategy', 'SUBMARINE_HUNT'),
-               ('module.handler.strategy', 'SUBMARINE_VIEW'),
-               ('module.handler.fast_forward', 'FLEET_LOCK')],
-     'leave': 'back'},
-]
+ROOT = Path(__file__).resolve().parents[2]
 
 
-def op(op_name, **args):
-    # 形参别叫 name：调用处要传 name=规则名，重名会 TypeError
-    resp = json.loads(av.handle_line(json.dumps(
-        {'id': 1, 'op': op_name, 'args': args})))
-    if not resp.get('ok'):
-        raise RuntimeError(resp.get('error'))
-    return resp['result']
+def cell(value):
+    text = str(value).replace(str(ROOT), '<project>').replace(ROOT.as_posix(), '<project>')
+    if any(pattern.search(text) for pattern in PATTERNS.values()):
+        raise ValueError('Private content in control evidence; archive refused')
+    return text.replace('|', '&#124;').replace('\r', '').replace('\n', '<br>')
 
 
-def shot(retry=True):
-    """取一帧。adb daemon 会自己重启（实测过），连接一丢 screencap 就返回空字节，
-    这里做一次重连重试，而不是把 0 字节喂给解码器报 UnidentifiedImageError。"""
-    subprocess.run([ADB, '-s', SERIAL, 'exec-out', 'screencap', '-p'],
-                   stdout=open(PROBE, 'wb'), check=False)
-    if os.path.getsize(PROBE) == 0 and retry:
-        subprocess.run([ADB, 'connect', SERIAL], capture_output=True, timeout=60)
-        time.sleep(3)
-        return shot(retry=False)
-    op('screenshot_load', path=PROBE)
-    return op('page_current')['hit']
+def render(rows, digest):
+    if not isinstance(rows, list) or not rows:
+        raise ValueError('Expected nonempty historical control evidence')
+    for row in rows:
+        if not isinstance(row, dict) or not all(k in row for k in ('page', 'rule', 'verdict', 'detail')):
+            raise ValueError('Invalid control evidence row')
+        if row['verdict'] not in ('hit', 'miss', 'blocked'):
+            raise ValueError('Unknown historical verdict')
+    counts = Counter(row['verdict'] for row in rows)
+    lines = ['# 控件历史识别与动作记录', '',
+             '由 `tools/diagnostics/verify_controls.py` 只读归档；本次没有设备动作。',
+             '旧逐页动作驱动已退役：其中固定坐标、推测素材变体及手工点击顺序不再执行。',
+             '原始记录 `data/controls_verify.json` 保持不变，以下结果不改判、不补写未发生的验证。',
+             f'原始文件 SHA-256：`{digest}`。', '',
+             f'历史 {len(rows)} 条记录：hit={counts["hit"]}、miss={counts["miss"]}、blocked={counts["blocked"]}。',
+             '这些记录包含重复控件、动作及守卫；不代表同等数量的独立规则通过。',
+             '历史 hit 不能证明当前产品路径有效；miss/blocked 也不能直接归因为客户端版本或素材错误。', '',
+             '| 页面 | 模块 | 规则 | 类型 | 原判定 | 原始细节 |',
+             '| --- | --- | --- | --- | --- | --- |']
+    for row in rows:
+        values = [row.get(key, '') for key in ('page', 'module', 'rule', 'class', 'verdict', 'detail')]
+        lines.append('| ' + ' | '.join(cell(value) for value in values) + ' |')
+    lines += ['', '## 证据边界与复验', '',
+              '原生声明、构造及合成识别覆盖见 [全量规则报告](upstream-coverage.md)。',
+              '真实识别必须在对应原生任务状态下验证；开关/滚动动作还要核对变化及恢复后的状态。',
+              '历史记录没有独立恢复成功判据时，不从动作 hit 推断已经恢复。',
+              '新动作由 TaskQueue 调度原生任务，不在诊断脚本另建逐页流程。',
+              '仅重建本报告：`python tools/diagnostics/verify_controls.py --report-only`。', '',
+              '脱敏范围：只导出页面/模块/规则标识、原判定及原始细节；项目绝对路径替换为 `<project>`。',
+              '不发布设备配置、图像或账号信息，敏感字符串会阻止归档；原始文件与哈希保持不变。', '']
+    return '\n'.join(lines)
 
 
-def ensure_device():
-    for attempt in range(3):
-        out = subprocess.run([ADB, 'connect', SERIAL], capture_output=True,
-                             text=True, timeout=60)
-        state = subprocess.run([ADB, '-s', SERIAL, 'get-state'], capture_output=True,
-                               text=True, timeout=60)
-        if state.stdout.strip() == 'device':
-            return True
-        print('[adb  ] 第 %d 次连接未就绪: %s / %s'
-              % (attempt + 1, out.stdout.strip(), state.stderr.strip()[:80]))
-        time.sleep(3)
-    return False
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--report-only', action='store_true', help='Compatibility flag; all modes are read-only')
+    parser.add_argument('--input', type=Path, default=ROOT / 'data/controls_verify.json')
+    parser.add_argument('--output', type=Path, default=ROOT / 'docs/archive/reports/controls.md')
+    args = parser.parse_args(argv)
+    if not args.input.is_file():
+        print('SKIP: historical control evidence absent; existing report preserved')
+        return 0
+    raw = args.input.read_bytes()
+    report = render(json.loads(raw), hashlib.sha256(raw).hexdigest())
+    if args.input.resolve() == args.output.resolve():
+        raise ValueError('Report must not overwrite raw evidence')
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(report, encoding='utf-8')
+    assert args.input.read_bytes() == raw, 'Historical evidence changed'
+    print('PASS: archived historical control evidence; no native imports or device actions')
+    return 0
 
 
-def swipe(x1, y1, x2, y2, ms=400):
-    subprocess.run([ADB, '-s', SERIAL, 'shell', 'input', 'swipe',
-                    str(x1), str(y1), str(x2), str(y2), str(ms)], check=False)
-
-
-def goto(page):
-    # 必须显式 utf-8：alashub 用 Console.OutputEncoding=UTF8 输出中文，
-    # 而 subprocess 默认按本机 GBK 解码，会让读线程抛 UnicodeDecodeError 并返回 stdout=None。
-    r = run_navigation(ALASHUB, page, SERIAL, adb=ADB, timeout=600)
-    line = [l for l in (r.stdout or '').splitlines() if l.startswith('[result')]
-    return r.returncode == 0, (line[0] if line else (r.stdout or r.stderr or '')[-200:])
-
-
-def judge(res):
-    """控件规则的"命中"：Switch 看 appear，Scroll 看 at_top/at_bottom 是否被判定过。"""
-    vals = res['results']
-    if any(isinstance(v, str) and ('Error' in v or 'Exception' in v) for v in vals.values()):
-        return False, 'ERR'
-    if res['class'] == 'Switch':
-        return bool(vals.get('appear')), 'appear=%s' % vals.get('appear')
-    if res['class'] == 'Scroll':
-        hit = ('at_top' in vals) or ('at_bottom' in vals)
-        return hit, 'at_top=%s at_bottom=%s' % (vals.get('at_top'), vals.get('at_bottom'))
-    return bool(vals.get('appear')), str(vals)
-
-
-def drive_switch(module, name, restore=True):
-    """开关驱动：读状态 → 点另一状态的按钮 → 再读确认变化 → 复原。
-
-    这是"控制能力"里最容易被忽略的一环：识别出开关状态不难，难的是**改它并复核**。
-    上游 `Switch.click(state, main)` 就是取 `get_data(state)['click_button']` 再点，
-    这里走同一条路（按钮区域由上游规则给出，点击走真机 adb）。
-    最后**复原原状态**：验证不该留下痕迹。
-    """
-    info = op('ui_rule_check', module=module, name=name)
-    states, before = info.get('state_buttons') or [], info['results'].get('get')
-    if before in (None, 'unknown') or len(states) < 2:
-        return {'rule': name, 'verdict': 'miss',
-                'detail': '当前状态 %s，可选状态 %d 个，无法驱动'
-                          % (before, len(states))}
-    target = next((s for s in states if s['state'] != before and s.get('click_area')), None)
-    if target is None:
-        return {'rule': name, 'verdict': 'miss', 'detail': '没有其它可点状态'}
-    area = target['click_area']
-    x, y = (area[0] + area[2]) // 2, (area[1] + area[3]) // 2
-    swipe(x, y, x, y, 80)          # 等价于 tap（input swipe 同点短时）
-    time.sleep(1.5)
-    shot()
-    mid = op('ui_rule_check', module=module, name=name)['results'].get('get')
-    changed = mid == target['state']
-    restored = None
-    if restore:
-        back = next((s for s in states if s['state'] == before and s.get('click_area')), None)
-        if back:
-            b = back['click_area']
-            bx, by = (b[0] + b[2]) // 2, (b[1] + b[3]) // 2
-            swipe(bx, by, bx, by, 80)
-            time.sleep(1.5)
-            shot()
-            restored = op('ui_rule_check', module=module, name=name)['results'].get('get')
-    return {'rule': name, 'verdict': 'hit' if changed else 'miss',
-            'detail': '%s -> %s（点 %s @%s）%s' % (
-                before, mid, target['state'], (x, y),
-                '' if restored is None else '，复原 -> %s' % restored),
-            'states': [s['state'] for s in states]}
-
-
-report = []
-REPORT_ONLY = '--report-only' in sys.argv
-ONLY = os.environ.get('ONLY')          # 只跑某一步（定向重跑，见 PLAN 的 page 名）
-DATA = os.path.join(HERE, '..', 'data', 'controls_verify.json')
-print('=== 控件识别与滑动控制验证 ===')
-if REPORT_ONLY:
-    # 只重建 docs/archive/reports/controls.md：改文档措辞不该再跑一遍真机点击
-    report = json.load(open(DATA, encoding='utf-8'))
-    print('[模式 ] 仅重建报告（读 %s，不连设备）' % os.path.abspath(DATA))
-elif not ensure_device():
-    print('adb 连接未就绪，退出（先确认模拟器已启动）')
-    sys.exit(2)
-for step in ([] if REPORT_ONLY else PLAN):
-    page = step['page']
-    if ONLY and page != ONLY:
-        continue          # ONLY=<页名> 时只跑那一步：定向调试不必每次跑全套
-    s = shot()
-    if step.get('enter'):
-        # 图里没有这个"页"，但可以靠动作进去：长按进详情 / 从某页点某个上游素材
-        act = step['enter']
-        if 'goto' in act:
-            ok, info = goto(act['goto'])
-            print('[enter] goto %s %s (%s)' % (act['goto'], 'OK' if ok else 'NG', info))
-        if 'long_press' in act:
-            x, y = act['long_press']
-            swipe(x, y, x, y, 1100)
-            time.sleep(2.0)
-            print('[enter] %s：长按 (%d,%d) 1100ms' % (page, x, y))
-        if 'click_xy' in act:
-            # 没有对应素材、但位置确定的点击（如角色详情页的装备槽位）
-            cx, cy = act['click_xy']
-            print('[enter] 点坐标 (%d,%d)' % (cx, cy))
-            swipe(cx, cy, cx, cy, 80)
-            time.sleep(2.5)
-        if 'click' in act:
-            # 和导航器同一套规矩：候选资产按实测分择优；分数够高才点匹配点，
-            # 否则点资产标称坐标（低分时 minMaxLoc 的峰值是随机的，拿它当点击目标等于乱点 —
-            # 上一版就是这么在 score=0.27 的位置乱点，把画面点成了未建模页）。
-            asset = act['click']
-            # **红线守卫**：任何名字像"开战/确认/退役"的素材一律不点，不管分数多高。
-            # 这不是防御性编程的客套 —— 本流程会在战斗准备相关界面里点按钮，
-            # 误点"开始战斗"会消耗石油，误点退役确认不可逆。用户的授权明确排除了这两个。
-            if any(k in asset.upper() for k in DANGER):
-                print('[enter] 拒绝点击 %s：命中红线关键词 %s' % (asset, DANGER))
-                report.append({'page': page, 'rule': '<danger-guard>', 'class': 'Guard',
-                               'verdict': 'blocked',
-                               'detail': '拒绝点击 %s（红线守卫）' % asset})
-                continue
-            # 低分素材在战斗相关界面上一律不点：只有"确信在屏上"的素材才可能是正确的按钮
-            require_confident = act.get('require_confident', False)
-            best = None
-            for cand in [asset, 'ui_white/%s_WHITE' % asset.split('/', 1)[-1]]:
-                try:
-                    m = op('button_match', asset=cand, probe_score=True)
-                    nominal = op('asset_button_center', asset=cand)['center']
-                except Exception:
-                    continue
-                score = m['score'] if m['score'] is not None else -1
-                if best is None or score > best[0]:
-                    best = (score, cand, m, nominal)
-            score, cand, m, nominal = best
-            if require_confident and score < 0.85:
-                print('[enter] 放弃点击 %s：实测分 %.4f < 0.85（战斗相关界面只点确信在屏的按钮）'
-                      % (cand, score))
-                report.append({'page': page, 'rule': '<confident-guard>', 'class': 'Guard',
-                               'verdict': 'blocked',
-                               'detail': '%s 实测 %.4f，未达确信阈值，放弃点击' % (cand, score)})
-                continue
-            box = m.get('button_offset') if score >= 0.85 else None
-            if box:
-                cx, cy = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
-            else:
-                cx, cy = nominal
-            print('[enter] 点 %s（score=%.4f，%s）@(%d,%d)'
-                  % (cand, score, '匹配点' if box else '标称坐标', cx, cy))
-            swipe(cx, cy, cx, cy, 80)
-            time.sleep(2.5)
-        s = shot()
-    elif page not in s:
-        ok, info = goto(page)
-        print('[goto ] %-16s %s  (%s)' % (page, 'OK' if ok else 'NG', info))
-        s = shot()
-    if not step.get('enter') and page not in s:
-        print('[跳过 ] %s 不在屏幕上（当前 %s）' % (page, s))
-        for module, name in step.get('rules', []):
-            report.append({'page': page, 'rule': name, 'verdict': 'blocked',
-                           'detail': '页面不可达', 'seen': s})
-        for module, cls, attr in step.get('cached', []):
-            report.append({'page': page, 'rule': '%s.%s' % (cls, attr), 'verdict': 'blocked',
-                           'detail': '页面不可达', 'seen': s})
-        continue
-    print('[page ] %s（当前命中 %s）' % (page, s))
-    for module, cls, attr in step.get('cached', []):
-        try:
-            res = op('cached_rule_check', module=module, **{'class': cls, 'attr': attr})
-        except Exception as e:
-            print('   %-24s EXC  %s: %s' % ('%s.%s' % (cls, attr), type(e).__name__, e))
-            report.append({'page': page, 'rule': '%s.%s' % (cls, attr), 'class': '?',
-                           'verdict': 'miss', 'detail': 'EXC %s: %s' % (type(e).__name__, e),
-                           'module': module, 'seen': s})
-            continue
-        detail = json.dumps(res['detail'], ensure_ascii=False)
-        print('   %-24s %-8s %-4s %s' % (res['label'], res['class'],
-                                         'HIT' if res['hit'] else 'miss', detail[:160]))
-        report.append({'page': page, 'rule': res['label'], 'class': res['class'],
-                       'verdict': 'hit' if res['hit'] else 'miss', 'detail': detail,
-                       'module': module, 'seen': s})
-    for module, name in step.get('switches', []):
-        try:
-            r = drive_switch(module, name)
-        except Exception as e:
-            r = {'rule': name, 'verdict': 'miss',
-                 'detail': 'EXC %s: %s' % (type(e).__name__, e)}
-        print('   %-24s %-8s %-4s %s' % (r['rule'], 'Switch', 'HIT' if r['verdict'] == 'hit' else 'miss',
-                                         r['detail']))
-        report.append({'page': page, 'rule': r['rule'] + '#drive', 'class': 'Switch',
-                       'verdict': r['verdict'], 'detail': r['detail'],
-                       'module': module, 'seen': s})
-    for module, name in step.get('rules', []):
-        res = op('ui_rule_check', module=module, name=name)
-        hit, detail = judge(res)
-        print('   %-22s %-8s %-4s %s' % (name, res['class'], 'HIT' if hit else 'miss', detail))
-        report.append({'page': page, 'rule': name, 'class': res['class'],
-                       'verdict': 'hit' if hit else 'miss', 'detail': detail,
-                       'module': module, 'seen': s})
-    if step.get('swipe'):
-        module, name = step['swipe']
-        res = op('ui_rule_check', module=module, name=name)
-        area = res.get('area')
-        if not area:
-            print('   [滑动 ] %s 没有 area，跳过' % name)
-        else:
-            x = (area[0] + area[2]) // 2
-            y1, y2 = area[1] + int((area[3] - area[1]) * 0.75), area[1] + int((area[3] - area[1]) * 0.25)
-            before = op('ui_rule_check', module=module, name=name)['results']
-            for _ in range(3):
-                swipe(x, y1, x, y2)
-                time.sleep(0.6)
-            shot()
-            mid = op('ui_rule_check', module=module, name=name)['results']
-            for _ in range(6):
-                swipe(x, y2, x, y1)
-                time.sleep(0.6)
-            shot()
-            after = op('ui_rule_check', module=module, name=name)['results']
-            flipped = before.get('at_top') != mid.get('at_top')
-            print('   [滑动 ] area=%s at_top: %s -> %s -> %s（翻转=%s）'
-                  % (area, before.get('at_top'), mid.get('at_top'),
-                     after.get('at_top'), flipped))
-            report.append({'page': page, 'rule': name + '#swipe', 'class': 'Swipe',
-                           'verdict': 'hit' if flipped else 'miss',
-                           'detail': 'at_top %s -> %s -> %s'
-                                     % (before.get('at_top'), mid.get('at_top'),
-                                        after.get('at_top')),
-                           'area': area, 'seen': s})
-    if step.get('probe'):
-        # 再进一层的探测器：点一下（只打开选择器，不做任何改动），再看规则是否命中
-        for (px, py) in step['probe'].get('clicks', []):
-            swipe(px, py, px, py, 80)
-            time.sleep(2.0)
-            s2 = shot()
-            print('[probe] 点击 (%d,%d) 后当前命中 %s' % (px, py, s2))
-            for module, name in step['probe'].get('rules', []):
-                res = op('ui_rule_check', module=module, name=name)
-                hit, detail = judge(res)
-                print('   %-24s %-8s %-4s %s' % (name, res['class'],
-                                                 'HIT' if hit else 'miss', detail))
-                report.append({'page': page, 'rule': name + '#probe', 'class': res['class'],
-                               'verdict': 'hit' if hit else 'miss', 'detail': detail,
-                               'module': module, 'seen': s2})
-    if step.get('leave') == 'back':
-        # 进过浮层就要退出来，别把用户/后续步骤留在里面
-        subprocess.run([ADB, '-s', SERIAL, 'shell', 'input', 'keyevent', '4'],
-                       capture_output=True)
-        time.sleep(2.0)
-        print('[leave] 返回键退出，当前命中 %s' % (shot(),))
-
-hits = sum(1 for r in report if r['verdict'] == 'hit')
-miss = sum(1 for r in report if r['verdict'] == 'miss')
-blocked = sum(1 for r in report if r['verdict'] == 'blocked')
-print()
-print('小计: hit %d / miss %d / blocked %d（共 %d 项）' % (hits, miss, blocked, len(report)))
-if not REPORT_ONLY:
-    for entry in report:
-        entry['navigation_entry'] = 'queue:navigate'
-if not REPORT_ONLY and not ONLY:
-    # ONLY 模式**不覆盖**完整证据文件：定向重跑只看到一步，写进去会把历史证据抹掉
-    out = DATA
-    with open(out, 'w', encoding='utf-8') as f:
-        json.dump(report, f, ensure_ascii=False, indent=2, default=str)
-    print('明细: %s' % os.path.abspath(out))
-
-# ---------------------------------------------------------------- 报告
-# 未在本批跑到的规则：人工判定它们属于哪一类（写进脚本，报告才可复现）
-UNPLANNED = {
-    'EQUIPMENT_SCROLL': ('deeper', '需进「舰船详情 → 装备」浮层，不是页面图里的独立页'),
-    'equipping_filter': ('deeper', '同上（装备筛选开关在装备浮层里）'),
-    'RETIRE_CONFIRM_SCROLL': ('blocked',
-        '退役确认弹窗的滚动条。用户已授权"只开弹窗、不点确认"，但**安全入口找不到**：'
-        '在船坞点舰船卡片打开的是角色详情（`retire/DOCK_CHECK` 从命中掉到 0.43，已离开船坞），'
-        '三个入口变体 `RETIRE_APPEAR_1/2/3` 实测 0.07/0.08/0.19 都不在屏上；'
-        '再往下只能盲点船坞底部按钮，而错误代价是不可逆的退役 —— 停手，不验'),
-    'VOUCHER_SHOP_SCROLL': ('deeper', '需切到商店的兑换页签（页签本身是 ShopUI 的 Switch 规则）'),
-    'MINIGAME_SCROLL': ('pending', 'page_game_room 已验证可达，小游戏内滚动待验'),
-    'ISLAND_SEASON_TASK_SCROLL': ('blocked', '按用户要求跳过：岛屿相关不在本轮范围'),
-    'ISLAND_DOCK_SORTING': ('blocked', '同上'),
-    'SWITCH_LOCK': ('blocked',
-        '指挥喵的锁定开关（`MEOWFFICER_APPLY_LOCK/UNLOCK`，素材在屏幕左下角 (36,560)）。'
-        '按上游调用链 `collect.py:279/283 → _meow_apply_lock`，它出现在**获得/培养指挥喵**的流程里，'
-        '要买猫/养猫才会出现 —— 会改变账号资源，未做'),
-    'SCROLL_STORAGE': ('blocked', '大型作战未解锁'),
-    'STRATEGIC_SEARCH_SCROLL': ('blocked', '同上'),
-    'EventShopUI.event_shop_tab_count_and_navbar': ('blocked',
-        '活动商店的页签计数（运行时按颜色算）。**规则本身是活的**：实测在商店页算出 count=5'
-        '（就是老版商店底部那 5 个页签），切到别的商店页给 2 / 27 这类无意义值 —— 只有真正'
-        '在活动商店屏上输出才有意义。入口断在客户端版本：上游从 `page_shop` 点 `shop/NAV_EVENT`'
-        '（以 `NAV_GENERAL` 为出现判据）切进活动商店，而这几个是 250814 新版 UI 素材，'
-        '本客户端实测 0.2653 / 0.3527 / 0.3126；老版商店的底部导航栏'
-        '（`shop_bottom_navbar` origin=(399,619) delta=(182,0)，5 个）逐个点过也没有活动商店'),
-}
-DEEPER_NOTE = {
-    'FLEET_LOCK': '舰队锁定开关。**本客户端不提供该面板**：换账号后在 page_fleet 上实测 '
-                  '`handler/FLEET_LOCKED` 0.34、`FLEET_UNLOCKED` 0.19；在战役地图上 '
-                  '`FLEET_LOCKED` 0.22、`FLEET_UNLOCKED` 0.15 —— 都不在屏上，且 `ui_white` '
-                  '无对应素材。未盲点关卡节点（有误触开战风险）',
-    'FORMATION': '阵型面板。同上：page_fleet 上 `FORMATION_1` 连阈值 0 都匹配不上'
-                 '（二分反解为负）、`FORMATION_2` 0.05、`FORMATION_3` 0.09；地图上 '
-                 '`IN_MAP` 0.07、`STRATEGY_OPEN` 也匹配不上。本客户端不暴露该入口',
-    'SUBMARINE_HUNT': '潜艇面板。同上（page_fleet 上两个状态素材 0.07/0.07）',
-    'SUBMARINE_VIEW': '同上（0.20/0.12）',
-    'equipping_filter': '装备筛选开关（`EQUIPPING_ON/OFF`）。已试过 4 条入口：角色详情页点 '
-                        'EQUIPMENT_OPEN（该素材在详情页实测 0.99）、目测坐标 (792,156)/(995,375)、'
-                        '上游自己的 EQUIPMENT_GRID 几何（槽位中心 (712,186)）、'
-                        '以及上游更准确的点击目标 EQUIP_INFO_BAR（73x73，origin=(695,127)）。'
-                        '点击都能打开某个浮层，但开关始终不出现。**最直接的证据**：'
-                        '`EQUIPPING_ON/OFF` 的标称区域在屏幕**左边缘** (24,510)-(61,589)，'
-                        '在船坞进的角色详情页上实测 offset=0 时 0.21/0.03、offset=40 时 0.28/0.19 '
-                        '—— 本客户端的装备界面布局与上游那套不同，素材根本不在屏上。'
-                        '另注：该 Switch 创建时**没设 offset**，`get()` 的匹配窗口只有 ±3 像素，'
-                        '布局一偏就必然判 unknown',
-}
-# 未命中里有一类不是"到不了"，而是**客户端 UI 版本不同**：规则本身跑通了、
-# 正确返回 unknown，因为屏幕上根本没有它要找的新版控件。
-MISS_STATUS = {
-    'ShopUI.shop_nav_250814': ('uiversion',
-        '本客户端是 250814 之前的老版商店 UI：可选状态是 NAV_GENERAL/NAV_MONTHLY，'
-        '实测 unknown（新版商店才有这两个导航项；老版走 _shop_bottom_navbar，已命中）'),
-    'ShopUI.shop_tab_250814': ('uiversion',
-        '同上（9 个新版页签 TAB_* 都不在屏上）'),
-    'RETIRE_CONFIRM_SCROLL': ('blocked',
-        '退役确认弹窗的滚动条。用户已授权"只开弹窗、不点确认"，但**安全入口找不到**：'
-        '在船坞点舰船卡片打开的是角色详情（pages 变空、`retire/DOCK_CHECK` 从命中掉到 0.43，'
-        '说明已离开船坞），三个入口变体 `RETIRE_APPEAR_1/2/3` 实测 0.07/0.08/0.19 都不在屏上。'
-        '再往下只能盲点船坞底部按钮，而这条流程的错误代价是**不可逆的退役** —— 停手，不验。'
-        '红线守卫（DANGER 含 CONFIRM）同时也挡住了任何确认类素材的点击'),
-}
-LABEL = {'hit': '✅ 已命中', 'deeper': '➡️ 需更深流程', 'blocked': '⛔ 游戏状态阻塞',
-         'pending': '🔵 待验', 'uiversion': '🕐 UI 版本差异'}
-
-
-def build_doc():
-    entry_note = (
-        '本次样本经 `alashub queue --file` 的 `navigate` 任务采集。'
-        if report and all(r.get('navigation_entry') == 'queue:navigate' for r in report)
-        else '当前存档是旧直接导航入口的历史样本；队列入口仍需单独真机复跑。')
-    rows = []
-    for x in report:
-        rule = x['rule']
-        if rule.endswith(('#drive', '#swipe', '#probe')) or rule.startswith('<'):
-            continue          # 动作行与守卫记录单独成节，不混进规则总账
-        if x['verdict'] == 'hit':
-            status = LABEL['hit']
-            note = x['detail']
-        elif rule in MISS_STATUS:
-            kind, note = MISS_STATUS[rule]
-            status = LABEL[kind]
-        else:
-            status = LABEL['deeper']
-            note = DEEPER_NOTE.get(rule, x['detail'])
-        rows.append((rule, x.get('class', ''), status, note))
-    for rule, (kind, note) in UNPLANNED.items():
-        # 已在本批跑到的规则不再重复列（VOUCHER/MINIGAME 现在都在计划里）
-        if any(r[0] == rule or r[0] == rule + '#drive' for r in rows):
-            continue
-        rows.append((rule, '', LABEL[kind], note))
-    # 事件商店那条是运行时算出来的规则，已并入 UNPLANNED（含本轮实测的入口结论），
-    # 这里不再单独追加，避免总账里出现两行。
-    rows.sort(key=lambda r: (r[2], r[0]))
-    actions = [x for x in report if x['rule'].endswith(('#swipe', '#drive', '#probe'))
-               or x['rule'].startswith('<')]
-
-    lines = [
-        '# 控件识别与滑动控制验证记录',
-        '',
-        '判定口径与页面验证一致：**在它自己的页面上命中**才算通过。',
-        '"可驱动"（不抛异常）不算 —— 那是 S1 阶段的结论。',
-        '',
-        '设备：MuMu 模拟器 `127.0.0.1:16384`（1280x720，国服，新版主界面）。',
-        '脚本：`tools/diagnostics/verify_controls.py`（导航走产品队列的 `navigate` 任务，',
-        '顺带回归 Navigation 实现）；原始数据 `data/controls_verify.json`。',
-        entry_note,
-        '',
-        '## 本批实际运行结果',
-        '',
-        '| 页面 | 规则 | 类型 | 结果 | 细节 |',
-        '| --- | --- | --- | --- | --- |',
-    ]
-    for x in report:
-        lines.append('| `%s` | `%s` | %s | %s | %s |'
-                     % (x['page'], x['rule'], x.get('class', ''), x['verdict'], x['detail']))
-    lines += [
-        '',
-        '## 滑动控制与开关驱动（动作，不是识别）',
-        '',
-        '| 页面 | 动作 | 结果 |',
-        '| --- | --- | --- |',
-    ]
-    for x in actions:
-        lines.append('| `%s` | `%s` | %s |' % (x['page'], x['rule'], x['detail']))
-    lines += [
-        '',
-        '`#swipe` = 在 Scroll 自己的区域里真滑，看 `at_top` 是否翻转；',
-        '`#drive` = 读出开关状态 → 点上游规则给出的另一个状态的按钮 → 再读确认变化',
-        '→ **复原原状态**（验证不该留下痕迹）；',
-        '`#probe` = 再进一层的探测点击（只打开选择器，不做任何改动）。',
-        '开关驱动是控制能力的核心回路：识别出状态不难，难的是改它并复核。',
-        '',
-        '## 20 个控件规则的总账',
-        '',
-        '| 规则 | 类型 | 状态 | 说明 |',
-        '| --- | --- | --- | --- |',
-    ]
-    for rule, cls, status, note in rows:
-        lines.append('| `%s` | %s | %s | %s |' % (rule, cls, status, note))
-    lines += [
-        '',
-        '## 复现',
-        '',
-        '```powershell',
-        '$env:STUB_ADB = "<adb.exe>"',
-        '$env:ALASHUB  = "src/Alas.DataTool/bin/Release/net10.0/alashub.exe"',
-        'python tools/diagnostics/verify_controls.py',
-        '```',
-        '',
-    ]
-    path = os.path.join(HERE, '..', 'docs', 'archive/reports/controls.md')
-    with open(path, 'w', encoding='utf-8', newline='\n') as f:
-        f.write('\n'.join(lines))
-    print('报告: %s' % os.path.abspath(path))
-
-
-build_doc()
+if __name__ == '__main__':
+    raise SystemExit(main())

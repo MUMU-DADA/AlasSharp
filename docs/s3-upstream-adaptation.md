@@ -5,7 +5,7 @@
 
 ## 生产调用链
 
-1. 以完整 `campaign.<目录>.<模块>` 读取 IR 并校验 `source`，不混用同名活动章节。
+1. 以完整 `campaign.<目录>.<模块>` 读取 IR 并校验 `source`，不混用同名活动章节。真跑在创建设备前导入原生模块并检查 `Campaign.MAP`；源依赖缺失和辅助模块明确拒绝，dry-run 仍不导入业务模块。
 2. 绑定 `Campaign_Name` 与 `Campaign_Event`，调用 `CampaignRun.load_campaign()` 合并章节及继承的 `Config`。
 3. 清理设备 stuck/click 记录；上一局仍在地图内时先通过上游撤退，再导航。该清理撤退不参与本局通关判定。
 4. 由上游 `ensure_campaign_ui()` 处理主线、困难、活动和档案入口，设置 `ENTRANCE`。
@@ -21,11 +21,33 @@
 - `plan_steps`、`semantic_trace` 和 IR 完整度是离线摘要，不是可逐条重放的战斗计划。
 - 地图识别继续走上游 `_map_config(chapter)` 和 `module.map_detection.utils_assets.Assets`。
 - 页面、按钮、OCR 和模板由 `tools/alas_vision.py` 解析上游对象；不得从 `assets.json` 重建运行时视觉规则。
+- 页面单帧判定直接调用 `UI.ui_page_appear()` 与 `ModuleBase.appear()`，保留短路、offset 和服务器分支；页面图只保留原生链接的按钮对象，不按命名推测替代素材。服务器切换调用上游 `set_server()` 释放全部资源缓存。
+- 控件目录从上游构造声明、导入别名和继承关系发现，包含模块实例、延迟属性与任务内工厂。实例及属性由原生类构造；工厂留给原生任务上下文调用，不把“构造成功”当成识别命中。
+- 素材元数据分别遵循 Button 和 Template 的原生图像加载方式，包括 GIF；缺少服务器变体、字段或源文件时校验失败，不回退到其他服。
+- 嵌套模块素材 id 保留导出器的目录分隔形式，宿主按最后一个 `/` 分离对象名并转换 Python 模块路径；反向页面图使用同一形式，旧点分模块 id 仍可解析。合成嵌套模块验证原生对象身份，导出模型、校验与夹具仍消费原契约字段，不重建视觉对象。
 - 截图按上游 RGB 语义传递，存 PNG 时正确转换通道。旧文件颜色错误不能证明 BOSS 素材失配。
 - 正常未检出与识别执行故障分开，详见[任务域](tasks.md)。
 
-导出快照曾完成 1,375 个 Config 静态解析、1,372 个原生对照；3 个历史活动因上游缺少素材符号无法导入。
-这些是记录时的覆盖数字，当前覆盖以导出校验为准，不能据此宣称所有章节已实战验收。
+全量对照及源缺陷由[自动化规则覆盖](archive/reports/upstream-coverage.md)和[地图模型对照](archive/reports/map-ir.md)生成。
+静态 Config 数包含辅助模块，不能当作可运行关卡数；原生导入失败会令总体检查失败，不能改成跳过或以地图特例修补。
+加载/绑定、模板正对照、原生导航合成状态和真实游戏结果分别记账，不能据此宣称所有章节已实战验收。
+
+已修复的通用根因包括：页面判据的局部重写偏离上游短路/offset 语义、服务器切换只清理局部素材缓存、Template 被误用 Button 的初始化 API，以及控件扫描遗漏子类和延迟构造。
+这些修复经四服原生对象和合成输入对照；没有新增真机通关结论，已有成功结算证据保持原样。
+
+入口复核还发现旧的固定红色区域/坐标撤退线程仍覆写 `enter_map()`，会绕过共享设备与原生弹窗流程，吞掉识别错误并可能在退出等待超时后继续点击。
+现已删除该旁路及无生产调用的 C# 自建导航点击算法；保留原生上一局撤退、入口准备、`Campaign.run()`、相机及战斗判据兼容。
+[入口对照](archive/reports/native-campaign-entry.md)记录原生处理器、存盘帧与内容哈希。历史残留出击弹窗仍无法由当前原生判据确认，属于未解决的客户端状态；删除旁路不等于完成该状态的适配。
+未以新地图或页面坐标补丁绕过；需要原生流程现场复验。冻结结果词表保留历史 `abort_unfinished` 步骤名，原始工件不改写。
+
+旧控件与页面诊断中的逐页固定坐标、推测素材变体和点击顺序也已退役；`verify_controls.py` 只读归档历史记录并保留原始哈希与判定，`verify_page(s).py` 仅返回迁移提示，不再连接设备。新动作通过队列调用原生任务。只读 `account_state` 中的页面、地图判据或配置读取异常向任务层传播为失败，不将部分读取当作完整状态。
+
+全量验收发现 dry-run 在关卡边界取消时，汇总把被跳过关卡的空结果误判为读取失败。批次先保留实际读取/合同错误，再判断取消；任务层沿用 `skipped/cancelled`，不修改 `sortie-result/1` 或原生实战流程。确定性边界用例与控制服务停止/关闭回归均覆盖该路径。
+
+连续调度验收还暴露 Windows 快照替换的 `PermissionError`：短暂文件占用会令收尾异常逸出。
+工件写入现对该平台的共享/访问冲突有界重试，持续失败保留旧快照、返回调用栈并释放日志资源；
+原生调度调用、任务顺序和失败重试策略不变。真实文件占用与确定性收尾失败用例验证通用 IO 边界，
+不据此增加真实任务成功结论。
 
 ## 保留的通用兼容
 
@@ -59,5 +81,26 @@ alashub campaign campaign.campaign_main.campaign_2_1 --run --allow-actions --cle
 受影响专项回归：`verify_s3_plan.py`、`verify_s3_upstream_loading.py`、`verify_s3_camera_compat.py`、
 `verify_campaign_button_compat.py`、`verify_s3_outcome.py`、`verify_dryrun_purity.py`、`verify_product_map.py`。
 结果判据变化必须同步 Python/C# 并跑 `verify_result_contract.py`、`verify_architecture.py`。
+
+免设备的全量规则入口：
+
+```powershell
+python tools/verify_export.py
+alashub verify
+alashub map-ir
+python tools/diagnostics/verify_map_ir.py
+python tools/diagnostics/verify_upstream_coverage.py
+python tools/sync_all.py --verify
+```
+
+`sync_all --verify` 在检查模式与更新模式都执行离线验收；缺脚本、导入故障、网格差异和源漂移均非零退出。
+失败检查会显示具体步骤；逐项原始输出与汇总保存在忽略目录 `.runtime/verification/verify_all/`，不提交本机日志。
+完整性反例由 `verify_export_integrity.py` 同时检查 Python/C#，同步与失败分类由 `verify_validation_contracts.py` 检查。
+图像夹具按 `--repo` / `ALAS_REPO` / 项目运行时选源，调用方的相对 `--data` 和 `--out` 不因上游切换工作目录而改变。
+
+2026-09-25 完整离线检查：63 项通过，7 项设备步骤跳过；`verify_map_ir.py` 和
+`verify_upstream_coverage.py` 均因相同的 3 个上游历史素材依赖缺失而失败。严格素材同步通过，
+7,436 个快照文件与源一致；Release 构建 0 警告、0 错误，独立调度生命周期检查通过。
+这组结果不能记为整体通过，也不增加真实通关或界面操作完成证据。
 
 真实结算与撤退结论见[结果审计](archive/reports/result-evidence.md)，当前未完成范围见[路线](architecture-roadmap.md)。

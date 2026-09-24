@@ -37,10 +37,11 @@ public sealed class AssetBinding
 
     private static T? Lookup<T>(Dictionary<string, T>? map, string server)
     {
-        if (map is null || map.Count == 0) return default;
+        if (map is null) return default;
         if (map.TryGetValue(server, out var v)) return v;
-        // 上游同一绑定的各服字段通常齐全；缺该服时回退到 cn，与上游 parse_property 的默认一致
-        return map.TryGetValue("cn", out var cn) ? cn : default;
+        // Native Resource.parse_property indexes the requested server directly.
+        // A missing variant is a broken export, never permission to use CN data.
+        throw new KeyNotFoundException($"素材字段缺少服务器变体: {server}");
     }
 }
 

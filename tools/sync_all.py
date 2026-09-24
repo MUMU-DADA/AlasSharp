@@ -19,6 +19,7 @@
   python tools/sync_all.py                    # 检查（默认）：B/C 是否过期，非 0 退出
   python tools/sync_all.py --strict-drift     # 检查时把"上游已走在我们前面"也算失败（CI 守卫）
   python tools/sync_all.py --update           # 更新：重导 IR + 刷新素材快照 + 复检
+  python tools/sync_all.py --verify           # 检查后运行免设备验收
   python tools/sync_all.py --update --verify  # 更新后再跑免设备的验收
   python tools/sync_all.py --fetch            # 先在 fork 里 `git fetch upstream --no-tags`（只读）
 
@@ -59,7 +60,7 @@ def run(cmd, title, cwd=None, quiet=False):
     proc = subprocess.run(cmd, cwd=cwd or ROOT, capture_output=True)
     out = (proc.stdout or b'').decode('utf-8', 'replace').strip()
     err = (proc.stderr or b'').decode('utf-8', 'replace').strip()
-    if out and not quiet:
+    if out and (not quiet or proc.returncode != 0):
         for line in out.splitlines()[-12:]:
             print('   | ' + line)
     if err:
@@ -82,22 +83,41 @@ def check(strict_drift):
     return details
 
 
-def main():
+def verify():
+    """Required checks fail closed, including a missing verification script."""
+    failed = []
+    for script, extra in VERIFY_STEPS:
+        if not os.path.isfile(script):
+            print('缺少验收脚本：%s' % os.path.basename(script))
+            failed.append(os.path.basename(script))
+            continue
+        if run([sys.executable, script] + extra,
+               'V. %s' % os.path.basename(script), quiet=True) != 0:
+            failed.append(os.path.basename(script))
+    if failed:
+        print('\n验收失败：%s' % failed)
+        return 1
+    print('验收全部通过 ✅')
+    return 0
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser(description='一键同步上游规则/素材')
     ap.add_argument('--update', action='store_true', help='执行更新（默认只检查）')
     ap.add_argument('--strict-drift', action='store_true',
                     help='检查时把"上游已走在我们前面"也算失败')
-    ap.add_argument('--verify', action='store_true', help='更新后跑免设备的验收')
+    ap.add_argument('--verify', action='store_true', help='检查或更新后跑免设备的验收')
     ap.add_argument('--fetch', action='store_true',
                     help='先在 fork 里 git fetch upstream --no-tags（只读，不 push）')
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.fetch:
         if not os.path.isdir(os.path.join(FORK, '.git')):
             print('找不到 fork：%s' % FORK)
             return 2
-        run(['git', 'fetch', 'upstream', '--no-tags'], 'A0. fork 侧 fetch upstream（只读）',
-            cwd=FORK)
+        if run(['git', 'fetch', 'upstream', '--no-tags'], 'A0. fork 侧 fetch upstream（只读）',
+               cwd=FORK) != 0:
+            return 1
 
     if not args.update:
         details = check(args.strict_drift)
@@ -106,7 +126,8 @@ def main():
         print('检查结果：%s' % ('全部一致 ✅' if not bad else '需要更新 ❌ %s' % bad))
         if bad:
             print('执行 `python tools/sync_all.py --update` 即可拉齐。')
-        return 1 if bad else 0
+        verification = verify() if args.verify else 0
+        return 1 if bad or verification else 0
 
     # ---- 更新
     rc = {}
@@ -126,21 +147,7 @@ def main():
     print('更新完成 ✅')
 
     if args.verify:
-        print()
-        failed = []
-        for script, extra in VERIFY_STEPS:
-            if not os.path.exists(script):
-                continue
-            code = run([sys.executable, script] + extra,
-                       'V. %s' % os.path.basename(script), quiet=True)
-            if code != 0:
-                failed.append(os.path.basename(script))
-        if failed:
-            print('\n验收失败：%s' % failed)
-            print('提示：上游代码变更可能在 C# 侧静默失效（asset id/页面规则改名等），'
-                  '这些脚本正是用来抓这种事的。')
-            return 1
-        print('验收全部通过 ✅')
+        return verify()
     else:
         print('提示：加 `--verify` 可顺带跑免设备的验收（推荐，更新后必跑）。')
     return 0

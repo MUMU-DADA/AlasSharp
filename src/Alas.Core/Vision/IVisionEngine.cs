@@ -135,6 +135,7 @@ public sealed class AccountStateResult
     /// <summary>账号配置要点（只读快照，字段随上游配置项）。</summary>
     [JsonPropertyName("config")] public Dictionary<string, JsonElement>? Config { get; set; }
     [JsonPropertyName("config_name")] public string? ConfigName { get; set; }
+    [JsonPropertyName("config_error")] public string? ConfigError { get; set; }
     [JsonPropertyName("error")] public string? Error { get; set; }
 }
 

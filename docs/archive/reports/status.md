@@ -1,6 +1,7 @@
 # 验收总状态：上游界面与控件识别跑到什么程度
 
-本页由 `tools/diagnostics/status.py` 从四份证据文件汇总生成，**不手写**。
+本页由 `tools/diagnostics/status.py` 从历史证据与当前上游清单汇总生成，**不手写**。
+历史命中不证明当前宿主回归通过；原生加载/四服正对照另见 `upstream-coverage.md`。
 每项的"为什么没通过"在对应专项文档里，本页只给总数与去处。
 
 设备：MuMu 模拟器 `127.0.0.1:16384`（1280x720，国服，新版主界面）。
@@ -9,15 +10,16 @@
 
 | 范围 | 总数 | 已通过 | 未通过/阻塞 | 明细 |
 | --- | --- | --- | --- | --- |
-| 页面规则（Page） | 53 | **34** | 7 导航未达且规则未命中 + 12 原因已定位 | `page-verification.md` |
-| 控件规则（模块级 Switch/Scroll） | 20 | 9 | 11 | `controls.md` |
-| cached_property 规则 | 6 | 3 | 3 | `controls.md` |
+| 页面规则（Page） | 53 | **34** | 7 导航未达且规则未命中 + 12 其余未验 | `page-verification.md` |
+| 控件规则（模块级 Switch/Scroll） | 31 | 9 | 22 | `controls.md` |
+| cached_property 规则 | 25 | 3 | 22 | `controls.md` |
+| 原生任务内工厂声明 | 7 | 未单独执行 | 需原生任务状态与实机证据 | `upstream-coverage.md` |
 | 控制动作（滑动/开关驱动/探测） | 3 | 3 | 0 | `controls.md` |
 | 控制原语（返回键/长按/滑动） | 4 | **4** | 0 | `primitives.md` |
 | 文本输入（装备码流程） | 3 | **3** | 0 | `text-input.md` |
 | 全量回归（产品路径导航） | 34 | **29** | 5 | `regression.md` |
 | 页面规则合成正对照 | 53 | 52 | 1 跳过（`page_unknown` 无素材） | `positive-control.md` |
-| 控件 Switch 合成正对照 | 20 | 10 | 10 跳过（Scroll 判定依赖颜色掩码） | `positive-control.md` |
+| 控件 Switch 合成正对照 | 31 | 15 | 16 跳过（颜色掩码或子类原生判据） | `positive-control.md` |
 
 （控件与页面条目在证据文件里含"动作行"，上表已把动作与规则分开计数；
 页面规则历史命中与导航未达记录有 1 页重叠（不重复计入总数）；
@@ -41,7 +43,7 @@
 | `page_rpg_story` | 定向重试仍未到达：落在 ['page_event']（goto-failed） |
 | `page_sp` | 定向重试仍未到达：落在 ['page_campaign']（goto-failed） |
 
-## 原因已定位但未验证的 12 个页面
+## 其余未验证的 12 个页面
 
 逐条原因见 `page-verification.md`：
 
@@ -49,7 +51,7 @@
 2. **上游无入边或非真实画面**：`page_channel`（只有出边）、
    `page_rpg_city`（只有出边且活动类型未开跑）、`page_unknown`（`Page(None)`）。
 
-## 还没验的控件（都是"到不了"，不是"判定错"）
+## 历史控件未验原因（不涵盖本次新增发现的全部声明）
 
 | 规则 | 到不了的原因 |
 | --- | --- |
@@ -74,7 +76,7 @@
 ```powershell
 $env:STUB_ADB = "<adb.exe>"
 python tools/diagnostics/regress_pages.py        # 已验证页面的产品导航回归
-python tools/diagnostics/verify_controls.py      # 控件规则 + 滑动/开关驱动
+python tools/diagnostics/verify_controls.py --report-only  # 只读归档控件历史证据
 python tools/diagnostics/verify_primitives.py    # 返回键/长按/滑动
 python tools/diagnostics/report_pages.py         # 重建 page-verification.md
 python tools/diagnostics/status.py               # 重建本文件

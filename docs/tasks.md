@@ -90,6 +90,9 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 ## 识别与导航边界
 
 导航、待机恢复和弹窗由上游页面图、素材及 `ui_additional()` 处理，不允许逐界面独立适配。
+存盘帧的页面识别直接调用同一个上游 `UI.ui_page_appear()`；识别异常独立记录，不折算为未命中。
+控件清单包含原生子类和延迟声明，不能以静态清单、构造成功或模板正对照替代实际操作结果。
+`account_state` 的页面、在图判据或配置读取发生异常时记为 `failed/upstream_error`，并保留部分观测与错误；正常未命中仍可成功返回只读状态。
 `changed=false` 只是 `ui_ensure()` 返回值，不能据此断言没有点击。只读状态任务不会主动退出待机。
 识别异常先核对截图颜色、上游素材、配置和完整调用链，再核对功能是否解锁。
 
@@ -104,6 +107,8 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 `verify_config_get.py`、`verify_periodic_plan.py`、`verify_native_tools.py` 等离线检查覆盖。
 `verify_native_scheduler.py` 对真实原生循环使用合成依赖；`verify_scheduler_control.py` 验证 Core 接单、常驻宿主、停止、关闭及工件。
 地图故障边界由 `verify_map_detect_failures.py` 验证。
+`verify_upstream_coverage.py` 覆盖当前全部关卡、四服素材、页面、导航图、控件声明与调度绑定；
+源依赖损坏也会失败，证据范围见[全量规则报告](archive/reports/upstream-coverage.md)。
 
 当前真实样本与剩余缺口统一见[路线](architecture-roadmap.md)，不在此复制阶段状态。
 [结果审计](archive/reports/result-evidence.md)与[队列审计](archive/reports/queue-evidence.md)

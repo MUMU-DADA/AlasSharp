@@ -54,7 +54,10 @@ def _resolve(asset_id: str):
         return _state['assets'][asset_id]
     if '/' not in asset_id:
         raise KeyError(f'素材 id 需要 `模块/名字` 形式，收到: {asset_id}')
-    mod_name, name = asset_id.split('/', 1)
+    mod_name, name = asset_id.rsplit('/', 1)
+    mod_name = mod_name.replace('/', '.')
+    if not name.isidentifier() or not all(part.isidentifier() for part in mod_name.split('.')):
+        raise KeyError(f'素材 id 包含无效的模块或名字: {asset_id}')
     py_mod = f'module.{mod_name}.assets'
     if py_mod not in _state['imported']:
         importlib.import_module(py_mod)
@@ -98,14 +101,11 @@ def op_ping(args):
 
 def op_set_server(args):
     s = args['server']
-    if s not in ('cn', 'en', 'jp', 'tw'):
+    if s not in server_module.VALID_SERVER:
         raise ValueError(f'非法服务器: {s}')
-    server_module.server = s
-    for obj in _state['assets'].values():
-        try:
-            obj.resource_release()
-        except Exception:
-            pass
+    # Native pages and tasks import resources outside _resolve's local cache.
+    # The upstream setter releases all registered assets, OCR and map caches.
+    server_module.set_server(s)
     return {'server': s}
 
 
@@ -203,7 +203,7 @@ def op_ui_rule_inventory(args):
                 continue
             obj = getattr(mod, name)
             cls = type(obj).__name__
-            if cls not in ('Navbar', 'Switch', 'Scroll', 'Setting', 'Page'):
+            if cls != 'Page' and _ui_rule_kind(obj) not in ('Navbar', 'Switch', 'Scroll', 'Setting'):
                 continue
             entry = {'name': name, 'class': cls}
             # 尽量抽出内部引用的按钮名
@@ -237,6 +237,14 @@ def op_ui_rule_inventory(args):
     for modname in ('module.ui.navbar', 'module.ui.switch', 'module.ui.scroll',
                     'module.ui.setting', 'module.ui.page'):
         out['modules'][modname] = scan(modname)
+
+    inventory = op_ui_rule_list({})
+    out['errors'].extend(inventory['errors'])
+    out['declarations'] = inventory['declarations']
+    for declaration in inventory['declarations']:
+        modname = declaration['module']
+        if declaration['scope'] == 'module' and modname not in out['modules']:
+            out['modules'][modname] = scan(modname)
 
     # 各模块assets.py 里的按钮/模板总数（界面识别的素材面）
     asset_counts = {}
@@ -313,62 +321,51 @@ def op_navbar_info(args):
         'inactive_color': list(navbar.inactive_color),
     }
 
+def _ui_rule_kind(obj):
+    from module.ui.switch import Switch
+    from module.ui.scroll import Scroll
+    from module.ui.navbar import Navbar
+    from module.ui.setting import Setting
+    return next((base.__name__ for base in (Switch, Scroll, Navbar, Setting)
+                 if isinstance(obj, base)), type(obj).__name__)
+
+
 def op_ui_rule_list(args):
+    """Discover native controls, including subclasses and lazy declarations.
+
+    Only module objects are loaded here. Properties/factories retain their source
+    location and are constructed by the original task when its state allows it.
+    No copied control table or per-page constructor is maintained by this host.
     """
-    枚举**模块级**的 Switch/Scroll/Navbar/Setting 实例（可直接驱动的那些）。
-
-    做法：先 AST 扫出「模块级 `X = Switch(...)`」的位置，再只导入这些模块取对象。
-    自维护——上游新增实例会自动出现在清单里，不需要硬编码路径。
-    """
-    import ast
-    import importlib
-    import os as _os
-
-    found = {}
-    for dp, dirs, fs in _os.walk(_os.path.join(FORK, 'module')):
-        dirs[:] = [d for d in dirs if d != '__pycache__']
-        for fn in fs:
-            if not fn.endswith('.py'):
-                continue
-            p = _os.path.join(dp, fn)
-            try:
-                tree = ast.parse(open(p, encoding='utf-8').read())
-            except Exception:
-                continue
-            mod = _os.path.relpath(p, FORK)[:-3].replace(_os.sep, '.')
-            for node in tree.body:
-                if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
-                    continue
-                cls = getattr(node.value.func, 'id', None)
-                if cls in ('Switch', 'Scroll', 'Navbar', 'Setting') \
-                        and isinstance(node.targets[0], ast.Name):
-                    found.setdefault(mod, []).append((node.targets[0].id, cls))
-
-    rules, errors = [], []
-    for mod, names in sorted(found.items()):
-        try:
-            m = importlib.import_module(mod)
-        except Exception as e:
-            errors.append(f'{mod}: {type(e).__name__}: {e}')
+    from ui_rule_catalog import discover_controls
+    inventory = discover_controls(FORK)
+    rules, errors = [], list(inventory['errors'])
+    for declaration in inventory['declarations']:
+        if declaration['scope'] != 'module':
             continue
-        for name, cls in names:
-            obj = getattr(m, name, None)
-            if obj is None:
-                continue
-            entry = {'module': mod, 'name': name, 'class': cls, 'attr': name}
-            if cls == 'Switch':
-                st = getattr(obj, 'states', None)
-                entry['states'] = sorted(st.keys()) if isinstance(st, dict) else None
-                entry['offset'] = list(obj.offset) if getattr(obj, 'offset', None) else None
-            elif cls == 'Scroll':
-                a = getattr(obj, 'area', None)
-                entry['area'] = [float(x) for x in a] if a else None
-            entry['file'] = getattr(getattr(obj, 'check_button', None), 'file', None) \
-                if cls == 'Switch' else None
+        module, name = declaration['module'], declaration['name']
+        try:
+            obj = getattr(importlib.import_module(module), name)
+            kind = _ui_rule_kind(obj)
+            if kind != declaration['kind']:
+                raise TypeError(f'Expected {declaration["kind"]}, got {type(obj).__name__}')
+            entry = {'module': module, 'name': name, 'attr': name,
+                     'class': kind, 'native_class': type(obj).__name__}
+            if kind == 'Switch':
+                entry['states'] = [data['state'] for data in obj.state_list]
+                offset = obj.offset
+                entry['offset'] = list(offset) if isinstance(offset, tuple) else offset
+            if kind == 'Scroll':
+                entry['area'] = [int(x) for x in obj.area]
             rules.append(entry)
-    return {'rules': rules, 'count': len(rules), 'errors': errors[:5],
-            'by_class': {k: sum(1 for r in rules if r['class'] == k)
-                         for k in ('Switch', 'Scroll', 'Navbar', 'Setting')}}
+        except Exception as error:
+            errors.append({'module': module, 'name': name,
+                           'error': f'{type(error).__name__}: {error}'})
+    return {'rules': rules, 'count': len(rules), 'errors': errors,
+            'declarations': inventory['declarations'],
+            'by_class': {kind: sum(r['class'] == kind for r in rules)
+                         for kind in ('Switch', 'Scroll', 'Navbar', 'Setting')}}
+
 
 def op_ui_rule_check(args):
     """
@@ -381,8 +378,8 @@ def op_ui_rule_check(args):
     m = importlib.import_module(args['module'])
     obj = getattr(m, args['name'])
     shim = _make_main_shim(_require_image())
-    kind = type(obj).__name__
-    results = {}
+    kind = _ui_rule_kind(obj)
+    results, errors = {}, []
     for meth in ('appear', 'match_color', 'at_top', 'at_bottom', 'get', 'offset'):
         fn = getattr(obj, meth, None)
         if fn is None or not callable(fn):
@@ -402,7 +399,7 @@ def op_ui_rule_check(args):
             else:
                 results[meth] = f'<{type(v).__name__}>'
         except Exception as e:
-            results[meth] = f'{type(e).__name__}: {e}'
+            errors.append({'method': meth, 'error': f'{type(e).__name__}: {e}'})
     # Switch 的状态清单与每个状态对应的**可点按钮**：有了它，C#/诊断就能像上游
     # Switch.click(state, main) 那样改状态（上游正是取 get_data(state)['click_button'] 再点），
     # 从而把"识别"升级成"能驱动并复核"。
@@ -420,7 +417,7 @@ def op_ui_rule_check(args):
             'area': [int(v) for v in obj.area] if hasattr(obj, 'area') else None,
             'is_vertical': bool(getattr(obj, 'is_vertical', False)),
             'state_buttons': state_buttons,
-            'results': results}
+            'results': results, 'errors': errors}
 
 def op_page_list(args):
     """列出上游 module/ui/page.py 定义的页面及其 check_button（识图规则的入口）。"""
@@ -443,48 +440,41 @@ def op_page_list(args):
 
 
 def op_page_appear(args):
-    """
-    **按上游 UI.ui_page_appear 的原规则**判定当前页面。
+    """Recognize a saved frame with the native UI predicate and ModuleBase.appear.
 
-    规则（逐条对齐上游 module/ui/ui.py）：
-      - page_main：先试 page_main_white.check_button（offset=传入值），
-        再试 page_main.check_button（offset=(5,5)），任一命中即为真
-      - en 服的 page_academy：额外试 ACADEMY_GOTO_MUNITIONS
-      - 其余：page.check_button.match(image, offset=offset)
-
-    注意：`Base.appear(button, offset=...)` 在 offset 为真时走的是 **Button.match（模板匹配）**，
-    不是 appear_on（颜色检查）—— 这一点很关键，颜色检查只是快速预筛。
+    The frame-only receiver has no device actions. All page/server differences,
+    offset semantics and short-circuit decisions remain in upstream UI code.
+    Resource failures propagate instead of becoming ordinary negative matches.
     """
-    import module.ui.page as page_mod
-    image = _require_image()
+    from module.ui.page import Page
+    from module.ui.ui import UI
+
     page_name = args['page']
-    page = getattr(page_mod, page_name)
-    offset = tuple(args.get('offset') or (30, 30))
-    server = server_module.server
+    page = Page.all_pages[page_name]
+    if page.check_button is None:
+        return {'page': page_name, 'appear': False, 'tried': [], 'verifiable': False}
+    offset = args.get('offset', (30, 30))
+    if isinstance(offset, list):
+        offset = tuple(offset)
+    main = _make_main_shim(_require_image())
+    native_appear = main.appear
     tried = []
 
-    def try_button(btn, off, label):
+    def traced_appear(button, **kwargs):
+        attempt = {'button': getattr(button, 'name', None),
+                   'offset': kwargs.get('offset', 0)}
+        tried.append(attempt)
         try:
-            hit = bool(btn.match(image, offset=off))
+            hit = bool(native_appear(button, **kwargs))
         except Exception as e:
-            tried.append({'button': label, 'error': f'{type(e).__name__}: {e}'})
-            return False
-        tried.append({'button': label, 'offset': list(off), 'appear': hit})
+            attempt['error'] = f'{type(e).__name__}: {e}'
+            raise
+        attempt['appear'] = hit
         return hit
 
-    if server == 'en' and page_name == 'page_academy':
-        if try_button(_resolve('ui/ACADEMY_GOTO_MUNITIONS'), offset, 'ACADEMY_GOTO_MUNITIONS'):
-            return {'page': page_name, 'appear': True, 'tried': tried}
-
-    if page_name == 'page_main':
-        if try_button(getattr(page_mod, 'page_main_white').check_button, offset, 'page_main_white'):
-            return {'page': page_name, 'appear': True, 'tried': tried}
-        if try_button(page.check_button, (5, 5), 'page_main'):
-            return {'page': page_name, 'appear': True, 'tried': tried}
-        return {'page': page_name, 'appear': False, 'tried': tried}
-
-    hit = try_button(page.check_button, offset, page_name)
-    return {'page': page_name, 'appear': hit, 'tried': tried}
+    main.appear = traced_appear
+    hit = UI.ui_page_appear(main, page, offset=offset)
+    return {'page': page_name, 'appear': bool(hit), 'tried': tried}
 
 def op_asset_info(args):
     obj = _resolve(args['asset'])
@@ -495,21 +485,22 @@ def op_asset_info(args):
         'is_gif': bool(getattr(obj, 'is_gif', False)),
     }
     for attr in ('area', 'color', 'button', 'file'):
-        try:
-            v = getattr(obj, attr)
-        except Exception:
-            v = None
+        v = getattr(obj, attr, None)
         if isinstance(v, tuple):
             v = list(v)
         info[attr] = v
     try:
+        # Button initializes image explicitly; Template loads through its native
+        # image property. Both keep their original GIF/preprocessing behavior.
+        ensure = getattr(obj, 'ensure_template', None)
+        if ensure is not None:
+            ensure()
+        template = obj.image
         if info['is_gif']:
-            obj.ensure_template()
-            info['frame_shapes'] = [list(f.shape) for f in obj.image]
-            info['image_count'] = len(obj.image)
+            info['frame_shapes'] = [list(f.shape) for f in template]
+            info['image_count'] = len(template)
         else:
-            obj.ensure_template()
-            info['image_shape'] = list(obj.image.shape)
+            info['image_shape'] = list(template.shape)
             info['image_count'] = 1
     except Exception as e:
         info['image_error'] = f'{type(e).__name__}: {e}'
@@ -1468,7 +1459,7 @@ def _asset_id_map():
             continue
         if mod is None:
             continue
-        sub = modname[len('module.'):-len('.assets')]
+        sub = modname[len('module.'):-len('.assets')].replace('.', '/')
         for attr in dir(mod):
             if attr.startswith('__'):
                 continue
@@ -1479,26 +1470,6 @@ def _asset_id_map():
             if type(obj).__name__ in ('Button', 'ButtonGrid', 'Template'):
                 mapping.setdefault(id(obj), '%s/%s' % (sub, attr))
     return mapping
-
-
-def _variants(asset_id):
-    """同一按钮在不同主界面版本下的候选资产，**只保留真的声明过的**。
-
-    上游把新版主界面的按钮定义成独立资产（`module/ui_white/assets.py` 里的
-    `X_WHITE`），旧版 `ui/X` 在新版界面上实测只有 ≤0.25 分——模板早已不在屏上，
-    点它的坐标只会点到空气。命名是上游的既有约定，这里只是按约定去**探测**
-    （解析不到就丢弃），不猜、不硬编码映射表。
-    """
-    out = [asset_id]
-    name = asset_id.split('/', 1)[1] if '/' in asset_id else asset_id
-    white = 'ui_white/%s_WHITE' % name
-    if white != asset_id:
-        try:
-            _resolve(white)
-            out.append(white)
-        except Exception:
-            pass
-    return out
 
 
 def op_ui_page_graph(args):
@@ -1529,8 +1500,9 @@ def op_ui_page_graph(args):
                 unmapped.append('%s -> %s' % (name, dest.name))
                 continue
             pairs.append((bid, button))
-            variants = _variants(bid)
-            node['links'].append({'to': dest.name, 'button': bid, 'variants': variants})
+            # Each native Page already owns its exact link button. Do not infer
+            # extra edges or button alternatives from asset naming conventions.
+            node['links'].append({'to': dest.name, 'button': bid, 'variants': [bid]})
             edges += 1
         nodes.append(node)
 
@@ -1558,10 +1530,10 @@ def op_cached_rule_check(args):
     from module.config.config import AzurLaneConfig
     image = _require_image()
     cls = getattr(importlib.import_module(args['module']), args['class'])
-    inst = cls(AzurLaneConfig('alas'), _make_main_shim(image).device)
+    inst = cls(AzurLaneConfig('template'), _make_main_shim(image).device)
     inst.device.image = image
     rule = getattr(inst, args['attr'])
-    kind = type(rule).__name__
+    kind = _ui_rule_kind(rule)
     detail, errors = {}, []
     hit = False
 
@@ -1593,8 +1565,8 @@ def op_cached_rule_check(args):
         detail = {'observed_active': observed,
                   'option_count': len(settings),
                   'settings': sorted({k[0] for k in settings})}
-        # 一个激活项都没识别出来也可能是画面本来就没勾选；至少要有可选清单才算跑通
-        hit = len(settings) > 0
+        # Construction alone does not prove any option is visible/active.
+        hit = bool(observed)
     else:
         # 运行时算出来的规则（如事件商店的 (count, navbar)）没有统一判据，
         # 只如实报出类型与规模，不计入命中
@@ -1685,11 +1657,20 @@ def op_rule_positive_control(args):
     saved = _state['image']
     results = []
     try:
-        rules = op_ui_rule_list({})['rules']
+        inventory = op_ui_rule_list({})
+        for error in inventory['errors']:
+            results.append({'rule': 'discovery', 'kind': 'unknown', 'verdict': 'fail',
+                            'detail': str(error)})
+        rules = inventory['rules']
         for r in rules:
             mod = importlib.import_module(r['module'])
             obj = getattr(mod, r['name'])
-            kind = type(obj).__name__
+            kind = _ui_rule_kind(obj)
+            from module.ui.switch import Switch
+            if kind == 'Switch' and type(obj).get is not Switch.get:
+                results.append({'rule': r['name'], 'kind': kind, 'verdict': 'skip',
+                                'detail': '原生子类有独立识别流程，模板贴图不构成该流程的正样本'})
+                continue
             if kind != 'Switch':
                 results.append({'rule': r['name'], 'kind': kind, 'verdict': 'skip',
                                 'detail': '判定依赖颜色/掩码，贴模板图构造不出来'})
@@ -1723,7 +1704,7 @@ def op_rule_positive_control(args):
                     per_state.append({'state': state, 'got': got, 'ok': got == state})
                 except Exception as e:
                     errors.append('%s: %s: %s' % (state, type(e).__name__, e))
-            ok = bool(per_state) and all(s['ok'] for s in per_state)
+            ok = bool(per_state) and not errors and all(s['ok'] for s in per_state)
             results.append({'rule': r['name'], 'kind': kind,
                             'verdict': 'pass' if ok else 'fail',
                             'detail': '；'.join('%s→%s' % (s['state'], s['got'])
@@ -2220,6 +2201,14 @@ def op_s3_campaign_init(args):
     # clear_all=True = 先清光小怪再打 BOSS。按次开关，每次 init 都要显式设回来。
     apply_clear_all_override(bool(args.get('clear_all', False)))
     apply_withdraw_trace_compat()
+    try:
+        from campaign_rules import resolve_native_campaign
+        resolve_native_campaign(chapter)
+    except Exception as error:
+        return {'chapter': chapter, 'instantiated': False,
+                'error': f'上游章节加载失败: {type(error).__name__}: {error}',
+                'error_code': getattr(error, 'code', 'native_dependency_error'),
+                'traceback_tail': traceback.format_exc().strip().splitlines()[-8:]}
     for k in ('serial', 'screenshot', 'control'):
         if args.get(k):
             _DEVICE_ARGS[k] = args[k]
@@ -2445,102 +2434,6 @@ def op_s3_campaign_call(args):
 
 
 
-# 客户端专属弹窗：「关卡 xxx 正在攻略中，请选择前往继续攻略或撤退 [撤退][立即前往]」
-# 上游没有它的素材/处理器，导致 enter_map 干等 60s 后 GameStuckError（实测，见
-# 归档 S3 入口记录）。这里用 **OCR 识别文字** + 固定坐标点击来适配。
-# 「关卡 xxx 正在攻略中…[撤退][立即前往]」是**客户端专属弹窗**，上游没有它的素材/处理器，
-# 导致 enter_map 干等 60s 后 GameStuckError（实测 3-2，见归档 S3 入口记录）。
-#
-# 判定方式：**像素特征**而不是 OCR —— 弹窗底部那枚红色「撤退」按钮是最稳的特征。
-# 实测（1280x720）：弹窗帧红占比 **0.3271**，普通帧 **0.0000**（两帧），阈值取 0.15 余量充足。
-# （OCR 路线走不通：该后端对每个识别字符解包 3 个值，空结果/字符集不匹配都报
-#   `too many/not enough values to unpack`。）
-_UNFINISHED_RED_BOX = (420, 470, 560, 550)     # 「撤退」按钮区域（留余量）
-_UNFINISHED_RED_THRESHOLD = 0.15
-_UNFINISHED_ABORT_XY = (479, 510)              # 实测有效
-
-
-def _proactive_abort_worker(stop_event):
-    """进图期间**主动**盯“正在攻略中”弹窗，一出现就点「撤退」。
-
-    为什么需要：被动自愈要等 `enter_map` 卡满 60s 报 GameStuckError 才处理 ——
-    用户实测反馈“每次都要等好久才处理”。这里用独立线程提前介入。
-
-    **刻意走 adb 子进程**（exec-out screencap / input tap）而不走引擎设备层：
-    引擎那套（scrcpy 流）不是线程安全的，而本线程与主线程（正在跑 enter_map）并发 ✗
-    adb 每次都是独立进程，天然安全 ✓ 这也是坐标用固定 (479,510)（弹窗「撤退」，实测有效）的原因。
-    """
-    import subprocess as _sp
-    import numpy as _np
-    import cv2 as _cv2
-    _base = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                          '..', '.runtime', 'venv314', 'Lib',
-                                          'site-packages', 'adbutils', 'binaries', 'adb.exe'))
-    _adb = _base if os.path.exists(_base) else 'adb'
-    _serial = str(_DEVICE_ARGS.get('serial') or '127.0.0.1:16384')
-    _x1, _y1, _x2, _y2 = _UNFINISHED_RED_BOX
-    _ax, _ay = _UNFINISHED_ABORT_XY
-    while not stop_event.is_set():
-        try:
-            out = _sp.run([_adb, '-s', _serial, 'exec-out', 'screencap', '-p'],
-                          capture_output=True, timeout=15).stdout
-            img = _cv2.imdecode(_np.frombuffer(out, _np.uint8), _cv2.IMREAD_COLOR)
-            if img is not None and img.shape[0] >= _y2 and img.shape[1] >= _x2:
-                patch = img[_y1:_y2, _x1:_x2]
-                b = patch[:, :, 0].astype(int)
-                g = patch[:, :, 1].astype(int)
-                r = patch[:, :, 2].astype(int)
-                if float((((r > 140) & (g < 100) & (b < 100))).mean()) > _UNFINISHED_RED_THRESHOLD:
-                    _sp.run([_adb, '-s', _serial, 'shell', 'input', 'tap', str(_ax), str(_ay)],
-                            timeout=10)
-        except Exception:
-            pass
-        stop_event.wait(1.5)
-
-
-def op_s3_abort_unfinished(args):
-    """检测并关闭"关卡正在攻略中"弹窗（客户端专属；上游不认识它）。
-
-    为什么需要：游戏里点「撤退」只是**离开地图**、保留可续战状态；此后进任何**别的**关卡
-    都会弹这个对话框，上游不识别 → 干等 60s → `GameStuckError`（实测 3-2）。
-    做法：量「撤退」按钮区域的红像素占比，超阈值就点它。`dry=true` 只检测不点击。
-    """
-    # **必须现抓一帧**：本 op 在 `enter_map` 卡住时被调用，而宿主缓存里（`_state['image']`）
-    # 还是进图**之前**那一帧 —— 读缓存会永远看不到当下的弹窗（实测：自愈时报 red=0.0 而弹窗就在屏幕上）。
-    import cv2 as _cv2
-    try:
-        _dev = _device_engine()
-        _dev.screenshot()
-        image = getattr(_dev, 'image', None)
-        if image is None:
-            image = _require_image()
-    except Exception:
-        image = _require_image()
-    x1, y1, x2, y2 = _UNFINISHED_RED_BOX
-    patch = image[y1:y2, x1:x2]
-    try:
-        r = patch[:, :, 0].astype(int)
-        g = patch[:, :, 1].astype(int)
-        b = patch[:, :, 2].astype(int)
-        frac = float((((r > 140) & (g < 100) & (b < 100))).mean())
-    except Exception as e:
-        return {'error': f'{type(e).__name__}: {e}'}
-    hit = frac > _UNFINISHED_RED_THRESHOLD
-    out = {'unfinished_dialog': hit, 'red_frac': round(frac, 4),
-           'threshold': _UNFINISHED_RED_THRESHOLD}
-    if hit and not args.get('dry'):
-        try:
-            dev = _device_engine()
-            from module.base.button import Button as _B
-            x, y = _UNFINISHED_ABORT_XY
-            area = (x - 1, y - 1, x + 1, y + 1)
-            dev.click(_B(area=area, color=(), button=area, name='abort_unfinished'))
-            out['clicked'] = list(_UNFINISHED_ABORT_XY)
-        except Exception as e:
-            out['click_error'] = f'{type(e).__name__}: {e}'
-    return out
-
-
 def op_s3_run_plan(args):
     """按完整模块名读取规则元数据，并用上游 Campaign 调度战斗。
 
@@ -2628,12 +2521,6 @@ def op_s3_run_plan(args):
         steps.append({'step': 'prepare_campaign_navigation', **prepared})
     except Exception as error:
         return preparation_failed('prepare_campaign_navigation', error)
-    # 进图前先清掉"未完成出击"（客户端弹窗，上游不识别；否则本关必卡 60s）
-    try:
-        _ab = op_s3_abort_unfinished({'dry': False})
-        steps.append({'step': 'abort_unfinished', 'dialog': _ab.get('unfinished_dialog')})
-    except Exception:
-        pass
     # 上游负责主线/困难/活动的页面、章节和模式选择，并设置 ENTRANCE。
     # 手工拆 ensure_chapter/get_entrance 会绕过活动基类的导航钩子。
     r = op_s3_campaign_call({'name': 'ensure_campaign_ui',
@@ -2659,41 +2546,18 @@ def op_s3_run_plan(args):
     except Exception as error:
         return preparation_failed('prepare_campaign_run', error)
 
-    # 入口弹层属于客户端差异；只在上游 enter_map 调用期间观察。
-    # 关卡的 run / map_init / 战斗循环 / 特殊钩子全部由上游执行。
-    import threading
+    # The original enter_map and native popup handlers own all game actions.
+    # Do not race that flow with an independent screenshot/tap worker.
     from s3_campaign_execution import run_native_campaign
-    original_enter = inst.enter_map
-    owned_enter = 'enter_map' in vars(inst)
-    own_enter = vars(inst).get('enter_map')
-
-    def enter_with_dialog_handler(*entry_args, **entry_kwargs):
-        stop = threading.Event()
-        watcher = threading.Thread(target=_proactive_abort_worker, args=(stop,), daemon=True)
-        watcher.start()
-        try:
-            return original_enter(*entry_args, **entry_kwargs)
-        finally:
-            stop.set()
-            watcher.join(timeout=5)
-
-    inst.enter_map = enter_with_dialog_handler
-    try:
-        # 失败帧/结果工件的落盘目录由调用方给；不给就沿用 run_native_campaign 的默认目录。
-        native_kwargs = dict(
-            max_rounds=int(args.get('max_rounds') or 20)
-            if args.get('repeat_until_cleared', True) else 1,
-            max_seconds=max_s, stop_after=args.get('stop_after'), withdraw_file=args.get('withdraw_file'),
-            battle_count=args.get('battle_count'))
-        if args.get('artifact_dir'):
-            native_kwargs['artifact_dir'] = args['artifact_dir']
-        with campaign_button_color_compat():
-            result = run_native_campaign(inst, **native_kwargs)
-    finally:
-        if owned_enter:
-            inst.enter_map = own_enter
-        else:
-            del inst.enter_map
+    native_kwargs = dict(
+        max_rounds=int(args.get('max_rounds') or 20)
+        if args.get('repeat_until_cleared', True) else 1,
+        max_seconds=max_s, stop_after=args.get('stop_after'), withdraw_file=args.get('withdraw_file'),
+        battle_count=args.get('battle_count'))
+    if args.get('artifact_dir'):
+        native_kwargs['artifact_dir'] = args['artifact_dir']
+    with campaign_button_color_compat():
+        result = run_native_campaign(inst, **native_kwargs)
     out.update(result)
     out['steps'] = steps + result['steps']
     out['elapsed_s'] = round(_t.time() - t_start, 1)
@@ -3538,9 +3402,9 @@ def op_ui_rules_sweep(args):
     """
     界面与控件识别的**统一验收**：一次跑完三类实体并汇总。
 
-      1. Page（53）           —— 按 ui_page_appear 原规则判定
-      2. 模块级 Switch/Scroll（20）—— 调上游 appear/get/at_top
-      3. cached_property 规则（6） —— 构造 UI 实例后调其识别方法
+      1. Page                 —— 按 ui_page_appear 原规则判定
+      2. 原生模块级控件        —— 调上游 appear/get/at_top
+      3. 延迟属性              —— 构造 UI 实例后调其识别方法
 
     判定口径：**不抛异常即为"可驱动"**；是否命中取决于当前画面是否是该实体所在的页面，
     因此报告里把「可驱动数」与「命中数」分开列，不能混为一谈。
@@ -3564,65 +3428,41 @@ def op_ui_rules_sweep(args):
         except Exception as e:
             report['pages']['errors'].append(f"{pg['page']}: {type(e).__name__}: {e}")
 
-    # ---- 2. 模块级实例
-    ml = op_ui_rule_list({})
-    report['module_level']['total'] = ml['count']
-    for r in ml['rules']:
+    # ---- 2. Native module controls (including upstream subclasses).
+    inventory = op_ui_rule_list({})
+    report['module_level']['total'] = inventory['count']
+    report['module_level']['errors'].extend(inventory['errors'])
+    for rule in inventory['rules']:
         try:
-            res = op_ui_rule_check({'module': r['module'], 'name': r['name']})['results']
-            bad = any(isinstance(v, str) and ('Error' in v or 'Exception' in v)
-                      for v in res.values())
-            if bad:
-                report['module_level']['errors'].append(f"{r['name']}: {res}")
+            checked = op_ui_rule_check({'module': rule['module'], 'name': rule['name']})
+            if checked['errors']:
+                report['module_level']['errors'].append({'rule': rule['name'],
+                                                         'errors': checked['errors']})
             else:
                 report['module_level']['driven'] += 1
-                if res.get('appear') or res.get('at_bottom'):
-                    report['module_level']['hit'].append(r['name'])
-        except Exception as e:
-            report['module_level']['errors'].append(f"{r['name']}: {type(e).__name__}: {e}")
+                if checked['results'].get('appear') is True:
+                    report['module_level']['hit'].append(rule['name'])
+        except Exception as error:
+            report['module_level']['errors'].append(f'{rule["name"]}: {type(error).__name__}: {error}')
 
-    # ---- 3. cached_property 规则（需 UI 实例；用上游的 AzurLaneConfig + 注入真实截图）
-    from module.config.config import AzurLaneConfig
-    targets = [
-        ('module.retire.dock', 'Dock', 'dock_filter'),
-        ('module.storage.ui', 'StorageUI', 'storage_filter'),
-        ('module.shop.ui', 'ShopUI', '_shop_bottom_navbar'),
-        ('module.shop.ui', 'ShopUI', 'shop_nav_250814'),
-        ('module.shop.ui', 'ShopUI', 'shop_tab_250814'),
-        ('module.shop_event.ui', 'EventShopUI', 'event_shop_tab_count_and_navbar'),
-    ]
-    report['cached_property']['total'] = len(targets)
-    for modname, clsname, attr in targets:
-        label = f'{clsname}.{attr}'
+    # ---- 3. Resolve lazy objects from the original properties, never a page list.
+    properties = sorted({(r['module'], r['owner'], r['attr'])
+                         for r in inventory['declarations']
+                         if r['scope'] == 'property' and r['owner']})
+    report['cached_property']['total'] = len(properties)
+    for module, owner, attr in properties:
+        label = f'{owner}.{attr}'
         try:
-            cls = getattr(importlib.import_module(modname), clsname)
-            inst = cls(AzurLaneConfig('alas'), _make_main_shim(image).device)
-            inst.device.image = image
-            rule = getattr(inst, attr)
+            checked = op_cached_rule_check({'module': module, 'class': owner, 'attr': attr})
             report['cached_property']['constructed'] += 1
-            # Setting 类**没有** appear/get_info/get 方法（它是 is_option_active /
-            # _product_setting_status / set），用同一判据结构上永远不可能命中，
-            # 留在分母里会让 hit 比率失真。单独记出来，不混入命中统计。
-            if type(rule).__name__ == 'Setting':
+            report['cached_property']['errors'].extend(checked['errors'])
+            if checked['hit'] and not checked['errors']:
+                report['cached_property']['hit'].append(label)
+            if checked['class'] not in ('Navbar', 'Switch', 'Scroll', 'Setting'):
                 report['cached_property']['no_hit_criterion'].append(label)
-                continue
-            # 口径修正：构造成功 ≠ 识别命中。这里**真正跑一次识别**，只有返回真才算命中。
-            # （原先把构造成功记进 hit，字段名与含义不符，会误导后续判断。）
-            for meth in ('appear', 'get_info', 'get'):
-                fn = getattr(rule, meth, None)
-                if not callable(fn):
-                    continue
-                try:
-                    v = fn(inst)
-                    if hasattr(v, 'item'):
-                        v = v.item()
-                    if v is True:
-                        report['cached_property']['hit'].append(label)
-                except Exception:
-                    pass
-                break
-        except Exception as e:
-            report['cached_property']['errors'].append(f'{label}: {type(e).__name__}: {e}')
+        except Exception as error:
+            report['cached_property']['errors'].append(f'{label}: {type(error).__name__}: {error}')
+    report['factories'] = [r for r in inventory['declarations'] if r['scope'] == 'factory']
 
     t = report
     report['summary'] = {
@@ -3674,7 +3514,6 @@ OPS = {
     'page_positive_control': op_page_positive_control,
     'rule_positive_control': op_rule_positive_control,
     'map_detection_assets': op_map_detection_assets,
-    's3_abort_unfinished': op_s3_abort_unfinished,
     's3_run_plan': op_s3_run_plan,
     's3_campaign_init': op_s3_campaign_init,
     's3_campaign_info': op_s3_campaign_info,

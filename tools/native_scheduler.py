@@ -167,10 +167,30 @@ def run_scheduler(args, host):
                 out.update(decision='error', error=f'恢复设备配置失败: {type(error).__name__}: {error}',
                            traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
         out.update(stop_observed=stop.observed, elapsed_s=round(time.monotonic() - started, 3))
+        def finalization_error(phase, error):
+            message = f'{phase}: {type(error).__name__}: {error}'
+            out.setdefault('artifact_errors', []).append(message)
+            previous = out.get('error')
+            out.update(decision='error', error=f'{previous}; {message}' if previous else message,
+                       traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
+
         try:
             status(out.get('decision', 'error'), error=out.get('error'), stop_observed=stop.observed)
+        except Exception as error:
+            finalization_error('保存调度结束状态失败', error)
         finally:
             if capture is not None:
                 logger.removeHandler(capture)
-                capture.close()
+                try:
+                    capture.close()
+                except Exception as error:
+                    finalization_error('关闭原生日志失败', error)
+        if out.get('artifact_errors'):
+            # The log writer may have failed after state.json was replaced.
+            # Publish the failure without re-entering that broken log writer.
+            try:
+                capture = None
+                status('error', error=out['error'], stop_observed=stop.observed)
+            except Exception as error:
+                finalization_error('保存工件失败状态失败', error)
     return out

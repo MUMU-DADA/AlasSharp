@@ -5,11 +5,13 @@
 --device-only：仅执行设备步骤。省略模式参数则运行全套（包含设备动作）。
 每步独立记录结果，任何失败、超时或缺失都会令最终退出码非零。
 """
+import argparse
 import json
 import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))     # csharp/
@@ -26,14 +28,14 @@ except Exception:
     pass
 
 # (脚本, 说明, 需要真机, 超时秒)
-# verify_pages.py 需要调用方提供分段页面清单；verify_page.py 是退役诊断入口。
-# 两者不作为自包含步骤注册，页面产品回归由 regress_pages.py 执行。
+# verify_pages.py / verify_page.py 均为退役入口，不再执行逐页点击。
+# 页面产品回归由 regress_pages.py 通过原生任务执行。
 STEPS = [
     ('verify_privacy.py', '隐私边界（个人目录/明确凭据/本机工件不入库）', False, 120),
     ('verify_architecture.py', '整体架构边界（宿主/数据/路径/禁止地图特例）', False, 120),
     ('regress_pages.py', '页面识别全量回归（产品导航器）', True, 1800),
     ('retry_blocked_pages.py', '此前阻塞的页面定向重试', True, 1800),
-    ('verify_controls.py', '控件规则 + 滑动/开关驱动', True, 2400),
+    ('verify_controls.py', '控件历史证据归档（旧逐页动作脚本已退役）', False, 120),
     ('verify_primitives.py', '控制原语（返回键/长按/滑动）', True, 1200),
     ('verify_text_input.py', '文本输入（装备码流程）', True, 900),
     ('verify_positive_control.py', '合成正对照（页面 + Switch）', False, 600),
@@ -42,19 +44,28 @@ STEPS = [
     ('verify_map_detect_failures.py', 'S2 地图检测故障分类与 OS 遮罩复位（离线）', False, 120),
     ('verify_product_map.py', 'S2 产品路径（alashub map + 关卡 IR 交叉校验）', False, 900),
     ('verify_config_export.py', '章节 Config 导出（继承/表达式/类型证据）', False, 300),
+    ('verify_export_integrity.py', '导出完整性破坏用例：Python/C# 同时拒绝', False, 300),
+    ('verify_validation_contracts.py', '同步验收与地图失败分类反例（离线）', False, 120),
     ('verify_map_alignment.py', 'S2 偏移对齐（窗口 vs 地图，含活动图 9x8）', False, 600),
     ('analyze_specificity.py', '识别特异性矩阵', False, 300),
     ('report_pages.py', '重建 page-verification.md', False, 300),
-    ('../sync_all.py', '上游同步一致性（--verify：导出数据/素材与上游对齐）', False, 600),
+    ('../sync_all.py', '上游同步一致性（导出数据/素材与上游对齐）', False, 600),
     ('verify_device_engine.py', '设备引擎回归（后端可切换/抓图/点击，需设备在线）', True, 600),
     ('verify_device_capture_color.py', '设备抓帧 raw/普通路径像素通道一致（离线）', False, 120),
     ('verify_native_ui_ensure.py', '上游原生页面导航宿主合同（动作门禁/复用设备/异常）', False, 120),
+    ('verify_native_page_rules.py', '全部页面四服原生判据与服务器素材释放（离线）', False, 120),
+    ('verify_ui_rule_catalog.py', '上游控件继承/别名/延迟构造发现与错误合同（离线）', False, 120),
+    ('verify_upstream_coverage.py', '全部章节/素材/页面/导航/控件/调度入口；源缺陷也失败', False, 900),
+    ('verify_native_tools.py', '上游独立工具原生分派与队列工件（离线）', False, 300),
+    ('verify_native_scheduler.py', '上游连续调度与边界停止（离线）', False, 300),
+    ('verify_instance_device_binding.py', '实例配置与共享设备绑定（离线）', False, 120),
     ('verify_device_back.py', '导航返回键（上游设备接口与失败透传）', False, 120),
     ('device_smoke.py', '真机冒烟收口（当场抓帧 / IN_MAP 现场取值 / 有界战役冒烟）', True, 1800),
     ('verify_device_smoke.py', '真机冒烟证据审计（退出码/缺工件/报告异常/通关反例，无设备）', False, 120),
     ('verify_dryrun_purity.py', 'dry-run 纯度（不带 --run 绝不碰游戏）', False, 600),
     ('verify_s3_plan.py', 'S3 计划读取回归（协议 plan_steps == IR battle_* + 安全锁）', False, 300),
     ('verify_s3_upstream_loading.py', 'S3 上游加载链/继承配置/地图帧回归（离线）', False, 300),
+    ('verify_native_campaign_entry.py', 'S3 原生入口处理与存盘帧对照（无设备）', False, 120),
     ('verify_s3_camera_compat.py', 'S3 原生相机等待空状态兼容（离线）', False, 300),
     ('verify_campaign_button_compat.py', 'S3 原生战役按钮颜色临界值与模板对拍（脱敏局部帧）', False, 300),
     ('verify_s3_outcome.py', 'S3 原生 run 调度与清图/撤退判别（离线上游执行）', False, 300),
@@ -103,14 +114,23 @@ def run_step(script, need_device, timeout, docs_only=False, device_only=False):
     path = os.path.join(HERE, script)
     if not os.path.exists(path):
         return 'missing', 0.0, path
+    log = Path(ROOT) / '.runtime/verification/verify_all' / (Path(script).stem + '.log')
+    log.parent.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     try:
         r = subprocess.run([PY, path], capture_output=True, text=True,
                            encoding='utf-8', errors='replace', timeout=timeout)
+        log.write_text((r.stdout or '') + '\n--- stderr ---\n' + (r.stderr or ''), encoding='utf-8')
         ok = r.returncode == 0
-        tail = [l for l in (r.stdout or '').strip().splitlines() if l.strip()]
+        output = (r.stderr or r.stdout or '') if not ok else (r.stdout or '')
+        tail = [l for l in output.strip().splitlines() if l.strip()]
         return ('ok' if ok else 'fail'), time.time() - t0, (tail[-1][:120] if tail else '')
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as error:
+        def output_text(value):
+            return value.decode('utf-8', 'replace') if isinstance(value, bytes) else (value or '')
+        log.write_text(output_text(error.stdout) + '\n--- stderr ---\n'
+                       + output_text(error.stderr) + '\nTimed out after %d seconds.\n' % timeout,
+                       encoding='utf-8')
         return 'timeout', time.time() - t0, '超过 %ds' % timeout
     except Exception as e:
         return 'error', time.time() - t0, '%s: %s' % (type(e).__name__, e)
@@ -145,12 +165,20 @@ def read_numbers():
 
 
 def main():
-    docs_only = '--docs-only' in sys.argv
-    device_only = '--device-only' in sys.argv
-    only = None
-    for i, a in enumerate(sys.argv):
-        if a == '--only' and i + 1 < len(sys.argv):
-            only = {s.strip() for s in sys.argv[i + 1].split(',') if s.strip()}
+    parser = argparse.ArgumentParser(description=__doc__)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--docs-only', action='store_true')
+    modes.add_argument('--device-only', action='store_true')
+    parser.add_argument('--only', help='逗号分隔的已登记检查名')
+    try:
+        args = parser.parse_args()
+    except SystemExit as error:
+        return error.code
+    docs_only, device_only = args.docs_only, args.device_only
+    only = None if args.only is None else {s.strip() for s in args.only.split(',') if s.strip()}
+    if only is not None and (not only or only - {s[0] for s in STEPS}):
+        print('--only 包含未知或空检查名')
+        return 2
     mode = '离线检查与归档报告' if docs_only else ('只跑真机' if device_only else '全套')
     if only:
         mode += '，只跑 %s' % ', '.join(sorted(only))
@@ -162,7 +190,7 @@ def main():
             results.append((script, desc, 'skipped', 0.0))
             continue
         state, secs, note = run_step(script, need_dev, timeout, docs_only, device_only)
-        print('%-28s %-8s %6.1fs  %s' % (script, state, secs, note))
+        print('%-28s %-8s %6.1fs  %s' % (script, state, secs, note), flush=True)
         results.append((script, desc, state, secs))
 
     print()
@@ -171,6 +199,11 @@ def main():
         print('%-14s %s' % (k, v))
 
     bad = [r for r in results if r[2] in ('fail', 'timeout', 'error', 'missing')]
+    summary = Path(ROOT) / '.runtime/verification/verify_all/results.json'
+    summary.parent.mkdir(parents=True, exist_ok=True)
+    summary.write_text(json.dumps(dict(mode=mode, ok=not bad, results=[
+        dict(script=r[0], description=r[1], state=r[2], seconds=round(r[3], 3))
+        for r in results]), ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print()
     print('总耗时 %.1f 分钟；%d 步异常%s'
           % ((time.time() - t_all) / 60, len(bad),

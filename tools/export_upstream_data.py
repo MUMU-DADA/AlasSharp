@@ -46,7 +46,7 @@ SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
 # 上游 dev_tools/map_extractor.py 里 battle_N 模板会吐出的调用词表。
-# 只用到这些调用 = 该关卡是「生成器模板产物」，可直接用 JSON 规则表驱动。
+# 只用到这些调用 = 该关卡是「生成器模板产物」；此分类仅用于离线摘要。
 TEMPLATE_VOCAB = {'clear_siren', 'clear_filter_enemy', 'battle_default', 'clear_boss',
                   'fleet_boss.clear_boss'}
 
@@ -171,7 +171,8 @@ def export_assets(root: str, out_dir: str, manifest: dict):
         rel = os.path.relpath(path, root).replace('\\', '/')
         module = rel[len('module/'):-len('/assets.py')] if rel.count('/') else ''
         try:
-            tree = ast.parse(open(path, encoding='utf-8').read())
+            with open(path, encoding='utf-8') as source:
+                tree = ast.parse(source.read())
         except SyntaxError as e:
             manifest['errors'].append({'file': rel, 'error': f'SyntaxError: {e}'})
             continue

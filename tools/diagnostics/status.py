@@ -11,14 +11,15 @@
 """
 import json
 import os
+from pathlib import Path
+import sys
+from collections import Counter
 
 HERE = os.path.dirname(os.path.abspath(__file__))          # csharp/tools/diagnostics
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))    # csharp
 DOCS = os.path.join(ROOT, 'docs')
 DATA = os.path.join(ROOT, 'data')
-TOTAL_PAGES = 53          # 上游 module/ui/page.py 的 Page 数（由 ui_rule_inventory 给出）
-TOTAL_MODULE_RULES = 20   # 模块级 Switch/Scroll（由 ui_rule_list 给出）
-TOTAL_CACHED = 6          # cached_property 规则
+sys.path.insert(0, str(Path(ROOT) / 'tools'))
 
 
 def load(path, default=None):
@@ -30,6 +31,16 @@ def load(path, default=None):
 
 
 def main():
+    import alas_vision as av
+    from module.ui.page import Page
+    from ui_rule_catalog import discover_controls
+    inventory = discover_controls(av.FORK)
+    if inventory['errors']:
+        raise ValueError(inventory['errors'])
+    counts = Counter(row['scope'] for row in inventory['declarations'])
+    total_pages = len(Page.all_pages)
+    total_module_rules = counts['module']
+    total_cached = counts['property']
     pages = load(os.path.join(DOCS, 'archive/reports/page-verification.json'), {})
     ctrl = load(os.path.join(DATA, 'controls_verify.json'), [])
     prim = load(os.path.join(DATA, 'primitives_verify.json'), [])
@@ -42,7 +53,7 @@ def main():
     blocked = pages.get('blocked', {})
     overlap = set(verified) & set(blocked)
     blocked_only = set(blocked) - set(verified)
-    located = TOTAL_PAGES - len(set(verified) | set(blocked))
+    located = total_pages - len(set(verified) | set(blocked))
     if located < 0:
         raise ValueError('页面证据超过上游页面总数')
 
@@ -63,7 +74,8 @@ def main():
     lines = [
         '# 验收总状态：上游界面与控件识别跑到什么程度',
         '',
-        '本页由 `tools/diagnostics/status.py` 从四份证据文件汇总生成，**不手写**。',
+        '本页由 `tools/diagnostics/status.py` 从历史证据与当前上游清单汇总生成，**不手写**。',
+        '历史命中不证明当前宿主回归通过；原生加载/四服正对照另见 `upstream-coverage.md`。',
         '每项的"为什么没通过"在对应专项文档里，本页只给总数与去处。',
         '',
         '设备：MuMu 模拟器 `127.0.0.1:16384`（1280x720，国服，新版主界面）。',
@@ -72,12 +84,13 @@ def main():
         '',
         '| 范围 | 总数 | 已通过 | 未通过/阻塞 | 明细 |',
         '| --- | --- | --- | --- | --- |',
-        '| 页面规则（Page） | %d | **%d** | %d 导航未达且规则未命中 + %d 原因已定位 | `page-verification.md` |'
-        % (TOTAL_PAGES, len(verified), len(blocked_only), located),
+        '| 页面规则（Page） | %d | **%d** | %d 导航未达且规则未命中 + %d 其余未验 | `page-verification.md` |'
+        % (total_pages, len(verified), len(blocked_only), located),
         '| 控件规则（模块级 Switch/Scroll） | %d | %d | %d | `controls.md` |'
-        % (TOTAL_MODULE_RULES, len(hit_module), TOTAL_MODULE_RULES - len(hit_module)),
+        % (total_module_rules, len(hit_module), total_module_rules - len(hit_module)),
         '| cached_property 规则 | %d | %d | %d | `controls.md` |'
-        % (TOTAL_CACHED, len(hit_cached), TOTAL_CACHED - len(hit_cached)),
+        % (total_cached, len(hit_cached), total_cached - len(hit_cached)),
+        '| 原生任务内工厂声明 | %d | 未单独执行 | 需原生任务状态与实机证据 | `upstream-coverage.md` |' % counts['factory'],
         '| 控制动作（滑动/开关驱动/探测） | %d | %d | %d | `controls.md` |'
         % (len(acts), len(act_hit), len(acts) - len(act_hit)),
         '| 控制原语（返回键/长按/滑动） | %d | **%d** | %d | `primitives.md` |'
@@ -90,7 +103,7 @@ def main():
         % (len(regress), len(reg_ok), len(regress) - len(reg_ok)),
         '| 页面规则合成正对照 | %d | %d | %d 跳过（`page_unknown` 无素材） | `positive-control.md` |'
         % (pc.get('total', 0), pc.get('passed', 0), pc.get('skipped', 0)),
-        '| 控件 Switch 合成正对照 | %d | %d | %d 跳过（Scroll 判定依赖颜色掩码） | `positive-control.md` |'
+        '| 控件 Switch 合成正对照 | %d | %d | %d 跳过（颜色掩码或子类原生判据） | `positive-control.md` |'
         % (rc.get('total', 0), rc.get('passed', 0), rc.get('skipped', 0)),
         '',
         '（控件与页面条目在证据文件里含"动作行"，上表已把动作与规则分开计数；',
@@ -111,7 +124,7 @@ def main():
         lines.append('| `%s` | %s |' % (name, blocked[name]))
     lines += [
         '',
-        '## 原因已定位但未验证的 %d 个页面' % located,
+        '## 其余未验证的 %d 个页面' % located,
         '',
         '逐条原因见 `page-verification.md`：',
         '',
@@ -119,7 +132,7 @@ def main():
         '2. **上游无入边或非真实画面**：`page_channel`（只有出边）、',
         '   `page_rpg_city`（只有出边且活动类型未开跑）、`page_unknown`（`Page(None)`）。',
         '',
-        '## 还没验的控件（都是"到不了"，不是"判定错"）',
+        '## 历史控件未验原因（不涵盖本次新增发现的全部声明）',
         '',
         '| 规则 | 到不了的原因 |',
         '| --- | --- |',
@@ -147,7 +160,7 @@ def main():
         '```powershell',
         '$env:STUB_ADB = "<adb.exe>"',
         'python tools/diagnostics/regress_pages.py        # 已验证页面的产品导航回归',
-        'python tools/diagnostics/verify_controls.py      # 控件规则 + 滑动/开关驱动',
+        'python tools/diagnostics/verify_controls.py --report-only  # 只读归档控件历史证据',
         'python tools/diagnostics/verify_primitives.py    # 返回键/长按/滑动',
         'python tools/diagnostics/report_pages.py         # 重建 page-verification.md',
         'python tools/diagnostics/status.py               # 重建本文件',
@@ -157,8 +170,8 @@ def main():
     out = os.path.join(DOCS, 'archive/reports/status.md')
     with open(out, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
-    print('页面 %d/%d 曾命中（导航未达记录 %d，其中重叠 %d；其余原因已定位 %d）'
-          % (len(verified), TOTAL_PAGES, len(blocked), len(overlap), located))
+    print('页面 %d/%d 曾命中（导航未达记录 %d，其中重叠 %d；其余未验 %d）'
+          % (len(verified), total_pages, len(blocked), len(overlap), located))
     print('控件规则 %d 命中 / 动作 %d 命中 / 原语 %d/%d / 回归 %d/%d'
           % (len(rule_hit), len(act_hit), len(prim_hit), len(prim), len(reg_ok), len(regress)))
     print('写入 %s' % out)

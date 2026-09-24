@@ -87,14 +87,17 @@ def git_info(source):
         except Exception:
             return None
 
-    dirty = run('status', '--porcelain')
+    top = run('rev-parse', '--show-toplevel')
+    own_checkout = top is not None and os.path.normcase(os.path.realpath(top)) == \
+        os.path.normcase(os.path.realpath(source))
+    dirty = run('status', '--porcelain') if own_checkout else None
     return {
         # 个人 fork 的远端可能暴露账号或凭据；可复现性由 commit 与逐文件哈希保证。
         'repository': 'AzurLaneAutoScript (source identity redacted)',
-        'commit': run('rev-parse', 'HEAD'),
-        'branch': run('rev-parse', '--abbrev-ref', 'HEAD'),
+        'commit': run('rev-parse', 'HEAD') if own_checkout else None,
+        'branch': run('rev-parse', '--abbrev-ref', 'HEAD') if own_checkout else None,
         # 上游工作区若被改过，快照就不等于任何 commit —— 必须记下来
-        'worktree_clean': dirty == '',
+        'worktree_clean': dirty == '' if dirty is not None else None,
     }
 
 

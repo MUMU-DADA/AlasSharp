@@ -13,10 +13,13 @@ S0 产物校验：确认导出的 JSON 真的可用、且与源码一致。
 from __future__ import annotations
 
 import argparse
+from collections import Counter
+import hashlib
 import json
 import os
 import re
 import sys
+from pathlib import Path
 
 try:
     from .upstream_config_export import ConfigResolver
@@ -36,16 +39,74 @@ def check(repo: str, data: str) -> dict:
     problems = []
     stats = {}
 
-    assets = json.load(open(os.path.join(data, 'assets.json'), encoding='utf-8'))
-    index = json.load(open(os.path.join(data, 'campaign_index.json'), encoding='utf-8'))
-    manifest = json.load(open(os.path.join(data, 'manifest.json'), encoding='utf-8'))
+    assets = json.loads(Path(data, 'assets.json').read_text(encoding='utf-8'))
+    index = json.loads(Path(data, 'campaign_index.json').read_text(encoding='utf-8'))
+    manifest = json.loads(Path(data, 'manifest.json').read_text(encoding='utf-8'))
+    from export_upstream_data import SERVERS
+    if len(assets.get('servers', [])) != len(SERVERS) or set(assets.get('servers', [])) != set(SERVERS):
+        problems.append('素材目录服务器清单缺失、重复或与导出契约不一致')
 
     # ---- 1. 计数
     stats['assets'] = len(assets['assets'])
     stats['chapters'] = len(index['chapters'])
-    src_asset_files = manifest['assets']['source_files']
-    if src_asset_files != 45:
-        problems.append(f'素材源文件数异常: {src_asset_files}')
+    src_asset_files = {p.relative_to(repo).as_posix()
+                       for p in (Path(repo) / 'module').rglob('assets.py')}
+    if manifest['assets']['source_files'] != len(src_asset_files):
+        problems.append('素材源文件数量与当前上游不一致')
+    indexed_sources = {row['source'] for row in index['chapters']}
+    native_sources = {p.relative_to(repo).as_posix()
+                      for p in (Path(repo) / 'campaign').rglob('*.py')
+                      if p.name != '__init__.py' and '__pycache__' not in p.parts}
+    if indexed_sources != native_sources or len(indexed_sources) != len(index['chapters']):
+        problems.append('关卡索引缺失、重复或包含非上游来源')
+    asset_bad = []
+    for aid, binding in assets['assets'].items():
+        fields = ['file'] + (['area', 'button', 'color'] if binding['kind'] == 'Button'
+                             else ['area'] if binding['kind'] == 'Mask' else [])
+        servers = set(binding.get('servers', []))
+        if (binding.get('id') != aid or aid != f"{binding.get('module')}/{binding.get('name')}"
+                or binding.get('source') not in src_asset_files
+                or binding.get('source') != f"module/{binding.get('module', '').replace('.', '/')}/assets.py"
+                or binding.get('kind') not in ('Button', 'Template', 'Mask')):
+            asset_bad.append(f'{aid}: identity/source')
+        if not servers or len(servers) != len(binding.get('servers', [])) or not servers <= set(assets['servers']):
+            asset_bad.append(f'{aid}: servers')
+        for field in fields:
+            value = binding.get(field)
+            if not isinstance(value, dict) or set(value) != servers:
+                asset_bad.append(f'{aid}: {field} server variants')
+            elif field in ('area', 'button', 'color'):
+                size = 3 if field == 'color' else 4
+                if any(not isinstance(v, list) or len(v) != size
+                       or any(type(item) is not int for item in v) for v in value.values()):
+                    asset_bad.append(f'{aid}: {field} shape/type')
+            elif any(not isinstance(v, str) or not v.strip() for v in value.values()):
+                asset_bad.append(f'{aid}: {field} path')
+        if binding.get('all_servers') != (servers >= set(assets['servers'])):
+            asset_bad.append(f'{aid}: all_servers')
+    asset_manifest = manifest['assets']
+    for key, actual in (
+            ('count', len(assets['assets'])),
+            ('all_four_servers', sum(a['all_servers'] for a in assets['assets'].values())),
+            ('by_module', dict(Counter(a['module'] for a in assets['assets'].values()))),
+            ('by_kind', dict(Counter(a['kind'] for a in assets['assets'].values())))):
+        if asset_manifest.get(key) != actual:
+            asset_bad.append(f'manifest.assets.{key}')
+    if asset_manifest.get('unresolved') != [] or manifest.get('errors') != []:
+        asset_bad.append('manifest contains unresolved assets or source errors')
+    stats['asset_contract_issues'] = len(asset_bad)
+    if asset_bad:
+        problems.append(f'{len(asset_bad)} 个素材契约问题: {asset_bad[:5]}')
+
+    for section, sources in [('assets', src_asset_files), ('campaign', native_sources)]:
+        if manifest.get(section, {}).get('source_files') != len(sources):
+            problems.append(f'{section} 源文件计数与当前上游不一致')
+        expected_hashes = {source: hashlib.sha256(Path(repo, source).read_bytes()).hexdigest()
+                           for source in sources}
+        if manifest.get(section, {}).get('source_hashes') != expected_hashes:
+            problems.append(f'{section} 源哈希清单与当前上游不一致')
+    if manifest.get('campaign', {}).get('files') != len(index['chapters']):
+        problems.append('campaign manifest 计数与索引不一致')
 
     # ---- 2. 素材文件存在性
     missing = []
@@ -66,7 +127,9 @@ def check(repo: str, data: str) -> dict:
     tier_count = {'A': 0, 'B': 0, 'C': 0}
     for entry in index['chapters']:
         tier_count[entry['tier']] = tier_count.get(entry['tier'], 0) + 1
-        ir = json.load(open(os.path.join(data, entry['json']), encoding='utf-8'))
+        ir = json.loads(Path(data, entry['json']).read_text(encoding='utf-8'))
+        if ir.get('source') != entry['source'] or entry['json'] != entry['source'][:-3] + '.json':
+            config_bad.append({'file': entry['source'], 'differences': ['index.source/json']})
 
         # Effective Config must be reproducible from source. This catches imported
         # Config classes, inherited overrides and constant expressions that a local
@@ -129,7 +192,7 @@ def check(repo: str, data: str) -> dict:
         # 抽查：模板化关卡（tier A）应能由 steps 还原出源码里的调用序列
         if entry['tier'] == 'A':
             rendered_checked += 1
-            src = open(os.path.join(repo, entry['source']), encoding='utf-8').read()
+            src = Path(repo, entry['source']).read_text(encoding='utf-8')
             ok = True
             for b in ir['campaign']['battles']:
                 for s in b['steps']:
