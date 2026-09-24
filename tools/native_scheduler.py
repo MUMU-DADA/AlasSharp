@@ -109,7 +109,8 @@ def run_scheduler(args, host):
             try:
                 if command.startswith('opsi_'):
                     host.apply_os_combat_reentry_compat()
-                result = super().run(command, skip_first_screenshot=skip_first_screenshot)
+                with host.native_task_runtime():
+                    result = super().run(command, skip_first_screenshot=skip_first_screenshot)
                 record.update(native_success=result is True, returned=True)
                 last_success = result is True
                 return result

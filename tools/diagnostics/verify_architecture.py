@@ -154,6 +154,7 @@ def periodic_run_gate_intact() -> list[str]:
         "_device_engine(config=config)",
         "config.override(**overrides)",
         "runner.run(method_name)",
+        "with native_task_runtime():",
     )
     missing = [marker for marker in required if marker not in body]
     if missing:
@@ -196,6 +197,7 @@ def native_tool_boundary_intact() -> list[str]:
         if construct < 0 or position < 0 or position > construct:
             problems.append(f'独立工具必须先验证授权/注册再构造: {marker}')
     for marker in ("runner.run(plan['method'], skip_first_screenshot=True)",
+                   'with native_task_runtime():',
                    'class ToolRunner(AzurLaneAutoScript):', '_device_engine(config=self.config)'):
         if marker not in body:
             problems.append(f'独立工具偏离上游分派/设备语义: {marker}')
@@ -216,6 +218,7 @@ def native_scheduler_boundary_intact() -> list[str]:
     for marker in ('class SchedulerRunner(AzurLaneAutoScript):', 'runner.loop()',
                    'return super().wait_until(future)',
                    'super().run(command, skip_first_screenshot=skip_first_screenshot)',
+                   'with host.native_task_runtime():',
                    "object.__setattr__(config, 'stop_event', stop)"):
         if marker not in text:
             problems.append(f'调度器没有保持原生循环/事件/分派语义: {marker}')

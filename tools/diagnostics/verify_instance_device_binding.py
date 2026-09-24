@@ -160,6 +160,7 @@ class Fixture:
             'os': fake_os, 'Path': Path, 'json': json,
             '_DEVICE_OBJ': None, '_DEVICE_KEY': None, '_DEVICE_ARGS': dict(TRANSPORT),
             '_LoggedNativeFailure': Failure,
+            'native_task_runtime': contextlib.nullcontext,
             'op_periodic_plan': lambda args: {
                 'found': True, 'method': args['task'].lower(), 'scheduler_command': args['task'],
             },

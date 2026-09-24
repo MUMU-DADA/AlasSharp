@@ -67,6 +67,8 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 
 独立工具走 `AzurLaneAutoScript(instance).run(method, skip_first_screenshot=True)`，配置与设备按上游实际访问延迟构造；
 工具自行绑定任务配置，不套用周期任务的 `Scheduler.Command`。工具正常返回只证明原生执行完成，不能推导领取或通关。
+周期任务、连续调度与独立工具都在动作授权后进入共享数值兼容上下文，不依赖先跑战役或地图探针；
+此前关卡显式开启的全清覆盖在该上下文内暂停，返回或异常后恢复，任务仍使用自己的上游配置。
 取消在工具返回后的队列边界生效；持续运行的守护工具不会被强杀。尚未迁入当前引擎的工具明确拒绝，不以 UI 菜单代替注册表。
 
 连续调度直接调用上游 `loop/get_next_task/wait_until/run`，保留任务排序、首次重启跳过、配置重载和失败处理。
@@ -107,6 +109,7 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 `verify_os_action.py`、`verify_event_state.py`、`verify_task_catalog.py`、`verify_task_schedule.py`、
 `verify_config_get.py`、`verify_periodic_plan.py`、`verify_native_tools.py` 等离线检查覆盖。
 `verify_native_scheduler.py` 对真实原生循环使用合成依赖；`verify_scheduler_control.py` 验证 Core 接单、常驻宿主、停止、关闭及工件。
+`verify_native_runtime_compat.py` 为三种执行入口分别启动新进程，验证真实上游数值计算、拒绝路径和全清选项隔离。
 地图故障边界由 `verify_map_detect_failures.py` 验证。
 `verify_upstream_coverage.py` 覆盖当前全部关卡、四服素材、页面、导航图、控件声明与调度绑定；
 源依赖损坏也会失败，证据范围见[全量规则报告](archive/reports/upstream-coverage.md)。

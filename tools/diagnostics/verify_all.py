@@ -57,6 +57,7 @@ STEPS = [
     ('verify_ui_rule_catalog.py', '上游控件继承/别名/延迟构造发现与错误合同（离线）', False, 120),
     ('verify_upstream_coverage.py', '全部章节/素材/页面/导航/控件/调度入口；源缺陷也失败', False, 900),
     ('verify_native_tools.py', '上游独立工具原生分派与队列工件（离线）', False, 300),
+    ('verify_native_runtime_compat.py', '新宿主周期任务/连续调度/独立工具的原生数值兼容（离线）', False, 120),
     ('verify_native_scheduler.py', '上游连续调度与边界停止（离线）', False, 300),
     ('verify_instance_device_binding.py', '实例配置与共享设备绑定（离线）', False, 120),
     ('verify_device_back.py', '导航返回键（上游设备接口与失败透传）', False, 120),

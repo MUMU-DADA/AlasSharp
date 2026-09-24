@@ -1265,7 +1265,8 @@ def op_periodic_run(args):
         try:
             if method_name.startswith('opsi_'):
                 apply_os_combat_reentry_compat()
-            native_success = runner.run(method_name)
+            with native_task_runtime():
+                native_success = runner.run(method_name)
         finally:
             logger.removeHandler(failure)
             failure.close()
@@ -1412,7 +1413,8 @@ def op_tool_run(args):
         runner = ToolRunner(config_name=instance)
         out['constructed'] = True
         out['ran'] = True
-        native_success = runner.run(plan['method'], skip_first_screenshot=True)
+        with native_task_runtime():
+            native_success = runner.run(plan['method'], skip_first_screenshot=True)
         out['native_success'] = native_success is True
         out['decision'] = 'ran' if native_success is True else 'failed'
         if native_success is not True:
@@ -1744,6 +1746,29 @@ def op_rule_positive_control(args):
 
 
 _NUMPY2_COMPAT_DONE = False
+
+
+def prepare_native_runtime():
+    """Install numerical compatibility before any native action dispatch.
+
+    A fresh scheduler/tool process must not depend on a previous map probe or
+    campaign initialization. These fixes only preserve native geometry types;
+    they do not select maps, change recognition rules, or construct a device.
+    """
+    apply_numpy2_compat()
+    apply_points_empty_compat()
+
+
+@contextmanager
+def native_task_runtime():
+    """Scope shared runtime fixes without inheriting an explicit sortie option."""
+    prepare_native_runtime()
+    previous = _CLEAR_ALL_OVERRIDE['enabled']
+    _CLEAR_ALL_OVERRIDE['enabled'] = False
+    try:
+        yield
+    finally:
+        _CLEAR_ALL_OVERRIDE['enabled'] = previous
 
 
 def apply_numpy2_compat():
