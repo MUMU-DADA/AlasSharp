@@ -10,6 +10,7 @@ using System.Text.Json.Nodes;
 using Alas.Contracts;
 using Alas.UI.Statistics;
 using Alas.UI.TaskEditor;
+using Alas.UI.Overview;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Layout;
@@ -55,7 +56,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     }
 
     public ShellViewModel(IThemeStore themeStore, IAlasUiBackend? backend = null, bool previewData = false,
-        Platform.IUiFiles? files = null)
+        Platform.IUiFiles? files = null, IResourceSelectionStore? resourceStore = null)
     {
         Theme = new ThemeService(themeStore);
         InterfaceSettings = new InterfaceSettingsViewModel(Theme);
@@ -64,7 +65,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         SettingsBackend = new CoreDeploySettingsBackend(_backend);
         Home = new HomeViewModel(_backend);
         Home.InstanceSelected += (_, instance) => SelectInstance(instance);
-        Overview = new OverviewViewModel(previewData, previewData ? null : _backend);
+        Overview = new OverviewViewModel(previewData, previewData ? null : _backend, resourceStore);
         Statistics = new StatisticsViewModel(
             async (query, cancellationToken) => await _backend.ReadStatisticsAsync(ToStatisticsRequest(query), cancellationToken).ConfigureAwait(true),
             (instance, cancellationToken) => _backend.RefreshStatisticsLootAsync(instance, cancellationToken),
@@ -691,10 +692,17 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     public IReadOnlyList<RailTaskViewModel> NativeTasks { get; private set; } = [];
     public event EventHandler? ObservationChanged;
 
-    public OverviewViewModel(bool previewData = false, IAlasControlBackend? backend = null)
+    public OverviewViewModel(bool previewData = false, IAlasControlBackend? backend = null, IResourceSelectionStore? resourceStore = null)
     {
         _previewData = previewData;
         _backend = backend;
+        Selection = new ResourceSelection(resourceStore ?? new MemoryResourceSelectionStore());
+        Selection.PropertyChanged += (_, _) =>
+        {
+            if (_previewData) return;
+            Resources.Clear();
+            foreach (var choice in Selection.Selected) Resources.Add(choice.Card);
+        };
         ToggleFilterCommand = new PreviewCommand(_ => IsFilterOpen = !IsFilterOpen);
         ToggleFollowCommand = new PreviewCommand(_ => IsFollowing = !IsFollowing);
         ToggleOrderCommand = new PreviewCommand(_ => IsDescending = !IsDescending);
@@ -719,6 +727,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     private string _instanceName = "未选择实例";
     public string InstanceName => _instanceName;
     public ObservableCollection<ResourceCardViewModel> Resources { get; }
+    public ResourceSelection Selection { get; }
 
     /// <summary>日志缓存上限：上游 LogPanel 按 id 合并后只保留最近 400 条。</summary>
     public const int LogCapacity = 400;
@@ -920,6 +929,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         if (string.IsNullOrWhiteSpace(instance) || _instanceName == instance) return;
         _instanceGeneration++;
         _instanceName = instance;
+        Selection.SetInstance(instance);
         _stateKnown = false;
         _otherInstanceRunning = false;
         _stopRequested = false;
@@ -931,7 +941,6 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
             _nativeLogCursor = _coreLogCursor = 0;
             _observation = null;
             NativeTasks = [];
-            Resources.Clear();
             ClearLogs();
             ObservationChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -955,9 +964,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         NativeTasks = SchedulerObservation.Tasks(_observation, IsSchedulerRunning);
         if (!_previewData)
         {
-            Resources.Clear();
-            foreach (var card in SchedulerObservation.Resources(_observation, ["Oil", "Coin", "Gem", "Cube"]))
-                Resources.Add(card);
+            Selection.Observe(_observation);
         }
         if (selected) ApplyLogSnapshot(state, active);
         ObservationChanged?.Invoke(this, EventArgs.Empty);

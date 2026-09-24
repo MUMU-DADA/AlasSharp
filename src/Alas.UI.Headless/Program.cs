@@ -31,6 +31,7 @@ internal static class Program
         try
         {
             ThemePreferenceChecks.Verify();
+            ResourceSelectionChecks.Run();
             await UiFilesChecks.Verify();
             await TaskEditorChecks.Verify();
             await CoreUiBackendChecks.Verify();

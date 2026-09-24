@@ -27,11 +27,12 @@ public partial class MainView : UserControl
     {
     }
 
-    public MainView(Theming.IThemeStore themeStore, IAlasUiBackend? backend = null, Platform.IUiFiles? files = null)
+    public MainView(Theming.IThemeStore themeStore, IAlasUiBackend? backend = null, Platform.IUiFiles? files = null,
+        Overview.IResourceSelectionStore? resourceStore = null)
     {
         InitializeComponent();
         files ??= new Platform.UiFiles(() => TopLevel.GetTopLevel(this)?.StorageProvider);
-        Model = new ShellViewModel(themeStore, backend, previewData: backend is null, files: files);
+        Model = new ShellViewModel(themeStore, backend, previewData: backend is null, files: files, resourceStore: resourceStore);
         DataContext = Model;
         Model.PropertyChanged += OnModelChanged;
         var deploySession = new DeploySettings.DeploySettingsSession(
