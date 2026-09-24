@@ -2306,12 +2306,15 @@ def _campaign_mode(args):
 
 
 def op_s3_campaign_init(args):
-    """实例化上游章节的 `Campaign`（**不执行任何游戏动作**）。
+    """实例化上游章节的 `Campaign`，初始化设备并抓取首帧，不点击。
 
     S3 要执行的 tier A 调用（`battle_default` / `clear_siren` / …）是 ALAS 的 Campaign 方法，
     按铁律不能重写成 C#。探针已验证它在宿主里可实例化
     （`tools/diagnostics/s3_probe_campaign.py`）；本 op 把它接到协议上。
     """
+    # An init attempt supersedes the previous chapter even if validation,
+    # loading or frame seeding fails. Publish the new instance only at the end.
+    _CAMPAIGN.clear()
     mode = _campaign_mode(args)
     chapter = str(args.get('chapter') or 'campaign.campaign_main.campaign_2_1')
     apply_numpy2_compat()

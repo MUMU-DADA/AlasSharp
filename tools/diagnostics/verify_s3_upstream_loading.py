@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import importlib
 import copy
-from contextlib import redirect_stdout
+from contextlib import ExitStack, redirect_stdout
 import io
 import json
 from pathlib import Path
@@ -92,6 +92,62 @@ class UpstreamLoadingTests(unittest.TestCase):
         self.assertNotIn('loader', av._CAMPAIGN)
         self.assertEqual(self.device_calls,
                          ['stuck_record_clear', 'click_record_clear', 'screenshot'])
+
+    def test_failed_reinitialization_cannot_execute_previous_campaign(self):
+        # A successful first chapter used to survive every later init failure,
+        # leaving the low-level action endpoint able to execute the wrong map.
+        for fault in ('native_import', 'device', 'config', 'bind', 'loader', 'screenshot'):
+            with self.subTest(fault=fault):
+                prior = self.initialize('campaign.campaign_main.campaign_1_4')
+                requested = 'campaign.campaign_main.campaign_2_2'
+                config = template_config()
+                with ExitStack() as patches:
+                    device = patches.enter_context(patch.object(av, '_device_engine', return_value=self.device))
+                    settings = patches.enter_context(patch.object(av, '_map_config', return_value=config))
+                    old_action = patches.enter_context(patch.object(prior, 'execute_a_battle'))
+                    if fault == 'native_import':
+                        requested = 'campaign.campaign_main.missing'
+                    elif fault == 'device':
+                        device.side_effect = RuntimeError('fixture device failure')
+                    elif fault == 'config':
+                        settings.side_effect = RuntimeError('fixture config failure')
+                    elif fault == 'bind':
+                        patches.enter_context(patch.object(config, 'bind', side_effect=RuntimeError('fixture bind failure')))
+                    elif fault == 'loader':
+                        patches.enter_context(patch.object(CampaignRun, 'load_campaign', side_effect=RuntimeError('fixture loader failure')))
+                    else:
+                        patches.enter_context(patch.object(self.device, 'screenshot', side_effect=RuntimeError('fixture screenshot failure')))
+                    try:
+                        failed = av.op_s3_campaign_init({'chapter': requested})
+                    except RuntimeError as error:
+                        self.assertIn(fault, str(error))
+                    else:
+                        self.assertTrue(failed.get('error'), failed)
+                    self.assertEqual(av.op_s3_campaign_info({}), {'initialized': False})
+                    self.assertEqual(av._CAMPAIGN, {})
+                    calls_before = list(self.device_calls)
+                    refused = av.op_s3_campaign_call({'name': 'execute_a_battle', 'allow_actions': True})
+                    self.assertIn('尚未初始化', refused['error'])
+                    self.assertIn('尚未初始化', av.op_s3_probe_view({})['error'])
+                    old_action.assert_not_called()
+                    self.assertEqual(self.device_calls, calls_before)
+                # The shared device remains usable after a failed chapter attempt.
+                current = self.initialize('campaign.campaign_main.campaign_2_2')
+                self.assertIsNot(current, prior)
+                self.assertEqual(av._CAMPAIGN['chapter'], 'campaign.campaign_main.campaign_2_2')
+
+    def test_invalid_mode_invalidates_previous_campaign_without_device_access(self):
+        prior = self.initialize('campaign.campaign_main.campaign_1_4')
+        with patch.object(av, '_device_engine') as device, patch.object(av, '_map_config') as config, \
+                patch.object(prior, 'execute_a_battle') as old_action:
+            with self.assertRaisesRegex(ValueError, 'mode'):
+                av.op_s3_campaign_init({'mode': 'invalid'})
+            self.assertEqual(av.op_s3_campaign_info({}), {'initialized': False})
+            self.assertIn('尚未初始化', av.op_s3_campaign_call(
+                {'name': 'execute_a_battle', 'allow_actions': True})['error'])
+            device.assert_not_called()
+            config.assert_not_called()
+            old_action.assert_not_called()
 
     def test_invalid_native_dependencies_fail_before_device_construction(self):
         for chapter in ('invalid.module', 'campaign.campaign_main.missing',
