@@ -18,10 +18,17 @@ public sealed class AlasSession : IDisposable
     /// <summary>造宿主的工厂。默认走进程内 CPython；离线自检可以注入替身（不启动 Python）。</summary>
     public delegate IVisionEngine EngineFactory(SessionOptions options);
 
-    private readonly SessionLog _log;
+    private SessionLog _log;
+    private readonly string _hostRepoDirectory;
+    private readonly string _hostToolsDirectory;
+    private string? _configuredSerial;
+    private string? _configuredScreenshotBackend;
+    private string? _configuredControlBackend;
+    private bool _deviceConfigured;
+    private double _hostStartMilliseconds;
     private bool _disposed;
 
-    public SessionOptions Options { get; }
+    public SessionOptions Options { get; private set; }
     public IVisionEngine Vision { get; }
     public SessionLog Log => _log;
 
@@ -30,18 +37,16 @@ public sealed class AlasSession : IDisposable
     /// <summary>设备后端配置次数。只在真跑时发生，且一次会话只配一次。</summary>
     public int DeviceConfigureCount { get; private set; }
     /// <summary>本次会话的工件目录（没有配置工件目录时为 null）。</summary>
-    public string? RunDirectory { get; }
+    public string? RunDirectory { get; private set; }
 
     private AlasSession(SessionOptions options, IVisionEngine vision, SessionLog log)
     {
         Options = options;
         Vision = vision;
         _log = log;
+        _hostRepoDirectory = Path.GetFullPath(options.RepoDirectory);
+        _hostToolsDirectory = Path.GetFullPath(options.ToolsDirectory);
         HostStartCount = 1;
-        RunDirectory = options.ArtifactsDirectory is null
-            ? null
-            : UniqueRunDirectory(options.ArtifactsDirectory);
-        if (RunDirectory is not null) Directory.CreateDirectory(RunDirectory);
     }
 
     /// <summary>
@@ -84,23 +89,79 @@ public sealed class AlasSession : IDisposable
         started.Stop();
 
         var session = new AlasSession(options, engine, log);
+        session._hostStartMilliseconds = Math.Round(started.Elapsed.TotalMilliseconds, 1);
         session._log.Info("session", "识图宿主已启动", new Dictionary<string, object?>
         {
             ["repo"] = options.RepoDirectory,
             ["dry_run"] = options.DryRun,
             ["allow_actions"] = options.AllowActions,
             ["read_only_device"] = options.ReadOnlyDevice,
-            ["host_start_ms"] = Math.Round(started.Elapsed.TotalMilliseconds, 1),
+            ["host_start_ms"] = session._hostStartMilliseconds,
         });
 
-        if (options.ShouldConfigureDevice)
+        try
+        {
+            session.PrepareRun(options, log);
+        }
+        catch (Exception error)
+        {
+            session.Dispose();
+            throw RuntimeErrors.Wrap(error, "准备运行会话失败");
+        }
+        return session;
+    }
+
+    /// <summary>
+    /// 在已启动的宿主上准备一批新的运行参数。
+    ///
+    /// 控制服务的只读 API 与队列共享同一个宿主；每批队列只更新会话选项并取得新的
+    /// 工件目录，设备后端最多配置一次。调用方必须在队列运行期间阻止并发宿主调用。
+    /// </summary>
+    public void PrepareRun(SessionOptions options, SessionLog? runLog = null)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(AlasSession));
+        NormalizeRunOptions(options);
+
+        bool shouldConfigure = options.ShouldConfigureDevice;
+        if (shouldConfigure && _deviceConfigured)
+        {
+            if (!string.Equals(options.ScreenshotBackend, _configuredScreenshotBackend,
+                               StringComparison.Ordinal) ||
+                !string.Equals(options.ControlBackend, _configuredControlBackend,
+                               StringComparison.Ordinal))
+                throw new InvalidOperationException("同一宿主不能切换已配置的设备后端");
+        }
+        Options = options;
+        if (runLog is not null && !ReferenceEquals(_log, runLog))
+        {
+            _log = runLog;
+            _log.Info("session", "识图宿主已启动", new Dictionary<string, object?>
+            {
+                ["repo"] = _hostRepoDirectory,
+                ["dry_run"] = options.DryRun,
+                ["allow_actions"] = options.AllowActions,
+                ["read_only_device"] = options.ReadOnlyDevice,
+                ["host_start_ms"] = _hostStartMilliseconds,
+            });
+        }
+        DeviceConfigureCount = shouldConfigure && _deviceConfigured ? 1 : 0;
+        RunDirectory = options.ArtifactsDirectory is null
+            ? null
+            : UniqueRunDirectory(options.ArtifactsDirectory);
+        if (RunDirectory is not null) Directory.CreateDirectory(RunDirectory);
+
+        if (shouldConfigure && !_deviceConfigured)
         {
             try
             {
-                var configured = engine.ConfigureDevice(options.Serial!, options.ScreenshotBackend,
-                                                        options.ControlBackend);
-                session.DeviceConfigureCount = 1;
-                session._log.Info("session", "设备后端已配置", new Dictionary<string, object?>
+                var configured = Vision.ConfigureDevice(options.Serial!, options.ScreenshotBackend,
+                                                         options.ControlBackend);
+                _configuredSerial = options.Serial;
+                _configuredScreenshotBackend = options.ScreenshotBackend;
+                _configuredControlBackend = options.ControlBackend;
+                _deviceConfigured = true;
+                DeviceConfigureCount = 1;
+                _log.Info("session", "设备后端已配置", new Dictionary<string, object?>
                 {
                     ["serial"] = options.Serial,
                     ["screenshot"] = options.ScreenshotBackend,
@@ -111,12 +172,55 @@ public sealed class AlasSession : IDisposable
             }
             catch (Exception error)
             {
-                session.Dispose();
                 throw RuntimeErrors.Wrap(error, "配置设备后端失败");
             }
         }
-        return session;
+
     }
+
+    /// <summary>在断点身份校验前补齐共享设备参数，不启动宿主或创建工件目录。</summary>
+    internal void NormalizeRunOptions(SessionOptions options)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(AlasSession));
+        options.Validate();
+        options.ResolveArtifactsDirectory();
+        if (!PathEquals(options.RepoDirectory, _hostRepoDirectory) ||
+            !PathEquals(options.ToolsDirectory, _hostToolsDirectory))
+            throw new ArgumentException("同一宿主不能切换 RepoDirectory 或 ToolsDirectory");
+        if (options.ShouldConfigureDevice && _configuredSerial is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(options.Serial) &&
+                !string.Equals(options.Serial, _configuredSerial, StringComparison.Ordinal))
+                throw new InvalidOperationException("同一宿主不能切换已配置的设备串号");
+            options.Serial = _configuredSerial;
+        }
+        if (options.ShouldConfigureDevice && _deviceConfigured &&
+            (!string.Equals(options.ScreenshotBackend, _configuredScreenshotBackend,
+                            StringComparison.Ordinal) ||
+             !string.Equals(options.ControlBackend, _configuredControlBackend,
+                            StringComparison.Ordinal)))
+            throw new InvalidOperationException("同一宿主不能切换已配置的设备后端");
+    }
+
+    /// <summary>队列结束即落盘日志；不释放共享宿主，也不改写其他批次。</summary>
+    public void CompleteRun()
+    {
+        if (RunDirectory is null) return;
+        try
+        {
+            _log.WriteJsonLines(Path.Combine(RunDirectory, "session-log.jsonl"));
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine($"写会话日志失败: {error.Message}");
+        }
+    }
+
+    private static bool PathEquals(string first, string second)
+        => string.Equals(Path.GetFullPath(first), Path.GetFullPath(second),
+                         OperatingSystem.IsWindows()
+                             ? StringComparison.OrdinalIgnoreCase
+                             : StringComparison.Ordinal);
 
     private static IVisionEngine DefaultFactory(SessionOptions options)
         => InProcessVisionEngine.StartFromAlasFork(options.RepoDirectory, options.ToolsDirectory);
@@ -151,16 +255,13 @@ public sealed class AlasSession : IDisposable
                 ["error"] = error.Message,
             });
         }
-        if (RunDirectory is not null)
+        try
         {
-            try
-            {
-                _log.WriteJsonLines(Path.Combine(RunDirectory, "session-log.jsonl"));
-            }
-            catch (Exception error)
-            {
-                Console.Error.WriteLine($"写会话日志失败: {error.Message}");
-            }
+            CompleteRun();
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine($"写会话日志失败: {error.Message}");
         }
     }
 }

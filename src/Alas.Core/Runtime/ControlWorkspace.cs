@@ -25,6 +25,7 @@ public sealed class ControlWorkspace
     private string? _runDirectory;
     private bool _stopRequested;
     private bool _shuttingDown;
+    private AlasSession? _session;
 
     public ControlWorkspace(string root, string repo, string data, string tools,
                          string? artifacts, string? workspace)
@@ -191,11 +192,18 @@ public sealed class ControlWorkspace
             {
                 try
                 {
+                    AlasSession session;
+                    lock (_gate)
+                    {
+                        _session ??= AlasSession.Start(HostSessionOptions(options), log: log);
+                        session = _session;
+                        _log = session.Log;
+                    }
                     QueueExecution.RunFile(requestPath, options, stopOnFailure: stopOnFailure,
                         resume: resume, stopFile: _stopPath, token: stopSignal.Token, onSessionStarted: directory =>
                         {
                             lock (_gate) _runDirectory = directory;
-                        }, log: log);
+                        }, log: session.Log, sharedSession: session);
                 }
                 catch (Exception error)
                 {
@@ -213,6 +221,52 @@ public sealed class ControlWorkspace
             });
         }
     }
+
+    /// <summary>Read-only upstream API call sharing one process-local Python host.</summary>
+    public JsonObject ReadHostJson(string operation, JsonObject arguments)
+    {
+        lock (_gate)
+        {
+            if (_shuttingDown) throw new ControlWorkspaceUnavailableException("控制服务正在关闭");
+            if (_worker is { IsCompleted: false })
+                throw new ControlWorkspaceUnavailableException("队列正在运行，暂不接受只读宿主调用");
+            _session ??= AlasSession.Start(ApiSessionOptions());
+            _log = _session.Log;
+            return _session.Vision.CallTyped<JsonObject>(operation, arguments);
+        }
+    }
+
+    private SessionOptions ApiSessionOptions() => new()
+    {
+        RepoDirectory = _repo,
+        ToolsDirectory = _tools,
+        DataDirectory = _data,
+        DryRun = true,
+        MaxSeconds = 1,
+        MaxRounds = 1,
+    };
+
+    private static SessionOptions HostSessionOptions(SessionOptions options) => new()
+    {
+        RepoDirectory = options.RepoDirectory,
+        ToolsDirectory = options.ToolsDirectory,
+        DataDirectory = options.DataDirectory,
+        Serial = options.Serial,
+        ScreenshotBackend = options.ScreenshotBackend,
+        ControlBackend = options.ControlBackend,
+        DryRun = options.DryRun,
+        ReadOnlyDevice = options.ReadOnlyDevice,
+        AllowActions = options.AllowActions,
+        MaxSeconds = options.MaxSeconds,
+        MaxRounds = options.MaxRounds,
+        RepeatUntilCleared = options.RepeatUntilCleared,
+        ClearAll = options.ClearAll,
+        Fleet1 = options.Fleet1,
+        Fleet2 = options.Fleet2,
+        SubmarineFleet = options.SubmarineFleet,
+        // The queue preparation below owns the per-run artifact directory.
+        ArtifactsDirectory = null,
+    };
 
     public bool RequestStop()
     {
@@ -273,7 +327,17 @@ public sealed class ControlWorkspace
         {
             _shuttingDown = true;
             RequestStop();
-            return _worker ?? Task.CompletedTask;
+            return ShutdownAsync(_worker ?? Task.CompletedTask);
+        }
+    }
+
+    private async Task ShutdownAsync(Task worker)
+    {
+        await worker.ConfigureAwait(false);
+        lock (_gate)
+        {
+            _session?.Dispose();
+            _session = null;
         }
     }
 }
