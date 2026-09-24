@@ -108,6 +108,7 @@ STEPS = [
     ('verify_config_get.py', '配置开关域（独立对拍 + 缺失≠false + 空输入记 skipped）', False, 300),
     ('verify_periodic_plan.py', 'R2 周期任务勘察（独立对拍 + 边界 + 不 import 目标模块）', False, 300),
     ('verify_periodic_overrides.py', 'R2 一次性覆盖复用原生字段校验与值转换（无设备）', False, 120),
+    ('verify_periodic_run_result.py', 'R2 周期任务/大世界原生分派响应一致性与失败断点（无设备）', False, 120),
     ('verify_task_schedule.py', 'R2 周期任务调度状态（独立对拍 + 四种边界 + 只读保证）', False, 600),
     ('verify_task_catalog.py', '周期任务域数据源（上游任务目录两个来源可读/差异如实标注）', False, 300),
     ('verify_event_state.py', 'R2 活动域清点（与独立数对拍 / only_complete / 空集口径）', False, 300),

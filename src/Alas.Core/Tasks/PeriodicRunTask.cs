@@ -119,9 +119,9 @@ public sealed class PeriodicRunTask : ITaskRunner
             });
             result.Evidence = new JsonObject
             {
-                ["task"] = task,
+                ["task"] = run.Task,
                 ["instance"] = run.Instance,
-                ["allow_actions"] = allowActions,
+                ["allow_actions"] = run.AllowActions,
                 ["confirm_matches"] = run.ConfirmMatches,
                 ["decision"] = run.Decision,
                 ["target"] = run.Target is null ? null : new JsonObject
@@ -149,7 +149,20 @@ public sealed class PeriodicRunTask : ITaskRunner
             switch (run.Decision)
             {
                 case "ran":
-                    result.Outcome = TaskOutcome.Succeeded;
+                    var violations = SuccessfulDispatchViolations(run, task,
+                        request.Input?["instance"]?.GetValue<string>() ?? "alas",
+                        expectedMethod, expectedCommand);
+                    if (violations.Count == 0)
+                        result.Outcome = TaskOutcome.Succeeded;
+                    else
+                    {
+                        result.Outcome = TaskOutcome.Failed;
+                        result.ErrorKind = RuntimeErrorKind.ContractViolation;
+                        result.Error = $"原生调度成功响应不一致: {string.Join(", ", violations)}";
+                        if (!string.IsNullOrWhiteSpace(run.Error)) result.Error += $"; {run.Error}";
+                        result.Evidence["response_violations"] = new JsonArray(violations
+                            .Select(field => (JsonNode)JsonValue.Create(field)!).ToArray());
+                    }
                     break;
                 case "denied":
                     // 与放行判定同一口径：被闸门挡下是"调用方没满足条件"，不是"没跑"
@@ -184,6 +197,30 @@ public sealed class PeriodicRunTask : ITaskRunner
             result.Error = wrapped.Message;
         }
         return result;
+    }
+
+    private static List<string> SuccessfulDispatchViolations(PeriodicRunResult run, string task,
+        string instance, string? expectedMethod, string? expectedCommand)
+    {
+        // A consistent native return proves dispatch only, never a sortie clear.
+        var violations = new List<string>();
+        if (run.Task != task) violations.Add("task");
+        if (run.Instance != instance) violations.Add("instance");
+        if (run.AllowActions != true) violations.Add("allow_actions");
+        if (run.ConfirmMatches != true) violations.Add("confirm_matches");
+        if (run.Constructed != true) violations.Add("constructed");
+        if (run.Ran != true) violations.Add("ran");
+        if (run.NativeSuccess != true) violations.Add("native_success");
+        if (run.Target?.Module != "alas") violations.Add("target.module");
+        if (run.Target?.Class != "AzurLaneAutoScript") violations.Add("target.class");
+        if (string.IsNullOrWhiteSpace(run.Target?.Method)
+            || expectedMethod is not null && run.Target.Method != expectedMethod)
+            violations.Add("target.method");
+        if (string.IsNullOrWhiteSpace(run.Target?.SchedulerCommand)
+            || expectedCommand is not null && run.Target.SchedulerCommand != expectedCommand)
+            violations.Add("target.scheduler_command");
+        if (!string.IsNullOrWhiteSpace(run.Error)) violations.Add("error");
+        return violations;
     }
 }
 

@@ -67,6 +67,7 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 日期字符串按原生语义转为 datetime。任何无效项都在 `config.override()` 与获取设备之前拒绝，不能部分应用。
 有效覆盖只作用于本次任务对象；配置构造器的正常迁移、上游对下次调度时间等状态的正常写入仍会发生。
 涉及领取、购买或补给时，先核对任务配置与实际资源消耗路径。
+原生返回 `decision=ran` 只有在任务名、实例、动作授权、确认、构造、运行、`native_success` 及目标模块/类/方法/命令全部与请求一致，且没有错误字段时，才记为任务成功；矛盾或缺失字段统一记为 `contract_violation`，原始响应和 `response_violations` 原样进入工件。失败任务不会写入队列断点的 `completed`，因此恢复时不会被跳过。
 原生调度返回 False、抛出异常或记录根因后转为 SystemExit 时，周期任务都保留错误调用栈、
 原生日志位置及已保存的失败帧；SystemExit 不退出共享宿主，也不将上一个任务的证据带入下一次执行。
 
@@ -132,6 +133,9 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 `verify_account_state_cache.py` 覆盖原生设备/宿主帧分离、无缓存与失败失效，以及 Core 在动作、只读设备和 dry-run 会话中的来源参数。
 `verify_periodic_overrides.py` 使用原生默认配置、绑定和 dispatcher，验证错误覆盖在设备前拒绝、原生值转换、
 混合输入原子性、继承字段及已归档任务输入兼容；设备和末端领域方法是替身，不读取账号配置或证明真机业务完成。
+`verify_periodic_run_result.py` 通过真实 Core 队列覆盖周期任务和大世界动作的 52 个一致性/失败断点场景；
+原生成功响应必须完整且与请求、目标一致，冲突响应保留宿主证据并拒绝进入 `completed`。该检查只验证分派合同，
+不把 `native_success` 当作领取、购买或战役通关。
 `verify_native_dispatch_catalog.py` 从原生参数和工具目录发现全部入口，使用真实 ConfigUpdater、配置绑定、
 `AzurLaneAutoScript.run()` 与任务方法，对照领域签名和 AST 核对调用参数；每个入口覆盖正常返回、普通 False、
 TaskEnd 和重试异常，并验证原生 Restart 配置写入、设备恢复及失败证据隔离。

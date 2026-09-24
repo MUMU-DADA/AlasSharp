@@ -518,7 +518,8 @@ def build_queue_cases() -> list[dict]:
                     'task': 'OpsiExplore', 'found': True,
                     'scheduler_command': 'OpsiExplore', 'method': 'opsi_explore', 'lineno': 305}}],
                 'periodic_run': [{'result': {
-                    'task': 'OpsiExplore', 'decision': 'ran', 'confirm_matches': True,
+                    'task': 'OpsiExplore', 'instance': 'alas', 'allow_actions': True,
+                    'decision': 'ran', 'confirm_matches': True,
                     'target': {'module': 'alas', 'class': 'AzurLaneAutoScript',
                                'scheduler_command': 'OpsiExplore', 'method': 'opsi_explore'},
                     'constructed': True, 'ran': True, 'native_success': True}}]},
@@ -559,13 +560,15 @@ def build_queue_cases() -> list[dict]:
                     'task': 'OpsiExplore', 'found': True,
                     'scheduler_command': 'OpsiExplore', 'method': 'opsi_explore'}}],
                 'periodic_run': [{'result': {
-                    'task': 'OpsiExplore', 'decision': 'ran', 'ran': True,
-                    'native_success': True, 'target': {'method': 'reward'}}}]},
+                    'task': 'OpsiExplore', 'instance': 'alas', 'allow_actions': True,
+                    'confirm_matches': True, 'constructed': True, 'decision': 'ran', 'ran': True,
+                    'native_success': True, 'target': {'module': 'alas', 'class': 'AzurLaneAutoScript',
+                        'scheduler_command': 'OpsiExplore', 'method': 'reward'}}}]},
             'expect': {
                 'outcome': 'failed', 'host_start_count': 1,
                 'device_configure_count': 1, 'backend_calls': 4, 'stopped_early': True,
-                'tasks': [{'id': 'os', 'outcome': 'failed', 'error_kind': 'upstream_error',
-                           'error_contains': '目标不一致'}],
+                'tasks': [{'id': 'os', 'outcome': 'failed', 'error_kind': 'contract_violation',
+                           'error_contains': 'target.method'}],
             },
         },
         {
@@ -578,14 +581,16 @@ def build_queue_cases() -> list[dict]:
                     'task': 'OpsiExplore', 'found': True,
                     'scheduler_command': 'OpsiExplore', 'method': 'opsi_explore'}}],
                 'periodic_run': [{'result': {
-                    'task': 'OpsiExplore', 'decision': 'ran', 'ran': True,
+                    'task': 'OpsiExplore', 'instance': 'alas', 'allow_actions': True,
+                    'confirm_matches': True, 'constructed': True, 'decision': 'ran', 'ran': True,
                     'native_success': True,
-                    'target': {'method': 'opsi_explore', 'scheduler_command': 'Reward'}}}]},
+                    'target': {'module': 'alas', 'class': 'AzurLaneAutoScript',
+                               'method': 'opsi_explore', 'scheduler_command': 'Reward'}}}]},
             'expect': {
                 'outcome': 'failed', 'host_start_count': 1,
                 'device_configure_count': 1, 'backend_calls': 4, 'stopped_early': True,
-                'tasks': [{'id': 'os', 'outcome': 'failed', 'error_kind': 'upstream_error',
-                           'error_contains': '目标不一致'}],
+                'tasks': [{'id': 'os', 'outcome': 'failed', 'error_kind': 'contract_violation',
+                           'error_contains': 'target.scheduler_command'}],
             },
         },
         {
@@ -607,7 +612,8 @@ def build_queue_cases() -> list[dict]:
             'tasks': [{'id': 'periodic', 'kind': 'periodic_run', 'input': {
                 'task': 'reward', 'allow_actions': True, 'confirm': 'reward'}}],
             'stub_responses': {'periodic_run': [{'result': {
-                'task': 'reward', 'decision': 'ran', 'confirm_matches': True,
+                'task': 'reward', 'instance': 'alas', 'allow_actions': True,
+                'decision': 'ran', 'confirm_matches': True,
                 'target': {'module': 'alas', 'class': 'AzurLaneAutoScript',
                            'scheduler_command': 'Reward', 'method': 'reward'},
                 'constructed': True, 'ran': True, 'native_success': True,
