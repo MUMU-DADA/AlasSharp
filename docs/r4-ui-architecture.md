@@ -94,7 +94,8 @@ SDK 固定为 10.0.401，依赖保存在 `.runtime/dotnet`、`.runtime/nuget`，
 自动化不得打开真实桌面或浏览器窗口；`Window.Show()` 在该测试中只连接内存窗口实现，不连接系统桌面。
 
 尚未验收：真实浏览器/系统输入法、DPI、无障碍、首载与内存、复杂编辑器/玻璃效果、双端现场视觉一致性。
-Kestrel API、远程认证、无显示服务部署及其他平台/架构仍待实现或验证；Headless 结果不能替代这些结论。状态统一见[路线](architecture-roadmap.md)。
+本地控制 API 已迁入 `Alas.Server` 的 Kestrel，仍由 `alashub control` 启动；编排收口至 `Alas.Core/Runtime/ControlWorkspace`，合同见[运行时](runtime.md)。
+共享 UI 客户端、事件流、远程认证、独立服务发行与其他平台/架构仍待实现或验证；Headless 结果不能替代这些结论。状态统一见[路线](architecture-roadmap.md)。
 
 ## 依据
 

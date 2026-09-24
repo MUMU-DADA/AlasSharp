@@ -1,6 +1,7 @@
 using Alas.Core;
 using Alas.Device;
 using Alas.Vision;
+using Alas.Server;
 
 namespace Alas.DataTool;
 

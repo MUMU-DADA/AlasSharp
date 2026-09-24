@@ -1,15 +1,11 @@
-using System.Net;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Alas.Runtime;
 using Alas.Tasks;
 
-namespace Alas.DataTool;
+namespace Alas.Runtime;
 
-/// <summary>本机控制入口；任务语义仍由 QueueExecution 和各 ITaskRunner 决定。</summary>
-internal sealed class ControlServer
+/// <summary>控制工作区的单队列生命周期；不依赖 HTTP 或任何 UI 框架。</summary>
+public sealed class ControlWorkspace
 {
     private readonly string _root;
     private readonly string _repo;
@@ -17,10 +13,9 @@ internal sealed class ControlServer
     private readonly string _tools;
     private readonly string _artifacts;
     private readonly string _control;
-    private readonly int _port;
-    private readonly string _token = RandomNumberGenerator.GetHexString(32);
     private readonly object _gate = new();
     private Task? _worker;
+    private CancellationTokenSource? _stopSignal;
     private string? _mode;
     private string? _startedAt;
     private string? _finishedAt;
@@ -28,9 +23,10 @@ internal sealed class ControlServer
     private string? _stopPath;
     private string? _runDirectory;
     private bool _stopRequested;
+    private bool _shuttingDown;
 
-    public ControlServer(string root, string repo, string data, string tools,
-                         string? artifacts, string? workspace, int port)
+    public ControlWorkspace(string root, string repo, string data, string tools,
+                         string? artifacts, string? workspace)
     {
         _root = Path.GetFullPath(root);
         _repo = Path.GetFullPath(repo);
@@ -38,145 +34,11 @@ internal sealed class ControlServer
         _tools = Path.GetFullPath(tools);
         _control = Path.GetFullPath(workspace ?? Path.Combine(_root, ".runtime", "control"));
         _artifacts = Path.GetFullPath(artifacts ?? Path.Combine(_control, "runs"));
-        _port = port;
         Directory.CreateDirectory(_control);
         Directory.CreateDirectory(_artifacts);
     }
 
-    public int Run()
-    {
-        using var listener = new HttpListener();
-        listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
-        listener.Start();
-        Console.WriteLine($"[控制界面] http://127.0.0.1:{_port}/");
-        ConsoleCancelEventHandler cancel = (_, e) =>
-        {
-            e.Cancel = true;
-            RequestStop();
-            listener.Stop();
-        };
-        Console.CancelKeyPress += cancel;
-        try
-        {
-            while (listener.IsListening)
-            {
-                HttpListenerContext context;
-                try { context = listener.GetContext(); }
-                catch (HttpListenerException) when (!listener.IsListening) { break; }
-                catch (ObjectDisposedException) { break; }
-                _ = Task.Run(() => Handle(context));
-            }
-        }
-        finally
-        {
-            Console.CancelKeyPress -= cancel;
-            Task? worker;
-            lock (_gate) worker = _worker;
-            worker?.GetAwaiter().GetResult();
-        }
-        return 0;
-    }
-
-    private void Handle(HttpListenerContext context)
-    {
-        try
-        {
-            var request = context.Request;
-            string path = request.Url?.AbsolutePath ?? "";
-            if (request.Url?.Host != "127.0.0.1")
-            {
-                Reply(context, 403, new JsonObject { ["error"] = "仅允许本机访问" });
-                return;
-            }
-            if (request.HttpMethod == "GET" && path == "/")
-            {
-                string page = Path.Combine(_tools, "control_ui.html");
-                if (!File.Exists(page))
-                {
-                    Reply(context, 404, new JsonObject { ["error"] = "控制界面文件不存在" });
-                    return;
-                }
-                byte[] body = File.ReadAllBytes(page);
-                context.Response.ContentType = "text/html; charset=utf-8";
-                context.Response.Headers["Content-Security-Policy"] =
-                    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'";
-                context.Response.Headers["Cache-Control"] = "no-store";
-                context.Response.ContentLength64 = body.Length;
-                context.Response.OutputStream.Write(body);
-                return;
-            }
-            if (request.HttpMethod == "GET" && path == "/api/state")
-            {
-                Reply(context, 200, State());
-                return;
-            }
-            if (request.HttpMethod == "GET" && path == "/api/report")
-            {
-                string? stamp = request.QueryString["stamp"];
-                if (string.IsNullOrWhiteSpace(stamp) ||
-                    stamp.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_')))
-                    throw new ArgumentException("运行标识无效");
-                string directory = Path.Combine(_artifacts, stamp);
-                if (!RunReport.IsRunDirectory(directory))
-                {
-                    Reply(context, 404, new JsonObject { ["error"] = "找不到运行报告" });
-                    return;
-                }
-                Reply(context, 200, RunReport.Build(directory).ToJson());
-                return;
-            }
-            if (request.HttpMethod == "POST" && path is "/api/queue" or "/api/run" or "/api/stop")
-            {
-                if (request.Headers["X-Alas-Token"] != _token)
-                {
-                    Reply(context, 403, new JsonObject { ["error"] = "请求令牌无效" });
-                    return;
-                }
-                if (path == "/api/stop")
-                {
-                    if (!RequestStop())
-                    {
-                        Reply(context, 409, new JsonObject { ["error"] = "当前没有运行中的队列" });
-                        return;
-                    }
-                    Reply(context, 200, new JsonObject { ["ok"] = true });
-                    return;
-                }
-                var body = ReadBody(request);
-                if (path == "/api/queue")
-                {
-                    var queue = RequireQueue(body);
-                    SaveQueue(queue);
-                    Reply(context, 200, new JsonObject { ["ok"] = true });
-                    return;
-                }
-                StartRun(body);
-                Reply(context, 202, new JsonObject { ["ok"] = true });
-                return;
-            }
-            Reply(context, 404, new JsonObject { ["error"] = "未知接口" });
-        }
-        catch (ArgumentException error)
-        {
-            Reply(context, 400, new JsonObject { ["error"] = error.Message });
-        }
-        catch (RunAlreadyActiveException error)
-        {
-            Reply(context, 409, new JsonObject { ["error"] = error.Message });
-        }
-        catch (Exception error) when (error is JsonException or FormatException or InvalidOperationException)
-        {
-            Reply(context, 400, new JsonObject { ["error"] = $"请求字段无效: {error.Message}" });
-        }
-        catch (Exception error)
-        {
-            Console.Error.WriteLine(error);
-            Reply(context, 500, new JsonObject { ["error"] = "控制服务内部错误" });
-        }
-        finally { context.Response.Close(); }
-    }
-
-    private JsonObject State()
+    public JsonObject State()
     {
         string? runDirectory;
         string? mode;
@@ -209,7 +71,6 @@ internal sealed class ControlServer
             ? RunReport.Build(runDirectory).ToJson() : null;
         return new JsonObject
         {
-            ["token"] = _token,
             ["queue"] = LoadQueue(),
             ["active"] = active,
             ["report"] = report,
@@ -217,6 +78,15 @@ internal sealed class ControlServer
             ["recent_logs"] = RecentLogs(runDirectory),
             ["runs"] = RunReport.Summarize(_artifacts, 20),
         };
+    }
+
+    public JsonObject? Report(string? stamp)
+    {
+        if (string.IsNullOrWhiteSpace(stamp) ||
+            stamp.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_')))
+            throw new ArgumentException("运行标识无效");
+        string directory = Path.Combine(_artifacts, stamp);
+        return RunReport.IsRunDirectory(directory) ? RunReport.Build(directory).ToJson() : null;
     }
 
     private JsonObject LoadQueue()
@@ -239,22 +109,6 @@ internal sealed class ControlServer
         }
     }
 
-    private static JsonObject ReadBody(HttpListenerRequest request)
-    {
-        if (request.ContentLength64 < 0 || request.ContentLength64 > 1024 * 1024)
-            throw new ArgumentException("请求体必须小于 1 MiB");
-        using var reader = new StreamReader(request.InputStream, Encoding.UTF8);
-        try
-        {
-            return JsonNode.Parse(reader.ReadToEnd()) as JsonObject
-                ?? throw new ArgumentException("请求体必须是 JSON 对象");
-        }
-        catch (JsonException error)
-        {
-            throw new ArgumentException($"请求体不是合法 JSON: {error.Message}", error);
-        }
-    }
-
     private static JsonObject RequireQueue(JsonObject body)
     {
         if (body["queue"] is not JsonObject queue)
@@ -263,10 +117,13 @@ internal sealed class ControlServer
         return queue;
     }
 
+    public void SaveQueueRequest(JsonObject body) => SaveQueue(RequireQueue(body));
+
     private void SaveQueue(JsonObject queue)
     {
         lock (_gate)
         {
+            if (_shuttingDown) throw new ControlWorkspaceUnavailableException("控制服务正在关闭");
             string path = Path.Combine(_control, "queue.json");
             string temporary = Path.Combine(_control, $"queue-{Guid.NewGuid():N}.tmp");
             try
@@ -278,7 +135,7 @@ internal sealed class ControlServer
         }
     }
 
-    private void StartRun(JsonObject body)
+    public void StartRun(JsonObject body)
     {
         var queue = RequireQueue(body);
         string mode = body["mode"]?.GetValue<string>() ?? "dry_run";
@@ -308,8 +165,9 @@ internal sealed class ControlServer
         bool stopOnFailure = !(body["continue_on_error"]?.GetValue<bool>() ?? false);
         lock (_gate)
         {
+            if (_shuttingDown) throw new ControlWorkspaceUnavailableException("控制服务正在关闭");
             if (_worker is { IsCompleted: false })
-                throw new RunAlreadyActiveException();
+                throw new ControlWorkspaceUnavailableException("已有队列正在运行");
             SaveQueue(queue);
             string id = Guid.NewGuid().ToString("N");
             string requestPath = Path.Combine(_control, $"request-{id}.json");
@@ -321,12 +179,14 @@ internal sealed class ControlServer
             _finishedAt = null;
             _error = null;
             _stopRequested = false;
+            var stopSignal = new CancellationTokenSource();
+            _stopSignal = stopSignal;
             _worker = Task.Run(() =>
             {
                 try
                 {
                     QueueExecution.RunFile(requestPath, options, stopOnFailure: stopOnFailure,
-                        resume: resume, stopFile: _stopPath, onSessionStarted: directory =>
+                        resume: resume, stopFile: _stopPath, token: stopSignal.Token, onSessionStarted: directory =>
                         {
                             lock (_gate) _runDirectory = directory;
                         });
@@ -340,19 +200,28 @@ internal sealed class ControlServer
                     lock (_gate)
                     {
                         _finishedAt = DateTimeOffset.Now.ToString("O");
+                        _stopSignal = null;
+                        stopSignal.Dispose();
                     }
                 }
             });
         }
     }
 
-    private bool RequestStop()
+    public bool RequestStop()
     {
         lock (_gate)
         {
-            if (_worker is not { IsCompleted: false } || _stopPath is null) return false;
-            File.WriteAllText(_stopPath, "stop");
+            if (_worker is not { IsCompleted: false } || _stopPath is null || _stopSignal is null) return false;
+            // Cancellation is consumed at the same runtime boundaries as a stop file.
+            // Failure to persist the optional marker must never bypass shutdown's wait.
+            _stopSignal.Cancel();
             _stopRequested = true;
+            try { File.WriteAllText(_stopPath, "stop"); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine("停止标记无法写入，已通过内存信号请求边界停止；仍将等待工件落盘。");
+            }
             return true;
         }
     }
@@ -391,17 +260,16 @@ internal sealed class ControlServer
         return logs;
     }
 
-    private static void Reply(HttpListenerContext context, int status, JsonObject payload)
+    /// <summary>原子关闭接单并请求任务边界停止；调用方必须等待返回的任务完成再退出。</summary>
+    public Task BeginShutdown()
     {
-        if (!context.Response.OutputStream.CanWrite) return;
-        byte[] body = Encoding.UTF8.GetBytes(payload.ToJsonString());
-        context.Response.StatusCode = status;
-        context.Response.ContentType = "application/json; charset=utf-8";
-        context.Response.Headers["Cache-Control"] = "no-store";
-        context.Response.ContentLength64 = body.Length;
-        context.Response.OutputStream.Write(body);
+        lock (_gate)
+        {
+            _shuttingDown = true;
+            RequestStop();
+            return _worker ?? Task.CompletedTask;
+        }
     }
-
-    private sealed class RunAlreadyActiveException()
-        : Exception("已有队列正在运行");
 }
+
+public sealed class ControlWorkspaceUnavailableException(string message) : Exception(message);

@@ -14,7 +14,7 @@
 
 ## 构建与运行
 
-当前启动方式适用于 Windows，需 .NET 10 SDK，以及上游 ALAS 仓库内已装好依赖的 `.venv`。
+当前启动方式适用于 Windows，需 .NET 10 SDK（运行控制服务需 ASP.NET Core 10 运行时），以及上游 ALAS 仓库内已装好依赖的 `.venv`。
 宿主从 `.venv/pyvenv.cfg` 定位 CPython DLL 与依赖；跨平台发布仍待验收。NuGet 缓存位于项目内
 `.runtime/nuget/packages`；离线包放入 `.runtime/nuget/source`，配置模板见
 [NuGet.config.example](NuGet.config.example)。本机配置与依赖缓存不入库。
@@ -56,6 +56,7 @@ dotnet build src/Alas.DataTool/Alas.DataTool.csproj -c Release
 | --- | --- |
 | `src/Alas.Core/` | 上游数据模型、视觉桥接、运行时与任务域 |
 | `src/Alas.DataTool/` | CLI、本地控制入口与离线自检 |
+| `src/Alas.Server/` | Kestrel 控制 API；运行编排继续在 Core，服务不引用 UI |
 | `src/Alas.UI*` | 共享界面、桌面/WASM 入口与原生 Headless 验证 |
 | `tools/` | 导出、Python 宿主、同步与诊断工具 |
 | `vendor/upstream/` | 上游静态素材镜像，来源和哈希见其中清单 |

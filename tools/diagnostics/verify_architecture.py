@@ -346,6 +346,8 @@ def main() -> int:
         "账号状态验收": ROOT / "tools/diagnostics/verify_account_state.py",
         "运行报告": ROOT / "src/Alas.Core/Runtime/RunReport.cs",
         "运行报告验收": ROOT / "tools/diagnostics/verify_report.py",
+        "控制工作区运行时": ROOT / "src/Alas.Core/Runtime/ControlWorkspace.cs",
+        "Kestrel 控制传输层": ROOT / "src/Alas.Server/ControlServer.cs",
     }
     for label, path in required.items():
         if not path.is_file():
@@ -398,6 +400,12 @@ def main() -> int:
                           and "TaskQueueFile.Parse" in read("src/Alas.Core/Runtime/QueueExecution.cs"),
         "参数解析共享": program.count("ParseRunFlags(") >= 2,
         "任务模型是接口": "interface ITaskRunner" in read("src/Alas.Core/Tasks/TaskModel.cs"),
+        "控制队列编排归运行时": "QueueExecution.RunFile" in read("src/Alas.Core/Runtime/ControlWorkspace.cs")
+                                  and "QueueExecution.RunFile" not in read("src/Alas.Server/ControlServer.cs")
+                                  and not (ROOT / "src/Alas.DataTool/ControlServer.cs").exists(),
+        "控制服务无 UI 引用": "Microsoft.AspNetCore.App" in read("src/Alas.Server/Alas.Server.csproj")
+                              and "Alas.UI" not in read("src/Alas.Server/Alas.Server.csproj")
+                              and "Avalonia" not in read("src/Alas.Server/Alas.Server.csproj"),
     }
     for label, ok in checks.items():
         if not ok:

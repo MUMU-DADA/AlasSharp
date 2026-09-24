@@ -9,6 +9,8 @@
 | --- | --- |
 | `AlasSession` / `SessionOptions` | 宿主、设备后端、公共授权、日志和工件目录；同一会话只初始化一次 |
 | `QueueExecution` | 队列解析、runner 注册、断点、停止文件及任务调度入口 |
+| `ControlWorkspace` | 控制工作区、单队列运行快照、状态与关闭门禁；调用 `QueueExecution` |
+| `Alas.Server/ControlServer` | Kestrel HTTP 传输、回环与同源/令牌检查；不引用 UI |
 | `CampaignBatchRunner` | 逐关原生执行、合同裁决、批次工件与失败即停 |
 | `SessionLog` / `RuntimeErrors` | 结构化日志、统一错误分类与释放 |
 | `RunReport` | 只读汇总任务、批次、原始请求和证据完整性 |
@@ -62,11 +64,32 @@ python tools/report_html.py <运行目录>
 报告生成成功只证明可读取，不代表任务成功；dry-run 和跳过不能被展示成业务失败。
 CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用合同和批次输出。
 
-本地控制台仅监听 `127.0.0.1`，写操作要求本次服务令牌并检查来源。页面编辑普通队列 JSON，
+本地控制台使用 .NET 10 Kestrel，仅监听 `127.0.0.1`，忽略环境中的 URL/端点覆盖配置。
+请求校验 Host/端口，带 Origin 的请求必须同源；原生客户端可不带 Origin。写操作要求本次服务的 `X-Alas-Token`。
+页面编辑普通队列 JSON，
 提供 dry-run、只读与显式动作授权三种模式，通过 `QueueExecution.RunFile` 执行。
 运行中展示已写入的任务工件，结束后生成完整报告；停止使用同一边界停止原语。
 草稿与工件默认位于 `.runtime/control/`，可用 `--workspace`、`--artifacts` 调整。
 它尚不支持远程部署；目标方案见[统一 UI](r4-ui-architecture.md)。
+
+关闭服务时先原子拒绝新运行/草稿、请求边界停止，再等待已接受的队列和日志落盘；HTTP 断连与 HTTP 关闭期限不会取消正在进行的上游出击。
+停止先通过每次运行独立的内存信号进入现有边界取消入口，再写停止标记；标记写入失败会报告错误，仍等待队列退出，不能绕过落盘。
+进程强杀仍不保证工件完整。`active.status=completed` 仅表示工作线程正常结束，业务结果必须读取 `report.queue_outcome`。
+
+当前本地 API 合同（JSON，响应 `no-store`）：
+
+| 接口 | 行为 |
+| --- | --- |
+| `GET /api/state` | `token`、`queue`、`active`、`report`、`live_tasks`、`recent_logs`、`runs` |
+| `GET /api/report?stamp=` | 指定运行报告；标识只允许 ASCII 字母数字、`-`、`_`，不存在返回 404 |
+| `POST /api/queue` | 保存 `{queue: ...}` 草稿，成功 200；不改变已接受运行的快照 |
+| `POST /api/run` | `{queue, mode?, confirm_actions?, serial?, max_seconds?, max_rounds?, resume?, continue_on_error?}`；默认 dry-run，接受返回 202 |
+| `POST /api/stop` | 请求边界停止，成功 200；没有活动队列返回 409 |
+
+`mode` 仅允许 `dry_run`、`read_only`、`actions`，动作模式须 `confirm_actions=true`。
+保存/运行请求必须为 JSON 对象，有 `Content-Length` 且不超过 1 MiB；不接受 chunked。
+输入错误返回 400，授权/来源错误返回 403，已有队列或服务关闭中的写请求返回 409，错误对象包含 `error`。
+一次服务只运行一个队列；任务输入、结果合同和授权语义仍由运行时决定。
 
 ## 验证
 
@@ -76,8 +99,10 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 | --- | --- |
 | 会话、取消、输入和断点 | `verify_runtime.py`、`verify_cli_errors.py`、`verify_stop.py` |
 | 工件与报告 | `verify_artifact_paths.py`、`verify_report.py`、`verify_report_html.py` |
-| 控制台 | `verify_control.py`、`verify_control_ui.py --browser` |
+| 控制服务 | `verify_control.py`、`verify_control_shutdown.py` |
+| 旧控制页静态结构 | `verify_control_ui.py`（不打开浏览器） |
 | 结构边界与隐私 | `verify_architecture.py`、`verify_privacy.py` |
 
 控制台离线回归通过真实 HTTP 执行 dry-run，断言设备配置次数为零；不证明真实游戏任务效果。
+关闭回归通过公开 shutdown token 实测延迟 POST 拒绝、停止标记 IO 失败和完整落盘；系统 Ctrl-C/SIGTERM 与长于 HTTP 关闭期限的实战仍需分别验收。
 真机记录见[队列审计](archive/reports/queue-evidence.md)。
