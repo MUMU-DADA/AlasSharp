@@ -1,0 +1,206 @@
+{
+  "completed": {
+    "daily-plan": {
+      "identity": {
+        "kind": "periodic_plan",
+        "required": true,
+        "input": {
+          "task": "daily"
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "daily-preflight": {
+      "identity": {
+        "kind": "periodic_preflight",
+        "required": true,
+        "input": {
+          "task": "daily",
+          "allow_actions": true,
+          "confirm": "daily"
+        },
+        "preceding_tasks": [
+          {
+            "id": "daily-plan",
+            "kind": "periodic_plan",
+            "required": true,
+            "input": {
+              "task": "daily"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "daily-native": {
+      "identity": {
+        "kind": "periodic_run",
+        "required": true,
+        "input": {
+          "task": "daily",
+          "allow_actions": true,
+          "confirm": "daily",
+          "overrides": {
+            "Daily_EscortMission": "third",
+            "Daily_AdvanceMission": "skip",
+            "Daily_FierceAssault": "skip",
+            "Daily_TacticalTraining": "skip",
+            "Daily_SupplyLineDisruption": "skip",
+            "Daily_ModuleDevelopment": "skip",
+            "Daily_EmergencyModuleDevelopment": "skip",
+            "Daily_UseDailySkip": true
+          }
+        },
+        "preceding_tasks": [
+          {
+            "id": "daily-plan",
+            "kind": "periodic_plan",
+            "required": true,
+            "input": {
+              "task": "daily"
+            }
+          },
+          {
+            "id": "daily-preflight",
+            "kind": "periodic_preflight",
+            "required": true,
+            "input": {
+              "task": "daily",
+              "allow_actions": true,
+              "confirm": "daily"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "daily-state": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "daily-plan",
+            "kind": "periodic_plan",
+            "required": true,
+            "input": {
+              "task": "daily"
+            }
+          },
+          {
+            "id": "daily-preflight",
+            "kind": "periodic_preflight",
+            "required": true,
+            "input": {
+              "task": "daily",
+              "allow_actions": true,
+              "confirm": "daily"
+            }
+          },
+          {
+            "id": "daily-native",
+            "kind": "periodic_run",
+            "required": true,
+            "input": {
+              "task": "daily",
+              "allow_actions": true,
+              "confirm": "daily",
+              "overrides": {
+                "Daily_EscortMission": "third",
+                "Daily_AdvanceMission": "skip",
+                "Daily_FierceAssault": "skip",
+                "Daily_TacticalTraining": "skip",
+                "Daily_SupplyLineDisruption": "skip",
+                "Daily_ModuleDevelopment": "skip",
+                "Daily_EmergencyModuleDevelopment": "skip",
+                "Daily_UseDailySkip": true
+              }
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-25T02:57:33+08:00"
+}

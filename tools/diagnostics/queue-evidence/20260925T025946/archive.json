@@ -1,0 +1,28 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/live-20260925-daily-advance/artifacts/20260925T025946",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "875eec30729e36546ca4aa84f83a3344b11d1dc55e1a0e0fd3b4ce449242a7f4",
+    "state.json": "77794eab6d420a85b1cfd065d3cda3d7306f94df88c91ae316beb14a9692e2e1",
+    "session-log.jsonl": "e9146df0c0dca3f5840fa71cd8a02745c20b48d1338410c83442da8809c326cc",
+    "task-daily-native.json": "3cd12bbd6ae0b8c735394bf42af5919fef828516612247b67567df5e5a1bcb59",
+    "task-daily-plan.json": "ffdb8f9648b16336fef18aece244ad10c0e52e551758e4c1724d160940c1eead",
+    "task-daily-preflight.json": "b7255c26e9dbce01aa70f3f473babe7c19e6bf18fd80db43850285c9864ff355",
+    "task-daily-state.json": "8707601b57208a53de416a9ee159d8a6f2832071454b0af0e964fabcc77999b6"
+  },
+  "files": {
+    "queue.json": "07312dfef5ff41ebd365f44b829fe412e74bac119474c8774d98d040e53d5e39",
+    "state.json": "73c371a94f7b61e86acb8b9779cb44ba0bb21ae1a9f998a285b469c4f9b5146e",
+    "session-log.jsonl": "11411339634ee47a0c20e2758911cccf63db97ad9b1a4eb7c87e609053ee8788",
+    "task-daily-native.json": "7f55a57af5a72de78f8f69a2920dd64ddeb0b1a3d009d7321925c840494909aa",
+    "task-daily-plan.json": "61aa01a36e21148e3f444f60ad45545e1ad05533a5e8a8dac2f203ca742062f2",
+    "task-daily-preflight.json": "a3e766bdd8e1e80e46e7026fe0321b810076100ca30c940b7ebad28a3dabec4a",
+    "task-daily-state.json": "f8154a517131f2972efec2bb331a29ffa42ac685bc23a7e45b652625e0bc17af"
+  }
+}

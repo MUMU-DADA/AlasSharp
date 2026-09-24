@@ -1,0 +1,77 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 111.7,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "daily-plan",
+      "kind": "periodic_plan",
+      "required": true,
+      "input": {
+        "task": "daily"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/live-20260925-daily-advance/artifacts/20260925T025946/task-daily-plan.json"
+    },
+    {
+      "id": "daily-preflight",
+      "kind": "periodic_preflight",
+      "required": true,
+      "input": {
+        "task": "daily",
+        "allow_actions": true,
+        "confirm": "daily"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0,
+      "artifact": "<project>/data/mainline-device/live-20260925-daily-advance/artifacts/20260925T025946/task-daily-preflight.json"
+    },
+    {
+      "id": "daily-native",
+      "kind": "periodic_run",
+      "required": true,
+      "input": {
+        "task": "daily",
+        "allow_actions": true,
+        "confirm": "daily",
+        "overrides": {
+          "Daily_EscortMission": "skip",
+          "Daily_AdvanceMission": "third",
+          "Daily_FierceAssault": "skip",
+          "Daily_TacticalTraining": "skip",
+          "Daily_SupplyLineDisruption": "skip",
+          "Daily_ModuleDevelopment": "skip",
+          "Daily_EmergencyModuleDevelopment": "skip",
+          "Daily_UseDailySkip": true
+        }
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 111.3,
+      "artifact": "<project>/data/mainline-device/live-20260925-daily-advance/artifacts/20260925T025946/task-daily-native.json"
+    },
+    {
+      "id": "daily-state",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/live-20260925-daily-advance/artifacts/20260925T025946/task-daily-state.json"
+    }
+  ]
+}

@@ -27,6 +27,8 @@
 | `20260924T011513` | 动作授权；宿主 1 / 设备配置 1 | 16.7 秒 |
 | `20260924T011711` | 动作授权；宿主 1 / 设备配置 1 | 8.9 秒 |
 | `20260924T035857` | 只读设备；宿主 1 / 设备配置 1 | 5.5 秒 |
+| `20260925T025717` | 动作授权；宿主 1 / 设备配置 1 | 16.5 秒 |
+| `20260925T025946` | 动作授权；宿主 1 / 设备配置 1 | 111.7 秒 |
 
 | 归档 / 任务 | 任务域 | 已核对事实 |
 | --- | --- | --- |
@@ -81,6 +83,14 @@
 | `20260924T011711/obscure-action` | `os_action` | 上游 AzurLaneAutoScript.opsi_obscure；decision=ran；native_success=true；仅证明原生调度返回 |
 | `20260924T011711/obscure-after` | `os_state` | 实时海域抓帧；上游在图；47 格；perspective |
 | `20260924T035857/observe-os` | `observe` | 4 tick；抓帧 4/4；错误 0；3.05 秒；地图 os 命中 4/4 |
+| `20260925T025717/daily-plan` | `periodic_plan` | 上游绑定 1 项；请求 daily 已找到 |
+| `20260925T025717/daily-preflight` | `periodic_preflight` | 请求 daily 已放行；executes=false；上游绑定一致 |
+| `20260925T025717/daily-native` | `periodic_run` | 上游 AzurLaneAutoScript.daily；decision=ran；native_success=true |
+| `20260925T025717/daily-state` | `account_state` | 实时抓帧；页面 page_daily；in_map=False |
+| `20260925T025946/daily-plan` | `periodic_plan` | 上游绑定 1 项；请求 daily 已找到 |
+| `20260925T025946/daily-preflight` | `periodic_preflight` | 请求 daily 已放行；executes=false；上游绑定一致 |
+| `20260925T025946/daily-native` | `periodic_run` | 上游 AzurLaneAutoScript.daily；decision=ran；native_success=true |
+| `20260925T025946/daily-state` | `account_state` | 实时抓帧；页面 page_daily；in_map=False |
 
 来源目录（项目相对路径，原件不入库）：
 
@@ -99,3 +109,5 @@
 - `data/mainline-device/20260924-os-cleared-account/daily-artifacts/20260924T011513`
 - `data/mainline-device/20260924-os-cleared-account/obscure-artifacts/20260924T011711`
 - `data/mainline-device/20260924-observe-os/artifacts/20260924T035857`
+- `data/mainline-device/live-20260925-daily/artifacts/20260925T025717`
+- `data/mainline-device/live-20260925-daily-advance/artifacts/20260925T025946`
