@@ -241,7 +241,7 @@ def verify_native_dispatch(failures):
         config_module.AzurLaneConfig = FakeConfig
         native_alas.AzurLaneConfig = FakeConfig
         device_module.Device = lambda config: device
-        av._device_engine = lambda: device
+        av._device_engine = lambda config=None: device
         native_alas.handle_notify = lambda *args, **kwargs: None
 
         with tempfile.TemporaryDirectory(prefix='alas-periodic-native-') as tmp:

@@ -159,6 +159,8 @@ public sealed class ControlWorkspace
             DataDirectory = _data,
             ArtifactsDirectory = _artifacts,
             Serial = body["serial"]?.GetValue<string>()?.Trim() is { Length: > 0 } serial ? serial : null,
+            ScreenshotBackend = body["screenshot_backend"]?.GetValue<string>() ?? "scrcpy",
+            ControlBackend = body["control_backend"]?.GetValue<string>() ?? "MaaTouch",
             DryRun = mode == "dry_run",
             ReadOnlyDevice = mode == "read_only",
             AllowActions = mode == "actions",
@@ -220,6 +222,47 @@ public sealed class ControlWorkspace
                 }
             });
         }
+    }
+
+    /// <summary>
+    /// Submit a selected instance/task through the registered periodic domain.
+    /// UI and HTTP callers supply intent only; upstream owns command resolution
+    /// and native dispatch, and the normal queue owns evidence and shutdown.
+    /// </summary>
+    public void StartTask(JsonObject body)
+    {
+        if (body["confirm_actions"]?.GetValue<bool>() != true)
+            throw new ArgumentException("动作运行需要明确授权");
+        string instance = body["instance"]?.GetValue<string>() ?? "";
+        string task = body["task"]?.GetValue<string>() ?? "";
+        var configs = new ConfigWorkspace(_repo);
+        var snapshot = configs.Get(instance);
+        var schema = configs.Schema();
+        if (schema.Args[task] is not JsonObject definition ||
+            definition["Scheduler"]?["Command"]?["value"] is not JsonValue commandNode ||
+            !commandNode.TryGetValue<string>(out var command) || string.IsNullOrWhiteSpace(command))
+            throw new ArgumentException("当前任务没有上游 Scheduler.Command，不能执行");
+        string? serial = snapshot.Values["Alas"]?["Emulator"]?["Serial"]?.GetValue<string>();
+        if (string.IsNullOrWhiteSpace(serial))
+            throw new ArgumentException("实例没有配置设备串号，不能执行任务");
+        StartRun(new JsonObject
+        {
+            ["mode"] = "actions", ["confirm_actions"] = true, ["serial"] = serial,
+            ["screenshot_backend"] = snapshot.Values["Alas"]?["Emulator"]?["ScreenshotMethod"]?.DeepClone(),
+            ["control_backend"] = snapshot.Values["Alas"]?["Emulator"]?["ControlMethod"]?.DeepClone(),
+            ["queue"] = new JsonObject
+            {
+                ["tasks"] = new JsonArray(new JsonObject
+                {
+                    ["id"] = "single-task", ["kind"] = "periodic_run", ["required"] = true,
+                    ["input"] = new JsonObject
+                    {
+                        ["instance"] = snapshot.Instance, ["task"] = command,
+                        ["allow_actions"] = true, ["confirm"] = command,
+                    },
+                }),
+            },
+        });
     }
 
     /// <summary>Read-only upstream API call sharing one process-local Python host.</summary>

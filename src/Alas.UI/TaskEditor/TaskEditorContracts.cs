@@ -14,7 +14,7 @@ public interface ITaskEditorBackend
 
 public sealed record TaskFieldChange(string Path, JsonNode? Value);
 public sealed record ScriptDiagnostic(string Message, int? Line = null, int? Column = null,
-    string Severity = "error");
+    string Severity = "error", string? Code = null);
 public sealed record ScriptValidation(bool Valid, IReadOnlyList<ScriptDiagnostic> Diagnostics, string Summary = "");
 
 public sealed record MeowfficerScoreReport(string Instance, string GeneratedAt, int Count,
@@ -22,14 +22,16 @@ public sealed record MeowfficerScoreReport(string Instance, string GeneratedAt, 
 public sealed record MeowfficerCat(string Cat, IReadOnlyList<string>? Tags = null, int? Level = null,
     bool Fixed = false, bool Maxed = false, string? Note = null, string? Source = null,
     int? PointsSpent = null, IReadOnlyList<MeowfficerTalent>? Talents = null,
-    IReadOnlyList<MeowfficerRubric>? Rubrics = null, MeowfficerAdvice? Advice = null);
+    IReadOnlyList<MeowfficerRubric>? Rubrics = null, MeowfficerAdvice? Advice = null, string? Primary = null);
 public sealed record MeowfficerTalent(string Name, int? Level = null, string? Kind = null, bool Inferred = false);
 public sealed record MeowfficerRubric(string Label, string? Tier = null, double? Score = null,
     double? X = null, double? Y = null, string? XLabel = null, string? YLabel = null,
     IReadOnlyList<string>? XHits = null, IReadOnlyList<string>? YHits = null,
-    IReadOnlyList<string>? Notes = null, string? Source = null, bool Primary = false);
+    IReadOnlyList<string>? Notes = null, string? Source = null, bool Primary = false, string? Key = null);
 public sealed record MeowfficerAdvice(string Verdict, string Headline, string Reason,
-    string? CostText = null, IReadOnlyList<string>? Targets = null);
+    string? CostText = null, IReadOnlyList<string>? Targets = null,
+    string? Label = null, double? Score = null, string? Tier = null, double? Cost = null,
+    bool? CostEstimated = null, int? PointsSpent = null);
 
 public interface IMeowfficerReportBackend
 {

@@ -30,10 +30,13 @@ internal static class Program
         Directory.CreateDirectory(output);
         try
         {
+            await TaskEditorChecks.Verify();
+            await CoreUiBackendChecks.Verify();
             // Dispatch may complete inline on its own worker. Async disposal lets that worker
             // unwind instead of synchronously waiting for itself in IDisposable.Dispose().
             await using (var session = HeadlessUnitTestSession.StartNew(typeof(Program)))
                 await session.Dispatch(() => Verify(output), CancellationToken.None);
+            await StatisticsChecks.VerifyAsync(Path.Combine(output, "statistics"));
             Console.WriteLine("PASS: Avalonia Headless shell and overview layout, navigation, theme, drawer and log rendering; no device or visible window.");
             return 0;
         }
@@ -46,6 +49,7 @@ internal static class Program
 
     private static void Verify(string output)
     {
+        TaskEditorChecks.VerifyControls();
         // 1) 对照帧：每种尺寸/主题用全新的视图与窗口，避免交互状态（筛选行、日志条数、指针悬停）进入对照图。
         CaptureClean(output, 1280, 820, dark: false, "overview-light-1280x820.png");
         CaptureClean(output, 1280, 820, dark: true, "overview-dark-1280x820.png");
@@ -423,7 +427,7 @@ internal static class Program
             Click(window, Find<Button>(view, "SchedulerToggle"));
             Check(!model.Overview.IsSchedulerRunning && model.Rail.RunningCount == "0", "scheduler toggle returns to stopped");
 
-            // 侧栏任务分组：点击展开/收起子项，并选择到明确的「未实现」页（本切片不连服务、不跑游戏逻辑）。
+            // 侧栏任务分组：点击展开/收起子项，并进入 schema 驱动的任务编辑器。
             var firstGroup = model.TaskGroups[0];
             Check(!firstGroup.IsExpanded && firstGroup.Tasks.Count == 3, "task groups start collapsed with the upstream catalog");
             Check(firstGroup.Tasks[0].Label == "系统设置" && model.TaskGroups[^1].Tasks[^1].Label == "指挥喵评分",
@@ -442,9 +446,10 @@ internal static class Program
             Click(window, subItem!);
             Pump();
             Check(!model.IsOverviewActive, "selecting a task leaves the overview");
-            Check(model.Placeholder.Title == "系统设置", $"placeholder shows the selected task (got {model.Placeholder.Title})");
-            Check(model.Placeholder.Hint.Contains("任务配置页"), "placeholder states the task page is not implemented yet");
-            Capture(window, output, "task-placeholder-light-1280x820.png");
+            Check(model.IsTaskEditorActive && Find<Panel>(view, "TaskEditorHost").IsVisible,
+                "selecting a task opens the shared task editor");
+            Check(model.TaskEditor.Backend is not null, "task editor is connected to the shared capability adapter");
+            Capture(window, output, "task-editor-light-1280x820.png");
             Click(window, groupButton!);
             Check(!firstGroup.IsExpanded, "clicking the group again collapses the submenu");
 
@@ -575,8 +580,8 @@ internal static class Program
                 .FirstOrDefault(button => button.Classes.Contains("task-submenu-item"));
             Click(window, narrowSubItem!);
             Pump();
-            Check(!model.IsOverviewActive && model.Placeholder.Hint.Contains("任务配置页"),
-                "clicking a task submenu item inside the open drawer really navigates");
+            Check(!model.IsOverviewActive && model.IsTaskEditorActive && Find<Panel>(view, "TaskEditorHost").IsVisible,
+                "clicking a task submenu item inside the open drawer really opens the task editor");
             Check(model.IsDrawerOpen == false, "selecting a task closes the drawer as before");
             Click(window, Find<Button>(view, "HomeLink"));
             Pump();

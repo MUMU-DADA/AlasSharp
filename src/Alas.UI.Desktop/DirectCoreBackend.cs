@@ -90,6 +90,13 @@ internal sealed class DirectCoreBackend : IAlasUiBackend
     public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().StartRun(ToJson(request)), cancellationToken);
 
+    public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default)
+        => Task.Run(() => WorkspaceOrThrow().StartTask(new JsonObject
+        {
+            ["instance"] = request.Instance, ["task"] = request.Task,
+            ["confirm_actions"] = request.ConfirmActions,
+        }), cancellationToken);
+
     public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().RequestStop(), cancellationToken);
 
@@ -111,6 +118,9 @@ internal sealed class DirectCoreBackend : IAlasUiBackend
 
     public Task<JsonObject> ClearMeowfficerAsync(string instance, CancellationToken cancellationToken = default)
         => ReadHostAsync("meowfficer_clear", new JsonObject { ["instance"] = instance }, cancellationToken);
+
+    public Task<JsonObject> ValidateShopStrategyAsync(string script, CancellationToken cancellationToken = default)
+        => ReadHostAsync("shop_strategy_validate", new JsonObject { ["script"] = script }, cancellationToken);
 
     public void Refresh()
     {

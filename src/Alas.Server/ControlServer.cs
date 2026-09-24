@@ -198,6 +198,22 @@ public sealed class ControlServer
                     new JsonObject { ["instance"] = RequiredString(body, "instance") }));
                 return;
             }
+            if (HttpMethods.IsPost(request.Method) && path == "/api/tasks/validate-script")
+            {
+                RequireToken(request);
+                var body = await ReadBody(request);
+                await Reply(context, 200, _workspace.ReadHostJson("shop_strategy_validate",
+                    new JsonObject { ["script"] = body["script"]?.GetValue<string>()
+                        ?? throw new ArgumentException("缺少 script 字符串") }));
+                return;
+            }
+            if (HttpMethods.IsPost(request.Method) && path == "/api/tasks/run")
+            {
+                RequireToken(request);
+                _workspace.StartTask(await ReadBody(request));
+                await Reply(context, 202, new JsonObject { ["ok"] = true });
+                return;
+            }
             if (HttpMethods.IsPatch(request.Method) && TryInstancePath(path, "config", out configInstance))
             {
                 RequireToken(request);

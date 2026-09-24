@@ -223,7 +223,12 @@ public sealed class AlasSession : IDisposable
                              : StringComparison.Ordinal);
 
     private static IVisionEngine DefaultFactory(SessionOptions options)
-        => InProcessVisionEngine.StartFromAlasFork(options.RepoDirectory, options.ToolsDirectory);
+    {
+        string expected = Path.GetFullPath(Path.Combine(options.ToolsDirectory, "..", ".runtime", "engine"));
+        if (!PathEquals(options.RepoDirectory, expected))
+            throw new ArgumentException("当前 Python 宿主使用项目内 .runtime/engine；配置工作区与执行仓库必须一致");
+        return InProcessVisionEngine.StartFromAlasFork(options.RepoDirectory, options.ToolsDirectory);
+    }
 
     /// <summary>把一件工件写进本次会话目录；没有配置工件目录时返回 null（不假装存了）。</summary>
     public string? WriteArtifact(string name, JsonNode payload)

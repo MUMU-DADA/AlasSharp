@@ -1081,25 +1081,41 @@ def _api_config_service():
 
 def op_statistics_report(args):
     from module.api.statistics_service import report
+    category = str(args.get('category') or 'resources')
+    if category not in ('resources', 'action', 'opsi', 'commission', 'ships', 'loot'):
+        raise ValueError('未知统计分类')
+    if category == 'loot':
+        _require_loot_statistics()
     service = _api_config_service()
     instance = str(args.get('instance') or '')
-    category = str(args.get('category') or 'resources')
     month = args.get('month')
     days = int(args.get('days') or 7)
     period = str(args.get('period') or 'month')
+    if not 1 <= days <= 365 or period not in ('day', 'week', 'month'):
+        raise ValueError('统计时间范围无效')
     return report(service, instance, category, month, days, period)
 
 
 def op_statistics_refresh_loot(args):
     from module.api.statistics_service import refresh_loot
+    _require_loot_statistics()
     service = _api_config_service()
     return refresh_loot(service, str(args.get('instance') or ''))
+
+
+def _require_loot_statistics():
+    from module.statistics.azurstats import AzurStats
+    required = ('load_meowofficer_farming', 'get_meowofficer_farming', 'meowofficer_farming_labels')
+    if any(not hasattr(AzurStats, name) for name in required):
+        raise RuntimeError('当前上游运行时尚未接入本地掉落统计；不能读取或刷新掉落报告')
 
 
 def op_meowfficer_report(args):
     from module.api.meowfficer_service import report
     service = _api_config_service()
     limit = int(args.get('limit') or 100)
+    if not 1 <= limit <= 500:
+        raise ValueError('评分报告数量必须在 1 至 500 之间')
     return report(service, str(args.get('instance') or ''), limit)
 
 
@@ -1170,6 +1186,29 @@ def op_periodic_run(args):
                    reason='二次确认不匹配：confirm 必须与 task 完全一致（收到 confirm=%r）' % confirm)
         return out
 
+    # An explicit instance must never silently become the default account.
+    # Validate before constructing native config (its constructor may write).
+    instance = args.get('instance')
+    if instance is None:
+        instance = 'alas'
+    else:
+        from module.api.config_service import validate_name
+        try:
+            normalized = validate_name(instance)
+        except Exception:
+            out.update(decision='denied', reason='实例名无效')
+            return out
+        if normalized != instance:
+            out.update(decision='denied', reason='实例名必须使用规范名称')
+            return out
+        config_root = (Path(FORK) / 'config').resolve()
+        config_file = config_root / (instance + '.json')
+        if (not config_file.is_file() or config_file.is_symlink()
+                or config_file.resolve().parent != config_root):
+            out.update(decision='denied', reason='找不到有效的配置实例')
+            return out
+    out['instance'] = instance
+
     plan = op_periodic_plan({'task': task})
     out['plan'] = plan
     if plan.get('found') is not True:
@@ -1206,7 +1245,7 @@ def op_periodic_run(args):
     try:
         from alas import AzurLaneAutoScript
         from module.config.config import AzurLaneConfig
-        config = AzurLaneConfig('alas', task=command)
+        config = AzurLaneConfig(instance, task=command)
         unknown = sorted(str(key) for key in overrides if key not in config.bound)
         if unknown:
             out.update(decision='denied',
@@ -1217,12 +1256,12 @@ def op_periodic_run(args):
         if overrides:
             config.override(**overrides)
 
-        device = _device_engine()
+        device = _device_engine(config=config)
         device_had_config = hasattr(device, 'config')
         if device_had_config:
             old_device_config = device.config
         device.config = config
-        runner = AzurLaneAutoScript('alas')
+        runner = AzurLaneAutoScript(instance)
         runner.__dict__['config'] = config
         runner.__dict__['device'] = device
         out['constructed'] = True
@@ -3082,7 +3121,7 @@ _DEVICE_KEY = None
 _DEVICE_ARGS = {}
 
 
-def _device_engine():
+def _device_engine(config=None):
     """构造并缓存引擎的设备层（`module.device.device.Device`）。
 
     引擎自带**多引擎设备层**（`module/device/method/`：adb / ascreencap / droidcast /
@@ -3094,10 +3133,19 @@ def _device_engine():
     serial = str(_DEVICE_ARGS.get('serial') or '127.0.0.1:16384')
     shot = str(_DEVICE_ARGS.get('screenshot') or 'adb')
     ctrl = str(_DEVICE_ARGS.get('control') or 'ADB')
-    key = (serial, shot, ctrl)
-    if _DEVICE_OBJ is not None and _DEVICE_KEY == key:
+    transport_key = (serial, shot, ctrl)
+    if config is not None:
+        config.override(Emulator_Serial=serial, Emulator_ScreenshotMethod=shot,
+                        Emulator_ControlMethod=ctrl)
+        identity = _device_config_identity(config)
+    if _DEVICE_OBJ is not None:
+        if _DEVICE_KEY[:3] != transport_key:
+            raise RuntimeError('常驻设备不能在运行中切换串号或后端')
+        if config is not None:
+            if _DEVICE_KEY[3:] != identity:
+                raise RuntimeError('常驻设备的实例或设备配置已变化，请关闭会话后切换')
         return _DEVICE_OBJ
-    cfg = _map_config()
+    cfg = config if config is not None else _map_config()
     # 两个坑（实测踩过，缺一不可）：
     #   1) 必须先导入 `module.device.pkg_resources` —— adbutils 会 import pkg_resources，
     #      ALAS 靠这个桩顶替，而桩**只有先被导入才生效**（真实运行由 device.py 保证）；
@@ -3114,14 +3162,23 @@ def _device_engine():
         'Lib', 'site-packages', 'adbutils', 'binaries'))
     if os.path.isdir(_adb_dir) and _adb_dir not in os.environ.get('PATH', ''):
         os.environ['PATH'] = _adb_dir + os.pathsep + os.environ.get('PATH', '')
-    with cfg.multi_set():
-        cfg.Emulator_Serial = serial
-        cfg.Emulator_ScreenshotMethod = shot
-        cfg.Emulator_ControlMethod = ctrl
+    if config is None:
+        with cfg.multi_set():
+            cfg.Emulator_Serial = serial
+            cfg.Emulator_ScreenshotMethod = shot
+            cfg.Emulator_ControlMethod = ctrl
     from module.device.device import Device
     _DEVICE_OBJ = Device(cfg)
-    _DEVICE_KEY = key
+    _DEVICE_KEY = (*transport_key, *_device_config_identity(cfg))
     return _DEVICE_OBJ
+
+
+def _device_config_identity(config):
+    # ConnectionAttr caches more than the serial: package, server, emulator
+    # settings and backend handles. Rebinding config alone cannot change them.
+    fields = {name: getattr(config, name) for name in config.bound if name.startswith('Emulator')}
+    return (config.config_name, config.SERVER,
+            json.dumps(fields, sort_keys=True, ensure_ascii=False, default=str))
 
 
 def op_device_configure(args):

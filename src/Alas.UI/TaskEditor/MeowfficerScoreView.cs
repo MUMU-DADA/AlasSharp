@@ -20,6 +20,8 @@ public sealed class MeowfficerScoreView : UserControl
     private readonly Button _open = ActionButton("打开报告", "MeowOpenReport");
     private bool _busy;
     private bool _confirmClear;
+    private bool _active;
+    private long _loadVersion;
 
     public MeowfficerScoreView()
     {
@@ -38,31 +40,40 @@ public sealed class MeowfficerScoreView : UserControl
     }
 
     public IMeowfficerReportBackend? Backend { get => _backend; set { _backend = value; _ = LoadAsync(); } }
+    public bool IsActive { get => _active; set { if (_active == value) return; _active = value; _ = LoadAsync(); } }
     /// <summary>The host decides how to open its same report endpoint (browser, panel, or no-op).</summary>
     public Func<string, Task>? OpenReportAsync { get; set; }
     public string Instance { get => _instance; set { if (_instance == value) return; _instance = value ?? ""; _ = LoadAsync(); } }
 
     private async Task LoadAsync()
     {
-        if (_busy || _backend is null || string.IsNullOrWhiteSpace(Instance)) return;
+        long version = ++_loadVersion;
+        _confirmClear = false;
+        if (!_active || _backend is null || string.IsNullOrWhiteSpace(Instance))
+        { _busy = false; RenderEmpty("尚未读取评分报告"); return; }
+        var backend = _backend;
+        string instance = Instance;
         _busy = true; _refresh.IsEnabled = _clear.IsEnabled = _open.IsEnabled = false; _status.Text = "正在读取报告…";
         try
         {
-            var report = await _backend.LoadAsync(Instance, CancellationToken.None);
+            var report = await backend.LoadAsync(instance, CancellationToken.None);
+            if (version != _loadVersion) return;
             if (report is null || report.Cats.Count == 0) RenderEmpty("尚未生成指挥喵评分报告");
             else RenderReport(report);
         }
-        catch (Exception error) { RenderEmpty("读取评分报告失败：" + error.Message); }
-        finally { _busy = false; _refresh.IsEnabled = _clear.IsEnabled = _backend is not null; }
+        catch (Exception error) { if (version == _loadVersion) RenderEmpty("读取评分报告失败：" + error.Message); }
+        finally { if (version == _loadVersion) { _busy = false; _refresh.IsEnabled = _backend is not null; } }
     }
 
     private async Task ClearAsync()
     {
         if (_busy || !_confirmClear || _backend is null) return;
+        long version = ++_loadVersion;
+        string instance = Instance;
         _busy = true; _confirmClear = false; _refresh.IsEnabled = _clear.IsEnabled = _open.IsEnabled = false; _status.Text = "正在清空报告…";
-        try { await _backend.ClearAsync(Instance, CancellationToken.None); RenderEmpty("评分报告已清空"); }
-        catch (Exception error) { RenderEmpty("清空评分报告失败：" + error.Message); }
-        finally { _busy = false; _refresh.IsEnabled = _clear.IsEnabled = _backend is not null; }
+        try { await _backend.ClearAsync(instance, CancellationToken.None); if (version == _loadVersion) RenderEmpty("评分报告已清空"); }
+        catch (Exception error) { if (version == _loadVersion) RenderEmpty("清空评分报告失败：" + error.Message); }
+        finally { if (version == _loadVersion) { _busy = false; _refresh.IsEnabled = _backend is not null; } }
     }
 
     private void RenderReport(MeowfficerScoreReport report)
@@ -83,7 +94,7 @@ public sealed class MeowfficerScoreView : UserControl
     private void RenderConfirm()
     {
         _body.Children.Clear();
-        _body.Children.Add(Text("将由服务端删除该实例的评分产物，是否继续？", 14));
+        _body.Children.Add(Text("将删除当前机器共享的评分产物，所有实例的报告都会清空，是否继续？", 14));
         var yes = ActionButton("确认清空", "MeowClearConfirm", true);
         var no = ActionButton("取消", "MeowClearCancel");
         yes.Click += async (_, _) => await ClearAsync();

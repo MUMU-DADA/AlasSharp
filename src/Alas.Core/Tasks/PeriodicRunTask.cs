@@ -28,7 +28,7 @@ public sealed class PeriodicRunTask : ITaskRunner
 {
     private static readonly HashSet<string> InputFields = new(StringComparer.Ordinal)
     {
-        "task", "allow_actions", "confirm", "overrides",
+        "task", "allow_actions", "confirm", "overrides", "instance",
     };
 
     public string Kind => "periodic_run";
@@ -58,6 +58,18 @@ public sealed class PeriodicRunTask : ITaskRunner
             problems.Add("input.confirm 必须是 JSON 字符串");
         if (context.Options.DryRun || !context.Options.AllowActions)
             problems.Add("会话未授权：执行周期任务需要用 --run --allow-actions 启动队列");
+        if (request.Input?.ContainsKey("instance") == true)
+        {
+            if (request.Input["instance"] is not JsonValue instanceValue ||
+                !instanceValue.TryGetValue<string>(out var instance) || string.IsNullOrWhiteSpace(instance))
+                problems.Add("input.instance 必须是非空实例名");
+            else
+            {
+                try { _ = new ConfigWorkspace(context.Options.RepoDirectory).Get(instance); }
+                catch (Exception error) when (error is ArgumentException or ConfigWorkspaceException or IOException)
+                { problems.Add(error.Message); }
+            }
+        }
         return problems;
     }
 
@@ -98,6 +110,7 @@ public sealed class PeriodicRunTask : ITaskRunner
             var run = context.Session.Vision.CallTyped<PeriodicRunResult>("periodic_run", new
             {
                 task,
+                instance = request.Input?["instance"]?.GetValue<string>(),
                 allow_actions = allowActions,
                 confirm,
                 overrides,
@@ -107,6 +120,7 @@ public sealed class PeriodicRunTask : ITaskRunner
             result.Evidence = new JsonObject
             {
                 ["task"] = task,
+                ["instance"] = run.Instance,
                 ["allow_actions"] = allowActions,
                 ["confirm_matches"] = run.ConfirmMatches,
                 ["decision"] = run.Decision,
@@ -176,6 +190,7 @@ public sealed class PeriodicRunTask : ITaskRunner
 /// <summary>宿主 `periodic_run` 的返回（判定 + 勘察 + 构造/运行结果）。</summary>
 public sealed class PeriodicRunResult
 {
+    [JsonPropertyName("instance")] public string? Instance { get; set; }
     [JsonPropertyName("task")] public string? Task { get; set; }
     [JsonPropertyName("decision")] public string? Decision { get; set; }
     [JsonPropertyName("reason")] public string? Reason { get; set; }

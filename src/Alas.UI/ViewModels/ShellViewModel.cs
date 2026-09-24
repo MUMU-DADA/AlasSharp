@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Text.Json.Nodes;
 using Alas.Contracts;
 using Alas.UI.Statistics;
+using Alas.UI.TaskEditor;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Layout;
@@ -20,7 +21,8 @@ namespace Alas.UI.ViewModels;
 
 /// <summary>
 /// 共享外壳状态：主题、视口断点、抽屉、一级/任务导航、当前页面与右栏。
-/// 所有数据都是离线演示数据（对齐上游 mock/state.mjs），不连接服务或设备，也不执行任务。
+/// 预览构造函数使用上游风格的离线数据；生产构造函数通过能力接口读取 Alas.Core，
+/// 页面本身不持有 HTTP、Python 或设备状态机。
 /// </summary>
 public sealed class ShellViewModel : INotifyPropertyChanged
 {
@@ -30,7 +32,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     /// <summary>上游 apple.css:339 的第二档断点：≤480px 时监控页签、工具栏与分段按钮继续压缩。</summary>
     public const double CompactBreakpoint = 480;
 
-    private readonly Dictionary<string, object?> _pages = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Instance, string Task), TaskEditorViewModel> _editors = new();
+    private long _editorLoadVersion;
     private readonly IAlasUiBackend _backend;
     private bool _isNarrow;
     private bool _isDrawerOpen;
@@ -39,6 +42,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     private string? _instanceName;
     private bool _hasInstance;
     private string _activeNavKey = "home";
+    private string _activeTaskKey = string.Empty;
 
     public ShellViewModel()
         : this(new MemoryThemeStore(), null, previewData: true)
@@ -56,6 +60,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         Statistics = new StatisticsViewModel(
             async (query, cancellationToken) => await _backend.ReadStatisticsAsync(ToStatisticsRequest(query), cancellationToken).ConfigureAwait(true),
             (instance, cancellationToken) => _backend.RefreshStatisticsLootAsync(instance, cancellationToken));
+        TaskEditor = new TaskEditorViewModel { Backend = new CoreTaskEditorBackend(_backend) };
+        MeowfficerBackend = new CoreMeowfficerReportBackend(_backend);
         Placeholder = new PlaceholderViewModel();
         Rail = new RailViewModel(Overview, previewData);
         Instances = new ObservableCollection<string>();
@@ -87,6 +93,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public HomeViewModel Home { get; }
     public OverviewViewModel Overview { get; }
     public StatisticsViewModel Statistics { get; }
+    public TaskEditorViewModel TaskEditor { get; private set; }
+    public IMeowfficerReportBackend MeowfficerBackend { get; }
     public RailViewModel Rail { get; }
     public PlaceholderViewModel Placeholder { get; }
     public ObservableCollection<NavEntry> PrimaryNav { get; } = new();
@@ -211,7 +219,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     /// <summary>任务分组导航只在有实例时出现（上游 {instance &amp;&amp; &lt;TaskNav/&gt;}）。</summary>
     public bool IsSidebarTaskNavVisible => HasInstance;
 
-    /// <summary>页面路由：home / overview / interface，其余走占位页。</summary>
+    /// <summary>页面路由：核心页面与任务编辑器走共享控件，其余入口显示明确空态。</summary>
     public string ActivePage
     {
         get => _activePage;
@@ -221,6 +229,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
             Notify(nameof(IsHomeActive));
             Notify(nameof(IsOverviewActive));
             Notify(nameof(IsStatisticsActive));
+            Notify(nameof(IsTaskEditorActive));
+            Notify(nameof(IsMeowfficerActive));
             Notify(nameof(IsInterfaceSettingsActive));
             Notify(nameof(IsPlaceholderActive));
             Notify(nameof(MainPadding));
@@ -234,9 +244,12 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public bool IsHomeActive => _activePage == "home";
     public bool IsOverviewActive => _activePage == "overview";
     public bool IsStatisticsActive => _activePage == "statistics";
+    public bool IsTaskEditorActive => _activePage == "task";
+    public bool IsMeowfficerActive => _activePage == "meowfficer";
 
     /// <summary>未实现的入口显示占位页。</summary>
-    public bool IsPlaceholderActive => !IsHomeActive && !IsOverviewActive && !IsStatisticsActive && !IsInterfaceSettingsActive;
+    public bool IsPlaceholderActive => !IsHomeActive && !IsOverviewActive && !IsStatisticsActive &&
+        !IsInterfaceSettingsActive && !IsTaskEditorActive && !IsMeowfficerActive;
 
     /// <summary>界面设置页（上游 /interface）：六主题与本地首选项的唯一入口。</summary>
     public bool IsInterfaceSettingsActive => _activePage == "interface";
@@ -252,8 +265,10 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public string BreadcrumbTail => _activePage switch
     {
             "overview" => "运行总览",
-            "statistics" => "资源统计",
+        "statistics" => "资源统计",
         "interface" => "界面设置",
+        "task" => TaskEditor.Title,
+        "meowfficer" => "指挥喵评分",
         "home" => string.Empty,
         _ => Placeholder.Title,
     };
@@ -321,6 +336,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public void SelectInstance(string instance)
     {
         if (string.IsNullOrWhiteSpace(instance)) return;
+        _editorLoadVersion++;
         _instanceName = instance;
         Notify(nameof(InstanceName));
         HasInstance = true;
@@ -337,6 +353,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     /// <summary>回到无实例外壳（上游点面包屑「主页」）。</summary>
     public void GoHome()
     {
+        _editorLoadVersion++;
         HasInstance = false;
         _activeNavKey = "home";
         BuildNavigation();
@@ -364,21 +381,66 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>选择任务分组下的具体任务：本切片只切到明确的「未实现」页，不连服务、不跑游戏逻辑。</summary>
+    /// <summary>选择任务只读取配置；执行必须经过编辑器确认和 Core 队列。</summary>
     private void SelectTask(TaskEntry? task)
     {
-        if (task is null) return;
+        if (task is null || !HasInstance) return;
+        long version = ++_editorLoadVersion;
         foreach (var entry in PrimaryNav) entry.IsActive = false;
         ActiveNavKey = $"task:{task.Key}";
-        ActivePage = task.Label;
-        Placeholder.LoadTask(task.GroupTitle, task.Label);
+        _activeTaskKey = task.Key;
+        if (string.Equals(task.Key, "MeowfficerScore", StringComparison.OrdinalIgnoreCase))
+        {
+            ActivePage = "meowfficer";
+            Notify(nameof(InstanceName));
+        }
+        else
+        {
+            var key = (InstanceName, task.Key);
+            if (!_editors.TryGetValue(key, out var editor))
+            {
+                editor = new TaskEditorViewModel { Backend = new CoreTaskEditorBackend(_backend) };
+                editor.PropertyChanged += (_, _) => { if (ReferenceEquals(TaskEditor, editor)) Notify(nameof(BreadcrumbTail)); };
+                _editors.Add(key, editor);
+            }
+            TaskEditor = editor;
+            Notify(nameof(TaskEditor));
+            ActivePage = "task";
+            if (!editor.IsLoaded) _ = LoadTaskEditorAsync(InstanceName, task, editor, version);
+        }
         Notify(nameof(BreadcrumbTail));
         IsDrawerOpen = false;
+    }
+
+    private async Task LoadTaskEditorAsync(string instance, TaskEntry task, TaskEditorViewModel editor, long version)
+    {
+        try
+        {
+            var schema = await _backend.ReadSchemaAsync(cancellationToken: default).ConfigureAwait(true);
+            var config = await _backend.ReadConfigAsync(instance).ConfigureAwait(true);
+            if (_editorLoadVersion != version || !IsTaskEditorActive || InstanceName != instance) return;
+            editor.Load(instance, task.Key, new JsonObject
+            {
+                ["args"] = schema.Args.DeepClone(),
+                ["menu"] = schema.Menu.DeepClone(),
+                ["translations"] = schema.Translations.DeepClone(),
+            }, new JsonObject
+            {
+                ["instance"] = config.Instance,
+                ["revision"] = config.Revision,
+                ["values"] = config.Values.DeepClone(),
+            });
+        }
+        catch (Exception error)
+        {
+            if (_editorLoadVersion == version) editor.SetLoadError(error.Message);
+        }
     }
 
     private void SelectNav(string? key)
     {
         if (key is null) return;
+        _editorLoadVersion++;
         foreach (var entry in PrimaryNav) entry.IsActive = entry.Key == key;
         ActiveNavKey = key;
         // 面包屑「主页」= 回到无实例外壳（上游 / 路由），导航集合随之切回八项。
@@ -395,6 +457,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
             "overview" => "overview",
             "statistics" => "statistics",
             "interface" => "interface",
+            "task" => "task",
+            "meowfficer" => "meowfficer",
             _ => key,
         };
         if (IsPlaceholderActive) Placeholder.Load(key);

@@ -149,7 +149,9 @@ def periodic_run_gate_intact() -> list[str]:
             problems.append(f"`op_periodic_run` 的{why}在**构造对象之后**才检查 —— 顺序错了，"
                             "等于没闸（对象已经建起来、很可能已经动了设备）")
     required = (
-        "AzurLaneConfig('alas', task=command)",
+        "AzurLaneConfig(instance, task=command)",
+        "AzurLaneAutoScript(instance)",
+        "_device_engine(config=config)",
         "config.override(**overrides)",
         "runner.run(method_name)",
     )

@@ -37,6 +37,7 @@ public sealed class TaskEditorViewModel : EditorObservable
     public string Revision { get; private set; } = "";
     public bool IsLoaded { get; private set; }
     public bool IsTool { get; private set; }
+    public bool IsRunnable { get; private set; }
     /// <summary>Matches the upstream EditQueue: ordinary fields save after a short debounce.</summary>
     public bool AutoSave { get; set; } = true;
     public bool IsBusy { get; private set; }
@@ -49,7 +50,7 @@ public sealed class TaskEditorViewModel : EditorObservable
     public bool CanSave => IsLoaded && Backend is not null && !IsBusy &&
         Fields.Any(f => f.IsDirty && f.Kind != TaskFieldKind.Lua) && !HasConflicts &&
         Fields.All(f => !f.IsDirty || f.Kind == TaskFieldKind.Lua || f.Error.Length == 0);
-    public bool CanRun => IsLoaded && Backend is not null && !IsBusy && !HasConflicts &&
+    public bool CanRun => IsLoaded && IsRunnable && Backend is not null && !IsBusy && !HasConflicts &&
         // Restricted Lua drafts are a separate check/apply editor. A successful check alone must
         // never make the run button start the old server-side script.
         Fields.All(f => !f.IsDirty || (f.Kind != TaskFieldKind.Lua && f.Error.Length == 0));
@@ -61,6 +62,14 @@ public sealed class TaskEditorViewModel : EditorObservable
     }
     public bool Matches(TaskFieldViewModel field) => field.IsVisible && (Search.Length == 0 ||
         $"{field.Label} {field.Group}.{field.Argument} {field.Help}".Contains(Search, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Keep a failed schema/config load visible in the shared editor.</summary>
+    public void SetLoadError(string message)
+    {
+        Error = message ?? "任务配置加载失败";
+        IsLoaded = false;
+        Refresh();
+    }
 
     public void Load(string instance, string task, JsonObject schema, JsonObject config)
     {
@@ -75,6 +84,7 @@ public sealed class TaskEditorViewModel : EditorObservable
         IsTool = schema["menu"] is JsonObject menu && menu.Any(pair => pair.Value is JsonObject group &&
             TaskFieldViewModel.String(group["page"]) == "tool" && group["tasks"] is JsonArray tasks &&
             tasks.Any(item => TaskFieldViewModel.String(item) == task));
+        IsRunnable = !string.IsNullOrWhiteSpace(TaskFieldViewModel.String(arguments[task]?["Scheduler"]?["Command"]?["value"]));
         Groups.Clear();
         if (arguments[task] is JsonObject groups)
             foreach (var (groupName, groupNode) in groups)

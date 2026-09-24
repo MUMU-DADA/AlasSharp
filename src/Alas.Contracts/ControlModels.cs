@@ -69,6 +69,14 @@ public sealed record ControlRunRequest
     public bool ContinueOnError { get; init; }
 }
 
+/// <summary>Run one upstream task for an explicitly selected configuration instance.</summary>
+public sealed record InstanceTaskRunRequest
+{
+    public required string Instance { get; init; }
+    public required string Task { get; init; }
+    public bool ConfirmActions { get; init; }
+}
+
 public sealed record ControlAcknowledgement
 {
     public required bool Ok { get; init; }
@@ -152,6 +160,7 @@ public sealed record MeowfficerRequest
 [JsonSerializable(typeof(ControlState))]
 [JsonSerializable(typeof(ControlQueueRequest))]
 [JsonSerializable(typeof(ControlRunRequest))]
+[JsonSerializable(typeof(InstanceTaskRunRequest))]
 [JsonSerializable(typeof(ControlAcknowledgement))]
 [JsonSerializable(typeof(ControlError))]
 [JsonSerializable(typeof(InstanceSummary))]

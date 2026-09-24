@@ -85,6 +85,9 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
     public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default)
         => _client.StartRunAsync(request, cancellationToken);
 
+    public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default)
+        => _client.StartTaskAsync(request, cancellationToken);
+
     public async Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)
     {
         await _client.RequestStopAsync(cancellationToken).ConfigureAwait(false);
@@ -102,6 +105,9 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
 
     public Task<JsonObject> ClearMeowfficerAsync(string instance, CancellationToken cancellationToken = default)
         => _client.ClearMeowfficerReportAsync(instance, cancellationToken);
+
+    public Task<JsonObject> ValidateShopStrategyAsync(string script, CancellationToken cancellationToken = default)
+        => _client.ValidateShopStrategyAsync(script, cancellationToken);
 
     public void Dispose()
     {

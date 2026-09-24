@@ -63,6 +63,7 @@ public static class TaskEditorChecks
             {
                 ["Daily"] = new JsonObject
                 {
+                    ["Scheduler"] = new JsonObject { ["Command"] = new JsonObject { ["value"] = "Daily", ["display"] = "hide" } },
                     ["General"] = new JsonObject
                     {
                         ["Count"] = new JsonObject { ["type"] = "int", ["value"] = 1, ["validate"] = new JsonArray(1, 10) },
@@ -74,17 +75,17 @@ public static class TaskEditorChecks
         };
         var config = Config("instance-a", "r1", 1, "safe", "return true");
         model.Load("instance-a", "Daily", schema, config);
-        Check(model.Groups.Count == 1 && model.Groups[0].Fields.Count == 3, "all schema fields loaded");
-        var count = model.Groups[0].Fields.Single(f => f.Argument == "Count");
+        Check(model.Groups.Count == 2 && model.Fields.Count() == 4, "all schema fields loaded");
+        var count = model.Fields.Single(f => f.Argument == "Count");
         count.SetText("bad");
         Check(!model.CanSave && count.Error.Length > 0, "invalid number blocks save");
         count.SetText("7");
-        var mode = model.Groups[0].Fields.Single(f => f.Argument == "Mode");
+        var mode = model.Fields.Single(f => f.Argument == "Mode");
         mode.SelectOption(mode.Options.Single(o => o.Label == "fast"));
         Check(model.CanSave, "valid number and option allow save");
         Check(await model.SaveAsync(cancellationToken), "save delegates to backend: " + model.Error + " / " + model.EditStatus);
         Check(backend.Saves == 1 && backend.LastChanges.Count == 2, "only changed fields are sent");
-        var script = model.Groups[0].Fields.Single(f => f.Argument == "Script");
+        var script = model.Fields.Single(f => f.Argument == "Script");
         script.SetText("return false");
         Check(model.CanRun == false && model.CanSave == false, "Lua draft is separate from ordinary save");
         await model.CheckScriptAsync(script, cancellationToken);
@@ -97,7 +98,7 @@ public static class TaskEditorChecks
         backend.ThrowConflict = true;
         count.SetText("8");
         Check(!await model.SaveAsync(cancellationToken) && model.HasConflicts, "backend conflict preserves draft");
-        model.Groups[0].Fields.Single(f => f.HasConflict).ResolveConflict(true);
+        model.Fields.Single(f => f.HasConflict).ResolveConflict(true);
         Check(!model.HasConflicts && model.HasChanges, "conflict requires explicit resolution");
     }
 
@@ -116,7 +117,9 @@ public static class TaskEditorChecks
             ["General.Count.name"] = "数量", ["General.Count.help"] = "范围帮助",
         },
         ["menu"] = new JsonObject(),
-        ["args"] = new JsonObject { ["Daily"] = new JsonObject { ["General"] = new JsonObject
+        ["args"] = new JsonObject { ["Daily"] = new JsonObject {
+        ["Scheduler"] = new JsonObject { ["Command"] = new JsonObject { ["value"] = "Daily", ["display"] = "hide" } },
+        ["General"] = new JsonObject
         { ["Count"] = new JsonObject { ["type"] = "int", ["value"] = 1, ["validate"] = new JsonArray(1, 10) } } } },
     };
 

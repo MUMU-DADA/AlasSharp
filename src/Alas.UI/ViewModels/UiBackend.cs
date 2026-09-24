@@ -18,11 +18,13 @@ public interface IAlasControlBackend
     Task DeleteInstanceAsync(InstanceDeleteRequest request, CancellationToken cancellationToken = default);
     Task SaveQueueAsync(JsonObject queue, CancellationToken cancellationToken = default);
     Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default);
+    Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default);
     Task<bool> RequestStopAsync(CancellationToken cancellationToken = default);
     Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default);
     Task<JsonObject> RefreshStatisticsLootAsync(string instance, CancellationToken cancellationToken = default);
     Task<JsonObject> ReadMeowfficerAsync(MeowfficerRequest request, CancellationToken cancellationToken = default);
     Task<JsonObject> ClearMeowfficerAsync(string instance, CancellationToken cancellationToken = default);
+    Task<JsonObject> ValidateShopStrategyAsync(string script, CancellationToken cancellationToken = default);
 }
 
 public interface IAlasUiBackend : IRefreshableInstanceSource, IAlasControlBackend, IDisposable

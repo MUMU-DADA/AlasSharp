@@ -30,6 +30,8 @@ public partial class MainView : UserControl
         Model = new ShellViewModel(themeStore, backend, previewData: backend is null);
         DataContext = Model;
         Model.PropertyChanged += OnModelChanged;
+        MeowfficerPage.Backend = Model.MeowfficerBackend;
+        UpdateMeowfficerPage();
         SizeChanged += (_, _) => Model.UpdateViewport(Bounds.Width, Bounds.Height);
         // 遮罩点击关闭当前浮层：窄屏抽屉与右栏浮层共用同一个收起命令。
         Scrim.PointerPressed += (_, args) =>
@@ -55,6 +57,14 @@ public partial class MainView : UserControl
             or nameof(ShellViewModel.IsRailOpen) or nameof(ShellViewModel.IsRailVisible)
             or nameof(ShellViewModel.ViewportWidth) or nameof(ShellViewModel.ViewportHeight))
             ApplyLayout();
+        if (args.PropertyName is nameof(ShellViewModel.InstanceName) or nameof(ShellViewModel.IsMeowfficerActive))
+            UpdateMeowfficerPage();
+    }
+
+    private void UpdateMeowfficerPage()
+    {
+        MeowfficerPage.IsActive = Model.IsMeowfficerActive;
+        MeowfficerPage.Instance = Model.HasInstance ? Model.InstanceName : "";
     }
 
     private void ApplyLayout()

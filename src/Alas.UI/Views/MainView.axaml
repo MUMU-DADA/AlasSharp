@@ -1,5 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:Alas.UI.ViewModels" xmlns:views="using:Alas.UI.Views" xmlns:statistics="using:Alas.UI.Statistics"
+             xmlns:vm="using:Alas.UI.ViewModels" xmlns:views="using:Alas.UI.Views" xmlns:statistics="using:Alas.UI.Statistics" xmlns:taskeditor="using:Alas.UI.TaskEditor"
              x:Class="Alas.UI.Views.MainView" x:DataType="vm:ShellViewModel" Classes="shell"
              Classes.narrow="{Binding IsNarrow}" Classes.compact="{Binding IsCompact}"
              FontFamily="{DynamicResource AlasFontSans}" FontSize="14"
@@ -24,6 +24,12 @@
           </Panel>
           <Panel x:Name="StatisticsHost" IsVisible="{Binding IsStatisticsActive}">
             <statistics:StatisticsView x:Name="StatisticsPage" DataContext="{Binding Statistics}" />
+          </Panel>
+          <Panel x:Name="TaskEditorHost" IsVisible="{Binding IsTaskEditorActive}">
+            <taskeditor:TaskEditorView x:Name="TaskEditorPage" DataContext="{Binding TaskEditor}" />
+          </Panel>
+          <Panel x:Name="MeowfficerHost" IsVisible="{Binding IsMeowfficerActive}">
+            <taskeditor:MeowfficerScoreView x:Name="MeowfficerPage" />
           </Panel>
           <Panel x:Name="HomeHost" IsVisible="{Binding IsHomeActive}">
             <views:HomeView x:Name="HomePage" DataContext="{Binding Home}" />

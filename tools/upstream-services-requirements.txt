@@ -1,0 +1,4 @@
+# Restricted strategy parser; packages are cached in .runtime/wheels.
+luaparser==4.2.0 --hash=sha256:f73b1a66ff51351d28f067348ebbb4533401fc761926654d0448e34531ce3a34
+antlr4-python3-runtime==4.13.2 --hash=sha256:fe3835eb8d33daece0e799090eda89719dbccee7aa39ef94eed3818cafa5a7e8
+multimethod==2.1 --hash=sha256:54b5256562351762a275dd65571b5d6db750848f1eb6bb21c61cb5ff2748b663

@@ -105,7 +105,7 @@ public sealed partial class ControlClient : IDisposable
     /// handler invokes Alas.Core directly; this method only crosses a process
     /// boundary when the caller is a web or remote client.
     /// </summary>
-    public Task<JsonObject> GetStatisticsReportAsync(StatisticsRequest request,
+    public async Task<JsonObject> GetStatisticsReportAsync(StatisticsRequest request,
                                                      CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -116,7 +116,8 @@ public sealed partial class ControlClient : IDisposable
             "&period=" + Uri.EscapeDataString(request.Period);
         using var message = new HttpRequestMessage(HttpMethod.Get,
             new Uri(_endpoint, "api/statistics/report?" + query));
-        return SendAsync(message, HttpStatusCode.OK, ControlJsonContext.Default.JsonObject, cancellationToken);
+        return await SendAsync(message, HttpStatusCode.OK, ControlJsonContext.Default.JsonObject, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public Task<JsonObject> RefreshStatisticsLootAsync(string instance,
@@ -124,19 +125,26 @@ public sealed partial class ControlClient : IDisposable
         => WriteReadJsonAsync("api/statistics/refresh-loot", new JsonObject { ["instance"] = instance },
             HttpMethod.Post, HttpStatusCode.OK, cancellationToken);
 
-    public Task<JsonObject> GetMeowfficerReportAsync(MeowfficerRequest request,
+    public async Task<JsonObject> GetMeowfficerReportAsync(MeowfficerRequest request,
                                                      CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         string path = "api/meowfficer/report?instance=" + Uri.EscapeDataString(request.Instance) +
             "&limit=" + request.Limit.ToString(System.Globalization.CultureInfo.InvariantCulture);
         using var message = new HttpRequestMessage(HttpMethod.Get, new Uri(_endpoint, path));
-        return SendAsync(message, HttpStatusCode.OK, ControlJsonContext.Default.JsonObject, cancellationToken);
+        return await SendAsync(message, HttpStatusCode.OK, ControlJsonContext.Default.JsonObject, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public Task<JsonObject> ClearMeowfficerReportAsync(string instance,
                                                        CancellationToken cancellationToken = default)
         => WriteReadJsonAsync("api/meowfficer/clear", new JsonObject { ["instance"] = instance },
+            HttpMethod.Post, HttpStatusCode.OK, cancellationToken);
+
+    /// <summary>Validate a restricted upstream shop strategy without executing it.</summary>
+    public Task<JsonObject> ValidateShopStrategyAsync(string script,
+                                                      CancellationToken cancellationToken = default)
+        => WriteReadJsonAsync("api/tasks/validate-script", new JsonObject { ["script"] = script },
             HttpMethod.Post, HttpStatusCode.OK, cancellationToken);
 
     public async Task<ConfigResponse> GetConfigAsync(string instance, CancellationToken cancellationToken = default)
@@ -187,6 +195,10 @@ public sealed partial class ControlClient : IDisposable
     public Task RequestStopAsync(CancellationToken cancellationToken = default) =>
         WriteAsync("api/stop", new JsonObject(), ControlJsonContext.Default.JsonObject,
             HttpStatusCode.OK, cancellationToken);
+
+    public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default)
+        => WriteAsync("api/tasks/run", request, ControlJsonContext.Default.InstanceTaskRunRequest,
+            HttpStatusCode.Accepted, cancellationToken);
 
     private async Task WriteAsync<T>(string path, T body, JsonTypeInfo<T> type,
                                     HttpStatusCode expected, CancellationToken cancellationToken)

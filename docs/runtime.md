@@ -105,7 +105,22 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 序列化使用生成元数据，请求提供明确 UTF-8 字节长度。默认传输禁用重定向；注入自定义 `HttpClient` 时也必须禁用自动重定向和重试。
 取消 HTTP 请求或释放客户端不会发送停止命令；网络错误可能发生在接单之后，应重新查询状态，不自动重放写请求。
 服务重启后需重新读取状态获取令牌。普通 JSON 请求有覆盖响应头与正文的 30 秒期限，可在构造客户端时调整；超时不重发写请求。
-当前没有幂等请求键；UI 尚未接入该客户端。
+当前没有幂等请求键。浏览器 UI 通过该客户端调用 Core；桌面在同一进程直接调用 Core。
+
+## 上游服务缓存与单任务
+
+任务编辑器按所选实例保存参数，单任务由 Core 读取上游 `Scheduler.Command` 后进入 `periodic_run` 队列。
+设备初始化使用该实例配置和截图/输入后端；同一会话固定实例及设备初始化参数，变更时明确拒绝并要求关闭会话。
+工具注册表中的独立工具任务和连续调度器尚未接通，不能从单任务入口推断全部控制流程完成。
+
+统计和报告继续调用上游服务。用 `tools/cache_upstream_services.py --source <AzurPilot目录>`
+缓存明确列出的 23 个依赖文件到 `.runtime/engine`，`--check` 校验来源与逐文件哈希；不同的已有文件会拒绝覆盖。
+缓存清单保留在运行时目录，不复制账号配置、日志或设备证据。Lua 解析器按
+`tools/upstream-services-requirements.txt` 下载到 `.runtime/wheels` 后用 `--no-index --find-links` 安装。
+
+五类统计报告、指挥喵 JSON 报告/清理和策略校验有隔离数据回归；这不证明游戏任务已采集相应记录。
+指挥喵报告是机器共享产物，清理会影响所有实例。掉落统计的 `azurstats` 实现仍待整体迁移，当前返回明确不可用原因。
+当前 Python 宿主固定使用项目内 `.runtime/engine`；Core 拒绝不同执行根目录，防止读 A 配置却执行 B 仓库。
 
 状态流由 `WatchStateAsync(lastCursor, token)` 消费：每条消息完整替换显示状态（含日志窗口），不能把 `recent_logs` 当增量追加。
 游标为服务实例标识与递增观测版本。初次或过期/异实例游标返回 `reset`；游标仍是当前版本时返回 `snapshot`。断线/EOF 后调用方用最后游标重新订阅，客户端不自动重连或重放命令。
@@ -128,6 +143,7 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 | 旧控制页静态结构 | `verify_control_ui.py`（不打开浏览器） |
 | 独立服务与静态网页 | `verify_server_static.py`（临时目录、无窗口） |
 | 结构边界与隐私 | `verify_architecture.py`、`verify_privacy.py` |
+| 上游服务与实例绑定 | `verify_upstream_services.py`、`verify_instance_device_binding.py`（隔离数据/替身，无设备） |
 
 控制台离线回归通过真实 HTTP 执行 dry-run，断言设备配置次数为零；不证明真实游戏任务效果。
 关闭回归通过公开 shutdown token 实测延迟 POST 拒绝、停止标记 IO 失败和完整落盘；系统 Ctrl-C/SIGTERM 与长于 HTTP 关闭期限的实战仍需分别验收。
