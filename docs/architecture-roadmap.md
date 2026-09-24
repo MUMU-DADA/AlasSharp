@@ -40,6 +40,7 @@
 - 每日困难任务进入 1-1 后原生地图初始化报 `No vertical line detected`；该功能要求周回，本次无自律选项。补齐主线任务一次性 `mode=normal/hard` 后，1-1 困难开荒通过原生章节配置、相机恢复及两场战斗，取得 S 级成功结算并返页；每日周回及其他困难章节仍待验收。此前失败记录保留，周期任务 SystemExit 丢失根因/失败帧的问题已修复并经真机复核，详见 [S3 说明](s3-upstream-adaptation.md)。
 - 已通关账号的大世界入口与调度有样本；要塞长战斗的通用接管修复已有离线回归，自动化成功结算闭环仍待验收。
 - 未解锁“自律寻敌”的账号不满足上游大世界动作前提；入口超时不能据此外推为通用界面缺陷。
+- 原生连续调度有一次真实边界停止样本：独立临时配置关闭全部 Reward 领取开关，原生导航往返后正常延后任务，再响应停止；队列保留 cancelled、断点 completed 为空。后续抓帧确认主页且不在图，用户配置逐字节不变。它不证明领取或其他调度任务完成，见[调度证据](archive/reports/scheduler-evidence.md)。
 
 真机事实由[结果审计](archive/reports/result-evidence.md)和[队列审计](archive/reports/queue-evidence.md)生成；
 识别覆盖见[识别总账](archive/reports/status.md)。历史轮次和性能调查见[归档](archive/README.md)。

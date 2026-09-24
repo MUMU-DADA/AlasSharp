@@ -1,0 +1,22 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/live-20260925-scheduler-after/artifacts/20260925T043232",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "e77f5cb91caa3430960967c0f997fb906104b739a5a2f7305c99a1496b7c14e0",
+    "state.json": "22dd80643f7335de1fece2ce4365eba3fc040170a5bfab1b75289f4d7a0a0f80",
+    "session-log.jsonl": "ebc42c73a52fbcbc43465e1876b1aac844077c1355bd2758d7ca135bc550eb78",
+    "task-scheduler-after.json": "5c03edad1badab101768ce43a4993c23ab807e93cce8fbafa66c7545b9dd5f96"
+  },
+  "files": {
+    "queue.json": "466043ff9e4bd2bb530c57067510350cafc58a3d18a9dd61f15acb80d86954ab",
+    "state.json": "a38e0038c5ac3df0af515762b55c0ccf852b3a49f5cfd6f8548821db05942d69",
+    "session-log.jsonl": "9e4cbda93842d32f25431c02266db4ffd53b2dbc1fbc4742a3b6732d6d8b6c5f",
+    "task-scheduler-after.json": "510c6fc055943e6b5d897b906d479e727686f49b98d5a5b438f259c6dee656a7"
+  }
+}

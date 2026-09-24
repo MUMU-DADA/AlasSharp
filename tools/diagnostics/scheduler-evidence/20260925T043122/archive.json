@@ -1,0 +1,30 @@
+{
+  "schema": "scheduler-boundary-evidence/1",
+  "source": "data/mainline-device/live-20260925-scheduler-boundary",
+  "post": "data/mainline-device/live-20260925-scheduler-after/artifacts/20260925T043232/task-scheduler-after.json",
+  "redactions": [
+    "Account and diagnostic configurations reduced to collection flags and Reward scheduling timestamps.",
+    "Device identifiers and absolute paths removed; original pixels and full logs remain local.",
+    "Native logs reduced to ordered page arrivals, task completion, and observed stop events; source hashes retained.",
+    "Queue cancellation, native dispatch verdicts and timing remain unchanged; no reward or campaign completion inferred."
+  ],
+  "source_files_sha256": {
+    "data/mainline-device/live-20260925-scheduler-boundary/artifacts/20260925T043122/queue.json": "96b76064a540b2801ea27882e867a4e1f760f31c58468b5a687fe2f03080a47f",
+    "data/mainline-device/live-20260925-scheduler-boundary/artifacts/20260925T043122/task-native-scheduler-boundary.json": "c359d2260cb3c85991741acfe6c28267c6b728825297eb7e99b34ea9cc424fe5",
+    "data/mainline-device/live-20260925-scheduler-boundary/artifacts/20260925T043122/scheduler-8632f992fc9d4b02b07613df3f1d74f5/dispatch-000001.json": "1e8a8d18b29a2fc7928d8aae2a596accb9ef37e13a1098a67773a01e26f505f6",
+    "data/mainline-device/live-20260925-scheduler-boundary/artifacts/20260925T043122/scheduler-8632f992fc9d4b02b07613df3f1d74f5/native-log.jsonl": "88685d19ce16a26f3c872adf88265d0a32cf1f8c248f609e9d82a53018c5d3cb",
+    "data/mainline-device/live-20260925-scheduler-boundary/artifacts/20260925T043122/scheduler-8632f992fc9d4b02b07613df3f1d74f5/logs.json": "8513d71d3a0ebb261ed04ec352fc5e4c465336ac379b7919253541fc2cc740a6",
+    "data/mainline-device/live-20260925-scheduler-boundary/artifacts/20260925T043122/scheduler-8632f992fc9d4b02b07613df3f1d74f5/state.json": "736993aed188d138599a672ffbcfaf1d787569e6224dd08d61d6b74c1e940014",
+    "data/mainline-device/live-20260925-scheduler-boundary/artifacts/20260925T043122/state.json": "b21f7a89195636b71fe0fe26dcfdd9e646277217e2f876d20faf1da37b6d94b2",
+    "data/mainline-device/live-20260925-scheduler-boundary/artifacts/20260925T043122/session-log.jsonl": "819018e6f8c42f44a066e4da8569557cfb59fa2a7acaaa09137aa2d875b1e7d0",
+    "data/mainline-device/live-20260925-scheduler-boundary/validation-config-before.json": "c37711f49599535efb7e0f0ebad7adebe70bf5d777ae7216065a022e206a4125",
+    "data/mainline-device/live-20260925-scheduler-boundary/validation-config-after.json": "74207ce7fae42309fa64b7aa51f9df5c8f1e0304f1a1822be442c720f1cd2b69",
+    "data/mainline-device/live-20260925-scheduler-boundary/account-config-before.json": "0248b0ab4ab0c6f3c42116ece46ac7906c7ef86939456c5f5ea273df7943c41f",
+    "data/mainline-device/live-20260925-scheduler-boundary/account-config-after.json": "0248b0ab4ab0c6f3c42116ece46ac7906c7ef86939456c5f5ea273df7943c41f",
+    "data/mainline-device/live-20260925-scheduler-boundary/verification.json": "4a69f16576b7ab4f96f17389bcf5f02901a1c98765225010dc98381bd6495af2",
+    "data/mainline-device/live-20260925-scheduler-boundary/stop.request": "e340528e22fca95d0acd17658195975531e86fe4882faa48c3081c1f0d9397b0",
+    "data/mainline-device/live-20260925-scheduler-boundary/artifacts/20260925T043122/scheduler-8632f992fc9d4b02b07613df3f1d74f5/stop.request": "6c45cb72a36e63d522aa54ed8adbd7a29a989474f2f77e0458af8800564ef3cb",
+    "data/mainline-device/live-20260925-scheduler-after/artifacts/20260925T043232/task-scheduler-after.json": "5c03edad1badab101768ce43a4993c23ab807e93cce8fbafa66c7545b9dd5f96"
+  },
+  "proof_sha256": "cc80f0f9982a40a5c6088d15f175aefbd360cb596e7a18477f9b000775366ecf"
+}

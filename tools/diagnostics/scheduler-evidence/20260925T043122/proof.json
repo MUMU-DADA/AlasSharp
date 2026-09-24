@@ -1,0 +1,213 @@
+{
+  "queue": {
+    "outcome": "cancelled",
+    "dry_run": false,
+    "stopped_early": true,
+    "stop_reason": "cancelled",
+    "elapsed_s": 4.7,
+    "host_start_count": 1,
+    "device_configure_count": 1,
+    "tasks": [
+      {
+        "id": "native-scheduler-boundary",
+        "kind": "scheduler_run",
+        "required": true,
+        "input": {
+          "instance": "validation_scheduler_20260925",
+          "allow_actions": true,
+          "confirm": "validation_scheduler_20260925"
+        },
+        "outcome": "skipped",
+        "error_kind": "cancelled",
+        "error": "调度器已在上游边界响应停止请求，已执行任务见工件",
+        "elapsed_s": 4.7,
+        "artifact": "<project>/data/mainline-device/live-20260925-scheduler-boundary/artifacts/20260925T043122/task-native-scheduler-boundary.json"
+      }
+    ]
+  },
+  "task": {
+    "id": "native-scheduler-boundary",
+    "kind": "scheduler_run",
+    "required": true,
+    "input": {
+      "instance": "validation_scheduler_20260925",
+      "allow_actions": true,
+      "confirm": "validation_scheduler_20260925"
+    },
+    "outcome": "skipped",
+    "error_kind": "cancelled",
+    "error": "调度器已在上游边界响应停止请求，已执行任务见工件",
+    "stop_reason": "cancelled",
+    "elapsed_s": 4.7,
+    "boundary_state": {
+      "available": false,
+      "server": "cn",
+      "pages": null,
+      "in_map": null,
+      "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+    },
+    "unmet_preconditions": [],
+    "evidence": {
+      "instance": "validation_scheduler_20260925",
+      "constructed": true,
+      "ran": true,
+      "dispatch_count": 1,
+      "failed_dispatches": 0,
+      "decision": "stopped",
+      "failure_frames": [],
+      "stop_observed": true,
+      "elapsed_s": 4.444,
+      "artifacts": "scheduler-8632f992fc9d4b02b07613df3f1d74f5"
+    }
+  },
+  "dispatches": [
+    {
+      "sequence": 1,
+      "instance": "validation_scheduler_20260925",
+      "method": "reward",
+      "scheduler_command": "Reward",
+      "started_at": "2026-09-24T20:31:24.454820+00:00",
+      "native_success": true,
+      "returned": true,
+      "finished_at": "2026-09-24T20:31:27.241201+00:00"
+    }
+  ],
+  "scheduler_state": {
+    "instance": "validation_scheduler_20260925",
+    "phase": "stopped",
+    "dispatch_count": 1,
+    "failed_dispatches": 0,
+    "updated_at": "2026-09-24T20:31:27.251190+00:00",
+    "pending": [
+      {
+        "name": "Reward",
+        "next_run": "2026-09-25 04:29:22"
+      }
+    ],
+    "waiting": [
+      {
+        "name": "Restart",
+        "next_run": "2026-09-25 06:31:22"
+      },
+      {
+        "name": "Commission",
+        "next_run": "2026-09-25 06:31:22"
+      },
+      {
+        "name": "Research",
+        "next_run": "2026-09-25 06:31:22"
+      }
+    ],
+    "resources": [],
+    "observed_at": "2026-09-24T20:31:27.243012+00:00",
+    "error": null,
+    "stop_observed": true
+  },
+  "resume_state": {
+    "completed": {},
+    "updated": "2026-09-25T04:31:27+08:00"
+  },
+  "session": {
+    "starts": 1,
+    "devices": 1,
+    "releases": 1,
+    "allow_actions": true,
+    "read_only_device": false
+  },
+  "log_cursor": 51,
+  "native_log_count": 51,
+  "events": [
+    {
+      "id": 41,
+      "time": "2026-09-24T20:31:26.397830+00:00",
+      "message": "Page arrive: page_reward"
+    },
+    {
+      "id": 45,
+      "time": "2026-09-24T20:31:27.224418+00:00",
+      "message": "Page arrive: page_main"
+    },
+    {
+      "id": 49,
+      "time": "2026-09-24T20:31:27.246551+00:00",
+      "message": "Scheduler: End task `Reward`"
+    },
+    {
+      "id": 50,
+      "time": "2026-09-24T20:31:27.248295+00:00",
+      "message": "Update event detected"
+    }
+  ],
+  "collection_flags": {
+    "before": {
+      "CollectOil": false,
+      "CollectCoin": false,
+      "CollectExp": false,
+      "CollectMission": false,
+      "CollectWeeklyMission": false
+    },
+    "after": {
+      "CollectOil": false,
+      "CollectCoin": false,
+      "CollectExp": false,
+      "CollectMission": false,
+      "CollectWeeklyMission": false
+    }
+  },
+  "reward_next_run": {
+    "before": "2026-09-25 04:29:22",
+    "after": "2026-09-25 07:18:54"
+  },
+  "account_config_unchanged": true,
+  "verification": {
+    "exit_code": 0,
+    "stop_reason": "reward_dispatch_started",
+    "product_base_commit": "4536e32"
+  },
+  "post_state": {
+    "id": "scheduler-after",
+    "kind": "account_state",
+    "required": true,
+    "input": {
+      "capture": true
+    },
+    "outcome": "succeeded",
+    "error_kind": "none",
+    "error": null,
+    "stop_reason": null,
+    "elapsed_s": 2.9,
+    "boundary_state": {
+      "available": false,
+      "server": "cn",
+      "pages": null,
+      "in_map": null,
+      "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+    },
+    "unmet_preconditions": [],
+    "evidence": {
+      "server": "cn",
+      "pages": [
+        "page_main",
+        "page_main_white"
+      ],
+      "page_errors": [],
+      "in_map": false,
+      "in_map_error": null,
+      "in_map_tolerance": 95.02,
+      "frame": {
+        "available": true,
+        "path": null,
+        "shape": [
+          720,
+          1280,
+          3
+        ]
+      },
+      "source": "device_capture",
+      "campaign": null,
+      "config": "<redacted-account-config>",
+      "config_name": "<redacted-account-config>",
+      "config_error": null
+    }
+  }
+}

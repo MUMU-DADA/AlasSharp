@@ -1,0 +1,24 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 2.9,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "scheduler-after",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 2.9,
+      "artifact": "<project>/data/mainline-device/live-20260925-scheduler-after/artifacts/20260925T043232/task-scheduler-after.json"
+    }
+  ]
+}

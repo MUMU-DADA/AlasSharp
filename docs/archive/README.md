@@ -11,7 +11,7 @@
 | --- | --- |
 | 总览与页面 | [识别总账](reports/status.md)、[页面命中](reports/page-verification.md)、[历史回归](reports/regression.md) |
 | 全量原生规则 | [关卡/素材/页面/导航/控件/调度](reports/upstream-coverage.md)、[原生入口边界](reports/native-campaign-entry.md) |
-| 实际结果 | [战役结果审计](reports/result-evidence.md)、[队列工件审计](reports/queue-evidence.md) |
+| 实际结果 | [战役结果审计](reports/result-evidence.md)、[队列工件审计](reports/queue-evidence.md)、[调度边界停止](reports/scheduler-evidence.md) |
 | 识别与控制 | [地图](reports/map-detection.md)、[地图 IR](reports/map-ir.md)、[控件](reports/controls.md)、[原语](reports/primitives.md)、[文本输入](reports/text-input.md) |
 | 判据对照 | [特异性](reports/specificity.md)、[合成正对照](reports/positive-control.md)、[阈值扫描](reports/button-threshold-sweep.md) |
 | 迁移调查 | [钩子覆盖](reports/r3-candidates.md)、[形态](reports/r3-hook-shapes.md)、[地图初始化](reports/r3-map-data-init.md)、[调用词表](reports/s3-plan-vocabulary.md) |
