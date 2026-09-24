@@ -122,6 +122,11 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 `verify_runtime.py` 覆盖通用队列、导航和观测；各域由 `verify_account_state.py`、`verify_os_state.py`、
 `verify_os_action.py`、`verify_event_state.py`、`verify_task_catalog.py`、`verify_task_schedule.py`、
 `verify_config_get.py`、`verify_periodic_plan.py`、`verify_native_tools.py` 等离线检查覆盖。
+`verify_native_dispatch_catalog.py` 从原生参数和工具目录发现全部入口，使用真实 ConfigUpdater、配置绑定、
+`AzurLaneAutoScript.run()` 与任务方法，对照领域签名和 AST 核对调用参数；每个入口覆盖正常返回、普通 False、
+TaskEnd 和重试异常，并验证原生 Restart 配置写入、设备恢复及失败证据隔离。
+领域类/函数和设备是离线替身，配置来自默认值并限制在临时目录，不读取账号配置；
+它不验证领域构造器或内部流程，不把调度通过当作业务完成，见[全量分派报告](archive/reports/native-dispatch.md)。
 `verify_native_scheduler.py` 对真实原生循环使用合成依赖；`verify_scheduler_control.py` 验证 Core 接单、常驻宿主、停止、关闭及工件。
 `verify_native_runtime_compat.py` 为三种执行入口分别启动新进程，验证真实上游数值计算、拒绝路径和全清选项隔离。
 地图故障边界由 `verify_map_detect_failures.py` 验证。
