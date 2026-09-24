@@ -1,4 +1,5 @@
-<ResourceDictionary xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<ResourceDictionary xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Alas.UI.Styles.Themes.ClassicLight">
   <!-- AzurPilot 上游主题值 "light"（skin=classic，colorMode=light）的 Avalonia 令牌。由 .runtime/ui-reference/tokens 的 CSS 自定义属性计算值逐条转换。 -->
   <SolidColorBrush x:Key="AlasBgBrush" Color="#FFF5F5F7" />
   <SolidColorBrush x:Key="AlasSurfaceBrush" Color="#FFFFFFFF" />
@@ -103,7 +104,9 @@
   <CornerRadius x:Key="AlasControlRadius">10</CornerRadius>
   <CornerRadius x:Key="AlasButtonRadius">20</CornerRadius>
   <CornerRadius x:Key="AlasInstanceTabRadius">999</CornerRadius>
-  <CornerRadius x:Key="AlasSchedulerRadius">18</CornerRadius>
+  <CornerRadius x:Key="AlasSchedulerRadius">12</CornerRadius>
+  <!-- 右栏队列分组圆角：上游 apple.css:60 的 18（此前与调度器共用同一个键） -->
+  <CornerRadius x:Key="AlasRailGroupRadius">18</CornerRadius>
   <CornerRadius x:Key="AlasTaskItemRadius">13</CornerRadius>
   <CornerRadius x:Key="AlasNavItemRadius">12</CornerRadius>
   <x:Double x:Key="AlasSidebarWidth">232</x:Double>

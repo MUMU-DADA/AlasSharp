@@ -68,14 +68,20 @@
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:PaletteOption">
                     <Border Classes="palette-swatch" Padding="6" CornerRadius="10" Width="64">
-                      <StackPanel Spacing="4">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
+                      <!-- 上游 .palette-swatch { display:inline-flex; flex-shrink:0; gap:2px }：色块间距 2，不是 4 -->
+                      <StackPanel Spacing="2">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
                           <Border Width="22" Height="22" CornerRadius="6" Background="{Binding AccentBrush}" />
                           <Border Width="22" Height="22" CornerRadius="6" Background="{Binding SecondaryBrush}" />
                         </StackPanel>
                         <Button Theme="{StaticResource TextButtonTheme}" FontSize="11" Padding="0"
                                 Content="编辑" IsVisible="{Binding IsCustom}"
                                 Command="{Binding $parent[UserControl].((vm:InterfaceSettingsViewModel)DataContext).EditPaletteCommand}"
+                                CommandParameter="{Binding}" />
+                        <!-- 上游 settings.deletePalette =「删除方案」；此前 DeletePaletteCommand 没有界面入口 ✗ -->
+                        <Button x:Name="PaletteDeleteButton" Theme="{StaticResource TextButtonTheme}" FontSize="11" Padding="0"
+                                Content="删除方案" IsVisible="{Binding IsCustom}"
+                                Command="{Binding $parent[UserControl].((vm:InterfaceSettingsViewModel)DataContext).DeletePaletteCommand}"
                                 CommandParameter="{Binding}" />
                       </StackPanel>
                     </Border>

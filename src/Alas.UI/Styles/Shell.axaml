@@ -452,7 +452,7 @@
   <Style Selector="Border.rail-group">
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="BorderBrush" Value="{DynamicResource AlasRailGroupBorderBrush}" />
-    <Setter Property="CornerRadius" Value="{DynamicResource AlasSchedulerRadius}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource AlasRailGroupRadius}" />
     <Setter Property="Background" Value="{DynamicResource AlasRailPendingBgBrush}" />
   </Style>
   <Style Selector="Border.rail-group.running">

@@ -1,4 +1,5 @@
-<ResourceDictionary xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<ResourceDictionary xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Alas.UI.Styles.Themes.ExtremeLight">
   <!-- AzurPilot 上游主题值 "extreme"（skin=minimal，colorMode=light）的 Avalonia 令牌。由 .runtime/ui-reference/tokens 的 CSS 自定义属性计算值逐条转换。 -->
   <SolidColorBrush x:Key="AlasBgBrush" Color="#FFF0F3F9" />
   <SolidColorBrush x:Key="AlasSurfaceBrush" Color="#FFFFFFFF" />
@@ -104,6 +105,7 @@
   <CornerRadius x:Key="AlasButtonRadius">0</CornerRadius>
   <CornerRadius x:Key="AlasInstanceTabRadius">999</CornerRadius>
   <CornerRadius x:Key="AlasSchedulerRadius">0</CornerRadius>
+  <CornerRadius x:Key="AlasRailGroupRadius">0</CornerRadius>
   <CornerRadius x:Key="AlasTaskItemRadius">0</CornerRadius>
   <CornerRadius x:Key="AlasNavItemRadius">0</CornerRadius>
   <x:Double x:Key="AlasSidebarWidth">178</x:Double>

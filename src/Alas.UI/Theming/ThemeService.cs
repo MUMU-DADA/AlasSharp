@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Styling;
 
@@ -47,12 +46,12 @@ public sealed class ThemeService
     // 皮肤字典挂在 Application.Resources 上，是**应用级**状态：多个 ThemeService 实例
     // （外壳、预览页、离屏验收各建一个）必须共用同一份引用，否则每次切换都会把上一份留在
     // MergedDictionaries 里累积（后合并者优先所以不炸，但会越积越多）。
-    private static ResourceInclude? _skin;
+    private static ResourceDictionary? _skin;
     private static ResourceDictionary? _palette;
+    private static string? _skinName;
 
     /// <summary>当前生效的皮肤字典名（如 Classic.Light）；没有合并任何皮肤时为 null。</summary>
-    public static string? MergedSkinName =>
-        _skin?.Source?.ToString() is { } uri ? uri[(uri.LastIndexOf('/') + 1)..] : null;
+    public static string? MergedSkinName => _skinName;
 
     public ThemeService(IThemeStore store)
     {
@@ -89,8 +88,10 @@ public sealed class ThemeService
             if (_skin is not null) resources.MergedDictionaries.Remove(_skin);
             if (_palette is not null) resources.MergedDictionaries.Remove(_palette);
 
-            var uri = new Uri(UiThemes.ResourceUri(normalized.Theme, dark));
-            _skin = new ResourceInclude(uri) { Source = uri };
+            // 皮肤字典用编译期 XAML 类型实例化（不用运行时 ResourceInclude(uri)）：
+            // 后者依赖 AvaloniaXamlLoader 动态加载程序集资源，裁剪/ AOT 下会丢资源（IL2026）。
+            _skin = SkinDictionary(normalized.Theme, dark);
+            _skinName = UiThemes.ResourceName(normalized.Theme, dark);
             resources.MergedDictionaries.Add(_skin);
 
             // 简约/紧凑皮肤的配色由用户选择决定；经典/旧版皮肤的强调色写死在皮肤里（上游同此）。
@@ -113,6 +114,23 @@ public sealed class ThemeService
 
         Changed?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>
+    /// 按主题与明暗返回编译期 XAML 字典实例。刻意不用 ResourceInclude(uri)：
+    /// 那会走 AvaloniaXamlLoader 动态加载，裁剪/ AOT 下资源可能被裁掉（IL2026）。
+    /// </summary>
+    private static ResourceDictionary SkinDictionary(UiTheme theme, bool dark) =>
+        UiThemes.ResourceName(theme, dark) switch
+        {
+            "Classic.Light" => new Styles.Themes.ClassicLight(),
+            "Classic.Dark" => new Styles.Themes.ClassicDark(),
+            "Minimal.Light" => new Styles.Themes.MinimalLight(),
+            "Minimal.Dark" => new Styles.Themes.MinimalDark(),
+            "Extreme.Light" => new Styles.Themes.ExtremeLight(),
+            "Extreme.Dark" => new Styles.Themes.ExtremeDark(),
+            "Legacy.Light" => new Styles.Themes.LegacyLight(),
+            _ => new Styles.Themes.LegacyDark(),
+        };
 
     private static ResourceDictionary BuildPalette(PaletteColors colors)
     {

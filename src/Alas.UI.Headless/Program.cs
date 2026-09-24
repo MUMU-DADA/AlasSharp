@@ -30,6 +30,7 @@ internal static class Program
         Directory.CreateDirectory(output);
         try
         {
+            ThemePreferenceChecks.Verify();
             await TaskEditorChecks.Verify();
             await CoreUiBackendChecks.Verify();
             // Dispatch may complete inline on its own worker. Async disposal lets that worker
@@ -151,8 +152,7 @@ internal static class Program
             // 切到简约：应换 Minimal 皮肤字典、显示配色偏好、隐藏背景偏好。
             settings.SelectedThemeId = "minimal";
             Pump();
-            Check(Application.Current!.Resources.MergedDictionaries.OfType<ResourceInclude>()
-                    .Any(include => include.Source?.ToString().EndsWith("/Themes/Minimal.Light.axaml", StringComparison.Ordinal) == true),
+            Check(Application.Current!.Resources.MergedDictionaries.OfType<Alas.UI.Styles.Themes.MinimalLight>().Count() == 1,
                 "selecting minimal merges the Minimal.Light dictionary");
             Check(settings.ShowPalettePreferences && !settings.ShowBackgroundPreferences,
                 "minimal shows palette preferences and hides the background row");
@@ -187,8 +187,13 @@ internal static class Program
             Check(settings.Palettes.Count == 6 && settings.SelectedPaletteId == "custom:test-palette",
                 "saved custom palette is selected");
             Check(model.Theme.Preference.CustomPalettes.Count == 1, "custom palette is persisted in the preference");
-            var custom = settings.Palettes[^1];
-            settings.DeletePaletteCommand.Execute(custom);
+            var deletePalette = view.GetVisualDescendants().OfType<Button>().Single(button =>
+                button.Name == "PaletteDeleteButton"
+                && button.DataContext is PaletteOption { Id: "custom:test-palette" });
+            deletePalette.BringIntoView();
+            Pump();
+            Check(deletePalette.IsEffectivelyVisible, "custom palette has a visible delete action");
+            Click(window, deletePalette);
             Pump();
             Check(settings.Palettes.Count == 5 && settings.SelectedPaletteId == "ocean",
                 "deleting the selected custom palette falls back to ocean");
@@ -259,8 +264,9 @@ internal static class Program
                 Check(model.IsDark == expectDark, $"{id} resolves dark={expectDark}");
                 Check(Application.Current!.RequestedThemeVariant == (expectDark ? ThemeVariant.Dark : ThemeVariant.Light),
                     $"{id} sets the matching variant");
-                Check(Application.Current!.Resources.MergedDictionaries.OfType<ResourceInclude>()
-                        .Any(include => include.Source?.ToString().EndsWith($"/Themes/{expected}.axaml", StringComparison.Ordinal) == true),
+                var skins = Application.Current!.Resources.MergedDictionaries
+                    .Where(dictionary => dictionary.GetType().Namespace == "Alas.UI.Styles.Themes").ToArray();
+                Check(skins.Length == 1 && skins[0].GetType().Name == expected.Replace(".", ""),
                     $"{id} merges the {expected} dictionary");
                 Check(model.IsLegacyLayout == (UiThemes.SkinOf(theme) == UiSkin.Legacy), $"{id} legacy layout flag");
                 Check(model.IsExtremeLayout == (theme == UiTheme.Extreme), $"{id} extreme layout flag");

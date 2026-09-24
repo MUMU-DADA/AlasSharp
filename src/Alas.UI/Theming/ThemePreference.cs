@@ -1,11 +1,14 @@
+using System.Buffers;
+using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Alas.UI.Theming;
 
 /// <summary>
 /// 界面主题偏好：对应上游同时写入 localStorage 的四个键
 /// （azurpilot.theme / azurpilot.palette / azurpilot.color-mode / azurpilot.custom-palettes）。
+/// JSON 读写刻意手写（Utf8JsonWriter / JsonDocument，两者都是裁剪安全的），
+/// 不使用反射序列化 —— 那会在 WASM 裁剪时触发 IL2026 警告并可能丢类型。
 /// </summary>
 public sealed record ThemePreference(
     UiTheme Theme,
@@ -15,12 +18,6 @@ public sealed record ThemePreference(
 {
     public static ThemePreference Default { get; } =
         new(UiTheme.Light, "ocean", UiColorMode.Auto, Array.Empty<UiPalette>());
-
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        WriteIndented = false,
-    };
 
     /// <summary>把越界输入夹回上游允许的范围：配色 id 与颜色格式非法、超过 32 个都按丢弃处理。</summary>
     public ThemePreference Normalize()
@@ -42,35 +39,71 @@ public sealed record ThemePreference(
     private static bool IsUsable(PaletteColors colors) =>
         UiPalettes.IsValidColor(colors.Accent) && UiPalettes.IsValidColor(colors.Secondary);
 
-    public string ToJson() => JsonSerializer.Serialize(new Persisted(
-        Theming.UiThemes.ToId(Theme), Palette, ColorMode.ToString().ToLowerInvariant(),
-        (CustomPalettes ?? Array.Empty<UiPalette>()).Select(item => new PersistedPalette(
-            item.Id,
-            new PersistedColors(item.Light.Accent, item.Light.Secondary, item.Light.AccentHover, item.Light.AccentSoft, item.Light.SecondarySoft, item.Light.OnAccent),
-            new PersistedColors(item.Dark.Accent, item.Dark.Secondary, item.Dark.AccentHover, item.Dark.AccentSoft, item.Dark.SecondarySoft, item.Dark.OnAccent))).ToArray()), Options);
+    public string ToJson()
+    {
+        var buffer = new ArrayBufferWriter<byte>(512);
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("theme", UiThemes.ToId(Theme));
+            writer.WriteString("palette", Palette);
+            writer.WriteString("colorMode", ColorMode.ToString().ToLowerInvariant());
+            writer.WriteStartArray("customPalettes");
+            foreach (var item in CustomPalettes ?? Array.Empty<UiPalette>())
+            {
+                writer.WriteStartObject();
+                writer.WriteString("id", item.Id);
+                WriteColors(writer, "light", item.Light);
+                WriteColors(writer, "dark", item.Dark);
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
+    private static void WriteColors(Utf8JsonWriter writer, string name, PaletteColors colors)
+    {
+        writer.WriteStartObject(name);
+        writer.WriteString("accent", colors.Accent);
+        writer.WriteString("secondary", colors.Secondary);
+        writer.WriteString("accentHover", colors.AccentHover);
+        writer.WriteString("accentSoft", colors.AccentSoft);
+        writer.WriteString("secondarySoft", colors.SecondarySoft);
+        writer.WriteString("onAccent", colors.OnAccent);
+        writer.WriteEndObject();
+    }
 
     public static ThemePreference FromJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return Default;
         try
         {
-            var persisted = JsonSerializer.Deserialize<Persisted>(json, Options);
-            if (persisted is null) return Default;
-            if (!UiThemes.TryParse(persisted.Theme, out var theme)) theme = UiTheme.Light;
-            var mode = persisted.ColorMode switch
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return Default;
+            if (!UiThemes.TryParse(ReadString(root, "theme"), out var theme)) theme = UiTheme.Light;
+            var mode = ReadString(root, "colorMode") switch
             {
                 "light" => UiColorMode.Light,
                 "dark" => UiColorMode.Dark,
                 _ => UiColorMode.Auto,
             };
             var custom = new List<UiPalette>();
-            foreach (var item in persisted.CustomPalettes ?? Array.Empty<PersistedPalette>())
+            if (TryReadProperty(root, "customPalettes", out var palettes) && palettes.ValueKind == JsonValueKind.Array)
             {
-                custom.Add(new UiPalette(item.Id, item.Id,
-                    ToColors(item.Light, item.Primary, item.Secondary),
-                    ToColors(item.Dark, item.Primary, item.Secondary)));
+                foreach (var item in palettes.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object) continue;
+                    var id = ReadString(item, "id");
+                    if (string.IsNullOrEmpty(id)) continue;
+                    custom.Add(new UiPalette(id, id,
+                        ReadColors(item, "light"),
+                        ReadColors(item, "dark")));
+                }
             }
-            return new ThemePreference(theme, persisted.Palette ?? "ocean", mode, custom).Normalize();
+            return new ThemePreference(theme, ReadString(root, "palette") ?? "ocean", mode, custom).Normalize();
         }
         catch (JsonException)
         {
@@ -78,27 +111,39 @@ public sealed record ThemePreference(
         }
     }
 
-    private static PaletteColors ToColors(PersistedColors? colors, string? primary, string? secondary)
+    private static string? ReadString(JsonElement element, string name) =>
+        TryReadProperty(element, name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static bool TryReadProperty(JsonElement element, string name, out JsonElement value)
     {
-        var accent = colors?.Accent ?? primary ?? "#245DBE";
-        var second = colors?.Secondary ?? secondary ?? "#13777C";
+        value = default;
+        if (element.ValueKind != JsonValueKind.Object) return false;
+        // Earlier releases wrote PascalCase record properties. Prefer the new
+        // canonical key if both forms occur, without reflection-based metadata.
+        return element.TryGetProperty(name, out value)
+            || element.TryGetProperty(char.ToUpperInvariant(name[0]) + name[1..], out value);
+    }
+
+    /// <summary>保留旧 C# 模式颜色及上游 primary/secondary 配色格式。</summary>
+    private static PaletteColors ReadColors(JsonElement parent, string name)
+    {
+        TryReadProperty(parent, name, out var colors);
+        TryReadProperty(parent, "light", out var legacyLight);
+        // Upstream readCustomPalettes also accepts { light: { primary, secondary } }
+        // as one brand-color pair for both modes. Explicit per-mode colors win.
+        var primary = ReadString(colors, "primary") ?? ReadString(parent, "primary")
+            ?? ReadString(legacyLight, "primary");
+        var secondary = ReadString(parent, "secondary") ?? ReadString(legacyLight, "secondary");
+        var accent = ReadString(colors, "accent") ?? primary ?? "#245DBE";
+        var second = ReadString(colors, "secondary") ?? secondary ?? "#13777C";
         return new PaletteColors(
             accent,
-            colors?.AccentHover ?? accent,
-            colors?.AccentSoft ?? accent,
+            ReadString(colors, "accentHover") ?? accent,
+            ReadString(colors, "accentSoft") ?? accent,
             second,
-            colors?.SecondarySoft ?? second,
-            colors?.OnAccent ?? "#FFFFFF");
+            ReadString(colors, "secondarySoft") ?? second,
+            ReadString(colors, "onAccent") ?? "#FFFFFF");
     }
-
-    private sealed record Persisted(string Theme, string? Palette, string? ColorMode, PersistedPalette[]? CustomPalettes);
-
-    private sealed record PersistedPalette(string Id, PersistedColors? Light, PersistedColors? Dark)
-    {
-        // 兼容上游旧格式 {id, light:{primary,secondary}}：缺少细项时由 ToColors 回填。
-        public string? Primary { get; init; }
-        public string? Secondary { get; init; }
-    }
-
-    private sealed record PersistedColors(string? Accent, string? Secondary, string? AccentHover, string? AccentSoft, string? SecondarySoft, string? OnAccent);
 }

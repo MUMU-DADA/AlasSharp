@@ -2,7 +2,7 @@
 
 目标：尽量共享 C# 界面代码，覆盖原生桌面、远程网页和纯服务器模式，外观接近 AzurPilot。
 **桌面不能使用浏览器壳或 WebView 承载主要 UI。首选候选为 Avalonia，备选为 Uno Skia；服务使用 ASP.NET Core 10 / Kestrel。**
-已接通共享界面和桌面/WASM 构建入口，原 React/Electron 方向已撤销。当前使用模拟数据，尚未连接服务或设备。
+已接通共享界面和桌面/WASM 构建入口。任务配置、实例、报告及调度启停已通过能力接口接入 Core；其余页面按功能切片验收，演示数据仅用于离线预览。完整状态见[路线](architecture-roadmap.md)。
 
 ## 方案比较
 
@@ -20,20 +20,21 @@
 
 ```mermaid
 flowchart LR
-  Shared[共享 AXAML / ViewModel / 主题 / API 客户端] --> Desktop[Avalonia 原生桌面]
+  Shared[共享 AXAML / ViewModel / 主题 / 能力接口] --> Desktop[Avalonia 原生桌面]
   Shared --> Browser[Avalonia WebAssembly 网页]
-  Desktop --> API[Kestrel API 与事件流]
-  Browser --> API
-  API --> Runtime[Alas.Core/Runtime]
+  Desktop --> Runtime[Alas.Core/Runtime]
+  Browser --> Client[HTTP 客户端]
+  Client --> API[Kestrel API 与事件流]
+  API --> Runtime
   Runtime --> Engine[上游 Python 与设备后端]
 ```
 
 - `Alas.UI` 保存共享界面、交互、主题和客户端状态；`Alas.Contracts` 保存传输信封，`Alas.Client` 提供 HTTP 客户端，两者不引用设备或 Python 实现。
-- `UI.Desktop` 负责窗口、托盘、文件选择及本机服务生命周期；既能连接本机，也能连接远程服务。
+- `UI.Desktop` 负责窗口、平台文件能力及同进程 Core 生命周期；业务调用不经过本机 HTTP 中转。
 - `UI.Browser` 使用同一共享界面；文件、剪贴板、下载和页面地址由浏览器适配层处理，不能直接访问服务器文件系统。
 - `Server` 独立发布，只运行 Kestrel、业务运行时和设备依赖，并托管预构建 WASM 静态文件；不启动 Avalonia 桌面、浏览器、显示服务或 Node.js。
-- 桌面和网页调用同一 API。队列、授权、停止、日志及结论留在运行时；关闭窗口或浏览器不直接终止正在执行的任务。
-- 初期用 HTTP 命令/查询与 SSE 状态推送；定义事件游标、重连、慢客户端及重复请求行为。远程开放前完成认证、HTTPS 与来源检查。
+- 桌面和网页使用相同能力合同，分别由直接调用和网络适配器实现。队列、授权、停止、日志及结论留在 Core；桌面关闭通过 Core 等待上游停止边界，浏览器断开不停止服务端任务。
+- 网页用 HTTP 命令/查询；SSE 已有合同回归，尚待接入页面。远程开放前完成认证、HTTPS 与来源检查。
 
 WASM 在访问者浏览器中绘制界面，服务端不按用户渲染桌面画面。这与远程桌面串流或在桌面嵌入 WebView 不同。
 浏览器无法加载现有 CPython/ADB，不能把 `Alas.Core` 整体打进 WASM；服务端事实仍按 `TaskOutcome` 和 `sortie-result/1` 展示。
@@ -74,8 +75,8 @@ Linux/macOS 需补对应 libpython 和依赖布局；x64/ARM64 还需匹配 Pyth
 ## 原型与无窗口验证
 
 `Alas.UI.slnx` 独立于 CLI 方案，使用 Avalonia 12.1.3、.NET 10。
-`Alas.UI` 的同一 AXAML/样式/ViewModel 供 Desktop 与 Browser 引用，已实现导航、总览、明暗主题、JSON 文本编辑和虚拟化日志。
-图表为共享绘制的固定演示序列；JSON 检查只检查顶层结构，不代表服务端校验或任务运行。中文字体内置 Noto CJK 2.004（OFL），来源见字体目录。
+`Alas.UI` 的同一 AXAML/样式/ViewModel 供 Desktop 与 Browser 引用。已集成页面及剩余功能统一记在迁移路线；离线演示和真实 Core 数据必须明确区分。中文字体内置 Noto CJK 2.004（OFL），来源见字体目录。
+主题使用编译期类型化资源字典，偏好使用无反射 JSON 读写；升级兼容旧版 PascalCase 字段与自定义配色。Headless 覆盖主题切换、偏好往返和自定义配色删除，不据此宣称全部主题布局均已与上游一致。
 
 Windows + PowerShell 7 的构建入口（不会启动桌面或浏览器窗口）：
 
@@ -97,7 +98,7 @@ SDK 固定为 10.0.401，依赖保存在 `.runtime/dotnet`、`.runtime/nuget`，
 本地控制 API 已迁入 `Alas.Server` 的 Kestrel；既可由 `alashub control` 启动，也可由独立 `Alas.Server`
 进程启动。独立入口可用 `--ui-root` 同源托管预构建 WASM，仍只监听回环并沿用 Host/Origin/令牌校验；
 静态托管不提供远程认证或 HTTPS。编排收口至 `Alas.Core/Runtime/ControlWorkspace`，合同见[运行时](runtime.md)。
-共享 HTTP 客户端及 SSE 完整状态快照流已通过真实服务离线回归，尚未接入 UI；快照有游标、重连基准和慢订阅合并，不承诺审计事件重放。
+共享 HTTP 客户端已接入网页适配器；SSE 完整状态快照流通过真实服务离线回归，页面目前轮询运行状态。快照有游标、重连基准和慢订阅合并，不承诺审计事件重放。
 独立服务入口和选定 UI 根目录的 HTTP/MIME/路径隔离已有无窗口回归；`tools/publish_server.ps1`
 可生成指定 RID 的服务器并可复制预构建网页。WASM 实际浏览器加载、远程认证、HTTPS、Python/设备依赖
 随包布局及其他平台/架构仍待实现或验证。Headless 结果不能替代这些结论。状态统一见[路线](architecture-roadmap.md)。

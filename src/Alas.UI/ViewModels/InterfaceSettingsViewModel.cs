@@ -29,7 +29,8 @@ public sealed class InterfaceSettingsViewModel : System.ComponentModel.INotifyPr
         ReloadPalettes();
     }
 
-    public string Title => "界面设置";
+    /// <summary>页面标题取上游 settings.uiPreferences=界面偏好（侧栏导航项仍是 nav.interface=界面设置）。</summary>
+    public string Title => "界面偏好";
 
     public IReadOnlyList<ThemeOption> Themes { get; } =
     [
