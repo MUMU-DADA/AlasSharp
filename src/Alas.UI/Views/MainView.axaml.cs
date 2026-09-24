@@ -100,12 +100,14 @@ public partial class MainView : UserControl
         base.OnAttachedToVisualTree(e);
         if (Layout.Bounds.Width > 0) Model.UpdateViewport(Layout.Bounds.Width, Layout.Bounds.Height);
         ApplyLayout();
+        Model.Attach();
         if (!Model.IsUiOnly) _stateTimer.Start();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _stateTimer.Stop();
+        Model.Detach();
         base.OnDetachedFromVisualTree(e);
     }
 

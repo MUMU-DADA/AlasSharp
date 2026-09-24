@@ -76,7 +76,6 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         Placeholder = new PlaceholderViewModel();
         Rail = new RailViewModel(Overview, previewData);
         Instances = new ObservableCollection<string>();
-        _backend.Changed += (_, _) => ReloadBackendInstances();
         ReloadBackendInstances();
         SelectNavCommand = new PreviewCommand(parameter => SelectNav(parameter as string));
         GoHomeCommand = new PreviewCommand(_ => GoHome());
@@ -102,6 +101,36 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    private bool _attached;
+
+    /// <summary>
+    /// 挂到可视树时订阅后端变更（幂等），并补读一次实例列表以覆盖离树期间错过的变化。
+    /// 与 <see cref="Detach"/> 成对，由 <c>MainView</c> 在可视树生命周期里调用。
+    /// </summary>
+    public void Attach()
+    {
+        if (_attached) return;
+        _attached = true;
+        _backend.Changed += OnBackendChanged;
+        Home.Attach();
+        ReloadBackendInstances();
+    }
+
+    /// <summary>
+    /// 离树时退订：<c>_backend</c> 未注入时是**进程级单例** <c>DisconnectedInstanceSource.Instance</c>，
+    /// 不退订会让关闭后的外壳（以及它持有的整棵视图）永久留在单例的调用列表里。
+    /// 外壳本身不被销毁，重新挂接时 <see cref="Attach"/> 会恢复订阅，因此"临时离树"不会毁掉可复用的 VM。
+    /// </summary>
+    public void Detach()
+    {
+        if (!_attached) return;
+        _attached = false;
+        _backend.Changed -= OnBackendChanged;
+        Home.Detach();
+    }
+
+    private void OnBackendChanged(object? sender, EventArgs args) => ReloadBackendInstances();
 
     public InterfaceSettingsViewModel InterfaceSettings { get; }
     public HomeViewModel Home { get; }

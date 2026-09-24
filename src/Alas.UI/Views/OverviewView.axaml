@@ -157,9 +157,15 @@
             <Border Grid.Row="1" Classes="log-content" Margin="16,0,16,16">
               <Panel>
                 <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled" Padding="16,18">
-                  <ItemsControl x:Name="LogList" ItemsSource="{Binding VisibleLogs}">
-                    <ItemsControl.ItemTemplate>
+                              HorizontalScrollBarVisibility="Disabled" Padding="16,18" Focusable="True">
+                  <!--
+                    视口级实例化 + 按身份复用行：日志缓存上限是 400 行（上游语义），但**实现出来的控件必须随视口**
+                    而不是随上限增长（默认 StackPanel 会把 400 行全实现成上千个控件）。
+                    框架的 VirtualizingStackPanel 会在"头部淘汰"时重建整页可见控件，因此这里用只服务日志的
+                    LogViewport：行控件按数据项身份复用，只对进入/离开视口的行取用或归还池中控件。
+                  -->
+                  <controls:LogViewport x:Name="LogList" ItemsSource="{Binding VisibleLogs}">
+                    <controls:LogViewport.ItemTemplate>
                       <DataTemplate x:DataType="vm:LogLineViewModel">
                         <!-- 平台无关：横向 StackPanel 会按无限宽测量子元素，TextWrapping 永远不生效，
                              长中文日志在窄屏会被裁掉。改用 Grid 的 Auto/Auto/Auto/* 列，
@@ -173,8 +179,8 @@
                                      Margin="6,0,0,0" TextWrapping="Wrap" />
                         </Grid>
                       </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
+                    </controls:LogViewport.ItemTemplate>
+                  </controls:LogViewport>
                 </ScrollViewer>
                 <StackPanel x:Name="LogEmpty" IsVisible="{Binding !HasVisibleLogs}" VerticalAlignment="Center"
                             HorizontalAlignment="Center" Spacing="6">

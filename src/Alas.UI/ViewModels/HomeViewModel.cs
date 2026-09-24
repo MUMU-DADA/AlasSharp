@@ -202,6 +202,7 @@ public sealed class HomeViewModel : INotifyPropertyChanged
     public HomeViewModel(IInstanceSource source)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
+        _refreshable = source as IRefreshableInstanceSource;
         RetryCommand = new HomeCommand(_ => Retry());
         SelectInstanceCommand = new HomeCommand(parameter =>
         {
@@ -210,10 +211,33 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         ToggleLegacyUiCommand = new HomeCommand(_ => RequestLegacyUiToggle());
         CreateInstanceCommand = new HomeCommand(_ => _ = RequestCreateAsync(false));
         ImportInstanceCommand = new HomeCommand(_ => _ = RequestCreateAsync(true));
-        if (source is IRefreshableInstanceSource refreshable)
-            refreshable.Changed += (_, _) => Reload();
         Reload();
     }
+
+    private readonly IRefreshableInstanceSource? _refreshable;
+    private bool _attached;
+
+    /// <summary>
+    /// 挂到可视树时订阅后端变更（幂等）并补读一次。构造期只做一次读取、不订阅：
+    /// 数据源常常是进程级单例，构造即订阅会让"建过但没挂接"（也包括视图里那个占位 VM）也被永久留住。
+    /// </summary>
+    public void Attach()
+    {
+        if (_attached || _refreshable is null) return;
+        _attached = true;
+        _refreshable.Changed += OnSourceChanged;
+        Reload();
+    }
+
+    /// <summary>离树时退订。VM 依旧可复用，重新挂接时 <see cref="Attach"/> 恢复订阅。</summary>
+    public void Detach()
+    {
+        if (!_attached || _refreshable is null) return;
+        _attached = false;
+        _refreshable.Changed -= OnSourceChanged;
+    }
+
+    private void OnSourceChanged(object? sender, EventArgs args) => Reload();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

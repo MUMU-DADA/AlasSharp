@@ -59,7 +59,9 @@ public sealed class ColorField : UserControl
             Name = "ColorFieldHex",
             FontSize = 12, Width = 120, MaxLength = 7,
             // 上游用 pattern + maxLength 约束；这里保持同样的输入形态（#RRGGBB）。
-            Watermark = "#RRGGBB",
+            // Avalonia 12 已弃用 TextBox.Watermark，改用 PlaceholderText（本仓库其他输入框同样用法）：
+            // 语义一致（空文本时的提示），但不再产生 CS0618 构建警告。
+            PlaceholderText = "#RRGGBB",
         };
         Avalonia.Automation.AutomationProperties.SetName(_hex, "颜色十六进制值");
 

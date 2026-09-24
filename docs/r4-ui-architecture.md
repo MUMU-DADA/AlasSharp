@@ -95,6 +95,26 @@ ViewModel 及能力接口，但数据源替换为 `SimulatedUiBackend`；创建/
 `UiOnlyChecks` 用抛异常的真实工厂证明隔离入口不求值，并覆盖全部模拟能力、逐任务导航、真实鼠标/键盘、启停、
 宽窄布局和离树重挂接；Headless 过程未加载 Core/网络客户端。不显示真实窗口；浏览器现场和 GPU 性能仍需单独测量。
 
+### 日志性能验收
+
+`Alas.UI.Headless` 的 `--perf` 入口运行共享视图性能场景，再运行显式隔离入口；`--perf-ui-only` 只运行后者。
+可追加输出目录参数，JSON/文本报告应写入本地忽略目录。构建与测量串行执行，前后比较固定构建、入口、数据及预热过程。
+
+```powershell
+./.runtime/dotnet/dotnet.exe ./src/Alas.UI.Headless/bin/Release/net10.0/Alas.UI.Headless.dll --perf .runtime/ui-perf
+./.runtime/dotnet/dotnet.exe ./src/Alas.UI.Headless/bin/Release/net10.0/Alas.UI.Headless.dll --perf-ui-only .runtime/ui-only-perf
+```
+
+日志通过 `LogViewport` 按视口和数据项身份复用控件；滚动仍由外层原生 `ScrollViewer` 管理。
+跟随请求按帧合并，并处理变高换行、缩放、用户上滚、暂停、换模型和离树后的旧回调；
+Shell/Home 的后端订阅随可视树挂接和离开成对管理，重挂接补读状态，隔离模式仍不启动轮询。
+回归检查逐样本验证实现行数、缓存、控件回收、最新行实际可见和订阅释放，性能报告记录样本量、耗时与分配量，未设置任意耗时通过线。
+
+当前共享视图套件 22 个场景、67 项结构断言通过；显式隔离入口另有宽度 1280/390 × 跟随/暂停共 4 个场景，
+每场景预热 20 次、正式测量 20 次，通过正常内存快照消费链而非直接追加 ViewModel。
+独立串行样本中每次更新中位分配约 1.35–1.89 MB，仍有优化空间；不能与直接追加日志的样本混比，
+也不能据 Headless 推断真实窗口、浏览器或 GPU 性能。倒序暂停时头部插入的既有锚点漂移仍未修复。
+
 `Alas.UI.slnx` 独立于 CLI 方案，使用 Avalonia 12.1.3、.NET 10。
 `Alas.UI` 的同一 AXAML/样式/ViewModel 供 Desktop 与 Browser 引用。已集成页面及剩余功能统一记在迁移路线；离线演示和真实 Core 数据必须明确区分。中文字体内置 Noto CJK 2.004（OFL），来源见字体目录。
 配置管理与首页共用创建/导入表单，删除保留 revision 校验，配置导出只写 values；桌面与网页共享 Avalonia 文件选择能力。保存先请求选择器，再读取内容并写入；JSON/CSV/PNG、取消与读取失败已离线验证，真实浏览器文件选择器未验收。
@@ -114,7 +134,8 @@ SDK 固定为 10.0.401，依赖保存在 `.runtime/dotnet`、`.runtime/nuget`，
 发布后自动执行 `verify_ui_artifacts.ps1`，检查 DLL、WASM、JS 及解压后的资源是否包含个人路径，并检查网页入口引用是否齐全。
 
 `Alas.UI.Headless` 使用 Avalonia 原生 Headless 窗口后端和 Skia 离屏渲染：鼠标点击、中文文本注入与双向绑定、JSON 错误反馈、主题往返、宽窄布局和 2,000 行日志滚动均已通过，进程正常退出。
-日志场景只实例化 6 个可见行控件；这证明虚拟化生效，不是性能基准。离屏 PNG 留在 `.runtime/ui-headless`，测试有 90 秒退出上限。
+该离线预览的日志场景仅实例化视口附近的少量行控件；数量随行高与尺寸变化，这证明虚拟化生效，不是性能基准。
+显式隔离模式的完整快照链另按上述入口测量。离屏 PNG 留在 `.runtime/ui-headless`，常规测试有 90 秒退出上限。
 自动化不得打开真实桌面或浏览器窗口；`Window.Show()` 在该测试中只连接内存窗口实现，不连接系统桌面。
 
 尚未验收：真实浏览器/系统输入法、DPI、无障碍、首载与内存、复杂编辑器/玻璃效果、双端现场视觉一致性。

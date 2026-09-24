@@ -26,10 +26,22 @@ internal static class Program
 
     public static async Task<int> Main(string[] args)
     {
-        string output = Path.GetFullPath(args.Length > 0 ? args[0] : ".runtime/ui-headless");
+        bool performance = args.Contains("--perf", StringComparer.Ordinal);
+        bool isolatedPerformance = args.Contains("--perf-ui-only", StringComparer.Ordinal);
+        string output = Path.GetFullPath(args.FirstOrDefault(arg => !arg.StartsWith("--", StringComparison.Ordinal)) ?? ".runtime/ui-headless");
         Directory.CreateDirectory(output);
         try
         {
+            if (performance || isolatedPerformance)
+            {
+                await using var performanceSession = HeadlessUnitTestSession.StartNew(typeof(Program));
+                await performanceSession.Dispatch(() =>
+                {
+                    if (performance) UiPerformanceChecks.Run(output);
+                    UiOnlyPerformanceChecks.Run(output);
+                }, CancellationToken.None);
+                return 0;
+            }
             ThemePreferenceChecks.Verify();
             ResourceSelectionChecks.Run();
             await UiFilesChecks.Verify();
