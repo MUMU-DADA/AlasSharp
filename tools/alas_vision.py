@@ -1513,68 +1513,89 @@ def op_ui_page_graph(args):
             'roundtrip_checked': len(pairs)}
 
 
+def _contained_ui_rules(value, path='$', seen=None):
+    """Find actual native controls in property results, without rebuilding them."""
+    seen = set() if seen is None else seen
+    if id(value) in seen:
+        return
+    seen.add(id(value))
+    if _ui_rule_kind(value) in ('Navbar', 'Switch', 'Scroll', 'Setting'):
+        yield path, value
+    elif isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            yield from _contained_ui_rules(child, f'{path}[{index}]', seen)
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            yield from _contained_ui_rules(child, f'{path}[{key!r}]', seen)
+
+
+def _observe_ui_rule(rule, inst, path):
+    """Read native predicates only; construction and metadata are not hits."""
+    kind = _ui_rule_kind(rule)
+    detail, errors = {}, []
+    hit = False
+    try:
+        if kind == 'Navbar':
+            buttons = [getattr(b, 'name', str(b)) for b in rule.grids.buttons]
+            active = rule.get_active(inst)
+            total = rule.get_total(inst)
+            info = rule.get_info(inst)
+            detail = {'active': active, 'total': total, 'info': list(info),
+                      'buttons': buttons, 'active_color': list(rule.active_color),
+                      'inactive_color': list(rule.inactive_color)}
+            hit = active is not None and info[0] is not None
+        elif kind == 'Switch':
+            state = rule.get(inst)
+            detail = {'state': state, 'appear': state != 'unknown',
+                      'states': [d.get('state') for d in rule.state_list],
+                      'offset': rule.offset}
+            hit = state != 'unknown'
+        elif kind == 'Scroll':
+            hit = bool(rule.appear(inst))
+            detail = {'appear': hit, 'area': [int(v) for v in rule.area],
+                      'is_vertical': bool(rule.is_vertical), 'position': None,
+                      'at_top': None, 'at_bottom': None}
+            # cal_position divides by the track's detected thumb geometry.
+            # An absent thumb has no meaningful position; retain the native miss.
+            if hit:
+                detail.update(position=float(rule.cal_position(inst)),
+                              at_top=bool(rule.at_top(inst)), at_bottom=bool(rule.at_bottom(inst)))
+        elif kind == 'Setting':
+            settings = rule.settings
+            observed = []
+            for (setting, option_name), button in settings.items():
+                try:
+                    if rule.is_option_active(button):
+                        observed.append(f'{setting}/{option_name}')
+                except Exception as error:
+                    errors.append(f'{path}.{setting}/{option_name}: {type(error).__name__}: {error}')
+            detail = {'observed_active': observed, 'option_count': len(settings),
+                      'settings': sorted({key[0] for key in settings})}
+            hit = bool(observed)
+    except Exception as error:
+        errors.append(f'{path}: {type(error).__name__}: {error}')
+    return {'path': path, 'class': kind, 'hit': bool(hit) and not errors,
+            'detail': detail, 'errors': errors}
+
+
 def op_cached_rule_check(args):
-    """构造 UI 实例，并调用 cached_property 规则的**真实识别方法**（真机页面级验收用）。
+    """Construct native lazy rules, including containers, and read their predicates.
 
-    与 ui_rules_sweep 里那段判据的区别很重要：那里只把 `v is True` 记为命中，
-    而 `Navbar.get_info` 返回 (active,left,right)、`Switch.get` 返回状态字符串、
-    `Setting` 压根没有 appear/get —— 三类规则在那个判据下**结构上永远不可能命中**。
-    所以这里按类型分别取判据：
-
-      Navbar  -> get_info / get_active / get_total（选中页签是识别结果）
-      Switch  -> get（状态名）与 state_list（可选项清单）
-      Setting -> 逐项 is_option_active（**实测**激活项；
-                 _product_setting_status 返回的是配置**期望**，不是识别结果）
+    A tuple such as (count, navbar) keeps its original object identity. Scroll,
+    Switch, Navbar and Setting all use native methods; no task actions run here.
     """
-    import importlib
     from module.config.config import AzurLaneConfig
     image = _require_image()
     cls = getattr(importlib.import_module(args['module']), args['class'])
     inst = cls(AzurLaneConfig('template'), _make_main_shim(image).device)
-    inst.device.image = image
     rule = getattr(inst, args['attr'])
-    kind = _ui_rule_kind(rule)
-    detail, errors = {}, []
-    hit = False
-
-    if kind == 'Navbar':
-        buttons = [getattr(b, 'name', str(b)) for b in rule.grids.buttons]
-        active = rule.get_active(inst)
-        total = rule.get_total(inst)
-        info = rule.get_info(inst)
-        detail = {'active': active, 'total': total, 'info': list(info),
-                  'buttons': buttons, 'active_color': list(rule.active_color),
-                  'inactive_color': list(rule.inactive_color)}
-        # 选中项必须能在按钮清单里定位到，否则"识别出了个不存在的页签"
-        hit = active is not None and info[0] is not None
-    elif kind == 'Switch':
-        state = rule.get(inst)
-        detail = {'state': state, 'appear': state != 'unknown',
-                  'states': [d.get('state') for d in getattr(rule, 'state_list', [])],
-                  'offset': getattr(rule, 'offset', None)}
-        hit = state != 'unknown'
-    elif kind == 'Setting':
-        settings = getattr(rule, 'settings', {})
-        observed = []
-        for (setting, option_name), button in settings.items():
-            try:
-                if rule.is_option_active(button):
-                    observed.append('%s/%s' % (setting, option_name))
-            except Exception as e:
-                errors.append('%s/%s: %s: %s' % (setting, option_name, type(e).__name__, e))
-        detail = {'observed_active': observed,
-                  'option_count': len(settings),
-                  'settings': sorted({k[0] for k in settings})}
-        # Construction alone does not prove any option is visible/active.
-        hit = bool(observed)
-    else:
-        # 运行时算出来的规则（如事件商店的 (count, navbar)）没有统一判据，
-        # 只如实报出类型与规模，不计入命中
-        detail = {'repr': str(rule)[:300],
-                  'size': len(rule) if hasattr(rule, '__len__') else None}
-
-    return {'label': '%s.%s' % (args['class'], args['attr']), 'class': kind,
-            'hit': bool(hit), 'detail': detail, 'errors': errors}
+    controls = [_observe_ui_rule(child, inst, path) for path, child in _contained_ui_rules(rule)]
+    errors = [error for control in controls for error in control['errors']]
+    detail = (controls[0]['detail'] if len(controls) == 1 and controls[0]['path'] == '$'
+              else {'control_count': len(controls)})
+    return {'label': '%s.%s' % (args['class'], args['attr']), 'class': _ui_rule_kind(rule),
+            'hit': any(control['hit'] for control in controls) and not errors,
+            'detail': detail, 'errors': errors, 'controls': controls}
 
 
 def op_page_positive_control(args):
@@ -3458,7 +3479,7 @@ def op_ui_rules_sweep(args):
             report['cached_property']['errors'].extend(checked['errors'])
             if checked['hit'] and not checked['errors']:
                 report['cached_property']['hit'].append(label)
-            if checked['class'] not in ('Navbar', 'Switch', 'Scroll', 'Setting'):
+            if not checked['controls']:
                 report['cached_property']['no_hit_criterion'].append(label)
         except Exception as error:
             report['cached_property']['errors'].append(f'{label}: {type(error).__name__}: {error}')

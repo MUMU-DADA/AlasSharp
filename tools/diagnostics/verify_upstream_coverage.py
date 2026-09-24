@@ -204,8 +204,36 @@ def check_tasks(av):
 
 
 def check_controls(av):
+    """Native controls can select server rules at import, so isolate each server."""
+    records = []
+    for server in av.server_module.VALID_SERVER:
+        output = ROOT / '.runtime/verification' / f'upstream-controls-{server}.json'
+        output.parent.mkdir(parents=True, exist_ok=True)
+        # Never read a previous successful worker result after a failed launch.
+        output.unlink(missing_ok=True)
+        try:
+            result = subprocess.run([sys.executable, str(Path(__file__).resolve()),
+                                     '--control-server', server, '--output', str(output)],
+                                    capture_output=True, text=True, encoding='utf-8',
+                                    errors='replace', timeout=180)
+            output.with_suffix('.process.log').write_text(result.stdout + '\n' + result.stderr, encoding='utf-8')
+            if not output.is_file():
+                raise RuntimeError(f'Control worker exited {result.returncode} without a report')
+            rows = json.loads(output.read_text(encoding='utf-8'))
+            if not isinstance(rows, list) or not rows:
+                raise RuntimeError('Empty or invalid control worker report')
+            if result.returncode and not any(row['status'] == 'failed' for row in rows):
+                raise RuntimeError(f'Control worker exited {result.returncode}')
+            records.extend(dict(row, server=server) for row in rows)
+        except Exception as error:
+            records.append(dict(server=server, status='failed', error=issue_text(error)))
+    return records
+
+
+def check_controls_current_server(av):
     import numpy as np
     from module.base.base import ModuleBase
+    from verify_native_control_factories import check_factories
 
     saved_image = av._state['image']
     av._state['image'] = np.zeros((720, 1280, 3), dtype=np.uint8)
@@ -215,6 +243,8 @@ def check_controls(av):
         for error in inventory['errors']:
             records.append(dict(status='failed', error=error))
         for declaration in inventory['declarations']:
+            if declaration['scope'] == 'factory':
+                continue
             row = dict(declaration)
             records.append(row)
             try:
@@ -230,11 +260,13 @@ def check_controls(av):
                                                               attr=declaration['attr']))
                     if checked['errors']:
                         raise AssertionError(checked['errors'])
-                    row.update(status='passed', native_kind=checked['class'])
-                else:
-                    row.update(status='native_factory', reason='Requires original task state/arguments')
+                    if not checked['controls']:
+                        raise AssertionError('Lazy declaration contains no native control')
+                    row.update(status='passed', native_kind=checked['class'],
+                               controls=checked['controls'])
             except Exception as error:
                 row.update(status='failed', error=issue_text(error))
+        records.extend(check_factories(av, inventory['declarations'], servers=[av.server_module.server]))
     finally:
         av._state['image'] = saved_image
     return records
@@ -318,8 +350,12 @@ def provenance(repo):
 def write_summary(path, report):
     labels = dict(campaigns='关卡原生加载/Config/继承方法', assets='素材原生加载及四服字段',
                   pages='页面四服合成正对照', navigation='原生导航可达图对',
-                  controls='控件原生声明与构造', tasks='任务调度绑定及依赖导入')
+                  controls='四服控件声明、识别及工厂合成循环', tasks='任务调度绑定及依赖导入')
     source = report['provenance']
+    factory_rows = [row for row in report['sections'].get('controls', {}).get('records', [])
+                    if row.get('scope') == 'factory']
+    factory_count = len({(row['module'], row['attr'], row['line']) for row in factory_rows})
+    factory_cases = sum(row.get('synthetic_cases', 0) for row in factory_rows)
     lines = ['# 上游自动化规则全量离线覆盖', '',
              '由 `tools/diagnostics/verify_upstream_coverage.py` 生成；无设备动作、无账号配置。',
              '生产流程继续由原生 `CampaignRun.load_campaign()`、`Campaign.run()`、`UI.ui_ensure()` 执行。',
@@ -344,7 +380,8 @@ def write_summary(path, report):
               '- 辅助模块通过导入后的 `Campaign.MAP` 类型识别，不按文件名排除；源导入失败会令检查退出码为 1。',
               '- 页面正对照使用模板画布；`Page(None)` 无可识别素材，明确跳过。',
               '- 导航运行原生页面图和控制循环，识别与点击反馈为合成状态；共享活动入口假定目标活动可用。',
-              '- 控件普通实例和延迟属性可在空画布构造/调用；任务内工厂保留原生调用，未声称已执行或命中。',
+              '- 控件按服务器在独立进程导入，保留导入时的服务器分支；普通实例和延迟属性调用原生识别，包含容器内控件。',
+              f'- 任务内工厂检查包含 {factory_count} 个声明、{factory_cases} 个四服合成场景；运行原生任务/控件循环，覆盖切换、原生附加处理、滚动到顶/分页到底及无滚动条，不证明真实点击或业务完成。',
               '- 调度检查覆盖 Scheduler.Command 方法及其声明依赖；原生任务返回不等于领取、购买或目标完成。',
               '- 错误中项目绝对路径替换为 `<project>`；不发布账号、帧或原始日志，不改变错误类型或判据。', '',
               '复现：`python tools/diagnostics/verify_upstream_coverage.py`。',
@@ -356,11 +393,26 @@ def write_summary(path, report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sections', default='campaigns,assets,pages,navigation,controls,tasks')
+    parser.add_argument('--control-server', choices=('cn', 'en', 'jp', 'tw'), help=argparse.SUPPRESS)
     parser.add_argument('--output', type=Path, default=ROOT / '.runtime/verification/upstream-coverage.json')
     parser.add_argument('--summary', type=Path, default=ROOT / 'docs/archive/reports/upstream-coverage.md')
     args = parser.parse_args()
     args.output = args.output.resolve()
     args.summary = args.summary.resolve()
+    if args.control_server:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        with args.output.with_suffix('.log').open('w', encoding='utf-8') as log, redirect_stdout(log):
+            import alas_vision as av
+            av.op_set_server({'server': args.control_server})
+            from module.logger import logger
+            logger.setLevel(50)
+            try:
+                rows = check_controls_current_server(av)
+            except Exception as error:
+                rows = [dict(status='failed', error=issue_text(error))]
+        args.output.write_text(json.dumps(rows, ensure_ascii=False, indent=2, default=av.json_default) + '\n',
+                               encoding='utf-8')
+        return int(not rows or any(row['status'] == 'failed' for row in rows))
     sections = args.sections.split(',')
     checks = dict(campaigns=check_campaigns, assets=check_assets, pages=check_pages,
                   navigation=check_navigation, controls=check_controls, tasks=check_tasks)

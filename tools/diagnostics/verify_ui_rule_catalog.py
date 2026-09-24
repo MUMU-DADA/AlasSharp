@@ -87,6 +87,120 @@ class UI:
         self.assertEqual(result['passed'], 0)
         self.assertEqual(result['failed'], 1)
 
+    def test_lazy_scroll_and_nested_controls_use_native_recognition(self):
+        import alas_vision as av
+        import numpy as np
+        from module.base.base import ModuleBase
+        from module.ui.scroll import Scroll
+
+        class Lazy(ModuleBase):
+            @property
+            def rules(self):
+                return (2, {'scroll': Scroll((10, 10, 20, 110), color=(180, 180, 180)),
+                            'metadata': 'not a control'})
+
+        canvas = np.zeros((720, 1280, 3), dtype=np.uint8)
+        canvas[10:35, 10:20] = (180, 180, 180)
+        with patch.dict(sys.modules, {'module.fixture_lazy': SimpleNamespace(Lazy=Lazy)}), \
+                patch.dict(av._state, image=canvas), \
+                patch.object(ModuleBase, 'EARLY_OCR_IMPORT', True):
+            result = av.op_cached_rule_check(dict(module='module.fixture_lazy', **{'class': 'Lazy'}, attr='rules'))
+        self.assertFalse(result['errors'])
+        self.assertTrue(result['hit'])
+        self.assertEqual(len(result['controls']), 1)
+        control = result['controls'][0]
+        self.assertEqual(control['path'], "$[1]['scroll']")
+        self.assertEqual(control['class'], 'Scroll')
+        self.assertTrue(control['detail']['appear'])
+        self.assertTrue(control['detail']['at_top'])
+        self.assertFalse(control['detail']['at_bottom'])
+
+    def test_lazy_config_matches_selected_server(self):
+        import alas_vision as av
+        import numpy as np
+        from module.base.base import ModuleBase
+        from module.ui.scroll import Scroll
+
+        seen = []
+
+        class Lazy(ModuleBase):
+            @property
+            def rule(self):
+                seen.append(self.config.SERVER)
+                return Scroll((10, 10, 20, 110), color=(180, 180, 180))
+
+        saved = av.server_module.server
+        try:
+            with patch.dict(sys.modules, {'module.fixture_lazy': SimpleNamespace(Lazy=Lazy)}), \
+                    patch.dict(av._state, image=np.zeros((720, 1280, 3), dtype=np.uint8)), \
+                    patch.object(ModuleBase, 'EARLY_OCR_IMPORT', True):
+                for server in av.server_module.VALID_SERVER:
+                    av.op_set_server({'server': server})
+                    av.op_cached_rule_check(dict(module='module.fixture_lazy', **{'class': 'Lazy'}, attr='rule'))
+            self.assertEqual(seen, list(av.server_module.VALID_SERVER))
+        finally:
+            av.op_set_server({'server': saved})
+
+    def test_lazy_partial_failure_preserves_observations_but_does_not_hit(self):
+        import alas_vision as av
+        import numpy as np
+        from module.base.base import ModuleBase
+        from module.ui.scroll import Scroll
+
+        good = Scroll((10, 10, 20, 110), color=(180, 180, 180))
+        broken = Scroll((30, 10, 40, 110), color=(180, 180, 180))
+
+        class Lazy(ModuleBase):
+            @property
+            def rules(self):
+                return [good, broken]
+
+        canvas = np.zeros((720, 1280, 3), dtype=np.uint8)
+        canvas[10:35, 10:20] = (180, 180, 180)
+        with patch.dict(sys.modules, {'module.fixture_lazy': SimpleNamespace(Lazy=Lazy)}), \
+                patch.dict(av._state, image=canvas), \
+                patch.object(broken, 'appear', side_effect=RuntimeError('fixture missing resource')), \
+                patch.object(ModuleBase, 'EARLY_OCR_IMPORT', True):
+            result = av.op_cached_rule_check(dict(module='module.fixture_lazy', **{'class': 'Lazy'}, attr='rules'))
+        self.assertFalse(result['hit'])
+        self.assertTrue(result['controls'][0]['hit'])
+        self.assertFalse(result['controls'][1]['hit'])
+        self.assertIn('$[1]: RuntimeError: fixture missing resource', result['errors'])
+
+    def test_absent_lazy_scroll_is_a_negative_observation_without_position(self):
+        import alas_vision as av
+        import numpy as np
+        from module.ui.scroll import Scroll
+
+        rule = Scroll((10, 10, 20, 110), color=(180, 180, 180))
+        main = av._make_main_shim(np.zeros((720, 1280, 3), dtype=np.uint8))
+        with patch.object(rule, 'cal_position', side_effect=AssertionError('absent thumb has no position')):
+            result = av._observe_ui_rule(rule, main, '$')
+        self.assertFalse(result['hit'])
+        self.assertFalse(result['errors'])
+        self.assertIsNone(result['detail']['position'])
+
+    def test_container_cycle_and_duplicate_control_do_not_repeat_recognition(self):
+        import alas_vision as av
+        from module.ui.scroll import Scroll
+
+        rule = Scroll((10, 10, 20, 110), color=(180, 180, 180))
+        value = [rule, {'repeat': rule}]
+        value.append(value)
+        self.assertEqual(list(av._contained_ui_rules(value)), [('$[0]', rule)])
+
+    def test_new_factory_without_executed_fixture_fails_coverage(self):
+        import alas_vision as av
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import verify_native_control_factories as factories
+        declaration = dict(module='module.fixture_new', owner='Task', attr='run',
+                           line=12, scope='factory', kind='Switch')
+        with patch.object(factories, 'coalition_cases'), patch.object(factories, 'hospital_cases'):
+            results = factories.check_factories(av, [declaration], servers=['cn'])
+        self.assertEqual(results[0]['status'], 'failed')
+        self.assertEqual(results[0]['synthetic_cases'], 0)
+        self.assertIn('No executed factory fixture', results[0]['error'])
+
 
 if __name__ == '__main__':
     unittest.main()
