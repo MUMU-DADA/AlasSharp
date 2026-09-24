@@ -20,6 +20,7 @@ public sealed class ControlServer
     private const int BodyLimit = ControlProtocol.MaxRequestBodyBytes;
     private readonly ControlWorkspace _workspace;
     private readonly ConfigWorkspace _config;
+    private readonly DeploySettingsWorkspace _deploy;
     private readonly string _tools;
     private readonly StaticUiFiles? _ui;
     private readonly int _port;
@@ -34,6 +35,7 @@ public sealed class ControlServer
         _ui = uiRoot is null ? null : new StaticUiFiles(uiRoot);
         _workspace = new ControlWorkspace(root, repo, data, tools, artifacts, workspace);
         _config = new ConfigWorkspace(repo);
+        _deploy = new DeploySettingsWorkspace(repo, _config);
     }
 
     public int Run() => RunAsync().GetAwaiter().GetResult();
@@ -141,6 +143,34 @@ public sealed class ControlServer
                     ["args"] = schema.Args,
                     ["translations"] = schema.Translations,
                 });
+                return;
+            }
+            if (HttpMethods.IsGet(request.Method) && path == "/api/settings")
+            {
+                string language = request.Query["language"].ToString();
+                await Reply(context, 200, _deploy.Read(string.IsNullOrWhiteSpace(language) ? "zh-CN" : language));
+                return;
+            }
+            if (HttpMethods.IsPatch(request.Method) && path == "/api/settings")
+            {
+                RequireToken(request);
+                var body = await ReadBody(request);
+                var values = body.ContainsKey("values") ? body["values"] as JsonObject : body;
+                await Reply(context, 200, _deploy.Patch(values ?? throw new ArgumentException("values 必须是对象")));
+                return;
+            }
+            if (HttpMethods.IsGet(request.Method) && path == "/api/startup")
+            {
+                await Reply(context, 200, _deploy.ReadStartup(RequiredQuery(request, "instance")));
+                return;
+            }
+            if (HttpMethods.IsPost(request.Method) && path == "/api/startup")
+            {
+                RequireToken(request);
+                var body = await ReadBody(request);
+                if (body["enabled"]?.GetValueKind() is not (JsonValueKind.True or JsonValueKind.False))
+                    throw new ArgumentException("enabled 必须是布尔值");
+                await Reply(context, 200, _deploy.SetStartup(RequiredString(body, "instance"), body["enabled"]!.GetValue<bool>()));
                 return;
             }
             if (HttpMethods.IsGet(request.Method) && TryInstancePath(path, "config", out string? configInstance))

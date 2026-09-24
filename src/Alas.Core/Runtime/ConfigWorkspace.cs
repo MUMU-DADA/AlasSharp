@@ -289,7 +289,7 @@ public sealed class ConfigWorkspace
 
     private string ConfigPath(string name) => Path.Combine(_config, ValidateName(name) + ".json");
 
-    private static string ValidateName(string value)
+    internal static string ValidateName(string value)
         => TryValidateName(value) ? value.Trim().TrimEnd(' ', '.') : throw new ArgumentException("实例名无效");
 
     private static bool TryValidateName(string? value)
@@ -383,7 +383,7 @@ public sealed class ConfigWorkspace
         Directory.CreateDirectory(path);
     }
 
-    private void RejectLink(string path)
+    internal void RejectLink(string path)
     {
         for (string? current = Path.GetFullPath(path); current is not null; current = Path.GetDirectoryName(current))
         {

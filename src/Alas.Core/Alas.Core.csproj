@@ -8,6 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Runtime/Resources/deploy-settings.json" />
     <!--
       图像解码。选 ImageSharp 2.1.8 而不是 SkiaSharp 的理由：
         1) 2.x 是 Apache-2.0（3.x 才改成 Split License），许可干净；

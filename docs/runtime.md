@@ -101,6 +101,8 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 | `POST /api/queue` | 保存 `{queue: ...}` 草稿，成功 200；不改变已接受运行的快照 |
 | `POST /api/run` | `{queue, mode?, confirm_actions?, serial?, max_seconds?, max_rounds?, resume?, continue_on_error?}`；默认 dry-run，接受返回 202 |
 | `POST /api/stop` | 请求边界停止，成功 200；没有活动队列返回 409 |
+| `GET/PATCH /api/settings` | 部署设置 schema / `{values: {...}}` 字段事务；读取可带 `language` |
+| `GET /api/startup?instance=`、`POST /api/startup` | 读取或保存 `{instance, enabled}` 启动运行列表，不立即执行任务 |
 
 `mode` 仅允许 `dry_run`、`read_only`、`actions`，动作模式须 `confirm_actions=true`。
 保存/运行请求必须为 JSON 对象，有 `Content-Length` 且不超过 1 MiB；不接受 chunked。
@@ -115,13 +117,19 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 服务重启后需重新读取状态获取令牌。普通 JSON 请求有覆盖响应头与正文的 30 秒期限，可在构造客户端时调整；超时不重发写请求。
 当前没有幂等请求键。浏览器 UI 通过该客户端调用 Core；桌面在同一进程直接调用 Core。
 
+部署设置由 `DeploySettingsWorkspace` 直接读写执行根目录的 `config/deploy.yaml`，不等待或启动 Python 宿主。
+`tools/export_deploy_settings.py` 从 AzurPilot 声明、Windows/Unix 模板和五种翻译生成嵌入资源；`--check` 检查来源哈希和内容漂移，不读取个人部署文件。
+8 个分组与字段类型沿用上游；密码只写不读，空密码保留原值，普通保存忽略 `Run`，启动运行通过独立接口修改。整批校验后按最新文件合并，原子替换；演示模式拒绝修改。
+保留现有注释和未知字段，补写旧文件缺少的模板字段；拒绝换行注入。Windows 短暂读锁重试同一次替换，持续占用则保留原文件并报告失败。只读不触发上游部署器的地理镜像选择或自动改写。
+此接口当前证明配置持久化，尚未完成启动运行消费、部署器迁移、远程服务、认证和更新/重启接线；旧 Python 部署器按自身模板重写时也可能丢失新增字段，须在接入其消费者时统一修复并验证。
+
 ## 上游服务缓存与单任务
 
 任务编辑器按所选实例保存参数，单任务由 Core 读取上游 `Scheduler.Command` 后进入 `periodic_run` 队列。
 实例导入只接收名称和 JSON 文本，暂存至 `config/import` 后显式创建实例；不会把暂存源列为运行实例。
 实例列表排除损坏或缺少 `Alas` 段的文件；删除仍要求当前修订号并移动到备份目录。
 设备初始化使用该实例配置和截图/输入后端；同一会话固定实例及设备初始化参数，变更时明确拒绝并要求关闭会话。
-工具注册表中的独立工具任务和连续调度器尚未接通，不能从单任务入口推断全部控制流程完成。
+独立工具和连续调度器已有统一队列入口及离线回归，真机业务效果仍须分别验证。
 
 统计和报告继续调用上游服务。用 `tools/cache_upstream_services.py --source <AzurPilot目录>`
 缓存明确列出的 23 个依赖文件到 `.runtime/engine`，`--check` 校验来源与逐文件哈希；不同的已有文件会拒绝覆盖。
@@ -154,6 +162,7 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 | 独立服务与静态网页 | `verify_server_static.py`（临时目录、无窗口） |
 | 结构边界与隐私 | `verify_architecture.py`、`verify_privacy.py` |
 | 上游服务与实例绑定 | `verify_upstream_services.py`、`verify_instance_device_binding.py`（隔离数据/替身，无设备） |
+| 部署设置与启动列表 | `verify_deploy_settings.py`（上游原始函数对拍、并发/原子保存、真实 HTTP 与类型化客户端） |
 
 控制台离线回归通过真实 HTTP 执行 dry-run，断言设备配置次数为零；不证明真实游戏任务效果。
 关闭回归通过公开 shutdown token 实测延迟 POST 拒绝、停止标记 IO 失败和完整落盘；系统 Ctrl-C/SIGTERM 与长于 HTTP 关闭期限的实战仍需分别验收。

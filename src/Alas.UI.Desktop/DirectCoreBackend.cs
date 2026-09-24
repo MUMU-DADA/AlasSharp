@@ -12,9 +12,10 @@ namespace Alas.UI.Desktop;
 /// Alas.Core directly and keeps the control workspace in the same process; no
 /// loopback HTTP hop is used for native desktop operation.
 /// </summary>
-internal sealed class DirectCoreBackend : IAlasUiBackend
+internal sealed partial class DirectCoreBackend : IAlasUiBackend
 {
     private readonly ConfigWorkspace? _configs;
+    private readonly DeploySettingsWorkspace? _deploy;
     private readonly ControlWorkspace? _workspace;
     private readonly List<InstanceCardViewModel> _instances = [];
     private bool _disposed;
@@ -31,6 +32,7 @@ internal sealed class DirectCoreBackend : IAlasUiBackend
         try
         {
             _configs = new ConfigWorkspace(repo);
+            _deploy = new DeploySettingsWorkspace(repo, _configs);
             _workspace = new ControlWorkspace(root, repo, Path.Combine(root, "data"),
                 Path.Combine(root, "tools"), Path.Combine(root, ".runtime", "control", "runs"),
                 Path.Combine(root, ".runtime", "control"));
