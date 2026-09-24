@@ -1,0 +1,102 @@
+using System.Text.Json.Nodes;
+using Alas.UI.TaskEditor;
+
+namespace Alas.UI.Headless;
+
+/// <summary>
+/// Offline contract checks for the shared task editor. The regular headless executable may invoke
+/// Verify() from its own harness; this class deliberately has no device, window, or HTTP dependency.
+/// </summary>
+public static class TaskEditorChecks
+{
+    public static async Task Verify(CancellationToken cancellationToken = default)
+    {
+        var backend = new FakeBackend();
+        var model = new TaskEditorViewModel { Backend = backend };
+        var schema = new JsonObject
+        {
+            ["translations"] = new JsonObject
+            {
+                ["Task.Daily.name"] = "每日任务",
+                ["General._info.name"] = "常规",
+                ["General.Count.name"] = "数量",
+                ["General.Count.help"] = "范围帮助",
+                ["General.Mode.name"] = "模式",
+                ["General.Script.name"] = "脚本",
+            },
+            ["menu"] = new JsonObject
+            {
+                ["Group"] = new JsonObject { ["page"] = "tool", ["tasks"] = new JsonArray("Daily") },
+            },
+            ["args"] = new JsonObject
+            {
+                ["Daily"] = new JsonObject
+                {
+                    ["General"] = new JsonObject
+                    {
+                        ["Count"] = new JsonObject { ["type"] = "int", ["value"] = 1, ["validate"] = new JsonArray(1, 10) },
+                        ["Mode"] = new JsonObject { ["type"] = "select", ["value"] = "safe", ["option"] = new JsonArray("safe", "fast") },
+                        ["Script"] = new JsonObject { ["mode"] = "restricted_lua", ["type"] = "textarea", ["value"] = "return true" },
+                    },
+                },
+            },
+        };
+        var config = Config("instance-a", "r1", 1, "safe", "return true");
+        model.Load("instance-a", "Daily", schema, config);
+        Check(model.Groups.Count == 1 && model.Groups[0].Fields.Count == 3, "all schema fields loaded");
+        var count = model.Groups[0].Fields.Single(f => f.Argument == "Count");
+        count.SetText("bad");
+        Check(!model.CanSave && count.Error.Length > 0, "invalid number blocks save");
+        count.SetText("7");
+        var mode = model.Groups[0].Fields.Single(f => f.Argument == "Mode");
+        mode.SelectOption(mode.Options.Single(o => o.Label == "fast"));
+        Check(model.CanSave, "valid number and option allow save");
+        Check(await model.SaveAsync(cancellationToken), "save delegates to backend: " + model.Error + " / " + model.EditStatus);
+        Check(backend.Saves == 1 && backend.LastChanges.Count == 2, "only changed fields are sent");
+        var script = model.Groups[0].Fields.Single(f => f.Argument == "Script");
+        script.SetText("return false");
+        Check(!model.CanSave, "Lua requires validation");
+        await model.CheckScriptAsync(script, cancellationToken);
+        Check(model.CanSave, "valid Lua validation unlocks save");
+        model.RequestRun();
+        Check(model.ConfirmRun, "run requires explicit confirmation");
+        Check(await model.ConfirmRunAsync(cancellationToken) && backend.Runs == 1, "confirmed run delegates to backend");
+
+        backend.ThrowConflict = true;
+        count.SetText("8");
+        Check(!await model.SaveAsync(cancellationToken) && model.HasConflicts, "backend conflict preserves draft");
+        model.Groups[0].Fields.Single(f => f.HasConflict).ResolveConflict(true);
+        Check(!model.HasConflicts && model.HasChanges, "conflict requires explicit resolution");
+    }
+
+    private static JsonObject Config(string instance, string revision, int count, string mode, string script) => new()
+    {
+        ["instance"] = instance, ["revision"] = revision,
+        ["values"] = new JsonObject { ["Daily"] = new JsonObject { ["General"] = new JsonObject
+        { ["Count"] = count, ["Mode"] = mode, ["Script"] = script } } },
+    };
+
+    private static void Check(bool value, string message)
+    { if (!value) throw new InvalidOperationException("TaskEditor: " + message); }
+
+    private sealed class FakeBackend : ITaskEditorBackend
+    {
+        public int Saves { get; private set; }
+        public int Runs { get; private set; }
+        public bool ThrowConflict { get; set; }
+        public IReadOnlyList<TaskFieldChange> LastChanges { get; private set; } = [];
+        public Task<JsonObject> SaveAsync(string instance, string revision, IReadOnlyList<TaskFieldChange> changes, CancellationToken cancellationToken)
+        {
+            LastChanges = changes; Saves++;
+            if (ThrowConflict) throw new TaskEditorConflictException(Config(instance, "remote", 2, "safe", "return true"));
+            var countNode = changes.FirstOrDefault(c => c.Path.EndsWith(".Count"))?.Value;
+            var count = countNode is null ? 1 : (int)double.Parse(countNode.ToJsonString(), System.Globalization.CultureInfo.InvariantCulture);
+            var mode = changes.FirstOrDefault(c => c.Path.EndsWith(".Mode"))?.Value?.GetValue<string>() ?? "safe";
+            var script = changes.FirstOrDefault(c => c.Path.EndsWith(".Script"))?.Value?.GetValue<string>() ?? "return true";
+            return Task.FromResult(Config(instance, "next", count, mode, script));
+        }
+        public Task RunAsync(string instance, string task, CancellationToken cancellationToken) { Runs++; return Task.CompletedTask; }
+        public Task<ScriptValidation> ValidateScriptAsync(string instance, string task, string script, CancellationToken cancellationToken) =>
+            Task.FromResult(new ScriptValidation(script.Contains("return", StringComparison.Ordinal), []));
+    }
+}
