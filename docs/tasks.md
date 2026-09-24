@@ -62,8 +62,11 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 ## 周期任务授权边界
 
 `periodic_run` 同时要求动作会话、`input.allow_actions=true`，以及 `input.confirm` 与 `input.task` 完全一致。
-`periodic_preflight` 只检查放行条件，不执行任务。`overrides` 经上游 `config.override()` 作用于本次任务对象；
-上游对下次调度时间等状态的正常写入仍会发生。涉及领取、购买或补给时，先核对任务配置与实际资源消耗路径。
+`periodic_preflight` 只检查放行条件，不执行任务。`overrides` 先按当前原生配置的 `bound/args` 校验全部字段，
+复用 `ConfigService` 的类型、选项、只读与组合规则，再经 `parse_value()` 转为原生值；例如开关必须是 JSON 布尔值，
+日期字符串按原生语义转为 datetime。任何无效项都在 `config.override()` 与获取设备之前拒绝，不能部分应用。
+有效覆盖只作用于本次任务对象；配置构造器的正常迁移、上游对下次调度时间等状态的正常写入仍会发生。
+涉及领取、购买或补给时，先核对任务配置与实际资源消耗路径。
 原生调度返回 False、抛出异常或记录根因后转为 SystemExit 时，周期任务都保留错误调用栈、
 原生日志位置及已保存的失败帧；SystemExit 不退出共享宿主，也不将上一个任务的证据带入下一次执行。
 
@@ -127,6 +130,8 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 `verify_os_action.py`、`verify_event_state.py`、`verify_task_catalog.py`、`verify_task_schedule.py`、
 `verify_config_get.py`、`verify_periodic_plan.py`、`verify_native_tools.py` 等离线检查覆盖。
 `verify_account_state_cache.py` 覆盖原生设备/宿主帧分离、无缓存与失败失效，以及 Core 在动作、只读设备和 dry-run 会话中的来源参数。
+`verify_periodic_overrides.py` 使用原生默认配置、绑定和 dispatcher，验证错误覆盖在设备前拒绝、原生值转换、
+混合输入原子性、继承字段及已归档任务输入兼容；设备和末端领域方法是替身，不读取账号配置或证明真机业务完成。
 `verify_native_dispatch_catalog.py` 从原生参数和工具目录发现全部入口，使用真实 ConfigUpdater、配置绑定、
 `AzurLaneAutoScript.run()` 与任务方法，对照领域签名和 AST 核对调用参数；每个入口覆盖正常返回、普通 False、
 TaskEnd 和重试异常，并验证原生 Restart 配置写入、设备恢复及失败证据隔离。

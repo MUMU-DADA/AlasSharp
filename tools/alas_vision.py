@@ -1273,6 +1273,14 @@ def op_periodic_run(args):
             out.update(decision='denied',
                        reason=f'overrides 含当前任务未绑定的字段: {unknown}')
             return out
+        if overrides:
+            from native_task_overrides import validate_task_overrides
+            from module.api.protocol import ApiError
+            try:
+                overrides = validate_task_overrides(config, overrides)
+            except ApiError as error:
+                out.update(decision='denied', reason=f'overrides 无效：{error}')
+                return out
         # 上游 override 会登记 overridden 并绕过 __setattr__ 的持久化路径；任务自身通过
         # task_delay/task_call 写调度状态仍保留，这是原生调度语义。
         if overrides:

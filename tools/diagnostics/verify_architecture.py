@@ -159,6 +159,11 @@ def periodic_run_gate_intact() -> list[str]:
     missing = [marker for marker in required if marker not in body]
     if missing:
         problems.append(f"`op_periodic_run` 未完整复用上游任务绑定/调度语义: {missing}")
+    validate_at = body.find('overrides = validate_task_overrides(config, overrides)')
+    apply_at = body.find('config.override(**overrides)')
+    device_at = body.find('_device_engine(config=config)')
+    if not 0 <= validate_at < apply_at < device_at:
+        problems.append('周期任务覆盖须先按原生字段校验全部值，再覆盖并获取设备')
     return problems
 
 

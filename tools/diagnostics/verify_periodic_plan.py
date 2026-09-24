@@ -125,6 +125,9 @@ def verify_native_dispatch(failures):
             object.__setattr__(self, 'Error_OnePushConfig', '')
             object.__setattr__(self, 'Error_SaveError', False)
             object.__setattr__(self, 'bound', {'BuyFurniture_Enable': 'Dorm.BuyFurniture.Enable'})
+            object.__setattr__(self, 'args', {'Dorm': {'BuyFurniture': {
+                'Enable': {'type': 'checkbox', 'value': False}}}})
+            object.__setattr__(self, 'data', {'Dorm': {'BuyFurniture': {'Enable': False}}})
             object.__setattr__(self, '_ready', True)
             state.configs.append((config_name, task, self))
 
