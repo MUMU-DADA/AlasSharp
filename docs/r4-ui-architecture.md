@@ -2,7 +2,7 @@
 
 目标：尽量共享 C# 界面代码，覆盖原生桌面、远程网页和纯服务器模式，外观接近 AzurPilot。
 **桌面不能使用浏览器壳或 WebView 承载主要 UI。首选候选为 Avalonia，备选为 Uno Skia；服务使用 ASP.NET Core 10 / Kestrel。**
-本次是选型复核，尚无双端原型或性能实测；原 React/Electron 方向已撤销。
+已接通共享界面和桌面/WASM 构建入口，原 React/Electron 方向已撤销。当前使用模拟数据，尚未连接服务或设备。
 
 ## 方案比较
 
@@ -28,7 +28,7 @@ flowchart LR
   Runtime --> Engine[上游 Python 与设备后端]
 ```
 
-- `UI.Shared` 保存界面、交互、主题和客户端状态；`Contracts` 保存传输模型，不引用设备或 Python 实现。
+- `Alas.UI` 保存共享界面、交互、主题和客户端状态；后续 `Contracts` 保存传输模型，不引用设备或 Python 实现。
 - `UI.Desktop` 负责窗口、托盘、文件选择及本机服务生命周期；既能连接本机，也能连接远程服务。
 - `UI.Browser` 使用同一共享界面；文件、剪贴板、下载和页面地址由浏览器适配层处理，不能直接访问服务器文件系统。
 - `Server` 独立发布，只运行 Kestrel、业务运行时和设备依赖，并托管预构建 WASM 静态文件；不启动 Avalonia 桌面、浏览器、显示服务或 Node.js。
@@ -71,7 +71,30 @@ Linux/macOS 需补对应 libpython 和依赖布局；x64/ARM64 还需匹配 Pyth
 4. 验证 Windows x64 与 Linux x64/ARM64 无显示环境服务，再逐项验收 macOS 与其余桌面架构。UI、服务、自动化宿主分别记录通过范围。
 5. SDK、WASM 工具链与 NuGet 缓存放项目忽略目录；发行包验证脱离源码目录、普通权限和离线启动，生产资源不依赖 CDN。
 
-当前交付仍是本地 HTML 控制原型。上述共享 UI、Kestrel 远程服务与跨平台发行包均待实现；状态统一见[路线](architecture-roadmap.md)。
+## 原型与无窗口验证
+
+`Alas.UI.slnx` 独立于 CLI 方案，使用 Avalonia 12.1.3、.NET 10。
+`Alas.UI` 的同一 AXAML/样式/ViewModel 供 Desktop 与 Browser 引用，已实现导航、总览、明暗主题、JSON 文本编辑和虚拟化日志。
+图表为共享绘制的固定演示序列；JSON 检查只检查顶层结构，不代表服务端校验或任务运行。中文字体内置 Noto CJK 2.004（OFL），来源见字体目录。
+
+Windows + PowerShell 7 的构建入口（不会启动桌面或浏览器窗口）：
+
+```powershell
+./tools/build_ui.ps1 -Bootstrap -Publish  # 首次联网准备项目内 SDK、WASM 工作负载及包源
+./tools/build_ui.ps1 -Publish             # 后续仅使用项目内工具链与离线包源
+```
+
+SDK 固定为 10.0.401，依赖保存在 `.runtime/dotnet`、`.runtime/nuget`，不要求全局安装。
+省略 `-Publish` 仍构建两端并运行 Headless；加上后生成 `.runtime/ui-publish/desktop-win-x64` 与 `browser/wwwroot`。
+离线构建不查询在线漏洞公告；依赖安全公告需另行联网审计。UI 编译路径映射为中性路径，Release 关闭托管/原生调试符号。
+发布后自动执行 `verify_ui_artifacts.ps1`，检查 DLL、WASM、JS 及解压后的资源是否包含个人路径，并检查网页入口引用是否齐全。
+
+`Alas.UI.Headless` 使用 Avalonia 原生 Headless 窗口后端和 Skia 离屏渲染：鼠标点击、中文文本注入与双向绑定、JSON 错误反馈、主题往返、宽窄布局和 2,000 行日志滚动均已通过，进程正常退出。
+日志场景只实例化 6 个可见行控件；这证明虚拟化生效，不是性能基准。离屏 PNG 留在 `.runtime/ui-headless`，测试有 90 秒退出上限。
+自动化不得打开真实桌面或浏览器窗口；`Window.Show()` 在该测试中只连接内存窗口实现，不连接系统桌面。
+
+尚未验收：真实浏览器/系统输入法、DPI、无障碍、首载与内存、复杂编辑器/玻璃效果、双端现场视觉一致性。
+Kestrel API、远程认证、无显示服务部署及其他平台/架构仍待实现或验证；Headless 结果不能替代这些结论。状态统一见[路线](architecture-roadmap.md)。
 
 ## 依据
 

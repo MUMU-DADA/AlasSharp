@@ -1,0 +1,61 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Layout and palette reference: AzurPilot f67259dcd, frontend/src/styles/tokens.css (GPL-3.0). -->
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="WorkspaceBackground">#F5F5F7</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceSurface">#FFFFFF</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceText">#1D1D1F</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceMuted">#6E6E73</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceBorder">#E5E5EA</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceAccentSoft">#E8F2FF</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceAccentText">#0063C5</SolidColorBrush>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="WorkspaceBackground">#11151D</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceSurface">#1C2330</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceText">#E9EFF7</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceMuted">#A5B2C5</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceBorder">#344052</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceAccentSoft">#173859</SolidColorBrush>
+          <SolidColorBrush x:Key="WorkspaceAccentText">#70B5FF</SolidColorBrush>
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+      <SolidColorBrush x:Key="WorkspaceAccent">#0071E3</SolidColorBrush>
+    </ResourceDictionary>
+  </Styles.Resources>
+  <Style Selector=":is(UserControl).workspace">
+    <Setter Property="FontFamily" Value="avares://Alas.UI/Assets/Fonts#Noto Sans CJK SC" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Foreground" Value="{DynamicResource WorkspaceText}" />
+    <Setter Property="Background" Value="{DynamicResource WorkspaceBackground}" />
+  </Style>
+  <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="{DynamicResource WorkspaceMuted}" /></Style>
+  <Style Selector="TextBlock.title"><Setter Property="FontSize" Value="28" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+  <Style Selector="TextBlock.heading"><Setter Property="FontSize" Value="16" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource WorkspaceSurface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource WorkspaceBorder}" />
+    <Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="16" />
+    <Setter Property="Padding" Value="20" />
+  </Style>
+  <Style Selector="Button">
+    <Setter Property="CornerRadius" Value="8" /><Setter Property="Padding" Value="14,9" />
+    <Setter Property="MinHeight" Value="40" />
+  </Style>
+  <Style Selector="Button.nav">
+    <Setter Property="HorizontalAlignment" Value="Stretch" /><Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Margin" Value="0,2" />
+  </Style>
+  <Style Selector="Button.nav.selected">
+    <Setter Property="Background" Value="{DynamicResource WorkspaceAccentSoft}" />
+    <Setter Property="Foreground" Value="{DynamicResource WorkspaceAccentText}" />
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{DynamicResource WorkspaceAccent}" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="TextBox"><Setter Property="CornerRadius" Value="8" /></Style>
+</Styles>

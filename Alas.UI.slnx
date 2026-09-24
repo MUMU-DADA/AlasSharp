@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="src/Alas.UI/Alas.UI.csproj" />
+  <Project Path="src/Alas.UI.Desktop/Alas.UI.Desktop.csproj" />
+  <Project Path="src/Alas.UI.Browser/Alas.UI.Browser.csproj" />
+  <Project Path="src/Alas.UI.Headless/Alas.UI.Headless.csproj" />
+</Solution>

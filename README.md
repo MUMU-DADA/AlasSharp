@@ -7,7 +7,7 @@
 
 - 战役已接通上游完整加载与原生运行流程，已有主线、活动成功结算和撤退证据。
 - 通用队列、断点续跑、只读观测、原生导航和周期任务入口已实现；各域验证范围见[路线](docs/architecture-roadmap.md)。
-- `alashub control` 是本地浏览器原型。目标为无浏览器壳的原生桌面与网页共享 UI，首选候选 Avalonia + WASM，双端原型与产品版尚未完成。
+- `alashub control` 是本地浏览器原型。新的 Avalonia 桌面/WASM 共用界面已通过原生 Headless 离屏验证；当前为模拟数据预览，尚未接入服务，详见[统一 UI](docs/r4-ui-architecture.md)。
 
 禁止逐地图、逐界面独立适配。JSON 导出仅用于展示、溯源和校验；通关结论只能使用
 [`sortie-result/1`](docs/result-contract.md)。完整开发边界见 [AGENTS.md](AGENTS.md)。
@@ -33,6 +33,9 @@ dotnet build src/Alas.DataTool/Alas.DataTool.csproj -c Release
 控制台默认地址为 `http://127.0.0.1:8765/`，默认 dry-run。队列格式与动作授权见
 [任务说明](docs/tasks.md)，控制台和停止方式见[运行时](docs/runtime.md)。
 
+共享 UI 使用 PowerShell 7：首次 `./tools/build_ui.ps1 -Bootstrap -Publish`，以后
+`./tools/build_ui.ps1 -Publish` 使用项目内离线缓存；构建桌面/WASM 并运行 Headless，不打开窗口。
+
 ## 验证与上游同步
 
 以下使用已配置的项目 Python；不会操作设备：
@@ -53,6 +56,7 @@ dotnet build src/Alas.DataTool/Alas.DataTool.csproj -c Release
 | --- | --- |
 | `src/Alas.Core/` | 上游数据模型、视觉桥接、运行时与任务域 |
 | `src/Alas.DataTool/` | CLI、本地控制入口与离线自检 |
+| `src/Alas.UI*` | 共享界面、桌面/WASM 入口与原生 Headless 验证 |
 | `tools/` | 导出、Python 宿主、同步与诊断工具 |
 | `vendor/upstream/` | 上游静态素材镜像，来源和哈希见其中清单 |
 | `docs/` | [8 份核心文档](docs/README.md)；历史和详细报告在 `docs/archive/` |
