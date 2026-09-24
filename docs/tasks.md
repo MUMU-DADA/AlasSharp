@@ -129,6 +129,9 @@ TaskEnd 和重试异常，并验证原生 Restart 配置写入、设备恢复及
 它不验证领域构造器或内部流程，不把调度通过当作业务完成，见[全量分派报告](archive/reports/native-dispatch.md)。
 `verify_native_scheduler.py` 对真实原生循环使用合成依赖；`verify_scheduler_control.py` 验证 Core 接单、常驻宿主、停止、关闭及工件。
 `verify_native_runtime_compat.py` 为三种执行入口分别启动新进程，验证真实上游数值计算、拒绝路径和全清选项隔离。
+`verify_native_tool_devices.py` 再深入全部工具的真实构造器，包括函数型入口的内部构造和 DaemonBase，
+仅替换末端 run 与物理设备构造；验证任务配置初始化、显式设备/内部工厂共用会话、未配置时拒绝、
+正常/异常退出及原有卡死/多次点击检测恢复。它仍不执行工具业务动作。
 地图故障边界由 `verify_map_detect_failures.py` 验证。
 `verify_upstream_coverage.py` 覆盖当前全部关卡、四服素材、页面、导航图、控件声明与调度绑定；
 源依赖损坏也会失败，证据范围见[全量规则报告](archive/reports/upstream-coverage.md)。

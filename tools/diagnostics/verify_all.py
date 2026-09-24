@@ -61,6 +61,7 @@ STEPS = [
     ('verify_upstream_coverage.py', '全部章节/素材/页面/导航/控件/调度入口；源缺陷也失败', False, 900),
     ('verify_native_tools.py', '上游独立工具原生分派与队列工件（离线）', False, 300),
     ('verify_native_dispatch_catalog.py', '全部周期任务与独立工具的原生分派、配置绑定和重试写入（离线）', False, 300),
+    ('verify_native_tool_devices.py', '全部独立工具原生构造器复用会话设备与错误检测恢复（离线）', False, 120),
     ('verify_native_runtime_compat.py', '新宿主周期任务/连续调度/独立工具的原生数值兼容（离线）', False, 120),
     ('verify_native_scheduler.py', '上游连续调度与边界停止（离线）', False, 300),
     ('verify_scheduler_evidence.py', '真实连续调度边界停止证据及反例（离线）', False, 120),

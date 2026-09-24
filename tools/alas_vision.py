@@ -1403,31 +1403,47 @@ def op_tool_run(args):
     started = time.monotonic()
     device = None
     previous_config = None
+    previous_device_checks = {}
     failure = _LoggedNativeFailure()
     from module.logger import logger
     logger.addHandler(failure)
     try:
         from alas import AzurLaneAutoScript
+        from native_tool_device import native_tool_device_scope
+
+        def acquire_device(config):
+            nonlocal device, previous_config, previous_device_checks
+            if args.get('device_configured') is not True or not _DEVICE_ARGS.get('serial'):
+                raise RuntimeError('工具需要设备，但会话未配置实例串号')
+            current = _device_engine(config=config)
+            if device is None:
+                device = current
+                previous_config = current.config
+                # DaemonBase disables these checks by replacing instance methods.
+                # Preserve exact instance overrides, including absence, for the
+                # next task sharing this device after the tool has returned.
+                previous_device_checks = {name: (name in vars(device), vars(device).get(name))
+                                          for name in ('stuck_record_check', 'click_record_check')}
+                device.config = config
+                device.stuck_record_clear()
+                device.click_record_clear()
+            else:
+                if current is not device:
+                    raise RuntimeError('原生工具尝试切换常驻设备')
+                device.config = config
+            return device
 
         class ToolRunner(AzurLaneAutoScript):
             @property
             def device(self):
-                nonlocal device, previous_config
-                if device is None:
-                    if args.get('device_configured') is not True or not _DEVICE_ARGS.get('serial'):
-                        raise RuntimeError('工具需要设备，但会话未配置实例串号')
-                    device = _device_engine(config=self.config)
-                    previous_config = device.config
-                    device.config = self.config
-                    device.stuck_record_clear()
-                    device.click_record_clear()
-                return device
+                return acquire_device(self.config)
 
         runner = ToolRunner(config_name=instance)
         out['constructed'] = True
         out['ran'] = True
         with native_task_runtime():
-            native_success = runner.run(plan['method'], skip_first_screenshot=True)
+            with native_tool_device_scope(acquire_device):
+                native_success = runner.run(plan['method'], skip_first_screenshot=True)
         out['native_success'] = native_success is True
         out['decision'] = 'ran' if native_success is True else 'failed'
         if native_success is not True:
@@ -1453,6 +1469,11 @@ def op_tool_run(args):
             if (directory / 'log.txt').is_file():
                 out['native_error_log'] = (directory / 'log.txt').relative_to(FORK).as_posix()
         if device is not None:
+            for name, (existed, value) in previous_device_checks.items():
+                if existed:
+                    vars(device)[name] = value
+                else:
+                    vars(device).pop(name, None)
             try:
                 device.config = previous_config
             except Exception as restore_error:
