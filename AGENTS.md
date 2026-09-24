@@ -128,6 +128,13 @@ R2 起，新业务域必须实现 `Alas.Core/Tasks/ITaskRunner`（`Kind` / `Prec
 - 新业务域先进入 `Alas.Core` 的通用任务/状态模型，再接入 CLI 或前端；禁止在命令分支复制业务状态机。
 - 修改上述边界时，提交必须写明通用根因、上游语义、影响范围、阶段门槛和新增验证，并通过 `python tools/diagnostics/verify_architecture.py`。
 
+## 产品 UI：共享界面，不使用浏览器壳
+
+- 桌面主要 UI 不使用 Electron、Tauri 或 WebView 承载；原生窗口与自绘控件可以采用，网页仍运行在用户浏览器中。
+- 桌面与网页尽量共享界面、主题、ViewModel 和 API 客户端，视觉参照 AzurPilot；窗口、文件和剪贴板等平台接口单独适配。
+- 纯服务器独立运行，不加载桌面 UI 或依赖显示服务。UI 跨平台与 Python/设备运行时跨平台分别验收，不互相代替。
+- 当前选型与原型门槛见 `docs/r4-ui-architecture.md`；产品 UI 建设不改变游戏内逐界面适配禁令。
+
 ## 文档维护
 
 - `docs/` 顶层仅保留核心说明，入口是 `docs/README.md`；按主题更新，保持简明，不追加聊天、轮次或交接流水账。

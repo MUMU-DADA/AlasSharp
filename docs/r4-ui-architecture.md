@@ -1,52 +1,83 @@
 # 统一 UI 技术方案
 
-采用 **React + TypeScript + Vite，ASP.NET Core 10 / Kestrel，Electron 桌面壳**。
-目标是一份前端覆盖桌面窗口、远程网页与无桌面服务器，布局和主题尽量接近 AzurPilot。
+目标：尽量共享 C# 界面代码，覆盖原生桌面、远程网页和纯服务器模式，外观接近 AzurPilot。
+**桌面不能使用浏览器壳或 WebView 承载主要 UI。首选候选为 Avalonia，备选为 Uno Skia；服务使用 ASP.NET Core 10 / Kestrel。**
+本次是选型复核，尚无双端原型或性能实测；原 React/Electron 方向已撤销。
 
-## 各层职责
+## 方案比较
 
-| 层 | 职责 |
+| 方案 | 桌面与网页共用方式 | 结论 |
+| --- | --- | --- |
+| Avalonia | C#/AXAML、ViewModel、主题共享；桌面原生窗口 + Skia，网页 WebAssembly + CanvasKit/WebGL | 首选：本项目没有 WinUI 存量界面，适合自定义上游风格；网页首载、输入与无障碍须实测 |
+| Uno Platform + Skia | C#/WinUI XAML 共享；Skia Desktop 与 WebAssembly 使用统一绘制 | 可行备选；适合已有 WinUI 资产的项目。若追求一致外观，各端应统一 Skia，不能把 WinAppSDK 原生渲染与它混为同一路径 |
+| MAUI / Blazor Hybrid | MAUI 本身没有同一 UI 的浏览器目标；Hybrid 共享 Razor 但桌面使用 WebView | 不满足本轮约束，且 MAUI 官方桌面范围不含 Linux |
+| React + Electron / Tauri | 网页直接复用，桌面依赖 Chromium 或系统 WebView | 不满足无浏览器壳要求 |
+
+这里的“原生”指系统窗口与原生图形绘制，不要求每个控件都是 WinUI/AppKit/GTK 控件，也不要求 Native AOT。
+系统原生控件会随平台改变外观；统一自绘更符合展示一致和自定义主题的目标。共享源码仍需分别发布桌面与 WASM 产物。
+
+## 代码与运行模式
+
+```mermaid
+flowchart LR
+  Shared[共享 AXAML / ViewModel / 主题 / API 客户端] --> Desktop[Avalonia 原生桌面]
+  Shared --> Browser[Avalonia WebAssembly 网页]
+  Desktop --> API[Kestrel API 与事件流]
+  Browser --> API
+  API --> Runtime[Alas.Core/Runtime]
+  Runtime --> Engine[上游 Python 与设备后端]
+```
+
+- `UI.Shared` 保存界面、交互、主题和客户端状态；`Contracts` 保存传输模型，不引用设备或 Python 实现。
+- `UI.Desktop` 负责窗口、托盘、文件选择及本机服务生命周期；既能连接本机，也能连接远程服务。
+- `UI.Browser` 使用同一共享界面；文件、剪贴板、下载和页面地址由浏览器适配层处理，不能直接访问服务器文件系统。
+- `Server` 独立发布，只运行 Kestrel、业务运行时和设备依赖，并托管预构建 WASM 静态文件；不启动 Avalonia 桌面、浏览器、显示服务或 Node.js。
+- 桌面和网页调用同一 API。队列、授权、停止、日志及结论留在运行时；关闭窗口或浏览器不直接终止正在执行的任务。
+- 初期用 HTTP 命令/查询与 SSE 状态推送；定义事件游标、重连、慢客户端及重复请求行为。远程开放前完成认证、HTTPS 与来源检查。
+
+WASM 在访问者浏览器中绘制界面，服务端不按用户渲染桌面画面。这与远程桌面串流或在桌面嵌入 WebView 不同。
+浏览器无法加载现有 CPython/ADB，不能把 `Alas.Core` 整体打进 WASM；服务端事实仍按 `TaskOutcome` 和 `sortie-result/1` 展示。
+
+## 还原 AzurPilot 的成本
+
+已核对上游提交 `f67259dcd` 的 `App.tsx`、`styles/tokens.css` 与组件依赖。它是 React/CSS 界面，不能直接转换成 AXAML。
+
+| 范围 | 实施与难度 |
 | --- | --- |
-| React 前端 | 共用布局、任务配置、队列、运行状态和报告；CSS 变量统一明暗主题、字体、间距与响应式抽屉 |
-| Kestrel 服务 | 同源静态资源与 API；调用 `Alas.Core/Runtime`，不复制任务规则与结果判定 |
-| Electron | 系统窗口、菜单、托盘、服务进程和退出生命周期；也可作为远程客户端 |
-| 纯服务器 | 仅运行 .NET 与 Python/设备依赖；前端预构建后随包发布，运行时不需要 Node.js 或桌面显示服务 |
+| 顶栏、侧栏、任务导航、总览卡片、表单、弹窗 | 中等：建立共享布局和 ControlTheme，按上游主题参数还原，避免每页复制样式 |
+| 明暗主题、字体、图标、圆角、间距、窄屏抽屉 | 中等：资源字典与响应式布局；固定可分发字体，核对中英文字形、DPI 和浏览器缩放 |
+| 高频日志、大表格、统计图 | 中高：虚拟化与批量更新；ECharts 需用共享绘图/图表组件重做，不能只在网页保留另一套实现 |
+| CodeMirror 编辑器、液态玻璃、背景模糊 | 高：需要替代控件或自定义渲染；若要求这些效果也高度一致，须在选型原型中验证，不能默认等价或嵌 WebView 绕过 |
 
-桌面采用系统窗口中的 Web 渲染；若要求每个控件都由操作系统原生绘制，就需要额外渲染层。
-Tauri 可在后续有包体数据时重新评估；当前不增加第二套 UI，也不迁移到 Python.NET。
+可以以接近上游的布局、主题和交互为验收目标；没有双端截图与实际交互对照前，不承诺像素完全一致、固定复用比例或性能数字。
+复用上游设计/素材时保留 GPL-3.0 与对应素材许可；不复制开发设备截图或账号数据。
 
-## 数据与界面
+## 平台边界
 
-- 参照 AzurPilot 的顶栏、窄工具栏、任务导航、总览卡片和日志区域；先统一主题与公共组件。
-- 配置表单消费上游元数据，输入校验、授权、调度、停止与结论由运行时提供。
-- 初期使用 HTTP 命令/查询与 SSE 状态推送；服务迁移时固定事件游标、重连与慢客户端合同。
-- 结果展示只消费 `TaskOutcome` 与 `sortie-result/1`；静态单文件报告继续保留归档能力。
-- 游戏内界面操作仍复用上游原生流程，产品 UI 建设不改变逐界面适配禁令。
+Avalonia 官方列出 Windows、macOS、Linux 的 x64/ARM64 目标，但 OS 版本与架构支持等级不同；不能把目标存在当成本项目已支持。
+Linux 桌面当前主要走 X11；12.1 起的原生 Wayland 为实验性。普通服务器不依赖这些显示后端，优先验证 glibc 发行版。
+网页目标要求 WASM/WebGL；首载包含 .NET 与绘图库，需测冷/热启动、内存与日志刷新。官方浏览器无障碍仍标为部分支持。
+中文输入法、复制选择、上传下载、键盘焦点、触控和断线恢复必须逐浏览器验证；AOT 会增加构建与下载成本，按实测决定。
 
-## 实施顺序
+**当前自动化服务仍有 Windows 假设**：`PythonHost` 使用 `kernel32`、`python3*.dll`、Windows venv 布局及路径分隔符。
+Linux/macOS 需补对应 libpython 和依赖布局；x64/ARM64 还需匹配 Python、OpenCV、ONNX Runtime、PyAV 及设备后端。
+服务器以实际可用的 ADB 设备连接为准，不能承诺 Windows 专属模拟器管理能力。UI 选型不改变宿主替换门槛，也不引入 Python.NET。
 
-1. 固定运行、状态、报告、日志和停止 API，将当前 HttpListener 原型迁入 Kestrel。
-2. 建设 React 公共布局、队列配置与报告，同一构建产物供桌面和网页使用。
-3. 完成远程认证、读写权限、HTTPS、来源/CSRF 和受信任代理检查后，才开放非回环访问。
-4. 接入 Electron 生命周期与平台打包，验证桌面、网页、纯服务器执行相同 dry-run 队列并展示相同结果。
+## 实施门槛
 
-桌面渲染器关闭 Node integration，开启 context isolation 和 sandbox，限制导航与外链。
-关闭窗口与边界停止分别处理，不直接杀掉出击；日志、截图和配置读取受同一访问控制约束。
+1. 先做共享 Avalonia 原型：上游风格的导航、总览、配置、日志及代表性复杂效果，同时发布 Windows x64 桌面和 WASM。
+2. 用相同数据、主题、尺寸及字体对照两端，验证中文输入、滚动、图表/编辑器、缩放和首载；有不可接受缺口时再以同一场景比较 Uno Skia。
+3. 固定服务合同并迁入 Kestrel，保留真实 HTTP dry-run、零设备调用、边界停止及退出落盘验证；客户端不新增业务状态机。
+4. 验证 Windows x64 与 Linux x64/ARM64 无显示环境服务，再逐项验收 macOS 与其余桌面架构。UI、服务、自动化宿主分别记录通过范围。
+5. SDK、WASM 工具链与 NuGet 缓存放项目忽略目录；发行包验证脱离源码目录、普通权限和离线启动，生产资源不依赖 CDN。
 
-## 平台验收
-
-先完成 Windows x64 全链，再验证 Linux x64/ARM64 服务器，其余桌面平台逐目标验收。
-.NET/Electron 提供 Windows、Linux、macOS 的 x64/ARM64 目标，不等于本项目整包已支持这些组合。
-每个目标都需验证发布、路径权限、Python/OCR 原生依赖、ADB、设备后端和服务生命周期；
-网页另验 Chromium/Firefox/WebKit、窄屏、主题、键盘与断线恢复。
-依赖和缓存存项目忽略目录，产品界面不依赖 CDN 或运行时在线构建。
-
-当前仅本地控制原型完成验收，使用方式见[运行时](runtime.md)。
-React、Kestrel 远程服务、Electron 包和跨平台自动化尚未交付。
+当前交付仍是本地 HTML 控制原型。上述共享 UI、Kestrel 远程服务与跨平台发行包均待实现；状态统一见[路线](architecture-roadmap.md)。
 
 ## 依据
 
-- AzurPilot 使用 React/TypeScript/Vite；上游调查以提交 `f67259dcd` 为依据。
-- [AzurPilot 前端](https://github.com/wess09/AzurPilot/blob/master/frontend/README.md)、[原 ALAS Web 应用](https://github.com/LmeSzinc/AzurLaneAutoScript/tree/master/webapp)
-- [Electron 平台](https://github.com/electron/electron#platform-support)、[安全建议](https://www.electronjs.org/docs/latest/tutorial/security)、[.NET RID](https://learn.microsoft.com/en-us/dotnet/core/rid-catalog)
-- 选型比较、性能未知项和来源细节见[调研归档](archive/history/r4-ui-architecture-20260924.md)。复用代码时保留 GPL-3.0 许可和来源，游戏图片另核授权。
+2026-09-24 查阅 Avalonia 12.1.3 与 Uno 6.6.166 发布资料；Uno 使用稳定标签文档，避免把 master 的 7.0 行为当成已发布能力。
+
+- Avalonia：[渲染方式](https://docs.avaloniaui.net/docs/welcome)、[支持矩阵](https://docs.avaloniaui.net/docs/supported-platforms)、[WASM 发布](https://docs.avaloniaui.net/docs/deployment/webassembly)、[无障碍边界](https://docs.avaloniaui.net/docs/app-development/accessibility)。
+- Uno 6.6：[Skia 渲染](https://github.com/unoplatform/uno/blob/6.6.166/doc/articles/features/using-skia-rendering.md)、[桌面](https://github.com/unoplatform/uno/blob/6.6.166/doc/articles/features/using-skia-desktop.md)、[WASM 发布](https://github.com/unoplatform/uno/blob/6.6.166/doc/articles/uno-publishing-webassembly.md)。
+- 上游：[布局](https://github.com/wess09/AzurPilot/blob/f67259dcd/frontend/src/app/App.tsx)、[主题参数](https://github.com/wess09/AzurPilot/blob/f67259dcd/frontend/src/styles/tokens.css)、[组件依赖](https://github.com/wess09/AzurPilot/blob/f67259dcd/frontend/package.json)。
+- [MAUI 平台范围](https://learn.microsoft.com/en-us/dotnet/maui/supported-platforms?view=net-maui-10.0)、[Blazor Hybrid](https://learn.microsoft.com/en-us/aspnet/core/blazor/hybrid/?view=aspnetcore-10.0)；旧浏览器壳调研仅留在[历史归档](archive/history/r4-ui-architecture-20260924.md)。

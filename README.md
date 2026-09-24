@@ -7,7 +7,7 @@
 
 - 战役已接通上游完整加载与原生运行流程，已有主线、活动成功结算和撤退证据。
 - 通用队列、断点续跑、只读观测、原生导航和周期任务入口已实现；各域验证范围见[路线](docs/architecture-roadmap.md)。
-- `alashub control` 是本地浏览器原型。统一桌面、远程网页和纯服务器 UI 的技术方案已确定，产品版尚未完成。
+- `alashub control` 是本地浏览器原型。目标为无浏览器壳的原生桌面与网页共享 UI，首选候选 Avalonia + WASM，双端原型与产品版尚未完成。
 
 禁止逐地图、逐界面独立适配。JSON 导出仅用于展示、溯源和校验；通关结论只能使用
 [`sortie-result/1`](docs/result-contract.md)。完整开发边界见 [AGENTS.md](AGENTS.md)。
