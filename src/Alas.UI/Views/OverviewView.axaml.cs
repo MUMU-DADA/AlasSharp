@@ -53,6 +53,7 @@ public partial class OverviewView : UserControl
             _generation++;
             _attached = true;
             Subscribe();
+            UpdateReadingAnchorMode();
         };
         DetachedFromVisualTree += (_, _) =>
         {
@@ -76,6 +77,7 @@ public partial class OverviewView : UserControl
         _model = model;
         if (_attached) Subscribe();
         _pinnedToNewest = IsPinnedToNewest();
+        UpdateReadingAnchorMode();
     }
 
     private void Subscribe()
@@ -106,19 +108,21 @@ public partial class OverviewView : UserControl
         {
             // 清空/筛选到不足一屏时已无历史位置可离开；下一次填充仍从最新端跟随。
             if (LogScroll.Extent.Height <= LogScroll.Viewport.Height) _pinnedToNewest = true;
+            UpdateReadingAnchorMode();
             if (_pinnedToNewest && _model is { IsFollowing: true } model) QueueFollow(model);
         }
     }
 
     private void OnScrollPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs args)
     {
-        if (args.Property == ScrollViewer.OffsetProperty && !_scrollingProgrammatically
+        if (args.Property == ScrollViewer.OffsetProperty && !_scrollingProgrammatically && !LogList.IsRestoringReadingAnchor
             && LogScroll.Extent == _lastScrollExtent && LogScroll.Viewport == _lastScrollViewport)
         {
             // 范围收缩时 ScrollViewer 会先钳制 Offset，再发 Extent/Viewport 属性通知；
             // 此时实际尺寸与上一帧不同，不能把这种钳制误认为用户滚动。
             _pinnedToNewest = IsPinnedToNewest();
             if (!_pinnedToNewest) _queuedResume = false;
+            UpdateReadingAnchorMode();
         }
         if (args.Property == ScrollViewer.ExtentProperty) _lastScrollExtent = LogScroll.Extent;
         if (args.Property == ScrollViewer.ViewportProperty) _lastScrollViewport = LogScroll.Viewport;
@@ -143,9 +147,14 @@ public partial class OverviewView : UserControl
     private void OnModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
         if (args.PropertyName != nameof(OverviewViewModel.IsFollowing)) return;
+        UpdateReadingAnchorMode();
         if (_model is not { IsFollowing: true }) return;
+        LogList.PreserveReadingPosition = false;
         QueueFollow(_model, resume: true);
     }
+
+    private void UpdateReadingAnchorMode() => LogList.PreserveReadingPosition = _model is null
+        ? null : !_model.IsFollowing || !_pinnedToNewest;
 
     /// <summary>
     /// 排一次"布局之后"的贴边滚动。排队状态**按代次归属**：
@@ -191,6 +200,7 @@ public partial class OverviewView : UserControl
 
     private void ScrollToNewest()
     {
+        LogList.PreserveReadingPosition = false;
         var extent = LogScroll.Extent.Height;
         var viewport = LogScroll.Viewport.Height;
         if (viewport <= 0 || extent <= viewport) return;    // 内容不足一屏：没有可滚的
@@ -206,5 +216,6 @@ public partial class OverviewView : UserControl
             _scrollingProgrammatically = false;
         }
         _pinnedToNewest = true;
+        UpdateReadingAnchorMode();
     }
 }

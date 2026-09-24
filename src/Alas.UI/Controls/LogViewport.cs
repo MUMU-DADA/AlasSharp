@@ -7,6 +7,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Templates;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 
 namespace Alas.UI.Controls;
@@ -24,7 +25,7 @@ namespace Alas.UI.Controls;
 /// 因此本面板：
 /// <list type="bullet">
 ///   <item><b>不接管滚动</b>：测量时返回完整内容高度（滚动宿主据此得到正确的 Extent），
-///     排布时按**内容坐标**放行；滚轮/键盘/滚动条/跳转/锚定全部由框架处理；</item>
+///     排布时按**内容坐标**放行；滚轮/键盘/滚动条/跳转由框架处理，阅读锚点在布局后请求宿主补偿；</item>
 ///   <item><b>只随视口实现</b>：实现区间由外层当前偏移与视口高度决定，并在
 ///     <c>ScrollViewer.ScrollChanged</c> 时重算（挂接时订阅、离树时退订）；</item>
 ///   <item><b>行按数据项身份复用</b>：集合头部淘汰时视口内的行只是位置与索引平移，控件与已排版
@@ -79,6 +80,17 @@ public sealed class LogViewport : Panel
     private bool _resyncPending;
     private ScrollViewer? _scrollOwner;
     private INotifyCollectionChanged? _observed;
+    private bool? _preserveReadingPosition;
+    private object? _anchorItem;
+    private double _anchorViewportY;
+    private int _anchorGeneration;
+    private int _queuedAnchorGeneration = -1;
+    private Size _ownerExtent;
+    private Size _ownerViewport;
+    private bool _userScrollPending;
+
+    /// <summary>同步补偿期间不应被页面误认为用户主动离开最新端。</summary>
+    public bool IsRestoringReadingAnchor { get; private set; }
 
     static LogViewport()
     {
@@ -103,6 +115,9 @@ public sealed class LogViewport : Panel
         };
         DetachedFromVisualTree += (_, _) =>
         {
+            CaptureReadingAnchor();
+            _anchorGeneration++;
+            _queuedAnchorGeneration = -1;
             _attached = false;
             UnsubscribeItems();
             UnhookScrollOwner();
@@ -128,6 +143,21 @@ public sealed class LogViewport : Panel
     {
         get => GetValue(OverscanProperty);
         set => SetValue(OverscanProperty, value);
+    }
+
+    /// <summary>
+    /// true 保留所阅行及其视口位置，false 由调用方跟随最新端；null 为独立控件默认，
+    /// 只在离开两端时锚定。页面显式传入暂停/跟随意图，因此暂停在顶部也能保留旧日志。
+    /// </summary>
+    public bool? PreserveReadingPosition
+    {
+        get => _preserveReadingPosition;
+        set
+        {
+            if (_preserveReadingPosition == value) return;
+            _preserveReadingPosition = value;
+            if (value == false) CancelReadingAnchor();
+        }
     }
 
     // ── 诊断（回归用；不影响行为） ───────────────────────────────────────────────────────
@@ -188,6 +218,7 @@ public sealed class LogViewport : Panel
 
     private void ObserveItems()
     {
+        CancelReadingAnchor();
         UnsubscribeItems();
         _observed = ItemsSource as INotifyCollectionChanged;
         SubscribeItems();
@@ -219,13 +250,20 @@ public sealed class LogViewport : Panel
         if (ReferenceEquals(owner, _scrollOwner)) return;
         UnhookScrollOwner();
         _scrollOwner = owner;
-        if (_scrollOwner is not null) _scrollOwner.ScrollChanged += OnScrollChanged;
+        if (_scrollOwner is not null)
+        {
+            _ownerExtent = _scrollOwner.Extent;
+            _ownerViewport = _scrollOwner.Viewport;
+            _scrollOwner.ScrollChanged += OnScrollChanged;
+            _scrollOwner.PropertyChanged += OnScrollOwnerPropertyChanged;
+        }
     }
 
     private void UnhookScrollOwner()
     {
         if (_scrollOwner is null) return;
         _scrollOwner.ScrollChanged -= OnScrollChanged;
+        _scrollOwner.PropertyChanged -= OnScrollOwnerPropertyChanged;
         _scrollOwner = null;
     }
 
@@ -233,6 +271,19 @@ public sealed class LogViewport : Panel
     {
         if (args.OffsetDelta == default && args.ExtentDelta == default && args.ViewportDelta == default) return;
         InvalidateMeasure();
+    }
+
+    private void OnScrollOwnerPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs args)
+    {
+        if (_scrollOwner is null) return;
+        if (args.Property == ScrollViewer.OffsetProperty && !IsRestoringReadingAnchor
+            && _scrollOwner.Extent == _ownerExtent && _scrollOwner.Viewport == _ownerViewport)
+        {
+            CancelReadingAnchor(); // 用户在排队补偿之前滚动：新的输入优先，旧锚点失效。
+            _userScrollPending = true;
+        }
+        if (args.Property == ScrollViewer.ExtentProperty) _ownerExtent = _scrollOwner.Extent;
+        if (args.Property == ScrollViewer.ViewportProperty) _ownerViewport = _scrollOwner.Viewport;
     }
 
     /// <summary>当前滚动偏移（**宿主**坐标，单位像素）。滚动由外层宿主持有，这里只读取。</summary>
@@ -255,6 +306,9 @@ public sealed class LogViewport : Panel
 
     private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs args)
     {
+        // 通知在集合改变之后到达，但行控件仍保留上一帧的排布。按身份选一个尚存的可见行，
+        // 保存它相对视口的位置；同一帧的多次增删共享这个锚点，不累计估计高度误差。
+        CaptureReadingAnchor();
         switch (args.Action)
         {
             case NotifyCollectionChangedAction.Add:
@@ -278,10 +332,6 @@ public sealed class LogViewport : Panel
                 {
                     // 头部淘汰会让每个已实现行的索引前移：按增量平移自己的索引，
                     // 而不是把"索引处的项不是原来那个"当成不一致去回收重建。
-                    var firstIndex = _visible.Count > 0 ? _visible[0].Index : int.MaxValue;
-                    var removedAbove = start + removed <= firstIndex
-                        ? removedItems.Sum(item => _heights.TryGetValue(item!, out var height) ? height : _rowHeight)
-                        : 0;
                     for (var i = _visible.Count - 1; i >= 0; i--)
                     {
                         var row = _visible[i];
@@ -295,9 +345,6 @@ public sealed class LogViewport : Panel
                     // 离开缓存窗口的行不会再回来，其高度缓存一并清理（估计值随之按现存缓存重算）。
                     foreach (var item in removedItems) _heights.Remove(item!);
                     UpdateRowHeightEstimate();
-                    // 视口上方被淘汰的行会让内容整体上移：把宿主的偏移同步上移同样的高度，
-                    // 用户正在读的那几行就留在屏幕上（贴最新端时不干预，保持贴边）。
-                    AdjustHostOffset(-removedAbove);
                 }
                 break;
             }
@@ -309,11 +356,17 @@ public sealed class LogViewport : Panel
                 RecalculateHeightStats();
                 break;
         }
+        // 大部分稳态增删的目标仍落在现有滚动范围内；先同步补偿，省去额外一轮布局。
+        // 头插超出旧 Extent 或后续换行重测的修正，仍由布局后的恢复完成。
+        if (_scrollOwner is not null && ReadingAnchorOffset() is { } target
+            && target <= Math.Max(0, _scrollOwner.Extent.Height - _scrollOwner.Viewport.Height))
+            ApplyReadingAnchorOffset(target);
         InvalidateMeasure();
     }
 
     private void RebuildForTemplateChange()
     {
+        CancelReadingAnchor();
         ReleaseAll();
         _pool.Clear();
         ResetHeightModel();
@@ -325,6 +378,7 @@ public sealed class LogViewport : Panel
     protected override Size MeasureOverride(Size availableSize)
     {
         MeasurePasses++;
+        CaptureReadingAnchor();
         var width = double.IsFinite(availableSize.Width) ? availableSize.Width : Math.Max(0, Bounds.Width);
         MinLayoutWidth = double.IsNaN(MinLayoutWidth) ? width : Math.Min(MinLayoutWidth, width);
         MaxLayoutWidth = double.IsNaN(MaxLayoutWidth) ? width : Math.Max(MaxLayoutWidth, width);
@@ -336,7 +390,7 @@ public sealed class LogViewport : Panel
         _viewport = new Size(width, height);
         _scrollOffset = CurrentScrollOffset();
         Realize(width);
-        // 返回**完整内容高度**：滚动宿主据此得到正确的 Extent，滚动/锚定仍由框架负责。
+        // 返回**完整内容高度**：滚动宿主据此得到正确的 Extent，再接收阅读锚点的补偿请求。
         return new Size(width, ContentHeight());
     }
 
@@ -359,9 +413,12 @@ public sealed class LogViewport : Panel
             if (row.Index > nextIndex) top += HeightRange(nextIndex, row.Index);
             row.Top = top;
             row.Control.Arrange(new Rect(0, top, finalSize.Width, row.Height));
+            row.HasArranged = true;
             top += row.Height;
             nextIndex = row.Index + 1;
         }
+        _userScrollPending = false;
+        RestoreReadingAnchorAfterLayout();
         return finalSize;
     }
 
@@ -412,16 +469,90 @@ public sealed class LogViewport : Panel
         return count - 1;
     }
 
-    /// <summary>
-    /// 按增量调整外层滚动偏移（滚动归宿主，这里只是请求它滚动）。
-    /// 视口贴在最新端时不干预：那时按产品语义应保持贴边。
-    /// </summary>
-    private void AdjustHostOffset(double delta)
+    private bool ShouldPreserveReadingPosition()
     {
-        if (_scrollOwner is null || Math.Abs(delta) < 0.01) return;
-        var maxOffset = Math.Max(0, _scrollOwner.Extent.Height - _scrollOwner.Viewport.Height);
-        if (_scrollOwner.Offset.Y >= maxOffset - Math.Max(1, _rowHeight)) return;   // 贴最新端：保持贴边
-        _scrollOwner.Offset = new Vector(_scrollOwner.Offset.X, Math.Max(0, _scrollOwner.Offset.Y + delta));
+        if (_preserveReadingPosition is { } preserve) return preserve;
+        if (_scrollOwner is null) return false;
+        var offset = _scrollOwner.Offset.Y;
+        var maximum = Math.Max(0, _scrollOwner.Extent.Height - _scrollOwner.Viewport.Height);
+        return offset > 1 && offset < maximum - Math.Max(1, _rowHeight);
+    }
+
+    private int FindItemIndex(object item)
+    {
+        var items = ItemsSource;
+        if (items is not null)
+            for (var index = 0; index < items.Count; index++)
+                if (ReferenceEquals(items[index], item)) return index;
+        return -1;
+    }
+
+    private void CancelReadingAnchor()
+    {
+        _anchorItem = null;
+        _anchorGeneration++;
+        _queuedAnchorGeneration = -1;
+    }
+
+    private void CaptureReadingAnchor()
+    {
+        if (!_attached || _scrollOwner is null || _userScrollPending || !ShouldPreserveReadingPosition()) return;
+        if (_anchorItem is not null && FindItemIndex(_anchorItem) >= 0) return;
+        _anchorItem = null;
+        var offset = CurrentScrollOffset();
+        foreach (var row in _visible)
+        {
+            // 未排布的新控件不能当作旧位置；被淘汰的锚点优先交给下一条仍可见的日志。
+            // 用实际取整后的矩形判断相交，不能选到数学上尚余小数像素、实际已离开视口的上一行。
+            var screenY = row.Control.TranslatePoint(default, _scrollOwner)?.Y ?? double.NaN;
+            if (!row.HasArranged || !(screenY + row.Control.Bounds.Height > HostPaddingTop())
+                || screenY >= _scrollOwner.Bounds.Height - _scrollOwner.Padding.Bottom || FindItemIndex(row.Item) < 0) continue;
+            _anchorItem = row.Item;
+            _anchorViewportY = row.Top + HostPaddingTop() - offset;
+            break;
+        }
+    }
+
+    private double? ReadingAnchorOffset()
+    {
+        if (_anchorItem is null) return null;
+        var index = FindItemIndex(_anchorItem);
+        if (index < 0) { _anchorItem = null; return null; }
+        return Math.Max(0, HeightBefore(index, ItemsSource!.Count) + HostPaddingTop() - _anchorViewportY);
+    }
+
+    private void RestoreReadingAnchorAfterLayout()
+    {
+        if (!_attached || _scrollOwner is null || ReadingAnchorOffset() is not { } desired) return;
+        if (Math.Abs(desired - _scrollOwner.Offset.Y) <= 0.01)
+        {
+            _anchorItem = null;
+            return;
+        }
+        var generation = _anchorGeneration;
+        if (_queuedAnchorGeneration == generation) return;
+        _queuedAnchorGeneration = generation;
+        // 新 Extent 要等外层完成布局才发布。此时再请求宿主滚动，避免头插被旧上限钳制；
+        // 锚点一直保留到实际偏移收敛，换行重测修正估计高度也不会移动所阅行。
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_queuedAnchorGeneration != generation || generation != _anchorGeneration) return;
+            _queuedAnchorGeneration = -1;
+            if (!_attached || _scrollOwner is null || ReadingAnchorOffset() is not { } target) return;
+            var maximum = Math.Max(0, _scrollOwner.Extent.Height - _scrollOwner.Viewport.Height);
+            target = Math.Min(target, maximum);
+            if (Math.Abs(target - _scrollOwner.Offset.Y) <= 0.01) { _anchorItem = null; return; }
+            ApplyReadingAnchorOffset(target);
+            InvalidateMeasure();
+        }, DispatcherPriority.Loaded);
+    }
+
+    private void ApplyReadingAnchorOffset(double target)
+    {
+        if (_scrollOwner is null || Math.Abs(target - _scrollOwner.Offset.Y) <= 0.01) return;
+        IsRestoringReadingAnchor = true;
+        try { _scrollOwner.Offset = new Vector(_scrollOwner.Offset.X, target); }
+        finally { IsRestoringReadingAnchor = false; }
     }
 
     /// <summary>从首行往后累计到覆盖"视口 + Overscan"。</summary>
@@ -475,6 +606,8 @@ public sealed class LogViewport : Panel
         var last = -2;
         for (var pass = 0; pass < 2; pass++)
         {
+            // 按锚点的目标视口实现，不能先按旧 Offset 回收用户正在读的控件。
+            if (ReadingAnchorOffset() is { } anchoredOffset) _scrollOffset = anchoredOffset;
             var nextFirst = IndexAtOffset(VisibleContentTop());
             var nextLast = LastVisibleIndex(nextFirst);
             if (nextFirst == first && nextLast == last) break;
@@ -690,6 +823,7 @@ public sealed class LogViewport : Panel
         public Control Control { get; }
         public double Height { get; set; }
         public double Top { get; set; }
+        public bool HasArranged { get; set; }
 
         /// <summary>换绑数据后需要重新测量（文本换了，换行结果可能变）。</summary>
         public bool NeedsMeasure { get; set; }

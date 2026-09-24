@@ -134,6 +134,7 @@ public static class UiPerformanceChecks
             }
         }
         Measure("log-steady-state", "③ log steady state at capacity", LogSteadyState, scenarios);
+        Measure("log-paused-reading", "③ paused reading anchor (ascending / descending, wide / narrow)", LogPausedReading, scenarios);
         Measure("log-virtualization", "③ log virtualization (viewport, not capacity)", LogVirtualization, scenarios);
         Measure("log-follow-behaviour", "③ log follow behaviour (pinned / scrolled up / resumes)", LogFollowBehaviour, scenarios);
         Measure("log-follow-races", "③ log follow races (resume→pause / detach→reattach / DataContext switch)", FollowRaceGuards, scenarios);
@@ -849,6 +850,91 @@ public static class UiPerformanceChecks
             ["pump_allocated_bytes_per_line"] = pumpAllocated / churnStatistics.SampleCount,
             ["allocated_bytes_per_line"] = (appendAllocated + pumpAllocated) / churnStatistics.SampleCount,
         }, churnStatistics);
+    }
+
+    /// <summary>同一可见日志保持阅读位置，同时记录暂停状态的追加分配和控件复用。</summary>
+    private static Dictionary<string, object?> LogPausedReading()
+    {
+        var phases = new List<Dictionary<string, object?>>();
+        foreach (var width in new[] { 1280, 390 })
+        foreach (var descending in new[] { false, true })
+        {
+            var view = new MainView(new MemoryThemeStore());
+            var window = Show(view);
+            try
+            {
+                window.Width = width;
+                var overview = OpenLogs(view);
+                overview.IsFollowing = false;
+                overview.IsDescending = descending;
+                overview.ClearCommand.Execute(null);
+                for (var i = 0; i < OverviewViewModel.LogCapacity; i++) overview.AppendLog($"阅读性能样本 {i:D4}");
+                Pump();
+                var scroll = LogScroll(view);
+                var list = LogList(view);
+                scroll.Offset = new Vector(0, (scroll.Extent.Height - scroll.Viewport.Height) / 3);
+                Pump();
+                for (var i = 0; i < ConfidenceSamples; i++) { overview.AppendLog($"阅读预热 {i:D4}"); Pump(); }
+                var anchorControl = list.Children.OrderBy(control => control.TranslatePoint(default, scroll)?.Y)
+                    .First(control => control.TranslatePoint(default, scroll) is { } point
+                        && point.Y >= scroll.Padding.Top && point.Y < scroll.Bounds.Height - scroll.Padding.Bottom);
+                var anchorItem = anchorControl.DataContext;
+                var beforeY = anchorControl.TranslatePoint(default, scroll)!.Value.Y;
+                var times = new List<double>();
+                var allocations = new List<double>();
+                var drift = new List<double>();
+                var builtBefore = list.RowsBuilt;
+                var rentedBefore = list.RowsRented;
+                var measuredBefore = list.RowsMeasured;
+                var maximumRows = 0;
+                var preserved = true;
+                for (var i = 0; i < ConfidenceSamples; i++)
+                {
+                    var allocated = GC.GetAllocatedBytesForCurrentThread();
+                    var started = Stopwatch.GetTimestamp();
+                    overview.AppendLog($"阅读新增 {i:D4}");
+                    Pump();
+                    times.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                    allocations.Add(GC.GetAllocatedBytesForCurrentThread() - allocated);
+                    var row = list.Children.FirstOrDefault(control => ReferenceEquals(control.DataContext, anchorItem));
+                    var point = row?.TranslatePoint(default, scroll);
+                    var delta = point is { } actual ? Math.Abs(actual.Y - beforeY) : double.NaN;
+                    drift.Add(double.IsFinite(delta) ? delta : -1);
+                    preserved &= ReferenceEquals(row, anchorControl) && double.IsFinite(delta) && delta <= 1
+                        && point!.Value.Y < scroll.Bounds.Height - scroll.Padding.Bottom
+                        && point.Value.Y + row!.Bounds.Height > scroll.Padding.Top;
+                    maximumRows = Math.Max(maximumRows, list.RealizedRowCount);
+                }
+                var phase = $"{width}-{(descending ? "descending" : "ascending")}-paused";
+                var built = list.RowsBuilt - builtBefore;
+                Invariant($"reading-anchor-{phase}", preserved && built == 0 && maximumRows < overview.VisibleLogs.Count,
+                    $"{phase}: {ConfidenceSamples} 样本同一行保持可见/原位/控件身份={preserved}，模板新建 {built}，最大实现 {maximumRows}");
+                phases.Add(new()
+                {
+                    ["phase"] = phase, ["samples"] = ConfidenceSamples, ["warmup"] = ConfidenceSamples,
+                    ["append_and_pump"] = Stats($"{phase}-time", "ms", times),
+                    ["allocated_bytes_per_line"] = Stats($"{phase}-allocations", "bytes", allocations),
+                    ["anchor_drift"] = Stats($"{phase}-drift", "px", drift),
+                    ["anchor_preserved"] = preserved, ["built"] = built,
+                    ["rented"] = list.RowsRented - rentedBefore, ["measured"] = list.RowsMeasured - measuredBefore,
+                    ["maximum_realized_rows"] = maximumRows,
+                });
+            }
+            finally { Close(window); }
+        }
+        return new() { ["id"] = "log-paused-reading", ["samples"] = ConfidenceSamples, ["phases"] = phases,
+            ["method"] = "真实 MainView + AppendLog；400 条短日志，中段暂停，20 次预热 + 20 次采样。采样之外验证同一行身份、控件复用、视口相交与坐标；仅原生 Headless UI 线程分配与耗时。" };
+    }
+
+    public static void RunPausedReading(string output)
+    {
+        Invariants.Clear();
+        var result = LogPausedReading();
+        Directory.CreateDirectory(output);
+        File.WriteAllText(Path.Combine(output, "log-paused-reading.json"), JsonSerializer.Serialize(
+            new { scenario = result, invariants = Invariants }, new JsonSerializerOptions { WriteIndented = true }));
+        foreach (var invariant in Invariants) Console.WriteLine($"{(invariant["pass"] is true ? "PASS" : "FAIL")}: {invariant["detail"]}");
+        if (Invariants.Any(invariant => invariant["pass"] is false)) throw new Exception("Paused reading anchor performance invariants failed");
     }
 
     /// <summary>稳态相位需要一个能拿到日志列表的重载（供 realized 计数）。</summary>

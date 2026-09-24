@@ -28,10 +28,22 @@ internal static class Program
     {
         bool performance = args.Contains("--perf", StringComparer.Ordinal);
         bool isolatedPerformance = args.Contains("--perf-ui-only", StringComparer.Ordinal);
+        bool logAnchors = args.Contains("--log-anchors", StringComparer.Ordinal);
+        bool anchorPerformance = args.Contains("--perf-log-anchors", StringComparer.Ordinal);
         string output = Path.GetFullPath(args.FirstOrDefault(arg => !arg.StartsWith("--", StringComparison.Ordinal)) ?? ".runtime/ui-headless");
         Directory.CreateDirectory(output);
         try
         {
+            if (logAnchors || anchorPerformance)
+            {
+                await using var anchorSession = HeadlessUnitTestSession.StartNew(typeof(Program));
+                await anchorSession.Dispatch(() =>
+                {
+                    if (logAnchors) LogReadingAnchorChecks.Run(output);
+                    if (anchorPerformance) UiPerformanceChecks.RunPausedReading(output);
+                }, CancellationToken.None);
+                return 0;
+            }
             if (performance || isolatedPerformance)
             {
                 await using var performanceSession = HeadlessUnitTestSession.StartNew(typeof(Program));
@@ -65,6 +77,7 @@ internal static class Program
 
     private static void Verify(string output)
     {
+        LogReadingAnchorChecks.Run(output);
         UiOnlyChecks.VerifyControls(output);
         TaskEditorChecks.VerifyControls();
         ConfigManagerChecks.Run(output);
