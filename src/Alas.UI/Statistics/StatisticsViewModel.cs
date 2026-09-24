@@ -37,28 +37,37 @@ public sealed class StatisticsViewModel : StatisticsObservable, IDisposable
     private int _days = 7, _revision;
     private bool _isLoading, _active, _disposed, _exporting;
     private StatisticsReport? _report;
+    private StatisticsChartViewModel? _chart;
+    private IReadOnlyList<StatisticsTableViewModel> _tables = [];
     public IReadOnlyList<StatisticsOption> Categories => CategoryList;
     public IReadOnlyList<int> DayOptions { get; } = [1, 7, 30, 90, 365];
-    public IReadOnlyList<string> PeriodOptions { get; } = ["day", "week", "month"];
+    public IReadOnlyList<StatisticsOption> PeriodOptions { get; } = [new("day", "今天"), new("week", "本周"), new("month", "所选月份")];
     public ICommand RefreshCommand { get; }
     public ICommand ExportCommand { get; }
     public ICommand SelectCategoryCommand { get; }
     public bool IsResourceCategory => Category == "resources";
     public bool IsCommissionCategory => Category == "commission";
+    public bool HasMonth => Category is "action" or "opsi" or "commission";
+    public bool CanChooseMonth => Category != "commission" || Period == "month";
+    public bool HasSeries => Chart is { Series.Count: > 0 };
+    public bool IsReportEmpty => Report is not null && Report.Series.Count == 0 && Report.Tables.Count == 0 && Report.Metrics.Count == 0;
+    public string CategoryHint => Category switch { "ships" => "根据上游舰船练级记录估算经验效率与战斗时长。", "loot" => "汇总已解析的战利品记录；刷新会重新读取上游战利品数据。", _ => "" };
+    public StatisticsOption PeriodOption { get => PeriodOptions.First(p => p.Key == Period); set { if (value is not null) Period = value.Key; } }
     public DateTimeOffset? MonthDate { get => DateTime.TryParseExact(Month + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : null; set { if (value is { } date) Month = date.ToString("yyyy-MM", CultureInfo.InvariantCulture); } }
     public bool HasReport => Report is not null;
     public bool HasNoReport => !IsLoading && Report is null;
     public string EmptyTitle => Error.Length == 0 ? "没有统计记录" : "统计报告加载失败";
     public string EmptyMessage => Error.Length == 0 ? "当前分类没有可显示的上游记录。" : Error;
-    public StatisticsChartViewModel Chart => new(Report?.Series ?? []);
-    public IReadOnlyList<StatisticsTableViewModel> Tables => Report?.Tables.Select(t => new StatisticsTableViewModel(t, export => _ = ExportAsync(export))).ToArray() ?? [];
+    public StatisticsChartViewModel? Chart => _chart;
+    public IReadOnlyList<StatisticsTableViewModel> Tables => _tables;
+    public bool CanSaveFiles => _export is not null;
 
     public StatisticsViewModel(Func<JsonObject, CancellationToken, Task<JsonObject>>? requestReport = null,
         Func<string, CancellationToken, Task>? refreshLoot = null,
         Func<StatisticsExport, CancellationToken, Task>? export = null)
     {
         _requestReport = requestReport; _refreshLoot = refreshLoot; _export = export;
-        RefreshCommand = new AsyncCommand(() => RefreshAsync());
+        RefreshCommand = new AsyncCommand(() => RefreshAsync(refreshSource: true));
         ExportCommand = new AsyncCommand(ExportCategoryAsync);
         SelectCategoryCommand = new SyncCommand(value => Category = Convert.ToString(value, CultureInfo.InvariantCulture) ?? "resources");
     }
@@ -70,19 +79,33 @@ public sealed class StatisticsViewModel : StatisticsObservable, IDisposable
         set
         {
             if (!CategoryList.Any(c => c.Key == value)) throw new ArgumentOutOfRangeException(nameof(value));
-            if (Set(ref _category, value)) { Changed(nameof(CategoryLabel)); Changed(nameof(IsResourceCategory)); Changed(nameof(IsCommissionCategory)); Changed(nameof(HasNoReport)); RequestChanged(); }
+            if (Set(ref _category, value))
+            {
+                foreach (var name in new[] { nameof(CategoryLabel), nameof(IsResourceCategory), nameof(IsCommissionCategory), nameof(HasMonth), nameof(CanChooseMonth), nameof(CategoryHint) }) Changed(name);
+                RequestChanged();
+            }
         }
     }
     public string CategoryLabel => CategoryList.First(c => c.Key == Category).Label;
     public int Days { get => _days; set { if (value is not (1 or 7 or 30 or 90 or 365)) throw new ArgumentOutOfRangeException(nameof(value)); if (Set(ref _days, value)) RequestChanged(); } }
-    public string Month { get => _month; set { if (Set(ref _month, value ?? "")) RequestChanged(); } }
-    public string Period { get => _period; set { if (value is not ("day" or "week" or "month")) throw new ArgumentOutOfRangeException(nameof(value)); if (Set(ref _period, value)) RequestChanged(); } }
-    public bool IsLoading { get => _isLoading; private set => Set(ref _isLoading, value); }
+    public string Month { get => _month; set { if (Set(ref _month, value ?? "")) { Changed(nameof(MonthDate)); RequestChanged(); } } }
+    public string Period { get => _period; set { if (value is not ("day" or "week" or "month")) throw new ArgumentOutOfRangeException(nameof(value)); if (Set(ref _period, value)) { Changed(nameof(PeriodOption)); Changed(nameof(CanChooseMonth)); RequestChanged(); } } }
+    public bool IsLoading { get => _isLoading; private set { if (Set(ref _isLoading, value)) Changed(nameof(HasNoReport)); } }
     public bool IsConnected => _requestReport is not null && Instance.Length > 0;
     public bool CanExport => _export is not null && Report is not null && !_exporting;
-    public string Error { get => _error; private set => Set(ref _error, value); }
+    public string Error { get => _error; private set { if (Set(ref _error, value)) { Changed(nameof(EmptyTitle)); Changed(nameof(EmptyMessage)); } } }
     public string ExportStatus { get => _exportStatus; private set => Set(ref _exportStatus, value); }
-    public StatisticsReport? Report { get => _report; private set { if (Set(ref _report, value)) Changed(nameof(CanExport)); } }
+    public StatisticsReport? Report
+    {
+        get => _report;
+        private set
+        {
+            if (!Set(ref _report, value)) return;
+            _chart = value is null ? null : new(value.Series);
+            _tables = value?.Tables.Select(t => new StatisticsTableViewModel(t, CanSaveFiles ? export => _ = ExportAsync(export) : null)).ToArray() ?? [];
+            foreach (var name in new[] { nameof(CanExport), nameof(HasReport), nameof(HasNoReport), nameof(HasSeries), nameof(IsReportEmpty), nameof(Chart), nameof(Tables) }) Changed(name);
+        }
+    }
 
     public Task ActivateAsync()
     {
@@ -90,7 +113,7 @@ public sealed class StatisticsViewModel : StatisticsObservable, IDisposable
         _active = true;
         return RefreshAsync();
     }
-    public void Deactivate() { _active = false; ++_revision; _request?.Cancel(); IsLoading = false; }
+    public void Deactivate() { _active = false; ++_revision; var request = _request; _request = null; request?.Cancel(); IsLoading = false; }
 
     private void RequestChanged()
     {
@@ -184,6 +207,9 @@ public sealed class StatisticsTableViewModel : StatisticsObservable
     public bool HasNote => !string.IsNullOrWhiteSpace(Table.Note);
     public string RecordSummary => $"{FilteredRows.Count} 条记录";
     public string PageSummary => $"第 {Page + 1} / {PageCount} 页";
+    public bool CanExport => _export is not null && FilteredRows.Count > 0;
+    public bool CanPrevious => Page > 0;
+    public bool CanNext => Page + 1 < PageCount;
     public ICommand PreviousCommand { get; }
     public ICommand NextCommand { get; }
     public ICommand ExportCommand { get; }
@@ -204,7 +230,7 @@ public sealed class StatisticsTableViewModel : StatisticsObservable
     }
     public void MovePage(int delta) { _page = Math.Clamp(Page + delta, 0, PageCount - 1); Refresh(); }
     public StatisticsExport Export() => StatisticsData.Csv(Table.Title, new[] { Table.Columns.Cast<object?>() }.Concat(FilteredRows));
-    private void Refresh() { Changed(nameof(PageRows)); Changed(nameof(PageSummary)); Changed(nameof(RecordSummary)); }
+    private void Refresh() { foreach (var property in new[] { nameof(PageRows), nameof(PageSummary), nameof(RecordSummary), nameof(CanExport), nameof(CanPrevious), nameof(CanNext), nameof(SortIndex), nameof(Descending) }) Changed(property); }
 
     private sealed class CellComparer(bool descending) : IComparer<object?>
     {
@@ -219,7 +245,7 @@ public sealed class StatisticsTableViewModel : StatisticsObservable
 
 public sealed class SyncCommand(Action<object?> action) : ICommand
 {
-    public event EventHandler? CanExecuteChanged;
+    public event EventHandler? CanExecuteChanged { add { } remove { } }
     public bool CanExecute(object? parameter) => true;
     public void Execute(object? parameter) => action(parameter);
 }

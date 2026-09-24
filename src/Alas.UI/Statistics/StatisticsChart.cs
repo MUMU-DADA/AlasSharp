@@ -225,3 +225,21 @@ public sealed class StatisticsChart : Control
     }
     protected override void OnKeyDown(KeyEventArgs e) { base.OnKeyDown(e); if (e.Key == Key.Escape) { ResetZoom(); e.Handled = true; } }
 }
+
+public sealed class StatisticsChartPanel : UserControl
+{
+    public StatisticsChartPanel()
+    {
+        var root = new StackPanel { Spacing = 8 };
+        var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var title = new TextBlock { Text = "趋势", FontSize = 17, FontWeight = FontWeight.SemiBold };
+        var mode = new ComboBox { ItemsSource = new[] { "line", "candlestick" }, Width = 130 };
+        mode.Bind(ComboBox.SelectedValueProperty, new Avalonia.Data.Binding("Mode") { Mode = Avalonia.Data.BindingMode.TwoWay });
+        Grid.SetColumn(mode, 1); heading.Children.Add(title); heading.Children.Add(mode); root.Children.Add(heading);
+        var chart = new StatisticsChart { Height = 360 };
+        chart.Bind(StatisticsChart.ModelProperty, new Avalonia.Data.Binding(".") { Mode = Avalonia.Data.BindingMode.OneWay });
+        root.Children.Add(chart);
+        var hint = new TextBlock { Text = "Ctrl + 滚轮缩放，Esc 恢复范围。", Foreground = Brushes.Gray }; root.Children.Add(hint);
+        Content = root;
+    }
+}
