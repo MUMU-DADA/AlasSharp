@@ -1,11 +1,27 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Alas.UI.ViewModels" xmlns:views="using:Alas.UI.Views" xmlns:statistics="using:Alas.UI.Statistics" xmlns:taskeditor="using:Alas.UI.TaskEditor" xmlns:configs="using:Alas.UI.ConfigManager" xmlns:dev="using:Alas.UI.DevTools"
+             xmlns:updater="using:Alas.UI.Updater" xmlns:auth="using:Alas.UI.Auth"
              x:Class="Alas.UI.Views.MainView" x:DataType="vm:ShellViewModel" Classes="shell"
              Classes.narrow="{Binding IsNarrow}" Classes.compact="{Binding IsCompact}"
              Classes.extreme="{Binding IsExtremeDesktop}" Classes.legacy="{Binding IsLegacyDesktop}"
              FontFamily="{DynamicResource AlasFontSans}" FontSize="14"
              Foreground="{DynamicResource AlasTextBrush}" Background="{DynamicResource AlasBgBrush}">
+  <UserControl.Styles>
+    <Style Selector="Button.skip-link">
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="16,-60,0,0" />
+      <Setter Property="ZIndex" Value="20" />
+      <Setter Property="Padding" Value="14,12" />
+      <Setter Property="Background" Value="{DynamicResource AlasSurfaceBrush}" />
+    </Style>
+    <Style Selector="Button.skip-link:focus">
+      <Setter Property="Margin" Value="16,16,0,0" />
+    </Style>
+  </UserControl.Styles>
   <Grid x:Name="Root">
+    <Button x:Name="SkipLink" Classes="skip-link" Theme="{StaticResource TextButtonTheme}"
+            Content="跳转到内容" AutomationProperties.Name="跳转到内容" />
     <Grid x:Name="Layout" RowDefinitions="Auto,*" ColumnSpacing="{DynamicResource AlasShellGap}">
       <Border x:Name="SidebarPanel" Grid.RowSpan="2" Grid.Column="0" Classes="sidebar" Width="232"
               HorizontalAlignment="Left">
@@ -43,6 +59,14 @@
           <views:InterfaceSettingsView x:Name="InterfaceSettingsPage" DataContext="{Binding InterfaceSettings}" />
         </Panel>
 
+          <Panel x:Name="SettingsHost" IsVisible="{Binding IsSettingsActive}" />
+          <Panel x:Name="RemoteHost" IsVisible="{Binding IsRemoteActive}" />
+          <Panel x:Name="UpdaterHost" IsVisible="{Binding IsUpdaterActive}">
+            <updater:UpdaterView x:Name="UpdaterPage" />
+          </Panel>
+          <Panel x:Name="LoginHost" IsVisible="{Binding IsLoginActive}">
+            <auth:LoginView x:Name="LoginPage" />
+          </Panel>
         <Panel x:Name="PlaceholderHost" IsVisible="{Binding IsPlaceholderActive}">
             <views:PlaceholderView x:Name="PlaceholderPage" DataContext="{Binding Placeholder}" />
           </Panel>

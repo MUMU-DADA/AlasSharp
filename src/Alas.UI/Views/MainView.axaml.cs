@@ -3,6 +3,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Alas.UI.ViewModels;
 
@@ -33,6 +34,27 @@ public partial class MainView : UserControl
         Model = new ShellViewModel(themeStore, backend, previewData: backend is null, files: files);
         DataContext = Model;
         Model.PropertyChanged += OnModelChanged;
+        var deploySession = new DeploySettings.DeploySettingsSession(
+            new Settings.SettingsTransport(Model.SettingsBackend, 1), async cancellationToken =>
+            {
+                var schema = DeploySettings.DeploySchemaAdapter.ToSchema(await Model.SettingsBackend.ReadAsync(cancellationToken));
+                return schema is null ? null : schema with
+                {
+                    Remote = new DeploySettings.DeployRemoteStatus(null, false, string.Empty,
+                        "远程连接服务尚未接通；下方设置可保存，保存不会启动远程服务。"),
+                };
+            });
+        SettingsPage = new Settings.SettingsView(Model.SettingsBackend, deploySession);
+        RemotePage = new RemoteAccess.RemoteAccessView(
+            RemoteAccess.DisconnectedRemoteAccessBackend.Instance, SettingsPage.Session, async address =>
+            {
+                var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+                if (clipboard is null) return false;
+                await clipboard.SetTextAsync(address);
+                return true;
+            });
+        SettingsHost.Children.Add(SettingsPage);
+        RemoteHost.Children.Add(RemotePage);
         ConfigManagerPage.ModalHost = Root;
         DevToolsPage.ModalHost = Root;
         DevToolsPage.UiTheme = Model.CurrentTheme;
@@ -59,9 +81,16 @@ public partial class MainView : UserControl
             Model.CloseDrawerCommand.Execute(null);
             args.Handled = true;
         };
+        MainScroll.Focusable = true;
+        ConfigManagerHost.Focusable = true;
+        DevToolsHost.Focusable = true;
+        SkipLink.Click += (_, _) =>
+            (Model.IsConfigManagerActive ? (Control)ConfigManagerHost : Model.IsDevToolsActive ? DevToolsHost : MainScroll).Focus();
     }
 
     public ShellViewModel Model { get; }
+    public Settings.SettingsView SettingsPage { get; }
+    public RemoteAccess.RemoteAccessView RemotePage { get; }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -83,10 +112,14 @@ public partial class MainView : UserControl
         if (args.PropertyName == nameof(ShellViewModel.IsDevToolsActive) && !Model.IsDevToolsActive)
             DevToolsPage.CloseModal();
         if (args.PropertyName == nameof(ShellViewModel.IsHomeActive)) _homeCreateVersion++;
+        if ((args.PropertyName == nameof(ShellViewModel.IsSettingsActive) && Model.IsSettingsActive) ||
+            (args.PropertyName == nameof(ShellViewModel.IsRemoteActive) && Model.IsRemoteActive))
+            _ = SettingsPage.Session.RefreshAsync();
         if (args.PropertyName == nameof(ShellViewModel.IsBackendConnected))
         {
             ConfigManagerPage.Model.Connected = Model.IsBackendConnected;
             if (Model.IsBackendConnected && Model.IsConfigManagerActive) _ = ConfigManagerPage.Model.RefreshAsync();
+            if (Model.IsSettingsActive || Model.IsRemoteActive) _ = SettingsPage.Session.RefreshAsync();
         }
         if (args.PropertyName == nameof(ShellViewModel.IsConfigManagerActive))
         {

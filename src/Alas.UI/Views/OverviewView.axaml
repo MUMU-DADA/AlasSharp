@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Alas.UI.ViewModels" xmlns:controls="using:Alas.UI.Controls"
+             xmlns:overview="using:Alas.UI.Overview"
              x:Class="Alas.UI.Views.OverviewView" x:DataType="vm:OverviewViewModel">
   <UserControl.Styles>
     <Style Selector="Border.resource-icon">
@@ -35,7 +36,12 @@
       </Border>
       <Border Grid.Column="2" Classes="title-actions" VerticalAlignment="Center">
         <Button x:Name="InstanceSettingsButton" Theme="{StaticResource GhostButtonTheme}" Padding="15,9"
-                IsEnabled="False" ToolTip.Tip="{Binding PendingNotice}" AutomationProperties.Name="实例设置">
+                ToolTip.Tip="资源卡片设置" AutomationProperties.Name="实例设置">
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedRight">
+              <overview:ResourceCardSettingsPanel />
+            </Flyout>
+          </Button.Flyout>
           <controls:Icon Data="{StaticResource IconSettings2}" Size="16" />
         </Button>
       </Border>

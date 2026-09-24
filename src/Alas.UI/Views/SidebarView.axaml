@@ -17,7 +17,7 @@
         <Border Classes="update-notice" VerticalAlignment="Center" IsHitTestVisible="False"
                 IsVisible="{Binding !IsNarrow}">
           <!-- 上游 nav.newBadge =「新着」 -->
-          <TextBlock Text="新" IsHitTestVisible="False" />
+          <TextBlock Text="新着" IsHitTestVisible="False" />
         </Border>
       </StackPanel>
       <Button x:Name="DrawerCloseButton" Grid.Column="2" Theme="{StaticResource IconButtonTheme}"

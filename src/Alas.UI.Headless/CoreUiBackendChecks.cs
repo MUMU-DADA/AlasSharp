@@ -215,8 +215,15 @@ internal static class CoreUiBackendChecks
 
     internal sealed class FixtureBackend : IAlasUiBackend
     {
-        public Task<DeploySettingsResponse> ReadDeploySettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default) => Task.FromException<DeploySettingsResponse>(new NotSupportedException());
-        public Task<DeploySettingsPatchResponse> PatchDeploySettingsAsync(DeploySettingsPatchRequest request, CancellationToken cancellationToken = default) => Task.FromException<DeploySettingsPatchResponse>(new NotSupportedException());
+        public Func<Task<DeploySettingsResponse>>? DeployRead;
+        public DeploySettingsPatchRequest? DeployPatch;
+        public Task<DeploySettingsResponse> ReadDeploySettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
+            => DeployRead?.Invoke() ?? Task.FromException<DeploySettingsResponse>(new NotSupportedException());
+        public Task<DeploySettingsPatchResponse> PatchDeploySettingsAsync(DeploySettingsPatchRequest request, CancellationToken cancellationToken = default)
+        {
+            DeployPatch = request;
+            return Task.FromResult(new DeploySettingsPatchResponse { Updated = request.Values.Select(item => item.Key).ToArray() });
+        }
         public Task<StartupRunResponse> ReadStartupRunAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<StartupRunResponse>(new NotSupportedException());
         public Task<StartupRunResponse> SetStartupRunAsync(StartupRunRequest request, CancellationToken cancellationToken = default) => Task.FromException<StartupRunResponse>(new NotSupportedException());
         public bool IsConnected => true;

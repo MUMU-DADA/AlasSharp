@@ -132,6 +132,37 @@ $onlineSource
     }
     finally { $process.Dispose() }
 
+    # 界面类名检查：用了 class 却没有样式定义时（元素会按默认样式渲染、编译与断言都不报），
+    # 在这里直接失败，避免"照抄了上游类名却忘了写样式"再次悄悄溜过去。
+    # 使用 PowerShell 实现，使 UI 构建不依赖系统 Python 或特定工作树中的 venv。
+    # 详细报告版见 tools/check_ui_classes.py（人工排查用），两者判定规则需保持一致。
+    $viewRoot = Join-Path $PSScriptRoot '..\src\Alas.UI'
+    $allowed = @('nav-item', 'rail-count-badge', 'monitor-action', 'segment-tab', 'field-row',
+        'palette-swatch', 'heading', 'home-main', 'home-deck', 'home-editorial', 'topbar-actions')
+    $used = @{}; $styled = @{}
+    foreach ($file in Get-ChildItem -LiteralPath $viewRoot -Recurse -Filter *.axaml) {
+        $text = Get-Content -LiteralPath $file.FullName -Raw
+        foreach ($line in ($text -split "`n")) {
+            $themed = $line -match 'Theme="\{StaticResource'
+            foreach ($m in [regex]::Matches($line, 'Classes="([^"]+)"')) {
+                foreach ($name in ($m.Groups[1].Value -split '\s+')) {
+                    if (-not $name) { continue }
+                    $used[$name] = $true
+                    if ($themed) { $styled[$name] = $true }
+                }
+            }
+            foreach ($m in [regex]::Matches($line, 'Classes\.([A-Za-z0-9_-]+)')) { $used[$m.Groups[1].Value] = $true }
+        }
+        foreach ($m in [regex]::Matches($text, 'Selector="([^"]+)"')) {
+            foreach ($c in [regex]::Matches($m.Groups[1].Value, '\.([A-Za-z0-9_-]+)')) { $styled[$c.Groups[1].Value] = $true }
+        }
+    }
+    $unexplained = @($used.Keys | Where-Object { -not $styled.ContainsKey($_) -and $allowed -notcontains $_ } | Sort-Object)
+    if ($unexplained.Count -gt 0) {
+        throw "UI class check failed; these classes have no style and no reason: $($unexplained -join ', ')"
+    }
+    Write-Output "UI class check passed ($($used.Count) classes, all styled or explained)."
+
     if ($Publish) {
         # Prevent old fingerprinted assets or symbols surviving a new publication.
         Reset-PublishDirectory 'desktop-win-x64'

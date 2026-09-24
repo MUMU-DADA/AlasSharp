@@ -56,6 +56,14 @@ internal static class Program
         DevToolsChecks.Run();
         DevToolsShellChecks.Run(output);
         ThemeLayoutChecks.Run(output);
+        LoginChecks.Run();
+        UpdaterChecks.Run();
+        ResourceCardSettingsChecks.Run();
+        SettingsChecks.Run();
+        RemoteAccessChecks.Run();
+        CommandReachabilityChecks.Run();
+        HitTestReachabilityChecks.Run();
+        AgentIntegrationChecks.Run();
         // 1) 对照帧：每种尺寸/主题用全新的视图与窗口，避免交互状态（筛选行、日志条数、指针悬停）进入对照图。
         CaptureClean(output, 1280, 820, dark: false, "overview-light-1280x820.png");
         CaptureClean(output, 1280, 820, dark: true, "overview-dark-1280x820.png");
@@ -281,7 +289,7 @@ internal static class Program
             Check(!model.IsDark && !model.IsLegacyLayout && !model.IsExtremeLayout, "applying light resets the theme flags");
 
             // 本阶段没有后端的入口一律禁用并写明原因，不留点了没反应的死绑定。
-            foreach (var disabled in new[] { "ExportButton", "InstanceSettingsButton", "InstanceCaption", "InstanceSwitch" })
+            foreach (var disabled in new[] { "ExportButton", "InstanceCaption", "InstanceSwitch" })
             {
                 var control = Find<Button>(view, disabled);
                 Check(!control.IsEnabled, $"{disabled} is disabled while its backend is not implemented");
@@ -472,15 +480,16 @@ internal static class Program
             Check(!model.IsOverviewActive, "home entry leaves the overview page");
             // 面包屑「主页」现在回到无实例主页外壳（上游 / 路由），不再是占位页。
             Check(model.IsHomeActive && !model.HasInstance, "breadcrumb home returns to the no-instance shell");
-            // 未实现的全局入口（系统设置）在无实例外壳里如实显示占位页。
+            // 系统设置走真实页面，未连接时显示能力缺口。
             var settingsEntry = primaryNav.GetVisualDescendants().OfType<Button>()
                 .FirstOrDefault(button => button.DataContext is NavEntry entry && entry.Key == "settings")
                 ?? throw new Exception("FAIL: settings nav entry is realised");
             Click(window, settingsEntry);
             Pump();
-            Check(!overviewHost.IsVisible && placeholderHost.IsVisible, "overview page hidden while placeholder shows");
+            Check(!overviewHost.IsVisible && !placeholderHost.IsVisible && model.IsSettingsActive,
+                "settings route opens its real page and hides the placeholder");
             Check(Find<TextBlock>(view, "BreadcrumbTail").IsVisible, "breadcrumb tail appears off the overview page");
-            Capture(window, output, "placeholder-light-1280x820.png");
+            Capture(window, output, "settings-light-1280x820.png");
             // 后续的宽窄屏与浮层断言都在实例外壳里进行，这里重新进入实例。
             model.SelectInstance("demo-main");
             Pump();
