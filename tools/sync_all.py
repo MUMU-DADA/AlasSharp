@@ -42,6 +42,8 @@ DIAG = os.path.join(HERE, 'diagnostics')
 # 免设备的验收（不需要真机）：识图协议 + 产品路径 + 偏移对齐 + 文档汇总
 VERIFY_STEPS = [
     (os.path.join(DIAG, 'verify_architecture.py'), []),
+    (os.path.join(HERE, 'verify_export.py'), []),
+    (os.path.join(DIAG, 'verify_map_export.py'), []),
     (os.path.join(DIAG, 'verify_map_detection.py'), []),
     (os.path.join(DIAG, 'verify_product_map.py'), []),
     (os.path.join(DIAG, 'verify_map_alignment.py'), []),

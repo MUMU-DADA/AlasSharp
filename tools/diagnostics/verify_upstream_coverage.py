@@ -45,6 +45,7 @@ def check_campaigns(av):
     from module.config.config import AzurLaneConfig
     from module.map.map_base import CampaignMap
     from campaign_rules import load_campaign_rules
+    from native_map_declarations import NativeMapDeclarations
 
     rows = json.loads((ROOT / 'data/campaign_index.json').read_text(encoding='utf-8'))['chapters']
     sources = {str(p.relative_to(av.FORK)).replace('\\', '/')
@@ -64,7 +65,7 @@ def check_campaigns(av):
     # an upstream computed property whose value depends on Fleet_Fleet2.
     template.override(Fleet_Fleet1=1, Fleet_Fleet2=0, Submarine_Fleet=0)
     try:
-        with patch.object(ModuleBase, 'EARLY_OCR_IMPORT', True), \
+        with NativeMapDeclarations(av.FORK) as map_declarations, patch.object(ModuleBase, 'EARLY_OCR_IMPORT', True), \
                 patch.object(av, '_device_engine', return_value=device), \
                 patch.object(av, '_map_config', side_effect=lambda *a: copy.deepcopy(template)):
             for row in rows:
@@ -73,6 +74,16 @@ def check_campaigns(av):
                 records.append(record)
                 try:
                     module = importlib.import_module(name)
+                except Exception as error:
+                    record.update(status='upstream_error', error=issue_text(error))
+                    continue
+                try:
+                    ir = json.loads((ROOT / 'data' / row['json']).read_text(encoding='utf-8'))
+                    map_declarations.check(module, ir)
+                except Exception as error:
+                    record.update(status='failed', error=issue_text(error))
+                    continue
+                try:
                     cls = getattr(module, 'Campaign', None)
                     if cls is None or not isinstance(getattr(cls, 'MAP', None), CampaignMap):
                         record.update(status='support_module', reason='No native Campaign.MAP')
@@ -348,7 +359,7 @@ def provenance(repo):
 
 
 def write_summary(path, report):
-    labels = dict(campaigns='关卡原生加载/Config/继承方法', assets='素材原生加载及四服字段',
+    labels = dict(campaigns='关卡原生加载/Config/MAP 声明/继承方法', assets='素材原生加载及四服字段',
                   pages='页面四服合成正对照', navigation='原生导航可达图对',
                   controls='四服控件声明、识别及工厂合成循环', tasks='任务调度绑定及依赖导入')
     source = report['provenance']
@@ -378,6 +389,7 @@ def write_summary(path, report):
     lines.extend(failures or ['无。'])
     lines += ['', '## 证据边界', '',
               '- 辅助模块通过导入后的 `Campaign.MAP` 类型识别，不按文件名排除；源导入失败会令检查退出码为 1。',
+              '- MAP 静态声明与原生导入时的赋值和方法参数逐项对拍，覆盖格子/类引用、复制、声明顺序及原生调用；不执行 JSON 规则。',
               '- 页面正对照使用模板画布；`Page(None)` 无可识别素材，明确跳过。',
               '- 导航运行原生页面图和控制循环，识别与点击反馈为合成状态；共享活动入口假定目标活动可用。',
               '- 控件按服务器在独立进程导入，保留导入时的服务器分支；普通实例和延迟属性调用原生识别，包含容器内控件。',

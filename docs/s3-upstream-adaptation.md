@@ -18,6 +18,9 @@
 ## 导出与视觉边界
 
 - JSON 的 `config/config_meta` 保留有效字段、C3 继承、来源、类型和未解析项；`Campaign` 类属性独立保存。
+- `map/map_meta` 导出 MAP 源声明、符号格子与类引用、嵌套容器类型、复制来源和原生方法调用参数；`derived_from` 是元数据，不混入地图字段。导出器 2.1.0 用通用符号解析替代未知名称静默丢弃及最多五轮复制补丁；未知/条件/嵌套修改明确记为不完整。
+  当前 1,437 个模块包含 1,370 份 MAP 声明、8,322 个赋值字段和 22 个原生方法调用；格子引用包含堡垒和弹跳敌人等上游机制，类引用包含复制后的继承来源。静态 JSON 不执行这些声明或替换原生 setter。
+  Schema、C# 模型、双端完整性校验、索引/manifest 与同步漂移检查共同消费新契约；原生导入审计在实际构造、setter、复制和方法调用处记录参数，再逐字段对拍。源导入失败仍失败，不能据静态完整宣称实战可用。
 - `plan_steps`、`semantic_trace` 和 IR 完整度是离线摘要，不是可逐条重放的战斗计划。
 - 地图识别继续走上游 `_map_config(chapter)` 和 `module.map_detection.utils_assets.Assets`。
 - 页面、按钮、OCR 和模板由 `tools/alas_vision.py` 解析上游对象；不得从 `assets.json` 重建运行时视觉规则。
@@ -89,6 +92,7 @@ alashub campaign campaign.campaign_main.campaign_2_1 --run --allow-actions --cle
 
 ```powershell
 python tools/verify_export.py
+python tools/diagnostics/verify_map_export.py
 alashub verify
 alashub map-ir
 python tools/diagnostics/verify_map_ir.py

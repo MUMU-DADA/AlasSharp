@@ -1,0 +1,49 @@
+{
+  "id": "after-sortie",
+  "kind": "account_state",
+  "required": true,
+  "input": {
+    "capture": true
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 0.4,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "server": "cn",
+    "pages": [
+      "page_campaign"
+    ],
+    "page_errors": [],
+    "in_map": false,
+    "in_map_error": null,
+    "in_map_tolerance": 140.5,
+    "frame": {
+      "available": true,
+      "path": null,
+      "shape": [
+        720,
+        1280,
+        3
+      ]
+    },
+    "source": "device_capture",
+    "campaign": {
+      "chapter": "campaign.campaign_main.campaign_1_4",
+      "stage": "1-4",
+      "instantiated": true
+    },
+    "config": "<redacted-account-config>",
+    "config_name": "<redacted-account-config>",
+    "config_error": null
+  }
+}

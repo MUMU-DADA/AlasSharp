@@ -38,10 +38,12 @@ from collections import Counter, defaultdict
 
 try:
     from .upstream_config_export import ConfigResolver
+    from .upstream_map_export import MapResolver
 except ImportError:
     from upstream_config_export import ConfigResolver
+    from upstream_map_export import MapResolver
 
-EXPORTER_VERSION = '2.0.0'
+EXPORTER_VERSION = '2.1.0'
 SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
@@ -50,9 +52,7 @@ SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.t
 TEMPLATE_VOCAB = {'clear_siren', 'clear_filter_enemy', 'battle_default', 'clear_boss',
                   'fleet_boss.clear_boss'}
 
-MAP_ATTRS = ('shape', 'camera_data', 'camera_data_spawn_point', 'map_data', 'map_data_loop',
-             'weight_data', 'spawn_data', 'spawn_data_loop', 'portal_data', 'land_based_data',
-             'wall_data')
+
 
 
 # --------------------------------------------------------------------- 工具
@@ -356,12 +356,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
     source_files = []
     stats = Counter()
     config_resolver = ConfigResolver(root)
-    # 有的章节地图不是字面量，而是**从别的章节拷来的**（例：campaign_15_4_121 里
-    # `from .campaign_15_4 import MAP as MAP_15_4` + `MAP = copy.copy(MAP_15_4)`）。
-    # 只抓字面量的话这种章节会导出成空地图 —— 而空地图不会表现成"识别不准"，
-    # 只会让引擎在一张空地图上做规划。所以下面记下引用关系，循环结束后统一补。
-    derived = {}          # rel -> 被引用的模块名
-    rel_by_module = {}    # 'campaign_main.campaign_15_4' -> 'campaign/campaign_main/campaign_15_4.py'
+    map_resolver = MapResolver(root)
 
     for path in iter_py(root, 'campaign'):
         rel = os.path.relpath(path, root).replace('\\', '/')
@@ -374,19 +369,6 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
             continue
 
         module = rel[len('campaign/'):-3].replace('/', '.')
-        rel_by_module[module] = rel
-        pkg = module.rsplit('.', 1)[0] if '.' in module else ''
-
-        # 相对导入别名：`from .campaign_15_4 import MAP as MAP_15_4`
-        #   → aliases['MAP_15_4'] = 'campaign_main.campaign_15_4'
-        aliases = {}
-        for node in tree.body:
-            if isinstance(node, ast.ImportFrom):
-                base = node.module or ''
-                target = f'{pkg}.{base}' if pkg and base else (base or pkg)
-                for a in node.names:
-                    aliases[a.asname or a.name] = target
-
         # 模块级常量符号表（用于解析 ENEMY_FILTER = ENEMY_FILTER 这类引用）
         consts = {}
         for node in tree.body:
@@ -411,37 +393,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
               'unresolved': []}
 
         for node in tree.body:
-            if isinstance(node, ast.Assign) and len(node.targets) == 1:
-                tgt = node.targets[0]
-                if isinstance(tgt, ast.Attribute) and isinstance(tgt.value, ast.Name) \
-                        and tgt.value.id == 'MAP':
-                    v = resolve(node.value)
-                    if v is _UNRESOLVED:
-                        ir['unresolved'].append(f'MAP.{tgt.attr}')
-                    elif v != '<self>':
-                        ir['map'][tgt.attr] = v
-                elif isinstance(tgt, ast.Name) and tgt.id == 'MAP':
-                    v = node.value
-                    # `MAP = copy.copy(MAP_X)` / `MAP = MAP_X`：记下引用，稍后补地图
-                    ref = None
-                    if isinstance(v, ast.Name):
-                        ref = v.id
-                    elif isinstance(v, ast.Call) and isinstance(v.func, ast.Attribute) \
-                            and v.func.attr in ('copy', 'deepcopy') and v.args \
-                            and isinstance(v.args[0], ast.Name):
-                        ref = v.args[0].id
-                    if ref and ref in aliases:
-                        derived[rel] = aliases[ref]
-                        ir['_map_derived_alias'] = ref
-                    if isinstance(v, ast.Call):
-                        args = [literal(a) for a in v.args]
-                        if args and args[0] is not _UNRESOLVED and args[0] is not None:
-                            ir['name'] = args[0]
-                            ir['_name_source'] = 'CampaignMap'
-                        else:
-                            ir['name'] = name_from_path(rel)
-                            ir['_name_source'] = 'path'
-            elif isinstance(node, ast.ClassDef) and node.name == 'Campaign':
+            if isinstance(node, ast.ClassDef) and node.name == 'Campaign':
                 cls_attrs = {}
                 for sub in node.body:
                     if isinstance(sub, ast.Assign) and len(sub.targets) == 1 \
@@ -472,6 +424,18 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
                         {k: v for k, v in cls_attrs.items() if k != 'MAP'})
                     ir['campaign']['class'] = node.name
                     ir['campaign']['bases'] = [ast.unparse(b) for b in node.bases]
+
+        # Declaration metadata is separate from native runtime map objects.
+        map_export = map_resolver.export('campaign.' + module)
+        ir['map'] = map_export['values']
+        ir['map_meta'] = {key: map_export[key] for key in (
+            'present', 'complete', 'origins', 'typed_values', 'source_files',
+            'unresolved', 'derived_from', 'calls')}
+        if map_export['name'] is not None:
+            ir['name'], ir['_name_source'] = map_export['name'], 'CampaignMap'
+        for issue in map_export['unresolved']:
+            prefix = 'MAP.' + issue['field'] if 'field' in issue else 'MAP'
+            ir['unresolved'].append(f"{prefix}: {issue.get('reason', issue)}")
 
         # Config is a separate inheritance graph from Campaign. Resolve the effective
         # chapter overrides from source so imported/re-exported Config classes, C3
@@ -508,7 +472,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
         all_calls = {c for b in battle_methods for c in b['calls']}
         plan_complete = bool(battle_methods) and all(b['plan_complete'] for b in battle_methods)
         template_only = plan_complete and all_calls <= TEMPLATE_VOCAB
-        # 难度分级：A = JSON 规则表即可；B = JSON 计划完整但用了词表外算子；C = 需插件/原生实现
+        # 难度分级：A/B/C 仅衡量静态摘要完整度，运行时均复用上游原生实现
         tier = 'A' if template_only else ('B' if plan_complete else 'C')
         native_overrides = sorted(b['method'] for b in hooks if not b['plan_complete'])
         super_delegates = sorted(b['method'] for b in hooks if b['plan_complete'])
@@ -557,51 +521,11 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
             'config_complete': (ir['config_meta']['present']
                                and ir['config_meta']['complete']),
             'map_keys': sorted(ir['map'].keys()),
-            'needs_review': tier == 'C' or not ir['config_meta']['complete'],
+            'map_present': ir['map_meta']['present'],
+            'map_complete': ir['map_meta']['present'] and ir['map_meta']['complete'],
+            'needs_review': tier == 'C' or not ir['config_meta']['complete']
+                            or not ir['map_meta']['complete'],
         })
-
-    # ---- 第二遍：补"从别的章节拷地图"的那些章节
-    # 支持链式（A 拷 B、B 拷 C）：迭代到收敛，最多 5 轮（够用且防环）。
-    fixed = []
-    for _ in range(5):
-        changed = False
-        for rel, src_module in sorted(derived.items()):
-            src_rel = rel_by_module.get(src_module)
-            if not src_rel or src_rel == rel:
-                continue
-            dest = os.path.join(out_dir, 'campaign', rel[len('campaign/'):-3] + '.json')
-            src_dest = os.path.join(out_dir, 'campaign', src_rel[len('campaign/'):-3] + '.json')
-            if not (os.path.exists(dest) and os.path.exists(src_dest)):
-                continue
-            with open(dest, encoding='utf-8') as f:
-                me = json.load(f)
-            local = dict(me.get('map') or {})
-            # "自己有地图"要看**实质内容**，不是看 dict 非空：
-            # campaign_15_4_121 的 map 里有 `name`（`MAP.name = '15-4-121'`）却没有地图数据，
-            # 第一版按"dict 非空"判断，于是把它当成"自己有地图"跳过了（补全数 0）。
-            if local.get('map_data') or local.get('shape'):
-                continue
-            with open(src_dest, encoding='utf-8') as f:
-                src = json.load(f)
-            src_map = dict(src.get('map') or {})
-            if not (src_map.get('map_data') or src_map.get('shape')):
-                continue                      # 源头也还没补上，下一轮再说
-            merged = dict(src_map)
-            merged['derived_from'] = src.get('source') or src_rel
-            merged.update(local)              # 本地字段（name 等）覆盖来源
-            me['map'] = merged
-            _write_json(dest, me)
-            for row in index:
-                if row['source'] == rel:
-                    row['map_keys'] = sorted(me['map'].keys())
-                    row['map_derived_from'] = me['map']['derived_from']
-            fixed.append(rel)
-            changed = True
-        if not changed:
-            break
-    if fixed:
-        manifest.setdefault('notes', []).append(
-            '这些章节的地图是从别的章节拷来的，已按引用补全: ' + ', '.join(sorted(fixed)))
 
     index.sort(key=lambda r: r['source'])
     _write_json(os.path.join(out_dir, 'campaign_index.json'),
@@ -613,6 +537,9 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
         'config_complete': sum(1 for r in index
                                if r['config_present'] and r['config_complete']),
         'config_fields': sum(len(r['config_keys']) for r in index),
+        'map_modules': sum(1 for r in index if r['map_present']),
+        'map_complete': sum(1 for r in index if r['map_complete']),
+        'map_fields': sum(len(r['map_keys']) for r in index),
         'template_only_pct': round(100 * stats['template_only'] / max(stats['files'], 1), 1),
         'needs_review': sum(1 for r in index if r['needs_review']),
         'unresolved_detail': unresolved_all,
@@ -671,7 +598,7 @@ CAMPAIGN_SCHEMA = {
     '$schema': 'https://json-schema.org/draft/2020-12/schema',
     'title': 'ALAS campaign IR',
     'type': 'object',
-    'required': ['source', 'map', 'config', 'config_meta', 'campaign'],
+    'required': ['source', 'map', 'map_meta', 'config', 'config_meta', 'campaign'],
     'properties': {
         'source': {'type': 'string'},
         'name': {'type': ['string', 'null'],
@@ -679,6 +606,28 @@ CAMPAIGN_SCHEMA = {
         'name_source': {'enum': ['CampaignMap', 'path'],
                         'description': 'path = 从文件名兜底派生，不是上游的权威名字'},
         'map': {'type': 'object', 'additionalProperties': True},
+        'map_meta': {
+            'type': 'object',
+            'required': ['present', 'complete', 'origins', 'typed_values',
+                         'source_files', 'unresolved', 'derived_from', 'calls'],
+            'properties': {
+                'present': {'type': 'boolean'},
+                'complete': {'type': 'boolean'},
+                'derived_from': {'type': ['string', 'null']},
+                'calls': {'type': 'array', 'items': {'type': 'object',
+                    'required': ['method', 'args', 'kwargs', 'typed_args', 'typed_kwargs', 'origin']}},
+                'origins': {'type': 'object', 'additionalProperties': {
+                    'type': 'object', 'required': ['module', 'line', 'expression'],
+                    'properties': {'module': {'type': 'string'},
+                                   'line': {'type': 'integer', 'minimum': 1},
+                                   'expression': {'type': 'string'}},
+                }},
+                'typed_values': {'type': 'object', 'additionalProperties': True},
+                'source_files': {'type': 'array', 'items': {'type': 'string'}},
+                'unresolved': {'type': 'array', 'items': {'type': 'object'}},
+            },
+            'description': 'MAP 源声明的离线证据；grid 与 class 引用保留符号类型，运行时仍使用原生对象',
+        },
         'config': {'type': 'object', 'additionalProperties': True},
         'config_meta': {
             'type': 'object',
@@ -715,10 +664,10 @@ CAMPAIGN_SCHEMA = {
                     'description': 'true = 所有 battle_* 方法体都被归一成 steps，无未识别语句'},
                 'template_only': {
                     'type': 'boolean',
-                    'description': 'true = 战斗计划可完全由 JSON 规则表驱动，无需插件'},
+                    'description': 'true = 静态步骤均落在模板词表；不代表可以替代原生运行时'},
                 'tier': {
                     'enum': ['A', 'B', 'C'],
-                    'description': 'A=JSON 规则表即可；B=计划完整但用了词表外算子；C=需插件或原生实现',
+                    'description': 'A=模板词表内摘要；B=词表外算子摘要；C=含未解析逻辑；均由原生运行时执行',
                 },
                 'has_siren': {'type': 'boolean'},
                 'attributes': {
@@ -728,10 +677,10 @@ CAMPAIGN_SCHEMA = {
                 },
                 'native_overrides': {
                     'type': 'array', 'items': {'type': 'string'},
-                    'description': '非 battle_* 的覆写钩子且含真实逻辑，C# 引擎必须实现'},
+                    'description': '非 battle_* 的覆写钩子，由原生 Campaign 继承调度保留'},
                 'super_delegates': {
                     'type': 'array', 'items': {'type': 'string'},
-                    'description': '纯 return super().X() 的覆写，C# 侧只需虚方法分派，无新增逻辑'},
+                    'description': '纯 return super().X() 的覆写，由原生虚方法分派保留'},
                 'battles': {
                     'type': 'array',
                     'items': {

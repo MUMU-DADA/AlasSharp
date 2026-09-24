@@ -23,8 +23,10 @@ from pathlib import Path
 
 try:
     from .upstream_config_export import ConfigResolver
+    from .upstream_map_export import MapResolver
 except ImportError:
     from upstream_config_export import ConfigResolver
+    from upstream_map_export import MapResolver
 
 SHAPE_RE = re.compile(r'^([A-Za-z])(\d+)$')
 
@@ -124,6 +126,8 @@ def check(repo: str, data: str) -> dict:
     # ---- 3. 网格自洽 + 4/5. 计划与源码比对
     grid_bad, plan_bad, config_bad, rendered_ok, rendered_checked = [], [], [], 0, 0
     config_resolver = ConfigResolver(repo)
+    map_resolver = MapResolver(repo)
+    map_bad = []
     tier_count = {'A': 0, 'B': 0, 'C': 0}
     for entry in index['chapters']:
         tier_count[entry['tier']] = tier_count.get(entry['tier'], 0) + 1
@@ -158,6 +162,31 @@ def check(repo: str, data: str) -> dict:
             config_bad.append({'file': entry['source'],
                                'differences': sorted(set(config_differences)),
                                'unresolved': expected_config['unresolved']})
+
+        expected_map = map_resolver.export(module)
+        map_meta = ir.get('map_meta') or {}
+        differences = []
+        if ir.get('map') != expected_map['values']:
+            differences.append('values')
+        for key in ('present', 'complete', 'origins', 'typed_values',
+                    'source_files', 'unresolved', 'derived_from', 'calls'):
+            if map_meta.get(key) != expected_map[key]:
+                differences.append(key)
+        if not expected_map['complete']:
+            differences.append('incomplete')
+        for key, expected in (
+                ('map_keys', sorted(expected_map['values'])),
+                ('map_present', expected_map['present']),
+                ('map_complete', expected_map['present'] and expected_map['complete'])):
+            if entry.get(key) != expected:
+                differences.append('index.' + key)
+        if expected_map['name'] is not None and (
+                ir.get('name') != expected_map['name'] or ir.get('name_source') != 'CampaignMap'
+                or entry.get('name') != expected_map['name'] or entry.get('name_source') != 'CampaignMap'):
+            differences.append('name')
+        if differences:
+            map_bad.append({'file': entry['source'], 'differences': differences,
+                            'unresolved': expected_map['unresolved']})
 
         shape = ir['map'].get('shape')
         grid = ir['map'].get('map_data')
@@ -209,6 +238,16 @@ def check(repo: str, data: str) -> dict:
                 plan_bad.append({'file': entry['source'],
                                  'issue': 'steps 里的算子未在源码中出现'})
 
+    for key, expected in (
+            ('map_modules', sum(bool(r.get('map_present')) for r in index['chapters'])),
+            ('map_complete', sum(bool(r.get('map_complete')) for r in index['chapters'])),
+            ('map_fields', sum(len(r.get('map_keys', [])) for r in index['chapters']))):
+        if manifest.get('campaign', {}).get(key) != expected:
+            problems.append(f'campaign manifest {key} 不一致')
+    stats['map_checked'] = len(index['chapters'])
+    stats['map_issues'] = len(map_bad)
+    if map_bad:
+        problems.append(f'{len(map_bad)} 个模块的 MAP 声明导出不完整或不一致')
     stats['grid_mismatch'] = len(grid_bad)
     stats['plan_issues'] = len(plan_bad)
     stats['config_checked'] = len(index['chapters'])
@@ -224,7 +263,7 @@ def check(repo: str, data: str) -> dict:
 
     return {'ok': not problems, 'problems': problems, 'stats': stats,
             'grid_bad_sample': grid_bad[:5], 'plan_bad_sample': plan_bad[:5],
-            'config_bad_sample': config_bad[:5],
+            'config_bad_sample': config_bad[:5], 'map_bad_sample': map_bad[:5],
             'missing_sample': missing[:5]}
 
 
