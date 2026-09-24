@@ -1,0 +1,596 @@
+{
+  "completed": {
+    "to-page_fleet": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_fleet",
+          "rounds": 2
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "state-page_fleet": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "to-page_fleet",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_fleet",
+              "rounds": 2
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "to-page_dock": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_dock",
+          "rounds": 2
+        },
+        "preceding_tasks": [
+          {
+            "id": "to-page_fleet",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_fleet",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_fleet",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "state-page_dock": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "to-page_fleet",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_fleet",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_fleet",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_dock",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_dock",
+              "rounds": 2
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "to-page_commission": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_commission",
+          "rounds": 2
+        },
+        "preceding_tasks": [
+          {
+            "id": "to-page_fleet",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_fleet",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_fleet",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_dock",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_dock",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_dock",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "state-page_commission": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "to-page_fleet",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_fleet",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_fleet",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_dock",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_dock",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_dock",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_commission",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_commission",
+              "rounds": 2
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "to-page_exercise": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_exercise",
+          "rounds": 2
+        },
+        "preceding_tasks": [
+          {
+            "id": "to-page_fleet",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_fleet",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_fleet",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_dock",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_dock",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_dock",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_commission",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_commission",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_commission",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "state-page_exercise": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "to-page_fleet",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_fleet",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_fleet",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_dock",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_dock",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_dock",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_commission",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_commission",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_commission",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_exercise",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_exercise",
+              "rounds": 2
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "return-main": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_main",
+          "rounds": 1
+        },
+        "preceding_tasks": [
+          {
+            "id": "to-page_fleet",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_fleet",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_fleet",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_dock",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_dock",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_dock",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_commission",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_commission",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_commission",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "to-page_exercise",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_exercise",
+              "rounds": 2
+            }
+          },
+          {
+            "id": "state-page_exercise",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": "<project>/.runtime/venv314/Lib/site-packages/adbutils/binaries/adb.exe",
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-25T03:10:17+08:00"
+}

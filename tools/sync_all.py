@@ -44,6 +44,7 @@ VERIFY_STEPS = [
     (os.path.join(DIAG, 'verify_architecture.py'), []),
     (os.path.join(HERE, 'verify_export.py'), []),
     (os.path.join(DIAG, 'verify_map_export.py'), []),
+    (os.path.join(DIAG, 'verify_campaign_export.py'), []),
     (os.path.join(DIAG, 'verify_map_detection.py'), []),
     (os.path.join(DIAG, 'verify_product_map.py'), []),
     (os.path.join(DIAG, 'verify_map_alignment.py'), []),

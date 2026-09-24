@@ -1,0 +1,38 @@
+{
+  "schema": "queue-evidence/1",
+  "source_run": "data/mainline-device/live-20260925-pages/artifacts/20260925T030928",
+  "redactions": [
+    "Absolute project paths replaced with <project>/relative paths; other absolute paths removed.",
+    "Device serial and configured endpoint replaced with <device>.",
+    "Account configuration snapshot and configuration name removed; no pixels or raw console logs archived.",
+    "Results, inputs, page ids, timings, rounds, clicks and timestamps otherwise retained."
+  ],
+  "source_files_sha256": {
+    "queue.json": "6321878282ea256f276d0e7ec2f30215ca49c0a5cb5cf6550252b471c3740f4d",
+    "state.json": "3379fe5a84ce4c1d70cd0b561fcde872343a49efc7477ea6b8a0cd46d7bcc2d9",
+    "session-log.jsonl": "2f7b5e17c2dc8fdeb2327ff9caf5ea448068be7c8d748866e6e479fc7f603d5c",
+    "task-return-main.json": "3cdd0e88b3be4912b2f1458c6e40053cfedd26a8a987181be9be691915166d1a",
+    "task-state-page_commission.json": "51d1b26dbe10900a3984509fb7ee4de3baace21025d50dd6f1bb0f649707bbf6",
+    "task-state-page_dock.json": "30a4e241f7e2970b715eae07611d74594a635f6936d5101ca7a7ac8541123e2c",
+    "task-state-page_exercise.json": "61f9a35dc979c36c5c27f088647c76342cc0b22fe58a702af4cc24adbc9814da",
+    "task-state-page_fleet.json": "8a154299fe8157665dd21a09773d18a0f0b7d90bd064b5de719170e44c408b99",
+    "task-to-page_commission.json": "a488ba2bf036f5ad3001d0fddd85263ce9f5f0922abcc2911c3c936412298acb",
+    "task-to-page_dock.json": "0cf1b2d7628c7eeec665dfa9d9a3d56554d75606c828da7527de32ea04c9ee0b",
+    "task-to-page_exercise.json": "33cf1051aeaf2b8e4ba1b2f01c655fec01f9ac3b0d9dd0c7f845707991f726bf",
+    "task-to-page_fleet.json": "f09b3c22b686ea8695fd438ecdfca09d82f5058906acf5e659df715ddc9d0401"
+  },
+  "files": {
+    "queue.json": "e1bc5a07e0dc4e5bdca552095c1889e4e47c01f07395a81513bfe8bde7f8dab5",
+    "state.json": "970b11adf7ae660073344bffefa0e750c90e69fe655f1e96755426922ef9598f",
+    "session-log.jsonl": "aa27590a10f8f347daddfedee6fd1b91c0eb2a59cf89dabdef5bbb4f668d4e3b",
+    "task-return-main.json": "37ac326c051f0e16aadb5083a6d647cad474856693f21a7666787860133108b8",
+    "task-state-page_commission.json": "3009e4102e6e3af37b9d5fa16a1fefe6cd0a74c582c023458ada147de7ff9457",
+    "task-state-page_dock.json": "323b7e0c2b35a953ae6956b8e00a0b2af64ab9b1b7708fa3cd82507139981db2",
+    "task-state-page_exercise.json": "549ec6059d807218f1982479895f01e9e64370e4a9b4540f524198d63da14771",
+    "task-state-page_fleet.json": "ee2e09b404b0f2e89825ed977ab4772a1d74943c43bfe995fb82a8b746784487",
+    "task-to-page_commission.json": "0240aa44dcafa5bcf79bbf7db6525d65fdb5a2384e235646d7e8b3a64b242864",
+    "task-to-page_dock.json": "5d866e01d92a1695fd8b06e4097ee283637d246f74b20d3a96b34b9c0b82e2d8",
+    "task-to-page_exercise.json": "90c563969b126247123cd310f71537de5f4453ed59e190c796656ffd32034111",
+    "task-to-page_fleet.json": "59e579bf6a0451a8de375855a39f47e84009712b34de66356e5ac9d585cc2df3"
+  }
+}

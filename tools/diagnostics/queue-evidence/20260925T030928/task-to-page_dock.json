@@ -1,0 +1,67 @@
+{
+  "id": "to-page_dock",
+  "kind": "navigate",
+  "required": true,
+  "input": {
+    "to": "page_dock",
+    "rounds": 2
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 5.8,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_fleet"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "target": "page_dock",
+    "rounds_requested": 2,
+    "rounds_completed": 2,
+    "rounds": [
+      {
+        "round": 1,
+        "success": true,
+        "to_target": {
+          "destination": "page_dock",
+          "arrived": true,
+          "final_page": "page_dock",
+          "changed": true,
+          "elapsed_ms": 2622.5,
+          "error": null,
+          "error_kind": null
+        }
+      },
+      {
+        "round": 2,
+        "success": true,
+        "return_to_main": {
+          "destination": "page_main",
+          "arrived": true,
+          "final_page": "page_main",
+          "changed": true,
+          "elapsed_ms": 1735.8,
+          "error": null,
+          "error_kind": null
+        },
+        "to_target": {
+          "destination": "page_dock",
+          "arrived": true,
+          "final_page": "page_dock",
+          "changed": true,
+          "elapsed_ms": 1368.4,
+          "error": null,
+          "error_kind": null
+        }
+      }
+    ],
+    "final_page": "page_dock",
+    "success": true
+  }
+}

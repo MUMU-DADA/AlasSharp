@@ -45,6 +45,7 @@ STEPS = [
     ('verify_product_map.py', 'S2 产品路径（alashub map + 关卡 IR 交叉校验）', False, 900),
     ('verify_config_export.py', '章节 Config 导出（继承/表达式/类型证据）', False, 300),
     ('verify_map_export.py', 'MAP 声明导出（符号格子/类/复制/未知语义）', False, 300),
+    ('verify_campaign_export.py', 'Campaign 类声明导出（引用/别名/类型/未知语义）', False, 300),
     ('verify_export_integrity.py', '导出完整性破坏用例：Python/C# 同时拒绝', False, 300),
     ('verify_validation_contracts.py', '同步验收与地图失败分类反例（离线）', False, 120),
     ('verify_map_alignment.py', 'S2 偏移对齐（窗口 vs 地图，含活动图 9x8）', False, 600),

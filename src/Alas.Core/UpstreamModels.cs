@@ -83,6 +83,7 @@ public sealed class CampaignPlan
     [JsonPropertyName("tier")] public string Tier { get; set; } = "";
     [JsonPropertyName("has_siren")] public bool HasSiren { get; set; }
     [JsonPropertyName("attributes")] public Dictionary<string, JsonElement> Attributes { get; set; } = new();
+    [JsonPropertyName("attributes_meta")] public CampaignAttributeExport? AttributesMeta { get; set; }
     [JsonPropertyName("battles")] public List<CampaignBattle> Battles { get; set; } = new();
 
     /// <summary>非 battle_* 的覆写钩子且含真实逻辑，由原生 Campaign 继承调度保留。</summary>
@@ -98,6 +99,20 @@ public sealed class CampaignConfigOrigin
     [JsonPropertyName("class")] public string Class { get; set; } = "";
     [JsonPropertyName("line")] public int Line { get; set; }
     [JsonPropertyName("expression")] public string Expression { get; set; } = "";
+}
+
+/// <summary>Campaign 自身声明的离线元数据；不代替原生继承或运行时状态。</summary>
+public sealed class CampaignAttributeExport
+{
+    [JsonPropertyName("scope")] public string Scope { get; set; } = "";
+    [JsonPropertyName("present")] public bool Present { get; set; }
+    [JsonPropertyName("complete")] public bool Complete { get; set; }
+    [JsonPropertyName("class_reference")] public string? ClassReference { get; set; }
+    [JsonPropertyName("origins")] public Dictionary<string, CampaignConfigOrigin> Origins { get; set; } = new();
+    [JsonPropertyName("typed_values")] public Dictionary<string, JsonElement> TypedValues { get; set; } = new();
+    [JsonPropertyName("method_aliases")] public Dictionary<string, JsonElement>? MethodAliases { get; set; }
+    [JsonPropertyName("source_files")] public List<string> SourceFiles { get; set; } = new();
+    [JsonPropertyName("unresolved")] public List<JsonElement> Unresolved { get; set; } = new();
 }
 
 /// <summary>章节 Config 的静态导出证据；Config 本身仍保留在 CampaignIr.Config。</summary>
@@ -178,6 +193,10 @@ public sealed class CampaignIndexEntry
     [JsonPropertyName("map_keys")] public List<string> MapKeys { get; set; } = new();
     [JsonPropertyName("map_present")] public bool MapPresent { get; set; }
     [JsonPropertyName("map_complete")] public bool MapComplete { get; set; }
+    [JsonPropertyName("campaign_attributes")] public List<string> CampaignAttributes { get; set; } = new();
+    [JsonPropertyName("campaign_present")] public bool CampaignPresent { get; set; }
+    [JsonPropertyName("campaign_complete")] public bool CampaignComplete { get; set; }
+    [JsonPropertyName("campaign_aliases")] public List<string> CampaignAliases { get; set; } = new();
     [JsonPropertyName("needs_review")] public bool NeedsReview { get; set; }
 }
 

@@ -24,9 +24,11 @@ from pathlib import Path
 try:
     from .upstream_config_export import ConfigResolver
     from .upstream_map_export import MapResolver
+    from .upstream_campaign_export import CampaignResolver
 except ImportError:
     from upstream_config_export import ConfigResolver
     from upstream_map_export import MapResolver
+    from upstream_campaign_export import CampaignResolver
 
 SHAPE_RE = re.compile(r'^([A-Za-z])(\d+)$')
 
@@ -127,6 +129,8 @@ def check(repo: str, data: str) -> dict:
     grid_bad, plan_bad, config_bad, rendered_ok, rendered_checked = [], [], [], 0, 0
     config_resolver = ConfigResolver(repo)
     map_resolver = MapResolver(repo)
+    campaign_resolver = CampaignResolver(repo)
+    campaign_bad = []
     map_bad = []
     tier_count = {'A': 0, 'B': 0, 'C': 0}
     for entry in index['chapters']:
@@ -139,6 +143,27 @@ def check(repo: str, data: str) -> dict:
         # Config classes, inherited overrides and constant expressions that a local
         # class-body-only exporter would silently omit.
         module = entry['source'][:-3].replace('/', '.').replace('\\', '.')
+        expected_campaign = campaign_resolver.export(module)
+        campaign = ir.get('campaign') or {}
+        campaign_meta = campaign.get('attributes_meta') or {}
+        differences = []
+        if campaign.get('attributes') != expected_campaign['values']:
+            differences.append('attributes')
+        for key, expected in expected_campaign.items():
+            if key != 'values' and campaign_meta.get(key) != expected:
+                differences.append(key)
+        if not expected_campaign['complete']:
+            differences.append('incomplete')
+        for key, expected in (
+                ('campaign_attributes', sorted(expected_campaign['values'])),
+                ('campaign_present', expected_campaign['present']),
+                ('campaign_complete', expected_campaign['present'] and expected_campaign['complete']),
+                ('campaign_aliases', sorted(expected_campaign['method_aliases']))):
+            if entry.get(key) != expected:
+                differences.append('index.' + key)
+        if differences:
+            campaign_bad.append(dict(file=entry['source'], differences=differences,
+                                     unresolved=expected_campaign['unresolved']))
         expected_config = config_resolver.export(module)
         meta = ir.get('config_meta') or {}
         config_differences = []
@@ -244,6 +269,17 @@ def check(repo: str, data: str) -> dict:
             ('map_fields', sum(len(r.get('map_keys', [])) for r in index['chapters']))):
         if manifest.get('campaign', {}).get(key) != expected:
             problems.append(f'campaign manifest {key} 不一致')
+    for key, expected in (
+            ('campaign_modules', sum(bool(r.get('campaign_present')) for r in index['chapters'])),
+            ('campaign_complete', sum(bool(r.get('campaign_complete')) for r in index['chapters'])),
+            ('campaign_attributes', sum(len(r.get('campaign_attributes', [])) for r in index['chapters'])),
+            ('campaign_aliases', sum(len(r.get('campaign_aliases', [])) for r in index['chapters']))):
+        if manifest.get('campaign', {}).get(key) != expected:
+            problems.append(f'campaign manifest {key} 不一致')
+    stats['campaign_attribute_checked'] = len(index['chapters'])
+    stats['campaign_attribute_issues'] = len(campaign_bad)
+    if campaign_bad:
+        problems.append(f'{len(campaign_bad)} 个模块的 Campaign 声明导出不完整或不一致')
     stats['map_checked'] = len(index['chapters'])
     stats['map_issues'] = len(map_bad)
     if map_bad:
@@ -264,6 +300,7 @@ def check(repo: str, data: str) -> dict:
     return {'ok': not problems, 'problems': problems, 'stats': stats,
             'grid_bad_sample': grid_bad[:5], 'plan_bad_sample': plan_bad[:5],
             'config_bad_sample': config_bad[:5], 'map_bad_sample': map_bad[:5],
+            'campaign_bad_sample': campaign_bad[:5],
             'missing_sample': missing[:5]}
 
 

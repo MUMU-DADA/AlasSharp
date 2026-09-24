@@ -25,6 +25,37 @@ def native_typed(value):
     return _typed(value)
 
 
+def check_campaign_declarations(module, ir):
+    """Compare own class data and function aliases before any campaign runs."""
+    cls = getattr(module, 'Campaign', None)
+    meta = ir['campaign']['attributes_meta']
+    if cls is None:
+        if meta['present'] or ir['campaign']['attributes'] or meta['method_aliases']:
+            raise AssertionError('Exported Campaign declarations exist without native class')
+        return
+    if not isinstance(cls, type) or not meta['present'] or not meta['complete'] or meta['scope'] != 'declared':
+        raise AssertionError('Native Campaign declaration absent or incomplete in export')
+    if meta['class_reference'] != cls.__module__ + '.' + cls.__name__:
+        raise AssertionError('Campaign source class identity differs')
+    attributes = {}
+    for name, value in vars(cls).items():
+        if name.startswith('__') or name == 'MAP' or inspect.isroutine(value) \
+                or isinstance(value, (property, staticmethod, classmethod)):
+            continue
+        attributes[name] = native_typed(value)
+    if attributes != meta['typed_values']:
+        differences = sorted(k for k in attributes.keys() | meta['typed_values'].keys()
+                             if attributes.get(k) != meta['typed_values'].get(k))
+        raise AssertionError(f'Campaign data declarations differ: {differences}')
+    # Python preserves __qualname__ on aliases; named declarations themselves
+    # match their slot, aliases point to another function's original identity.
+    aliases = {name: dict(module=value.__module__, name=value.__qualname__)
+               for name, value in vars(cls).items()
+               if inspect.isfunction(value) and value.__qualname__ != cls.__qualname__ + '.' + name}
+    if aliases != meta['method_aliases']:
+        raise AssertionError('Campaign method alias declarations differ')
+
+
 class NativeMapDeclarations:
     def __init__(self, repo):
         self.repo = Path(repo).resolve()

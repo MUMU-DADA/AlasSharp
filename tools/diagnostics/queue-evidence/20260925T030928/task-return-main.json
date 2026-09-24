@@ -1,0 +1,45 @@
+{
+  "id": "return-main",
+  "kind": "navigate",
+  "required": true,
+  "input": {
+    "to": "page_main",
+    "rounds": 1
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 1.7,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_exercise"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "target": "page_main",
+    "rounds_requested": 1,
+    "rounds_completed": 1,
+    "rounds": [
+      {
+        "round": 1,
+        "success": true,
+        "to_target": {
+          "destination": "page_main",
+          "arrived": true,
+          "final_page": "page_main",
+          "changed": true,
+          "elapsed_ms": 1626.5,
+          "error": null,
+          "error_kind": null
+        }
+      }
+    ],
+    "final_page": "page_main",
+    "success": true
+  }
+}

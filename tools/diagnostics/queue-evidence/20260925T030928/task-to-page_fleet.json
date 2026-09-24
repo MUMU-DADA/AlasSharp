@@ -1,0 +1,66 @@
+{
+  "id": "to-page_fleet",
+  "kind": "navigate",
+  "required": true,
+  "input": {
+    "to": "page_fleet",
+    "rounds": 2
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 24.4,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "target": "page_fleet",
+    "rounds_requested": 2,
+    "rounds_completed": 2,
+    "rounds": [
+      {
+        "round": 1,
+        "success": true,
+        "to_target": {
+          "destination": "page_fleet",
+          "arrived": true,
+          "final_page": "page_fleet",
+          "changed": true,
+          "elapsed_ms": 21416.8,
+          "error": null,
+          "error_kind": null
+        }
+      },
+      {
+        "round": 2,
+        "success": true,
+        "return_to_main": {
+          "destination": "page_main",
+          "arrived": true,
+          "final_page": "page_main",
+          "changed": true,
+          "elapsed_ms": 1708.9,
+          "error": null,
+          "error_kind": null
+        },
+        "to_target": {
+          "destination": "page_fleet",
+          "arrived": true,
+          "final_page": "page_fleet",
+          "changed": true,
+          "elapsed_ms": 1282.1,
+          "error": null,
+          "error_kind": null
+        }
+      }
+    ],
+    "final_page": "page_fleet",
+    "success": true
+  }
+}

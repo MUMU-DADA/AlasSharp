@@ -39,11 +39,13 @@ from collections import Counter, defaultdict
 try:
     from .upstream_config_export import ConfigResolver
     from .upstream_map_export import MapResolver
+    from .upstream_campaign_export import CampaignResolver
 except ImportError:
     from upstream_config_export import ConfigResolver
     from upstream_map_export import MapResolver
+    from upstream_campaign_export import CampaignResolver
 
-EXPORTER_VERSION = '2.1.0'
+EXPORTER_VERSION = '2.2.0'
 SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
@@ -357,6 +359,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
     stats = Counter()
     config_resolver = ConfigResolver(root)
     map_resolver = MapResolver(root)
+    campaign_resolver = CampaignResolver(root)
 
     for path in iter_py(root, 'campaign'):
         rel = os.path.relpath(path, root).replace('\\', '/')
@@ -369,42 +372,14 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
             continue
 
         module = rel[len('campaign/'):-3].replace('/', '.')
-        # 模块级常量符号表（用于解析 ENEMY_FILTER = ENEMY_FILTER 这类引用）
-        consts = {}
-        for node in tree.body:
-            if isinstance(node, ast.Assign) and len(node.targets) == 1 \
-                    and isinstance(node.targets[0], ast.Name):
-                v = literal(node.value)
-                if v is not _UNRESOLVED:
-                    consts[node.targets[0].id] = v
-
-        def resolve(node):
-            v = literal(node)
-            if v is not _UNRESOLVED:
-                return v
-            if isinstance(node, ast.Name):
-                if node.id in consts:
-                    return consts[node.id]
-                return '<self>'
-            return _UNRESOLVED
-
         ir = {'source': rel, 'name': None, '_name_source': None, 'map': {}, 'config': {},
               'config_meta': {}, 'campaign': {'battles': [], 'attributes': {}},
               'unresolved': []}
 
         for node in tree.body:
             if isinstance(node, ast.ClassDef) and node.name == 'Campaign':
-                cls_attrs = {}
                 for sub in node.body:
-                    if isinstance(sub, ast.Assign) and len(sub.targets) == 1 \
-                            and isinstance(sub.targets[0], ast.Name):
-                        attr = sub.targets[0].id
-                        v = resolve(sub.value)
-                        if v is _UNRESOLVED:
-                            ir['unresolved'].append(f'{node.name}.{attr}')
-                        elif v != '<self>':
-                            cls_attrs[attr] = v
-                    elif isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                    if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)) \
                             and node.name == 'Campaign':
                         body = [x for x in sub.body if not (isinstance(x, ast.Expr)
                                 and isinstance(x.value, ast.Constant))]
@@ -420,10 +395,15 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
                             'stmt_count': len(body),
                         })
                 if node.name == 'Campaign':
-                    ir['campaign']['attributes'].update(
-                        {k: v for k, v in cls_attrs.items() if k != 'MAP'})
                     ir['campaign']['class'] = node.name
                     ir['campaign']['bases'] = [ast.unparse(b) for b in node.bases]
+
+        declarations = campaign_resolver.export('campaign.' + module)
+        ir['campaign']['attributes'] = declarations['values']
+        ir['campaign']['attributes_meta'] = {k: v for k, v in declarations.items() if k != 'values'}
+        for issue in declarations['unresolved']:
+            prefix = 'Campaign.' + issue['field'] if 'field' in issue else 'Campaign'
+            ir['unresolved'].append(f"{prefix}: {issue.get('reason', issue)}")
 
         # Declaration metadata is separate from native runtime map objects.
         map_export = map_resolver.export('campaign.' + module)
@@ -523,8 +503,12 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
             'map_keys': sorted(ir['map'].keys()),
             'map_present': ir['map_meta']['present'],
             'map_complete': ir['map_meta']['present'] and ir['map_meta']['complete'],
+            'campaign_attributes': sorted(declarations['values']),
+            'campaign_present': declarations['present'],
+            'campaign_complete': declarations['present'] and declarations['complete'],
+            'campaign_aliases': sorted(declarations['method_aliases']),
             'needs_review': tier == 'C' or not ir['config_meta']['complete']
-                            or not ir['map_meta']['complete'],
+                            or not ir['map_meta']['complete'] or not declarations['complete'],
         })
 
     index.sort(key=lambda r: r['source'])
@@ -540,6 +524,10 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
         'map_modules': sum(1 for r in index if r['map_present']),
         'map_complete': sum(1 for r in index if r['map_complete']),
         'map_fields': sum(len(r['map_keys']) for r in index),
+        'campaign_modules': sum(r['campaign_present'] for r in index),
+        'campaign_complete': sum(r['campaign_complete'] for r in index),
+        'campaign_attributes': sum(len(r['campaign_attributes']) for r in index),
+        'campaign_aliases': sum(len(r['campaign_aliases']) for r in index),
         'template_only_pct': round(100 * stats['template_only'] / max(stats['files'], 1), 1),
         'needs_review': sum(1 for r in index if r['needs_review']),
         'unresolved_detail': unresolved_all,
@@ -654,7 +642,7 @@ CAMPAIGN_SCHEMA = {
         },
         'campaign': {
             'type': 'object',
-            'required': ['battles'],
+            'required': ['battles', 'attributes', 'attributes_meta'],
             'properties': {
                 'class': {'type': 'string'},
                 'bases': {'type': 'array', 'items': {'type': 'string'}},
@@ -673,7 +661,25 @@ CAMPAIGN_SCHEMA = {
                 'attributes': {
                     'type': 'object',
                     'additionalProperties': True,
-                    'description': 'Campaign 类数据属性；与章节 Config 分开保存',
+                    'description': 'Campaign 自身声明的数据属性；继承行为仍由原生 MRO 决定',
+                },
+                'attributes_meta': {
+                    'type': 'object',
+                    'required': ['scope', 'present', 'complete', 'class_reference', 'origins',
+                                 'typed_values', 'method_aliases', 'source_files', 'unresolved'],
+                    'properties': {
+                        'scope': {'const': 'declared'},
+                        'present': {'type': 'boolean'},
+                        'complete': {'type': 'boolean'},
+                        'class_reference': {'type': ['string', 'null']},
+                        'origins': {'type': 'object', 'additionalProperties': {'type': 'object'}},
+                        'typed_values': {'type': 'object'},
+                        'method_aliases': {'type': 'object', 'additionalProperties': {'type': 'object',
+                            'required': ['module', 'name'], 'properties': {
+                                'module': {'type': 'string'}, 'name': {'type': 'string'}}}},
+                        'source_files': {'type': 'array', 'items': {'type': 'string'}},
+                        'unresolved': {'type': 'array', 'items': {'type': 'object'}},
+                    },
                 },
                 'native_overrides': {
                     'type': 'array', 'items': {'type': 'string'},

@@ -58,13 +58,13 @@ internal static class MapExportValidation
         return true;
     }
 
-    private static bool SourceExists(string repo, string relative)
+    internal static bool SourceExists(string repo, string relative)
     {
         if (Path.IsPathRooted(relative) || relative.Split('/').Contains("..")) return false;
         return File.Exists(Path.Combine(repo, relative.Replace('/', Path.DirectorySeparatorChar)));
     }
 
-    private static object? Plain(JsonElement node)
+    internal static object? Plain(JsonElement node)
     {
         string kind = node.GetProperty("type").GetString() ?? "";
         switch (kind)

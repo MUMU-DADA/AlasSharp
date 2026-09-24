@@ -1,0 +1,133 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 48.6,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "to-page_fleet",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_fleet",
+        "rounds": 2
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 24.4,
+      "artifact": "<project>/data/mainline-device/live-20260925-pages/artifacts/20260925T030928/task-to-page_fleet.json"
+    },
+    {
+      "id": "state-page_fleet",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.5,
+      "artifact": "<project>/data/mainline-device/live-20260925-pages/artifacts/20260925T030928/task-state-page_fleet.json"
+    },
+    {
+      "id": "to-page_dock",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_dock",
+        "rounds": 2
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 5.8,
+      "artifact": "<project>/data/mainline-device/live-20260925-pages/artifacts/20260925T030928/task-to-page_dock.json"
+    },
+    {
+      "id": "state-page_dock",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.5,
+      "artifact": "<project>/data/mainline-device/live-20260925-pages/artifacts/20260925T030928/task-state-page_dock.json"
+    },
+    {
+      "id": "to-page_commission",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_commission",
+        "rounds": 2
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 6.9,
+      "artifact": "<project>/data/mainline-device/live-20260925-pages/artifacts/20260925T030928/task-to-page_commission.json"
+    },
+    {
+      "id": "state-page_commission",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.3,
+      "artifact": "<project>/data/mainline-device/live-20260925-pages/artifacts/20260925T030928/task-state-page_commission.json"
+    },
+    {
+      "id": "to-page_exercise",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_exercise",
+        "rounds": 2
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 7.3,
+      "artifact": "<project>/data/mainline-device/live-20260925-pages/artifacts/20260925T030928/task-to-page_exercise.json"
+    },
+    {
+      "id": "state-page_exercise",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/live-20260925-pages/artifacts/20260925T030928/task-state-page_exercise.json"
+    },
+    {
+      "id": "return-main",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_main",
+        "rounds": 1
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 1.7,
+      "artifact": "<project>/data/mainline-device/live-20260925-pages/artifacts/20260925T030928/task-return-main.json"
+    }
+  ]
+}

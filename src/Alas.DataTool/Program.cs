@@ -682,6 +682,7 @@ internal static class Program
         int gridBad = 0, planBad = 0, sirenCount = 0, bossKnown = 0;
         int configModules = 0, configComplete = 0, configFields = 0, configIncomplete = 0;
         int mapModules = 0, mapComplete = 0, mapFields = 0, mapBad = 0;
+        int campaignModules = 0, campaignComplete = 0, campaignFields = 0, campaignAliases = 0, campaignBad = 0;
         int chaptersWithOverrides = 0, superDelegateCount = 0;
         var overrideMethods = new SortedSet<string>(StringComparer.Ordinal);
         var badSample = new List<string>();
@@ -705,6 +706,18 @@ internal static class Program
             if (ir.MapMeta.Present) mapModules++;
             if (ir.MapMeta.Present && ir.MapMeta.Complete) mapComplete++;
             mapFields += ir.Map.Count;
+            if (!CampaignExportValidation.Check(ir, entry, repoDir))
+            {
+                campaignBad++;
+                if (badSample.Count < 5) badSample.Add($"{entry.Source}: Campaign 声明/类型/来源/完整性不一致");
+            }
+            if (ir.Campaign.AttributesMeta is { } declarations)
+            {
+                if (declarations.Present) campaignModules++;
+                if (declarations.Present && declarations.Complete) campaignComplete++;
+                campaignAliases += declarations.MethodAliases?.Count ?? 0;
+            }
+            campaignFields += ir.Campaign.Attributes.Count;
 
             if (ir.ConfigMeta.Present)
             {
@@ -767,13 +780,18 @@ internal static class Program
         Console.WriteLine($"[Config] 有效模块 {configModules}，完整 {configComplete}，"
                           + $"字段 {configFields}，不完整 {configIncomplete}");
         Console.WriteLine($"[MAP] 声明模块 {mapModules}，完整 {mapComplete}，字段 {mapFields}，问题 {mapBad}");
+        Console.WriteLine($"[Campaign] 声明模块 {campaignModules}，完整 {campaignComplete}，"
+                          + $"属性 {campaignFields}，方法别名 {campaignAliases}，问题 {campaignBad}");
+        if (campaignBad > 0) problems.Add($"{campaignBad} 个模块的 Campaign 声明导出不完整或不一致");
         if (catalog.Manifest is { } mapManifest
             && mapManifest.RootElement.TryGetProperty("campaign", out var mapSummary))
         {
             foreach (var (key, expected) in new[] { ("map_modules", mapModules),
-                ("map_complete", mapComplete), ("map_fields", mapFields) })
+                ("map_complete", mapComplete), ("map_fields", mapFields),
+                ("campaign_modules", campaignModules), ("campaign_complete", campaignComplete),
+                ("campaign_attributes", campaignFields), ("campaign_aliases", campaignAliases) })
                 if (!mapSummary.TryGetProperty(key, out var actual) || actual.GetInt32() != expected)
-                    problems.Add($"MAP manifest {key} 不一致");
+                    problems.Add($"关卡 manifest {key} 不一致");
         }
         foreach (var s in badSample) Console.WriteLine($"       {s}");
         if (gridBad > 0) problems.Add($"{gridBad} 个关卡网格与 shape 不自洽");

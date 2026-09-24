@@ -45,7 +45,7 @@ def check_campaigns(av):
     from module.config.config import AzurLaneConfig
     from module.map.map_base import CampaignMap
     from campaign_rules import load_campaign_rules
-    from native_map_declarations import NativeMapDeclarations
+    from native_map_declarations import NativeMapDeclarations, check_campaign_declarations
 
     rows = json.loads((ROOT / 'data/campaign_index.json').read_text(encoding='utf-8'))['chapters']
     sources = {str(p.relative_to(av.FORK)).replace('\\', '/')
@@ -80,6 +80,7 @@ def check_campaigns(av):
                 try:
                     ir = json.loads((ROOT / 'data' / row['json']).read_text(encoding='utf-8'))
                     map_declarations.check(module, ir)
+                    check_campaign_declarations(module, ir)
                 except Exception as error:
                     record.update(status='failed', error=issue_text(error))
                     continue
@@ -390,6 +391,7 @@ def write_summary(path, report):
     lines += ['', '## 证据边界', '',
               '- 辅助模块通过导入后的 `Campaign.MAP` 类型识别，不按文件名排除；源导入失败会令检查退出码为 1。',
               '- MAP 静态声明与原生导入时的赋值和方法参数逐项对拍，覆盖格子/类引用、复制、声明顺序及原生调用；不执行 JSON 规则。',
+              '- Campaign 自身数据声明与原生类字典逐项对拍，包含自定义格子类、符号格子、私有状态与方法别名；继承行为仍由原生类调度。',
               '- 页面正对照使用模板画布；`Page(None)` 无可识别素材，明确跳过。',
               '- 导航运行原生页面图和控制循环，识别与点击反馈为合成状态；共享活动入口假定目标活动可用。',
               '- 控件按服务器在独立进程导入，保留导入时的服务器分支；普通实例和延迟属性调用原生识别，包含容器内控件。',
