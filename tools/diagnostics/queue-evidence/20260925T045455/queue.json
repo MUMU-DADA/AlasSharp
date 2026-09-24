@@ -1,0 +1,180 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 17.8,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "shop",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_shop"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 3.2,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-shop.json"
+    },
+    {
+      "id": "shop-state",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-shop-state.json"
+    },
+    {
+      "id": "shop-home",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_main"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 1.8,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-shop-home.json"
+    },
+    {
+      "id": "build",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_build"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 1.3,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-build.json"
+    },
+    {
+      "id": "build-state",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.5,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-build-state.json"
+    },
+    {
+      "id": "build-home",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_main"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 1.8,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-build-home.json"
+    },
+    {
+      "id": "mail",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_mail"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 1.2,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-mail.json"
+    },
+    {
+      "id": "mail-state",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.3,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-mail-state.json"
+    },
+    {
+      "id": "mail-home",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_main"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 1.7,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-mail-home.json"
+    },
+    {
+      "id": "research",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_research"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 2,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-research.json"
+    },
+    {
+      "id": "research-state",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.4,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-research-state.json"
+    },
+    {
+      "id": "research-home",
+      "kind": "navigate",
+      "required": true,
+      "input": {
+        "to": "page_main"
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 1.8,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-research-home.json"
+    },
+    {
+      "id": "final-state",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.5,
+      "artifact": "<project>/data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455/task-final-state.json"
+    }
+  ]
+}

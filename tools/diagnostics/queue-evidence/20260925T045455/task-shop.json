@@ -1,0 +1,46 @@
+{
+  "id": "shop",
+  "kind": "navigate",
+  "required": true,
+  "input": {
+    "to": "page_shop"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 3.2,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "target": "page_shop",
+    "rounds_requested": 1,
+    "rounds_completed": 1,
+    "rounds": [
+      {
+        "round": 1,
+        "success": true,
+        "to_target": {
+          "destination": "page_shop",
+          "arrived": true,
+          "final_page": "page_shop",
+          "changed": true,
+          "elapsed_ms": 3212.9,
+          "error": null,
+          "error_kind": null,
+          "failure_frames": [],
+          "failure_frame_source": null,
+          "failure_frame_error": null
+        }
+      }
+    ],
+    "final_page": "page_shop",
+    "success": true
+  }
+}

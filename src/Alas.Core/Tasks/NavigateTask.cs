@@ -67,8 +67,10 @@ public sealed class NavigateTask : ITaskRunner
             {
                 phase = leg;
                 token.ThrowIfCancellationRequested();
+                string? failureFrame = context.Session.RunDirectory is string directory
+                    ? Path.Combine(directory, $"navigation-{Guid.NewGuid():N}.png") : null;
                 var native = context.Session.Vision.CallTyped<NativeUiEnsureResult>(
-                    "ui_ensure", new { destination, allow_actions = true });
+                    "ui_ensure", new { destination, allow_actions = true, failure_frame = failureFrame });
                 var legEvidence = new JsonObject
                 {
                     ["destination"] = destination,
@@ -79,6 +81,9 @@ public sealed class NavigateTask : ITaskRunner
                     ["elapsed_ms"] = native.ElapsedMilliseconds,
                     ["error"] = native.Error,
                     ["error_kind"] = native.ErrorKind,
+                    ["failure_frames"] = JsonSerializer.SerializeToNode(native.FailureFrames),
+                    ["failure_frame_source"] = native.FailureFrameSource,
+                    ["failure_frame_error"] = native.FailureFrameError,
                 };
                 if (native.TracebackTail is { Count: > 0 })
                     legEvidence["traceback_tail"] = JsonSerializer.SerializeToNode(native.TracebackTail);
@@ -146,6 +151,9 @@ public sealed class NavigateTask : ITaskRunner
         else problems.Add("input.to 必须是非空字符串（上游页面名）");
         if (request.Input?.ContainsKey("max_hops") == true)
             problems.Add("input.max_hops 已停用：上游 UI.ui_ensure 不提供逐跳上限");
+        foreach (var field in request.Input?.Select(pair => pair.Key) ?? [])
+            if (field is not ("to" or "rounds" or "max_hops"))
+                problems.Add($"未知导航字段: input.{field}");
         int rounds = PositiveInteger(request, "rounds", 1, problems);
         return (target, rounds);
     }
@@ -199,4 +207,7 @@ public sealed class NativeUiEnsureResult
     [JsonPropertyName("error")] public string? Error { get; set; }
     [JsonPropertyName("error_kind")] public string? ErrorKind { get; set; }
     [JsonPropertyName("traceback_tail")] public List<string>? TracebackTail { get; set; }
+    [JsonPropertyName("failure_frames")] public List<string> FailureFrames { get; set; } = [];
+    [JsonPropertyName("failure_frame_source")] public string? FailureFrameSource { get; set; }
+    [JsonPropertyName("failure_frame_error")] public string? FailureFrameError { get; set; }
 }

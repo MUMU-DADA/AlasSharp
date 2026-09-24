@@ -3289,9 +3289,35 @@ def op_ui_ensure(args):
     started = time.perf_counter()
     destination_name = args.get('destination')
     result = {'destination': destination_name, 'arrived': False,
-              'final_page': None, 'changed': None}
+              'final_page': None, 'changed': None, 'failure_frames': []}
+    device = None
+    failure_frame = None
 
     def finish():
+        if result.get('error') and failure_frame is not None:
+            # Retain the frame seen by the failed native operation. Do not take
+            # another screenshot or click while reporting a navigation error.
+            result['failure_frame_source'] = 'unavailable'
+            try:
+                image = getattr(device, 'image', None) if getattr(device, 'has_cached_image', False) else None
+                if image is not None:
+                    import io
+                    from PIL import Image
+                    buffer = io.BytesIO()
+                    Image.fromarray(image).save(buffer, format='PNG')
+                    with failure_frame.open('xb') as stream:
+                        try:
+                            stream.write(buffer.getvalue())
+                        except Exception:
+                            stream.close()
+                            failure_frame.unlink()
+                            raise
+                    result['failure_frames'].append(str(failure_frame))
+                    result['failure_frame_source'] = 'last_cached_device_frame'
+            except Exception as error:
+                message = f'保存导航失败帧失败: {type(error).__name__}: {error}'
+                result['failure_frame_error'] = message
+                result['error'] += '\n' + message
         result['elapsed_ms'] = round((time.perf_counter() - started) * 1000, 1)
         return result
 
@@ -3307,6 +3333,14 @@ def op_ui_ensure(args):
                       error_kind='UnknownPage')
         return finish()
 
+    path = args.get('failure_frame')
+    if path is not None:
+        if not isinstance(path, str) or not path.strip() or not Path(path).is_absolute():
+            result.update(error='failure_frame must be an absolute artifact path',
+                          error_kind='InvalidArtifactPath')
+            return finish()
+        failure_frame = Path(path)
+
     ui = None
     try:
         from module.ui.ui import UI
@@ -3321,12 +3355,14 @@ def op_ui_ensure(args):
         if not result['arrived']:
             result.update(error='Destination not visible after native UI navigation',
                           error_kind='DestinationNotVisible')
-    except Exception as e:
+    except (Exception, SystemExit) as e:
         # ui_goto clears this on success, but leaves temporary parent links on failure.
         Page.clear_connection()
         result['final_page'] = getattr(getattr(ui, 'ui_current', None), 'name', None)
-        result.update(error=f'{type(e).__name__}: {e}', error_kind=type(e).__name__,
-                      traceback_tail=traceback.format_exc().splitlines()[-6:])
+        tail = [f'{os.path.basename(frame.filename)}:{frame.lineno} {frame.name}'
+                for frame in traceback.extract_tb(e.__traceback__)[-8:]]
+        result.update(error=f'{type(e).__name__}: {e}' + ('\n' + '\n'.join(tail) if tail else ''),
+                      error_kind=type(e).__name__, traceback_tail=tail)
     return finish()
 
 

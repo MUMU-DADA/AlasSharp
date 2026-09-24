@@ -1,6 +1,26 @@
 {
   "cases": [
     {
+      "name": "native_navigate_failure_preserves_trace_and_frame",
+      "dry_run": false, "allow_actions": true, "serial": "stub-1", "artifacts": true,
+      "tasks": [{"id": "failed", "kind": "navigate", "input": {"to": "page_c"}}],
+      "stub_responses": {"ui_ensure": [{"expected_args": {"destination": "page_c", "allow_actions": true},
+        "result": {"arrived": false, "error": "fixture native failure\nui.py:300 ui_goto", "error_kind": "GameStuckError",
+          "traceback_tail": ["ui.py:300 ui_goto"], "failure_frames": ["fixture-failure.png"],
+          "failure_frame_source": "last_cached_device_frame", "failure_frame_error": null}}]},
+      "expect": {"outcome": "failed", "stopped_early": true,
+        "tasks": [{"id": "failed", "outcome": "failed", "error_kind": "timeout",
+          "error_contains": "ui.py:300 ui_goto",
+          "evidence_contains": ["fixture-failure.png", "last_cached_device_frame", "ui.py:300 ui_goto"]}]}
+    },
+    {
+      "name": "native_navigate_rejects_caller_artifact_path",
+      "dry_run": false, "allow_actions": true, "serial": "stub-1",
+      "tasks": [{"id": "blocked", "kind": "navigate", "input": {"to": "page_c", "failure_frame": "caller.png"}}],
+      "expect": {"outcome": "partial", "backend_calls": 1,
+        "tasks": [{"id": "blocked", "outcome": "skipped", "error_contains": "未知导航字段"}]}
+    },
+    {
       "name": "native_navigate_arrives",
       "dry_run": false,
       "allow_actions": true,

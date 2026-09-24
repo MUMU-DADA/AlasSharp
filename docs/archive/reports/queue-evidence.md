@@ -33,6 +33,7 @@
 | `20260925T040837` | 只读设备；宿主 1 / 设备配置 1 | 6.1 秒 |
 | `20260925T040915` | 动作授权；宿主 1 / 设备配置 1 | 4.1 秒 |
 | `20260925T043232` | 只读设备；宿主 1 / 设备配置 1 | 2.9 秒 |
+| `20260925T045455` | 动作授权；宿主 1 / 设备配置 1 | 17.8 秒 |
 
 | 归档 / 任务 | 任务域 | 已核对事实 |
 | --- | --- | --- |
@@ -108,6 +109,19 @@
 | `20260925T040915/exit-observation` | `navigate` | 上游原生导航到 page_main；完成 1/1 轮；最终 page_main |
 | `20260925T040915/after-cleanup` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
 | `20260925T043232/scheduler-after` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
+| `20260925T045455/shop` | `navigate` | 上游原生导航到 page_shop；完成 1/1 轮；最终 page_shop |
+| `20260925T045455/shop-state` | `account_state` | 实时抓帧；页面 page_munitions, page_shop, page_supply_pack；in_map=False |
+| `20260925T045455/shop-home` | `navigate` | 上游原生导航到 page_main；完成 1/1 轮；最终 page_main |
+| `20260925T045455/build` | `navigate` | 上游原生导航到 page_build；完成 1/1 轮；最终 page_build |
+| `20260925T045455/build-state` | `account_state` | 实时抓帧；页面 page_build；in_map=False |
+| `20260925T045455/build-home` | `navigate` | 上游原生导航到 page_main；完成 1/1 轮；最终 page_main |
+| `20260925T045455/mail` | `navigate` | 上游原生导航到 page_mail；完成 1/1 轮；最终 page_mail |
+| `20260925T045455/mail-state` | `account_state` | 实时抓帧；页面 page_mail；in_map=False |
+| `20260925T045455/mail-home` | `navigate` | 上游原生导航到 page_main；完成 1/1 轮；最终 page_main |
+| `20260925T045455/research` | `navigate` | 上游原生导航到 page_research；完成 1/1 轮；最终 page_research |
+| `20260925T045455/research-state` | `account_state` | 实时抓帧；页面 page_research；in_map=False |
+| `20260925T045455/research-home` | `navigate` | 上游原生导航到 page_main；完成 1/1 轮；最终 page_main |
+| `20260925T045455/final-state` | `account_state` | 实时抓帧；页面 page_main, page_main_white；in_map=False |
 
 来源目录（项目相对路径，原件不入库）：
 
@@ -132,3 +146,4 @@
 - `data/mainline-device/live-20260925-observe-chapter/artifacts/20260925T040837`
 - `data/mainline-device/live-20260925-observe-cleanup/artifacts/20260925T040915`
 - `data/mainline-device/live-20260925-scheduler-after/artifacts/20260925T043232`
+- `data/mainline-device/live-20260925-navigation-more/artifacts/20260925T045455`

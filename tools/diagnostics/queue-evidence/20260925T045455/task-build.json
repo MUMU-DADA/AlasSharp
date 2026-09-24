@@ -1,0 +1,49 @@
+{
+  "id": "build",
+  "kind": "navigate",
+  "required": true,
+  "input": {
+    "to": "page_build"
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 1.3,
+  "boundary_state": {
+    "available": true,
+    "server": "cn",
+    "pages": [
+      "page_munitions",
+      "page_shop",
+      "page_supply_pack"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "target": "page_build",
+    "rounds_requested": 1,
+    "rounds_completed": 1,
+    "rounds": [
+      {
+        "round": 1,
+        "success": true,
+        "to_target": {
+          "destination": "page_build",
+          "arrived": true,
+          "final_page": "page_build",
+          "changed": true,
+          "elapsed_ms": 1315,
+          "error": null,
+          "error_kind": null,
+          "failure_frames": [],
+          "failure_frame_source": null,
+          "failure_frame_error": null
+        }
+      }
+    ],
+    "final_page": "page_build",
+    "success": true
+  }
+}

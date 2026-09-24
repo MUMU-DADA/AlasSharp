@@ -1,0 +1,1031 @@
+{
+  "completed": {
+    "shop": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_shop"
+        },
+        "preceding_tasks": [],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "shop-state": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "shop-home": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_main"
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          },
+          {
+            "id": "shop-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "build": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_build"
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          },
+          {
+            "id": "shop-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "shop-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "build-state": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          },
+          {
+            "id": "shop-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "shop-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "build",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_build"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "build-home": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_main"
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          },
+          {
+            "id": "shop-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "shop-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "build",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_build"
+            }
+          },
+          {
+            "id": "build-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "mail": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_mail"
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          },
+          {
+            "id": "shop-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "shop-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "build",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_build"
+            }
+          },
+          {
+            "id": "build-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "build-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "mail-state": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          },
+          {
+            "id": "shop-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "shop-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "build",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_build"
+            }
+          },
+          {
+            "id": "build-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "build-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "mail",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_mail"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "mail-home": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_main"
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          },
+          {
+            "id": "shop-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "shop-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "build",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_build"
+            }
+          },
+          {
+            "id": "build-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "build-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "mail",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_mail"
+            }
+          },
+          {
+            "id": "mail-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "research": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_research"
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          },
+          {
+            "id": "shop-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "shop-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "build",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_build"
+            }
+          },
+          {
+            "id": "build-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "build-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "mail",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_mail"
+            }
+          },
+          {
+            "id": "mail-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "mail-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "research-state": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          },
+          {
+            "id": "shop-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "shop-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "build",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_build"
+            }
+          },
+          {
+            "id": "build-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "build-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "mail",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_mail"
+            }
+          },
+          {
+            "id": "mail-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "mail-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "research",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_research"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "research-home": {
+      "identity": {
+        "kind": "navigate",
+        "required": true,
+        "input": {
+          "to": "page_main"
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          },
+          {
+            "id": "shop-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "shop-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "build",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_build"
+            }
+          },
+          {
+            "id": "build-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "build-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "mail",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_mail"
+            }
+          },
+          {
+            "id": "mail-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "mail-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "research",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_research"
+            }
+          },
+          {
+            "id": "research-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    },
+    "final-state": {
+      "identity": {
+        "kind": "account_state",
+        "required": true,
+        "input": {
+          "capture": true
+        },
+        "preceding_tasks": [
+          {
+            "id": "shop",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_shop"
+            }
+          },
+          {
+            "id": "shop-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "shop-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "build",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_build"
+            }
+          },
+          {
+            "id": "build-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "build-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "mail",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_mail"
+            }
+          },
+          {
+            "id": "mail-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "mail-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          },
+          {
+            "id": "research",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_research"
+            }
+          },
+          {
+            "id": "research-state",
+            "kind": "account_state",
+            "required": true,
+            "input": {
+              "capture": true
+            }
+          },
+          {
+            "id": "research-home",
+            "kind": "navigate",
+            "required": true,
+            "input": {
+              "to": "page_main"
+            }
+          }
+        ],
+        "session": {
+          "repo_directory": "<project>/.runtime/engine",
+          "tools_directory": "<project>/tools",
+          "data_directory": "<project>/data",
+          "adb_path": null,
+          "serial": "<device>",
+          "screenshot_backend": "adb",
+          "control_backend": "ADB",
+          "dry_run": false,
+          "allow_actions": true,
+          "read_only_device": false,
+          "max_seconds": 1500,
+          "max_rounds": 20,
+          "repeat_until_cleared": true,
+          "clear_all": false,
+          "fleet1": 1,
+          "fleet2": 0,
+          "submarine_fleet": 0
+        }
+      },
+      "outcome": "succeeded"
+    }
+  },
+  "updated": "2026-09-25T04:55:13+08:00"
+}

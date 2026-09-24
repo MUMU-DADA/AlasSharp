@@ -2,8 +2,12 @@
 """Exercise the native UI navigation host contract without a live device."""
 import json
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+import numpy as np
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import alas_vision as vision  # noqa: E402
@@ -14,6 +18,8 @@ from module.ui.ui import UI  # noqa: E402
 class Device:
     def __init__(self):
         self.config = object()
+        self.image = np.full((8, 12, 3), (12, 34, 56), dtype=np.uint8)
+        self.has_cached_image = True
 
 
 class FakeUI:
@@ -113,7 +119,43 @@ def main():
         assert failed['error_kind'] == 'RuntimeError', failed
         assert 'fixture native failure' in failed['error'], failed
         assert failed['traceback_tail'], failed
+        assert all(line in failed['error'] for line in failed['traceback_tail']), failed
         assert all(page.parent is None for page in Page.all_pages.values())
+
+        with tempfile.TemporaryDirectory(prefix='alas-nav-frame-') as directory:
+            frame = Path(directory) / 'failure.png'
+            arguments = {'destination': destination.name, 'allow_actions': True,
+                         'failure_frame': str(frame)}
+            failed = vision.op_ui_ensure(arguments)
+            assert failed['failure_frames'] == [str(frame)], failed
+            assert failed['failure_frame_source'] == 'last_cached_device_frame', failed
+            assert np.array_equal(np.asarray(Image.open(frame)), device.image)
+            before = frame.read_bytes()
+            # Existing artifacts must not be overwritten; save failure must retain the cause.
+            collision = vision.op_ui_ensure(arguments)
+            assert frame.read_bytes() == before
+            assert collision['failure_frames'] == []
+            assert 'fixture native failure' in collision['error']
+            assert 'FileExistsError' in collision['failure_frame_error']
+            assert collision['failure_frame_error'] in collision['error']
+
+            device.has_cached_image = False
+            missing = vision.op_ui_ensure({**arguments, 'failure_frame': str(Path(directory) / 'missing.png')})
+            assert missing['failure_frames'] == [] and missing['failure_frame_source'] == 'unavailable'
+            device.has_cached_image = True
+            FakeUI.failure = SystemExit(1)
+            exited = vision.op_ui_ensure({**arguments, 'failure_frame': str(Path(directory) / 'exit.png')})
+            assert exited['error_kind'] == 'SystemExit' and not exited['arrived']
+            assert all(line in exited['error'] for line in exited['traceback_tail'])
+            assert len(exited['failure_frames']) == 1
+            FakeUI.failure = None
+            success = vision.op_ui_ensure({**arguments, 'failure_frame': str(Path(directory) / 'success.png')})
+            assert success['arrived'] and success.get('failure_frames', []) == []
+            assert not (Path(directory) / 'success.png').exists()
+            engine.reset_mock()
+            bad_path = vision.op_ui_ensure({**arguments, 'failure_frame': '../relative.png'})
+            assert bad_path['error_kind'] == 'InvalidArtifactPath'
+            engine.assert_not_called()
 
     print('OK: native UI navigation host contract')
 
