@@ -159,7 +159,11 @@ try
         $"SSE disconnect must not stop or reinterpret queue; status={completed.Active.Status}, error={completed.Active.Error}, outcome={completed.Report?["queue_outcome"]}");
     Check(completed.LiveTasks.Count == 200 && completed.RecentLogs.Count <= 80, "All tasks and bounded recent log window");
     Check(completed.Report?["device_configure_count"]?.GetValue<int>() == 0, "No device configured");
-    Check(completed.RecentLogs.Any(n => n?["message"]?.GetValue<string>() == "识图宿主已释放"), "Live log includes final disposal entry");
+    Check(!completed.RecentLogs.Any(n => n?["message"]?.GetValue<string>() == "识图宿主已释放"),
+        "Queue completion keeps the shared host alive");
+    var logIds = completed.RecentLogs.Select(n => n!["id"]!.GetValue<long>()).ToArray();
+    Check(logIds.All(id => id > 0) && logIds.SequenceEqual(logIds.Order()) && logIds.Distinct().Count() == logIds.Length,
+        "SSE carries stable ordered Core log IDs");
 
     // An open stream must not keep Kestrel alive through its HTTP shutdown deadline.
     await using var closing = client.WatchStateAsync(cancellationToken: lifetime.Token).GetAsyncEnumerator();
@@ -168,6 +172,10 @@ try
     shutdown.Cancel();
     Check(!await eof.WaitAsync(TimeSpan.FromSeconds(5)), "ApplicationStopping promptly closes the stream");
     await running.WaitAsync(TimeSpan.FromSeconds(5));
+    var finalLog = File.ReadLines(Path.Combine(completed.Active.RunDirectory!, "session-log.jsonl"))
+        .Select(line => JsonNode.Parse(line)).ToArray();
+    Check(finalLog.Count(n => n?["message"]?.GetValue<string>() == "识图宿主已释放") == 1,
+        "Service shutdown records shared-host disposal exactly once");
     Check(File.Exists(Path.Combine(completed.Active.RunDirectory!, "state.json")), "Shutdown preserves state artifact");
     using var secondShutdown = new CancellationTokenSource();
     var restarted = new ControlServer(root, repo, data, Path.Combine(root, "tools"), Path.Combine(work, "runs"), Path.Combine(work, "workspace"), port);

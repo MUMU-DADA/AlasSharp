@@ -213,13 +213,12 @@ public sealed class ControlWorkspace
                     {
                         _session ??= AlasSession.Start(HostSessionOptions(options), _engineFactory, log: log);
                         session = _session;
-                        _log = session.Log;
                     }
                     QueueExecution.RunFile(requestPath, options, stopOnFailure: stopOnFailure,
                         resume: resume, stopFile: _stopPath, token: stopSignal.Token, onSessionStarted: directory =>
                         {
                             lock (_gate) _runDirectory = directory;
-                        }, log: session.Log, sharedSession: session);
+                        }, log: log, sharedSession: session);
                 }
                 catch (Exception error)
                 {
@@ -312,7 +311,19 @@ public sealed class ControlWorkspace
                 .OrderByDescending(Directory.GetLastWriteTimeUtc).FirstOrDefault();
             if (directory is null) return null;
             string state = Path.Combine(directory, "state.json");
-            return File.Exists(state) ? JsonNode.Parse(ArtifactReader.ReadAllText(state)) as JsonObject : null;
+            var snapshot = File.Exists(state) ? JsonNode.Parse(ArtifactReader.ReadAllText(state)) as JsonObject : null;
+            if (snapshot is null) return null;
+            snapshot["stream"] = Path.GetFileName(runDirectory) + "/" + Path.GetFileName(directory);
+            string logs = Path.Combine(directory, "logs.json");
+            try
+            {
+                if (File.Exists(logs) && JsonNode.Parse(ArtifactReader.ReadAllText(logs)) is JsonObject tail
+                    && tail["instance"]?.GetValue<string>() == snapshot["instance"]?.GetValue<string>())
+                    snapshot["logs"] = tail;
+            }
+            catch (IOException) { }
+            catch (JsonException) { }
+            return snapshot;
         }
         catch (IOException) { return null; }
         catch (JsonException) { return null; }

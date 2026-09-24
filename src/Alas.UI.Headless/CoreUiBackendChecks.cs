@@ -36,7 +36,59 @@ internal static class CoreUiBackendChecks
         await editor.RunAsync("fixture", "Reward", CancellationToken.None);
         Check(backend.Started is { Instance: "fixture", Task: "Reward", ConfirmActions: true }, "task intent preserves selected instance");
         await VerifyScheduler(backend);
+        VerifyObservation();
         Console.WriteLine("PASS: shared Core adapters preserve upstream report fields and strict strategy diagnostics");
+    }
+
+    private static void VerifyObservation()
+    {
+        var overview = new OverviewViewModel();
+        var rail = new RailViewModel(overview);
+        overview.SetInstance("fixture");
+        var state = JsonNode.Parse("""
+            {"active":{"instance":"fixture","status":"running","started_at":"run-one",
+              "scheduler":{"phase":"running","task":"Reward","next_run":"2026-01-01 00:00:00",
+                "pending":[{"name":"Reward","next_run":"2026-01-01 00:00:00"},{"name":"Commission","next_run":"2026-01-02 00:00:00"}],
+                "waiting":[{"name":"Research","next_run":"2030-01-01 00:00:00"}],
+                "resources":[{"name":"Oil","value":1234,"limit":25000,"record":"2026-01-02 03:04:05"},
+                             {"name":"Coin","value":9999,"record":"2020-01-01 00:00:00"}],
+                "logs":{"entries":[{"id":1,"level":"WARNING","message":"native","time":"2026-01-02T00:00:02Z"}]}}},
+             "recent_logs":[{"id":1,"level":"INFO","message":"core","time":"2026-01-02T00:00:01Z"}]}
+            """)!.AsObject();
+        overview.ApplyState(state);
+        Check(rail.RunningCount == "1" && rail.PendingCount == "1" && rail.WaitingCount == "1" && rail.PlanCountText == "3",
+            "native current task is not counted twice in pending");
+        Check(rail.Groups[0].Tasks.Single().Name == "收获", "native command maps to upstream UI label");
+        Check(overview.Resources[0].Value.Contains("234") && overview.Resources[0].HasLimit
+              && overview.Resources[1].Value == "—", "recorded resource versus sentinel timestamp");
+        Check(overview.VisibleLogs.Select(row => row.Message).SequenceEqual(["core", "native"]), "merge log sources chronologically");
+        overview.ApplyState(state);
+        Check(overview.CachedLogCount == 2, "repeated snapshot does not duplicate logs");
+        overview.ClearCommand.Execute(null);
+        overview.ApplyState(state);
+        Check(overview.CachedLogCount == 0, "clear retains cursor floor across refresh");
+        state["active"]!["scheduler"]!["logs"]!["entries"]!.AsArray().Add(new JsonObject
+            { ["id"] = 2L, ["level"] = "ERROR", ["message"] = "new native", ["time"] = "2026-01-02T00:00:03Z" });
+        state["active"]!["scheduler"]!["phase"] = "waiting";
+        overview.ApplyState(state);
+        Check(overview.VisibleLogs.Single().Message == "new native" && rail.RunningCount == "0" && rail.PendingCount == "2",
+            "waiting scheduler is not a running task; only new logs appear");
+        state["active"]!["started_at"] = "run-two";
+        overview.ApplyState(state);
+        Check(overview.CachedLogCount == 3, "new run resets stream cursors");
+        overview.SetInstance("another");
+        overview.ApplyState(state);
+        Check(overview.CachedLogCount == 0 && rail.PlanCountText == "0" && overview.Resources.All(card => card.Value == "—"),
+            "instance switch clears observed logs, tasks and resources");
+
+        var resourceSnapshot = JsonNode.Parse("""
+            {"resources":[{"name":"ActionPoint","value":100,"total":160,"record":"2026-01-02 03:04:05"},
+                          {"name":"CustomKey","label":"来自上游","value":42,"record":"2026-01-02 03:04:05"}]}
+            """)!.AsObject();
+        var cards = SchedulerObservation.Resources(resourceSnapshot, ["CustomKey", "ActionPoint", "Chip"]);
+        Check(cards[0].Name == "来自上游" && cards[0].HasFallback && cards[1].Limit == "/ 总行动力 160"
+              && cards[2].Value == "—", "upstream resource order, unknown keys and total action points");
+        Console.WriteLine("PASS: native scheduler observations, resource records, log cursors and instance isolation");
     }
 
     private static async Task VerifyScheduler(FixtureBackend backend)

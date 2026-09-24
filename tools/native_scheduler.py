@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import json
 from pathlib import Path
 import time
 import traceback
+
+from native_telemetry import NativeLogCapture, observe_config, write_snapshot
 
 
 class FileStopEvent:
@@ -47,16 +48,21 @@ def run_scheduler(args, host):
     device = None
     previous_config = None
     last_success = None
+    observation = {}
+    capture = None
 
     def write(name, value):
-        temporary = directory / (name + '.tmp')
-        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
-        temporary.replace(directory / name)
+        write_snapshot(directory, name, value)
 
-    def status(phase, **extra):
+    def status(phase, config=None, **extra):
+        nonlocal observation
+        if config is not None:
+            observation = dict(observe_config(config), observed_at=datetime.now(timezone.utc).isoformat())
         write('state.json', dict(instance=instance, phase=phase, dispatch_count=out['dispatch_count'],
                                  failed_dispatches=out['failed_dispatches'],
-                                 updated_at=datetime.now(timezone.utc).isoformat(), **extra))
+                                 updated_at=datetime.now(timezone.utc).isoformat(), **observation, **extra))
+        if capture is not None:
+            capture.flush_snapshot()
 
     from alas import AzurLaneAutoScript
     from cached_property import cached_property
@@ -83,7 +89,7 @@ def run_scheduler(args, host):
             return current
 
         def wait_until(self, future):
-            status('waiting', next_run=str(future), task=self.config.task.command)
+            status('waiting', config=self.config, next_run=str(future), task=self.config.task.command)
             return super().wait_until(future)
 
         def run(self, command, skip_first_screenshot=False):
@@ -96,7 +102,8 @@ def run_scheduler(args, host):
                           native_success=False, returned=False)
             name = f'dispatch-{number:06d}.json'
             write(name, record)
-            status('running', method=command, task=self.config.task.command)
+            status('running', config=self.config, method=command, task=self.config.task.command,
+                   next_run=str(self.config.task.next_run))
             failure = host._LoggedNativeFailure()
             logger.addHandler(failure)
             try:
@@ -128,8 +135,11 @@ def run_scheduler(args, host):
                     out['failed_dispatches'] += 1
                 record['finished_at'] = datetime.now(timezone.utc).isoformat()
                 write(name, record)
+                status('selecting', config=self.config)
 
     try:
+        capture = NativeLogCapture(directory, instance)
+        logger.addHandler(capture)
         status('starting')
         runner = SchedulerRunner(config_name=instance)
         runner.stop_event = stop
@@ -157,5 +167,10 @@ def run_scheduler(args, host):
                 out.update(decision='error', error=f'恢复设备配置失败: {type(error).__name__}: {error}',
                            traceback_tail=traceback.format_exc().strip().splitlines()[-8:])
         out.update(stop_observed=stop.observed, elapsed_s=round(time.monotonic() - started, 3))
-        status(out.get('decision', 'error'), error=out.get('error'), stop_observed=stop.observed)
+        try:
+            status(out.get('decision', 'error'), error=out.get('error'), stop_observed=stop.observed)
+        finally:
+            if capture is not None:
+                logger.removeHandler(capture)
+                capture.close()
     return out

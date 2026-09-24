@@ -11,6 +11,7 @@
 | `QueueExecution` | 队列解析、runner 注册、断点、停止文件及任务调度入口 |
 | `ControlWorkspace` | 控制工作区、单队列运行快照、状态与关闭门禁；调用 `QueueExecution` |
 | `SchedulerRunTask` / `native_scheduler.py` | 原生连续调度生命周期、边界停止及逐次分派工件；不复制上游调度状态机 |
+| `native_telemetry.py` | 只读原生待运行/等待队列与资源记录，捕获 Rich 日志；不重新选择任务 |
 | `Alas.Server/ControlServer` | Kestrel HTTP 传输、回环与同源/令牌检查；不引用 UI |
 | `CampaignBatchRunner` | 逐关原生执行、合同裁决、批次工件与失败即停 |
 | `SessionLog` / `RuntimeErrors` | 结构化日志、统一错误分类与释放 |
@@ -39,6 +40,8 @@ Ctrl-C 与 `--stop-file` 请求在任务/关卡边界生效，不中断正在执
   index.json / index-2.json   各战役批次的独立索引
   sortie-*.json               逐关合同、步骤和失败详情
   session-log.jsonl           会话结构化日志
+  scheduler-<id>/state.json   原生调度阶段、上次观测的任务列表与资源
+  scheduler-<id>/native-log.jsonl / logs.json  完整原生日志 / 最近 400 条展示快照
 ```
 
 `--artifacts`、`--resume-state` 和 `--stop-file` 的相对路径在宿主启动前固定。
@@ -49,8 +52,10 @@ Ctrl-C 与 `--stop-file` 请求在任务/关卡边界生效，不中断正在执
 `--resume-state <文件>` 必须配合 `--resume`；显式文件缺失、断点损坏或完成状态无效时，启动会话前报错。
 旧 id-only 断点不证明请求相同，保守重跑。
 
-日志在会话释放时落盘，强杀进程可能缺少完整日志。原始截图、账号配置、设备信息和日志只留在忽略目录；
+Core 日志按运行批次隔离，在每批结束与会话释放时落盘；复用宿主不会带入上一批日志。强杀进程可能缺少完整日志。原始截图、账号配置、设备信息和日志只留在忽略目录；
 归档只能做可重复脱敏，保留原件与副本哈希，不改写事实或原始证据来迎合检查。
+
+原生日志按行落盘，展示快照最多每秒四次更新，并在阶段边界刷新。Core 读取工件即可显示运行状态，不并发进入繁忙宿主；UI 以来源内递增编号去重，清空仅影响显示。任务/资源是原生分派或等待边界的观测值，不能把它当作新的调度依据或游戏目标完成证据；未记录的资源显示等待同步。
 
 ## 报告与本地控制台
 

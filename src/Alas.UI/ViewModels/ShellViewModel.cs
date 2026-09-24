@@ -584,6 +584,12 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     private bool _otherInstanceRunning;
     private bool _stopRequested;
     private string _schedulerPhase = "idle";
+    private string? _logStream;
+    private long _nativeLogCursor;
+    private long _coreLogCursor;
+    private JsonObject? _observation;
+    public IReadOnlyList<RailTaskViewModel> NativeTasks { get; private set; } = [];
+    public event EventHandler? ObservationChanged;
 
     public OverviewViewModel(bool previewData = false, IAlasControlBackend? backend = null)
     {
@@ -808,6 +814,16 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         _stopRequested = false;
         _schedulerPhase = "idle";
         IsSchedulerRunning = false;
+        if (!_previewData)
+        {
+            _logStream = null;
+            _nativeLogCursor = _coreLogCursor = 0;
+            _observation = null;
+            NativeTasks = [];
+            Resources.Clear();
+            ClearLogs();
+            ObservationChanged?.Invoke(this, EventArgs.Empty);
+        }
         Notify(nameof(InstanceName));
         NotifyScheduler();
     }
@@ -822,20 +838,49 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         IsSchedulerRunning = status == "running" && selected;
         _stopRequested = IsSchedulerRunning && active["stop_requested"]?.GetValue<bool>() == true;
         _schedulerPhase = selected ? active["scheduler"]?["phase"]?.GetValue<string>() ?? status : "idle";
-        _allLogs.Clear();
-        VisibleLogs.Clear();
-        if (selected && state["recent_logs"] is JsonArray logs)
+        _observation = selected ? active["scheduler"] as JsonObject : null;
+        NativeTasks = SchedulerObservation.Tasks(_observation, IsSchedulerRunning);
+        if (!_previewData)
         {
-            foreach (var item in logs.OfType<JsonObject>())
-            {
-                string timestamp = item["timestamp"]?.GetValue<string>() ?? string.Empty;
-                DateTime.TryParse(timestamp, out var parsed);
-                AppendLog(item["message"]?.GetValue<string>() ?? string.Empty,
-                    item["level"]?.GetValue<string>() ?? "INFO",
-                    parsed == default ? DateTime.Now : parsed);
-            }
+            Resources.Clear();
+            foreach (var card in SchedulerObservation.Resources(_observation, ["Oil", "Coin", "Gem", "Cube"]))
+                Resources.Add(card);
         }
+        if (selected) ApplyLogSnapshot(state, active);
+        ObservationChanged?.Invoke(this, EventArgs.Empty);
         NotifyScheduler();
+    }
+
+    private void ApplyLogSnapshot(JsonObject state, JsonObject active)
+    {
+        string stream = active["started_at"]?.GetValue<string>() ?? "idle";
+        if (_logStream != stream)
+        {
+            _logStream = stream;
+            _nativeLogCursor = _coreLogCursor = 0;
+            ClearLogs();
+        }
+        var additions = new List<JsonObject>();
+        void Collect(JsonArray? entries, ref long cursor)
+        {
+            foreach (var entry in entries?.OfType<JsonObject>() ?? [])
+                if (entry["id"] is JsonValue id && id.TryGetValue<long>(out long sequence) && sequence > cursor)
+                {
+                    additions.Add(entry);
+                    cursor = sequence;
+                }
+        }
+        Collect(state["recent_logs"] as JsonArray, ref _coreLogCursor);
+        Collect(_observation?["logs"]?["entries"] as JsonArray, ref _nativeLogCursor);
+        foreach (var entry in additions.OrderBy(entry => DateTimeOffset.TryParse(entry["time"]?.GetValue<string>(),
+                     CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var timestamp) ? timestamp : DateTimeOffset.MinValue))
+        {
+            DateTimeOffset.TryParse(entry["time"]?.GetValue<string>(), CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind, out var timestamp);
+            string level = entry["level"]?.GetValue<string>() ?? "INFO";
+            AppendLog(entry["message"]?.GetValue<string>() ?? "", level == "WARN" ? "WARNING" : level,
+                timestamp == default ? DateTime.Now : timestamp.LocalDateTime);
+        }
     }
 
     private void NotifyScheduler()
@@ -931,14 +976,14 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
 /// <summary>资源卡：底色由显示下标 %4 决定，数值与上限文案按上游 ResourceCards 规则拼接。</summary>
 public sealed class ResourceCardViewModel
 {
-    public ResourceCardViewModel(string name, string imagePath, string value, string? limit, string foot, int tintIndex)
+    public ResourceCardViewModel(string name, string? imagePath, string value, string? limit, string foot, int tintIndex)
     {
         Name = name;
         Value = value;
         Limit = limit;
         Foot = foot;
         TintIndex = tintIndex % 4;
-        Image = UIAssets.TryLoadBitmap($"avares://Alas.UI/Assets/{imagePath}.webp");
+        Image = imagePath is null ? null : UIAssets.TryLoadBitmap($"avares://Alas.UI/Assets/{imagePath}.webp");
     }
 
     public string Name { get; }
@@ -961,14 +1006,30 @@ public sealed record LogLineViewModel(string Date, string Time, string Level, st
 /// <summary>右栏：调度器卡 + 任务计划三组（running/pending/waiting 固定顺序）。</summary>
 public sealed class RailViewModel : INotifyPropertyChanged
 {
+    private readonly bool _previewData;
     public RailViewModel(OverviewViewModel overview, bool previewData = false)
     {
+        _previewData = previewData;
         Overview = overview;
         Overview.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName is not (nameof(OverviewViewModel.IsSchedulerRunning))) return;
             Notify(nameof(RunningCount));
             Notify(nameof(IsStopped));
+        };
+        Overview.ObservationChanged += (_, _) =>
+        {
+            if (previewData) return;
+            foreach (var group in Groups!)
+            {
+                group.Tasks.Clear();
+                foreach (var task in Overview.NativeTasks.Where(task => task.State == group.State)) group.Tasks.Add(task);
+                group.Refresh();
+            }
+            Notify(nameof(PlanCountText));
+            Notify(nameof(RunningCount));
+            Notify(nameof(PendingCount));
+            Notify(nameof(WaitingCount));
         };
         Groups = previewData
             ? new ObservableCollection<RailGroupViewModel>
@@ -998,7 +1059,8 @@ public sealed class RailViewModel : INotifyPropertyChanged
     public OverviewViewModel Overview { get; }
     public string InstanceName => _instanceName;
     public string PlanCountText => Groups.Sum(group => group.Tasks.Count).ToString(CultureInfo.InvariantCulture);
-    public string RunningCount => Overview.IsSchedulerRunning ? "1" : "0";
+    public string RunningCount => _previewData ? Overview.IsSchedulerRunning ? "1" : "0"
+        : Groups.First(group => group.State == "running").Tasks.Count.ToString(CultureInfo.InvariantCulture);
     public string PendingCount => Groups.First(group => group.State == "pending").Tasks.Count.ToString(CultureInfo.InvariantCulture);
     public string WaitingCount => Groups.First(group => group.State == "waiting").Tasks.Count.ToString(CultureInfo.InvariantCulture);
     public bool IsStopped => !Overview.IsSchedulerRunning;
@@ -1018,8 +1080,14 @@ public sealed class RailViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
 
-public sealed class RailGroupViewModel
+public sealed class RailGroupViewModel : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+    public void Refresh()
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEmpty)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CountText)));
+    }
     public RailGroupViewModel(string title, string state, string iconKey, string emptyText, IReadOnlyList<RailTaskViewModel> tasks)
     {
         Title = title;
@@ -1130,16 +1198,25 @@ internal static class IconLookup
 
 internal static class UIAssets
 {
+    private static readonly Dictionary<string, Bitmap> Bitmaps = new(StringComparer.Ordinal);
     public static Bitmap? TryLoadBitmap(string uri)
     {
-        try
+        lock (Bitmaps)
         {
-            return new Bitmap(Avalonia.Platform.AssetLoader.Open(new Uri(uri)));
-        }
-        catch (Exception)
-        {
-            // 位图解码不可用时退回矢量占位；不因素材问题让整个界面失败。
-            return null;
+            if (Bitmaps.TryGetValue(uri, out var cached)) return cached;
+            try
+            {
+                using var stream = Avalonia.Platform.AssetLoader.Open(new Uri(uri));
+                var bitmap = new Bitmap(stream);
+                Bitmaps.Add(uri, bitmap);
+                return bitmap;
+            }
+            catch (Exception)
+            {
+                // Headless checks may run before the renderer is initialized.
+                // Do not cache failures: a later attached view can load the asset.
+                return null;
+            }
         }
     }
 }

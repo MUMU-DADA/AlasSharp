@@ -30,6 +30,8 @@ catch (ArgumentException) { }
 Check(constructed == 0, "No host for denied start");
 // Read-only service first: the action queue must reuse and configure this same host.
 workspace.ReadHostJson("fixture-read", new JsonObject());
+string? firstLogPath = null;
+string? firstLogContent = null;
 for (int attempt = 0; attempt < 2; attempt++)
 {
     engine.Ready.Reset(); engine.Finish.Reset();
@@ -39,6 +41,12 @@ for (int attempt = 0; attempt < 2; attempt++)
     Check(state["active"]!["instance"]!.GetValue<string>() == "fixture", "Selected instance in activity");
     Check(state["active"]!["kind"]!.GetValue<string>() == "scheduler_run", "Scheduler activity kind");
     Check(state["active"]!["scheduler"]!["phase"]!.GetValue<string>() == "waiting", "Read live native state");
+    Check(state["active"]!["scheduler"]!["logs"]!["entries"]![0]!["message"]!.GetValue<string>() == "native fixture",
+        "Read native log tail while host is busy");
+    Check(state["active"]!["scheduler"]!["waiting"]![0]!["name"]!.GetValue<string>() == "Reward", "Native task order is preserved");
+    Check(state["recent_logs"]!.AsArray().All(entry => entry!["id"]!.GetValue<long>() > 0), "Core logs carry stable IDs");
+    Check(state["recent_logs"]!.AsArray().Count(entry => entry?["message"]?.GetValue<string>() == "开始任务队列") == 1,
+        "Live logs contain only the current batch even when the host is reused");
     try { workspace.StartScheduler(start); throw new Exception("Concurrent start accepted"); }
     catch (ControlWorkspaceUnavailableException) { }
     Task? shutdown = null;
@@ -56,6 +64,18 @@ for (int attempt = 0; attempt < 2; attempt++)
     Check(File.Exists(Path.Combine(run, "queue.json")) && File.Exists(Path.Combine(run,"session-log.jsonl")), "Final evidence flushed");
     var queue = JsonNode.Parse(File.ReadAllText(Path.Combine(run,"queue.json")))!;
     Check(queue["outcome"]!.GetValue<string>() == "cancelled", "Stopping is not scheduler success");
+    string logPath = Path.Combine(run, "session-log.jsonl");
+    var entries = File.ReadLines(logPath).Select(line => JsonNode.Parse(line)).ToArray();
+    Check(entries.Count(entry => entry?["message"]?.GetValue<string>() == "开始任务队列") == 1,
+        "Each artifact log contains exactly one batch start");
+    Check(entries.Count(entry => entry?["message"]?.GetValue<string>() == "任务队列结束") == 1,
+        "Each artifact log contains exactly one batch end");
+    if (attempt == 0) { firstLogPath = logPath; firstLogContent = File.ReadAllText(logPath); }
+    else
+    {
+        Check(logPath != firstLogPath, "Batches have separate artifact directories");
+        Check(File.ReadAllText(firstLogPath!) == firstLogContent, "Later activity never rewrites an earlier batch log");
+    }
 }
 Check(constructed == 1 && engine.Configurations == 1 && engine.Disposed, "Single host/device configuration, disposed at shutdown");
 try { workspace.StartScheduler(start); throw new Exception("Shutdown accepted new run"); }
@@ -81,7 +101,8 @@ sealed class Engine : VisionEngineBase
         {
             if (body["instance"]!.GetValue<string>() != "fixture") throw new Exception("Wrong instance");
             Directory = body["artifact_directory"]!.GetValue<string>();
-            File.WriteAllText(Path.Combine(Directory,"state.json"), """{"instance":"fixture","phase":"waiting"}""");
+            File.WriteAllText(Path.Combine(Directory,"state.json"), """{"instance":"fixture","phase":"waiting","pending":[],"waiting":[{"name":"Reward","next_run":"2030-01-01 00:00:00"}]}""");
+            File.WriteAllText(Path.Combine(Directory,"logs.json"), """{"instance":"fixture","cursor":1,"entries":[{"id":1,"message":"native fixture"}]}""");
             Ready.Set();
             if (!Finish.Wait(TimeSpan.FromSeconds(10))) throw new Exception("Probe stop timeout");
             return new JsonObject { ["instance"]="fixture", ["decision"]="stopped", ["stop_observed"]=true,
@@ -113,7 +134,7 @@ def main():
         run = subprocess.run(['dotnet', str(work / 'bin/Release/net10.0/SchedulerProbe.dll'), str(work)],
                              cwd=ROOT, env=env, capture_output=True, timeout=45)
         assert run.returncode == 0, (run.stdout + run.stderr).decode(errors='replace')
-        print('PASS: Core scheduler lifecycle, selected instance, one host, stop, shutdown and artifacts')
+        print('PASS: Core scheduler lifecycle, selected instance, one host, batch log isolation, stop, shutdown and artifacts')
 
 
 if __name__ == '__main__':

@@ -8,6 +8,8 @@ public sealed record SessionLogEntry(
     string Time, string Level, string Scope, string Message,
     IReadOnlyDictionary<string, object?> Fields)
 {
+    public long Id { get; init; }
+
     public JsonObject ToJson()
     {
         var fields = new JsonObject();
@@ -15,6 +17,7 @@ public sealed record SessionLogEntry(
             fields[key] = value is null ? null : JsonValue.Create(value);
         return new JsonObject
         {
+            ["id"] = Id,
             ["time"] = Time,
             ["level"] = Level,
             ["scope"] = Scope,
@@ -34,6 +37,7 @@ public sealed class SessionLog
     private readonly List<SessionLogEntry> _entries = new();
     private readonly object _gate = new();
     private readonly bool _echo;
+    private long _sequence;
 
     public SessionLog(bool echo = true) => _echo = echo;
 
@@ -55,7 +59,11 @@ public sealed class SessionLog
         var entry = new SessionLogEntry(
             DateTimeOffset.Now.ToString("yyyy-MM-dd'T'HH:mm:ss.fffzzz"),
             level, scope, message, fields ?? new Dictionary<string, object?>());
-        lock (_gate) _entries.Add(entry);
+        lock (_gate)
+        {
+            entry = entry with { Id = ++_sequence };
+            _entries.Add(entry);
+        }
         if (_echo)
         {
             string suffix = entry.Fields.Count == 0

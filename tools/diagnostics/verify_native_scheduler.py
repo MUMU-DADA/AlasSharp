@@ -43,11 +43,18 @@ def native_case(root, mode):
             assert config_name == 'fixture'
             self.config_name = config_name
             state['configs'] += 1
+            self.data = {'Dashboard': {'Oil': {'Value': 1234, 'Limit': 25000,
+                                             'Record': '2026-01-02 03:04:05'}}}
+            self.pending_task = []
+            self.waiting_task = []
 
         def get_next(self):
             command = commands[min(state['index'], len(commands) - 1)]
-            return types.SimpleNamespace(command=command,
+            task = types.SimpleNamespace(command=command,
                 next_run=datetime.now() + timedelta(seconds=60 if state['future'] else -60))
+            self.pending_task = [] if state['future'] else [task]
+            self.waiting_task = [task] if state['future'] else []
+            return task
 
         def bind(self, task):
             events.append(('bind', task.command))
@@ -89,6 +96,12 @@ def native_case(root, mode):
             self.config = config
 
         def run(self):
+            snapshot = json.loads((directory / 'state.json').read_text(encoding='utf-8'))
+            assert snapshot['phase'] == 'running' and snapshot['task'] == self.config.task.command
+            assert [task['name'] for task in snapshot['pending']] == [self.config.task.command]
+            assert snapshot['resources'][0]['value'] == 1234
+            logger.warning('fixture native warning')
+            logger.print('fixture rich output')
             state['count'] += 1
             events.append(('run', self.config.task.command))
             if mode in ('failure_retry', 'no_retry'):
@@ -130,6 +143,7 @@ def native_case(root, mode):
             assert host.op_scheduler_run(bad)['decision'] == 'denied'
         assert not events
         got = host.op_scheduler_run(args)
+        assert not logger.handlers, 'scheduler telemetry handler leaked'
     expected = 'error' if mode == 'failure_retry' else 'failed' if mode == 'no_retry' else 'stopped'
     assert got['decision'] == expected, (mode, got, events)
     assert device.config is initial_config, mode
@@ -137,6 +151,16 @@ def native_case(root, mode):
     assert len(records) == state['count'] == got['dispatch_count'], (mode, got, records)
     assert all(record['finished_at'] and record['instance'] == 'fixture' for record in records)
     assert json.loads((directory / 'state.json').read_text(encoding='utf-8'))['phase'] == expected
+    logs = json.loads((directory / 'logs.json').read_text(encoding='utf-8'))
+    complete = [json.loads(line) for line in (directory / 'native-log.jsonl').read_text(encoding='utf-8').splitlines()]
+    assert logs['instance'] == 'fixture' and logs['cursor'] == len(complete)
+    assert [entry['id'] for entry in complete] == list(range(1, len(complete) + 1))
+    if records:
+        assert any(entry['level'] == 'WARNING' and 'fixture native warning' in entry['message'] for entry in complete)
+        assert any('fixture rich output' in entry['message'] for entry in complete)
+    if mode == 'wait_cancel':
+        snapshot = json.loads((directory / 'state.json').read_text(encoding='utf-8'))
+        assert not snapshot['pending'] and snapshot['waiting'][0]['name'] == 'Reward'
     if mode == 'sequence':
         assert [record['scheduler_command'] for record in records] == ['Reward', 'Commission'], records
         assert ('delay', {'server_update': True}) in events and state['configs'] >= 3
@@ -209,6 +233,20 @@ def main():
         workspace = Path(folder)
         (workspace / 'config').mkdir()
         (workspace / 'config/fixture.json').write_text('{"Alas":{}}', encoding='utf-8')
+        from native_telemetry import NativeLogCapture
+        telemetry = workspace / 'telemetry'
+        telemetry.mkdir()
+        handler = NativeLogCapture(telemetry, 'fixture')
+        with patch.object(logger, 'handlers', [handler]), patch.object(logger, 'propagate', False):
+            for index in range(405):
+                logger.info('log %s', index)
+            logger.print('x' * 13000)
+            handler.close()
+        tail = json.loads((telemetry / 'logs.json').read_text(encoding='utf-8'))
+        raw = [json.loads(line) for line in (telemetry / 'native-log.jsonl').read_text(encoding='utf-8').splitlines()]
+        assert len(raw) == 406 and len(tail['entries']) == 400 and tail['cursor'] == 406
+        assert len(tail['entries'][-1]['message']) == 12000 and len(raw[-1]['message']) >= 13000
+        print('PASS: native log ring is bounded, cursors stable, full raw evidence retained')
         for mode in ('sequence', 'failure_retry', 'no_retry', 'wait_cancel', 'reload', 'recovered', 'prestop'):
             native_case(workspace, mode)
         queue_cases(workspace)
