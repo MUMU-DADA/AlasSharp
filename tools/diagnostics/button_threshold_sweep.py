@@ -12,7 +12,7 @@
   * `< 10`  → 当前判"命中"，但余量很小 —— 客户端的微小渲染差异就会让它翻面；
   * `10~20` → 当前判"未命中"，但与非命中帧（实测 ≥ 83）相比仍离得很近 —— **就是 IN_MAP 那类**。
 
-产出 `docs/button-threshold-sweep.md`（入库）与 `data/button_threshold_sweep.json`。
+产出 `docs/archive/reports/button-threshold-sweep.md`（入库）与 `data/button_threshold_sweep.json`。
 用法：
     python tools/diagnostics/button_threshold_sweep.py
 """
@@ -152,8 +152,8 @@ def main() -> int:
         '复现：`python tools/diagnostics/button_threshold_sweep.py`。',
         '',
     ]
-    DOCS.mkdir(exist_ok=True)
-    (DOCS / 'button-threshold-sweep.md').write_text('\n'.join(lines), encoding='utf-8')
+    DOCS.mkdir(parents=True, exist_ok=True)
+    (DOCS / 'archive/reports/button-threshold-sweep.md').write_text('\n'.join(lines), encoding='utf-8')
     (DATA / 'button_threshold_sweep.json').write_text(json.dumps(
         {'fragile_band': FRAGILE, 'buttons': len(buttons), 'frames': per_frame},
         ensure_ascii=False, indent=1), encoding='utf-8')
@@ -161,7 +161,7 @@ def main() -> int:
     print()
     print(f'  多帧稳定落在临界带的素材: {len(repeated)} 个'
           + (f"（{', '.join(sorted(repeated)[:6])}）" if repeated else ''))
-    print('报告: docs/button-threshold-sweep.md')
+    print('报告: docs/archive/reports/button-threshold-sweep.md')
     print('结果: OK（清单已生成；临界≠缺陷，复核方法写在报告里）')
     return 0
 

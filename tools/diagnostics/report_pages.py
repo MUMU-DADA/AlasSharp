@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""页面识别验证报告生成器：清单（53 个 Page）× 验证进度 → docs/page-verification.md。
+"""页面识别验证报告生成器：清单（53 个 Page）× 验证进度 → docs/archive/reports/page-verification.md。
 
 不手写报告：手写会漂移，而"哪些页面真的在真机上命中过"必须能复现。
-进度由 verify_pages.py 累积写入 docs/page-verification.json。
+进度由 verify_pages.py 累积写入 docs/archive/reports/page-verification.json。
 """
 import json
 import os
@@ -13,8 +13,8 @@ sys.path.insert(0, HERE)
 import alas_vision as av  # noqa: E402
 
 DOCS = os.path.join(HERE, '..', 'docs')
-PROG = os.path.join(DOCS, 'page-verification.json')
-OUT = os.path.join(DOCS, 'page-verification.md')
+PROG = os.path.join(DOCS, 'archive/reports/page-verification.json')
+OUT = os.path.join(DOCS, 'archive/reports/page-verification.md')
 
 # 未验证页面的原因分类（人工判定，附证据出处）
 REASONS = {
@@ -85,7 +85,7 @@ def main():
         '少数手工进入后命中的规则单独列出，不能据此声称产品导航可达。',
         '',
         '设备：MuMu 模拟器 1280x720 @ `127.0.0.1:16384`（国服，新主界面 UI）。',
-        '生成脚本：`tools/diagnostics/report_pages.py`（数据源 `docs/page-verification.json`，',
+        '生成脚本：`tools/diagnostics/report_pages.py`（数据源 `docs/archive/reports/page-verification.json`，',
         '由 `tools/diagnostics/verify_pages.py` 逐批累积）。',
         '',
         '## 汇总',

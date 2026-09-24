@@ -74,7 +74,7 @@
 | 设备记录 | 每次出击前清空 stuck / click 记录 | `s3_campaign_entry.clear_campaign_device_records` |
 | 上一局残留 | 若仍在图内，**先撤退再导航**；这次撤退记为 `withdrew_previous_sortie=true` 的清理步 | `prepare_campaign_navigation` |
 | 清理撤退的结论 | 清理造成的 `CampaignEnd` **不参与**本局结果判定 | `s3_campaign_entry` 文档串 + `verify_s3_plan.py` 回归 |
-| 导航期撤退 | 上游导航内部自己撤退（客户端状态残留）时，把 `navigation_end` / `navigation_withdrawn` 记进 `ensure_campaign_ui` 步 | `op_s3_run_plan`（真机证据见 `result-evidence.md`） |
+| 导航期撤退 | 上游导航内部自己撤退（客户端状态残留）时，把 `navigation_end` / `navigation_withdrawn` 记进 `ensure_campaign_ui` 步 | `op_s3_run_plan`（真机证据见 [结果审计](archive/reports/result-evidence.md)） |
 | 结果证据 | 每关独立一份文档；上一关的 `end_evidence` / `failure_frames` 不得出现在这一关 | 每关各自 `finalize_sortie_result` |
 | 账号状态 | 数据（心情、石油、通关进度）由上游管；宿主不维护第二份 | 上游 `Emotion` / `CampaignRun` |
 
@@ -93,7 +93,7 @@
 
 ## 六、实机证据
 
-`docs/result-evidence.md`（由 `tools/diagnostics/audit_real_records.py` 从 `data/*.log` 与
+`docs/archive/reports/result-evidence.md`（由 `tools/diagnostics/audit_real_records.py` 从 `data/*.log` 与
 `tools/diagnostics/evidence/` 的脱敏运行工件重建）
 把每条归档记录的战果点击、`In stage.`、`CAMPAIGN END`、撤退事件逐条对上：
 4 条真实通关全部可解释、2 起真实撤退（进图前清理 / 导航期）全部可解释、0 条自相矛盾。

@@ -1,5 +1,7 @@
 # S3 规则身份与执行语义
 
+> 历史归档：保留调查过程和旧快照，不代表当前实现或待办。当前说明见[核心文档](../../README.md)。
+
 `s3_run_plan` 用完整模块名选择规则。例如
 `campaign.event_20220210_cn.a1` 只读取
 `data/campaign/event_20220210_cn/a1.json`，并要求文件的 `source` 为

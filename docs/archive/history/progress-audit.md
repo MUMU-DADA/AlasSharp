@@ -1,5 +1,7 @@
 # 进度与证据复核（2026-09-23）
 
+> 历史归档：保留调查过程和旧快照，不代表当前实现或待办。当前说明见[核心文档](../../README.md)。
+
 本次从隐私历史重写后恢复的功能工作树继续复核。阶段完成度按产品调用链和验证证据判断，
 任务类型数量、离线通过或单次页面命中均不能替代完整业务验收。
 
@@ -94,14 +96,14 @@ alashub queue --file observe.json --run --read-only-device --serial <device> --s
 本地工件 `data/progress-audit-observe/20260923T105409` 记录 4 tick、0 error、
 1280×720 图像，命中 `page_main`/`page_main_white`；宿主和设备各初始化一次。
 此验证没有导航、点击或新出击；验证后恢复截图后端配置。它证明历史观测核心任务路径，
-新队列入口已有脱敏队列/任务/断点/会话归档，见 `docs/queue-evidence.md`；6 tick 只读观测和
+新队列入口已有脱敏队列/任务/断点/会话归档，见 `docs/archive/reports/queue-evidence.md`；6 tick 只读观测和
 导航后的 4 tick 观测均无抓帧或识页错误。往返导航含两轮战役页目标，四个任务均成功。
 
 既有撤退记录的脱敏归档位于 `tools/diagnostics/evidence/20260923T093800`；新队列入口的
 1-1 脱敏归档位于 `tools/diagnostics/evidence/20260923T144951`。后者经原生 `Campaign.run()`
 得到两场 S 结算、`cleared=true` 且无合同违例，战后抓帧显示 `page_campaign`。撤退不计通关。
 原始真机日志、截图与配置仅保留在忽略目录 `data/mainline-device/`，账号配置已按字节恢复。
-原生 `reward` 的队列/任务/断点/会话脱敏归档也已纳入 `docs/queue-evidence.md`，证明本次
+原生 `reward` 的队列/任务/断点/会话脱敏归档也已纳入 `docs/archive/reports/queue-evidence.md`，证明本次
 上游绑定、原生 dispatcher 返回与战后实时页面；OIL/COIN 点击细节只保留在本地原始日志。
 账号等级较低，大世界、活动及其他周期动作尚未获得完整真实产品路径证据。
 

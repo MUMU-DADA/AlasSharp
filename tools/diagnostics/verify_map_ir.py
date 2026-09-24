@@ -306,7 +306,7 @@ def main():
         '```',
         '',
     ]
-    doc = os.path.join(DOCS, 'map-ir.md')
+    doc = os.path.join(DOCS, 'archive/reports/map-ir.md')
     with open(doc, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
     print('报告: %s' % doc)

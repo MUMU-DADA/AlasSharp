@@ -12,7 +12,7 @@
 python tools/diagnostics/audit_queue_evidence.py --archive-run data/<run>/artifacts/<timestamp>
 ```
 
-`python tools/diagnostics/audit_queue_evidence.py` 校验全部归档并重建 `docs/queue-evidence.md`。
+`python tools/diagnostics/audit_queue_evidence.py` 校验全部归档并重建 `docs/archive/reports/queue-evidence.md`。
 加 `--check` 则只校验文档，无写入。`verify_queue_evidence.py` 覆盖缺失工件、校验和篡改、
 观测零 tick、计数矛盾、导航未到目标、周期绑定/授权/原生执行、会话重启和断点身份等反例；全部离线执行。
 

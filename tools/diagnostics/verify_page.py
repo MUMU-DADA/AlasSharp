@@ -3,7 +3,7 @@
 #
 # 原因：全仓库（文档 / 脚本 / README）**没有任何引用**它，而它做的事情已被两处覆盖：
 #   * `verify_pages.py` —— 批量逐段页面验证（需要 SEGMENTS 环境变量，属驱动）；
-#   * `regress_pages.py` —— 用**产品导航器**跑全量页面回归（当前的标准入口，产出 docs/regression.md）。
+#   * `regress_pages.py` —— 用**产品导航器**跑全量页面回归（当前的标准入口，产出 docs/archive/reports/regression.md）。
 # 它没有登记进 `verify_all.py`（原因写在 STEPS 上方），所以不会在套件里跑。
 #
 # 为什么保留而不删：删是一个不可逆的决定，而它作为"单页验证"的最小示例仍有参考价值；

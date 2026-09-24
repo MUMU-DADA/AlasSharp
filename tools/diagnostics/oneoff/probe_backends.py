@@ -3,7 +3,7 @@
 
 动机：≤3 行的图（1-1 / 1-2 / 1-4 / 7-1 / 8-1）一直报
 `No vertical line detected` / `Vanish point and distant point too close`，
-而 ≥4 行的图都能识别。降阈值、降峰参数、放大都试过无效（见 docs/map-detection.md）——
+而 ≥4 行的图都能识别。降阈值、降峰参数、放大都试过无效（见 docs/archive/reports/map-detection.md）——
 但**上游有两个检测后端**，此前只用 homography 试过。这个脚本把两套后端在同一批帧上并排跑，
 用"能识别的图（2-2/3-1/3-2）"当对照组，避免把"后端换对了"误判成"参数调对了"。
 

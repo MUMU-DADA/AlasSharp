@@ -134,7 +134,7 @@ def main() -> int:
         '            self.map[override_grid.location].may_enemy = override_grid.may_enemy',
         '```',
         '',
-        f'带该钩子的章节 **{len(records)}** 个（`docs/r3-candidates.md` 里覆盖数居首）。',
+        f'带该钩子的章节 **{len(records)}** 个（`docs/archive/reports/r3-candidates.md` 里覆盖数居首）。',
         '',
         '## 轨迹抽取结果（如实）',
         '',
@@ -165,7 +165,7 @@ def main() -> int:
         '复现：`python tools/diagnostics/r3_map_data_init.py`。',
         '',
     ]
-    (ROOT / 'docs' / 'r3-map-data-init.md').write_text('\n'.join(lines), encoding='utf-8')
+    (ROOT / 'docs' / 'archive/reports/r3-map-data-init.md').write_text('\n'.join(lines), encoding='utf-8')
 
     print(f'=== R3 上游轨迹：{HOOK} ===')
     print(f'  带该钩子的章节: {len(records)}（静态抽出 OVERRIDE: {len(resolved)}，'
@@ -177,7 +177,7 @@ def main() -> int:
     for item in unresolved[:3]:
         print(f"    [未抽出] {item['source']}: {item['reason']}")
     print(f'\n轨迹(数据): {OUT.relative_to(ROOT)}')
-    print('报告(入库): docs/r3-map-data-init.md')
+    print('报告(入库): docs/archive/reports/r3-map-data-init.md')
     print('结果: ' + (f'OK（{len(records)} 章全部有着落；结论：形态不统一，暂不迁移）'
                     if len(resolved) + len(unresolved) == len(records) else 'FAIL（有章节被静默跳过）'))
     return 0

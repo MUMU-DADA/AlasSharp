@@ -14,7 +14,7 @@
                        迁移要逐个看依赖闭包与对拍成本；
   * `not_in_module` —— IR 说这章覆盖了该钩子，但源码里找不到定义（继承来的）：如实列出。
 
-产出 `docs/r3-hook-shapes.md`（入库）。用法：
+产出 `docs/archive/reports/r3-hook-shapes.md`（入库）。用法：
     python tools/diagnostics/r3_hook_shapes.py
 """
 
@@ -182,13 +182,13 @@ def main() -> int:
         f"{sum(1 for i in classification.values() if i['buckets'].get('pure_delegate'))} 个"
         ' —— 没有工作量。',
         '',
-        '> 与 `docs/r3-candidates.md`（按覆盖数排序）**配合使用**：覆盖数决定"影响面"，',
+        '> 与 `docs/archive/reports/r3-candidates.md`（按覆盖数排序）**配合使用**：覆盖数决定"影响面"，',
         '> 形态决定"值不值得做、做了能不能对拍"。上一轮 `map_data_init` 就是覆盖数第一但形态不统一。',
         '',
         '复现：`python tools/diagnostics/r3_hook_shapes.py`。',
         '',
     ]
-    (ROOT / 'docs' / 'r3-hook-shapes.md').write_text('\n'.join(lines), encoding='utf-8')
+    (ROOT / 'docs' / 'archive/reports/r3-hook-shapes.md').write_text('\n'.join(lines), encoding='utf-8')
 
     print(f'=== R3 钩子形态分类（{len(classification)} 个钩子）===')
     for hook, info in sorted(classification.items(), key=lambda kv: -len(by_hook[kv[0]])):
@@ -196,7 +196,7 @@ def main() -> int:
         summary = ' '.join(f'{k}={len(v)}' for k, v in sorted(buckets.items()))
         print(f'  {hook:34s} {len(by_hook[hook]):3d} 章  {summary}')
     print()
-    print(f'报告: docs/r3-hook-shapes.md')
+    print(f'报告: docs/archive/reports/r3-hook-shapes.md')
     print(f'结果: OK（{len(classification)} 个钩子全部有分类，未分类 0）')
     return 0
 

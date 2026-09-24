@@ -1,11 +1,13 @@
 # 自主会话交接（2026-09-22 夜 → 09-23）
 
+> 历史归档：保留调查过程和旧快照，不代表当前实现或待办。当前说明见[核心文档](../../README.md)。
+
 > ⚠️ **这是一份历史交接，不是当前状态**。里面的数字与结论都是**当时**的快照：
 > 例如"89 个提交未推送"（现在以 `git rev-list --count origin/master..master` 为准）、
 > "6 关端到端跑通"、"第 1 章小图上游检测器失效"等，后续轮次已有新证据。
 >
-> 当前状态请看：`docs/status.md`（识别验收总账，脚本生成）、
-> `docs/result-contract.md`（结果判定口径）、`docs/result-evidence.md`（实机结果证据核对）、
+> 当前状态请看：`docs/archive/reports/status.md`（识别验收总账，脚本生成）、
+> `docs/result-contract.md`（结果判定口径）、`docs/archive/reports/result-evidence.md`（实机结果证据核对）、
 > `docs/architecture-roadmap.md`（路线与阶段门槛）。
 
 > 本文是**一次长自主会话的交接**：你睡觉期间我按"自行择优推进"的授权连续工作。
@@ -38,13 +40,13 @@
 | **scrcpy** | **128 ms** | — |
 | **MaaTouch** | — | **53 ms** |
 
-→ 已设为默认；**导航流程 −14.5%**。详见 `docs/device-engine.md`。
+→ 已设为默认；**导航流程 −14.5%**。详见 `docs/archive/history/device-engine.md`。
 
 ### 2. S2 地图识别：修掉一个真实误报
 
 战役章节选择页会被误判成地图（**10 帧里 6 帧误报**）。判据改为
 **"地图上必定有船"**（逐格 `is_*` 标志中至少一个船标志）：**误报 6/10 → 0/10**，
-四张真地图全部保留。详见 `docs/map-detection.md`。
+四张真地图全部保留。详见 `docs/archive/reports/map-detection.md`。
 
 > 附带否决：**时序一致性闸门救不了该场景**（误报在连续帧上稳定）。
 
@@ -64,7 +66,7 @@
 | 账号边界 | 第 1 章小图上游检测器失效；3-3 起不可进入（`CampaignNameError`）|
 | 产品侧入口 | **一条命令跑完整批**：`alashub campaign "章A,章B" --run --allow-actions --repeat --max-rounds N --adb .. --serial ..`（自动导航 → 逐关执行 → 关间复位 → 循环清图）|
 
-详见 `docs/s3-entry-sequence.md`（开头有**速览**）。
+详见 `docs/archive/history/s3-entry-sequence.md`（开头有**速览**）。
 
 ## 三、客户端适配共 6 项（都是"上游 × 本客户端 UI"的差异）
 
@@ -122,7 +124,7 @@
 | `verify_s3_plan.py` | IR → 协议 `plan_steps` 一致（4 章）+ 安全锁 + **3 个垫片真挂上了** + 弹窗判定不误报 | `python tools/diagnostics/verify_s3_plan.py` |
 | `verify_device_engine.py` | 后端可切换 / 能抓到合法帧 / 点击可用（需设备在线）| `python tools/diagnostics/verify_device_engine.py` |
 | `sync_all.py --verify` | 导出数据与 vendor 素材不漂移 | `python tools/sync_all.py --verify` |
-| `s3_plan_coverage.py` / `s3_preflight.py` | 全量计划可用性统计 / 开跑前 6 项预检 | 见 `docs/s3-entry-sequence.md` |
+| `s3_plan_coverage.py` / `s3_preflight.py` | 全量计划可用性统计 / 开跑前 6 项预检 | 见 `docs/archive/history/s3-entry-sequence.md` |
 
 一键全跑：`python tools/diagnostics/verify_all.py`（`--docs-only` 为快速版，不碰设备）。
 
@@ -133,9 +135,9 @@
 
 | 文件 | 内容 |
 | --- | --- |
-| `docs/device-engine.md` | 设备引擎：后端对照表、测量陷阱、推荐配置 |
-| `docs/s3-entry-sequence.md` | S3 完整记录（**开头有速览**）：逐关实测、6 项适配、账号边界、修法 |
-| `docs/map-detection.md` | S2 地图识别与误报判据 |
+| `docs/archive/history/device-engine.md` | 设备引擎：后端对照表、测量陷阱、推荐配置 |
+| `docs/archive/history/s3-entry-sequence.md` | S3 完整记录（**开头有速览**）：逐关实测、6 项适配、账号边界、修法 |
+| `docs/archive/reports/map-detection.md` | S2 地图识别与误报判据 |
 | `tools/diagnostics/s3_preflight.py` | 开跑前预检（6 项，含图内帧可识别性）|
 | `tools/diagnostics/s3_plan_coverage.py` | 全量"哪些章节现在就能跑"统计 |
 | `tools/alas_vision.py` | 宿主主体：设备层、S3 执行器、6 项适配 |

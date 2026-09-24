@@ -13,7 +13,7 @@
   3. 按 sortie-result/1 的规则复核 `cleared` / `campaign_end` 声称；
   4. 撤退事件按**发生在哪**分类：进图前的上一局清理 / 导航期 / 本局过程；
   5. 对结构化工件复用 sortie-result/1，并核对索引、队列任务、战后抓帧、会话日志与归档完整性；
-  6. 产出 `data/result_records_audit.json` 与 `docs/result-evidence.md`。
+  6. 产出 `data/result_records_audit.json` 与 `docs/archive/reports/result-evidence.md`。
 
 退出码非 0 = 有记录解释不通，或有门槛项缺失。
 """
@@ -679,7 +679,7 @@ def main() -> int:
 
     (DATA / 'result_records_audit.json').write_text(
         json.dumps(audit, ensure_ascii=False, indent=1), encoding='utf-8')
-    (DOCS / 'result-evidence.md').write_text(render_markdown(audit), encoding='utf-8')
+    (DOCS / 'archive/reports/result-evidence.md').write_text(render_markdown(audit), encoding='utf-8')
 
     print('=== 实机结果证据核对（R0）===')
     for record in records:
@@ -695,7 +695,7 @@ def main() -> int:
         print('  [缺口] ' + gap)
     print()
     print('证据已写入: data/result_records_audit.json')
-    print('证据文档: docs/result-evidence.md')
+    print('证据文档: docs/archive/reports/result-evidence.md')
     ok = (bool(explained_clears) and bool(explained_events or artifact_withdrawn)
           and bool(stage_level_withdrawn or artifact_withdrawn)
           and not contradiction_count)

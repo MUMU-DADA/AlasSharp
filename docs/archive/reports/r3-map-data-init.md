@@ -13,7 +13,7 @@ def map_data_init(self, map_):
             self.map[override_grid.location].may_enemy = override_grid.may_enemy
 ```
 
-带该钩子的章节 **15** 个（`docs/r3-candidates.md` 里覆盖数居首）。
+带该钩子的章节 **15** 个（`docs/archive/reports/r3-candidates.md` 里覆盖数居首）。
 
 ## 轨迹抽取结果（如实）
 

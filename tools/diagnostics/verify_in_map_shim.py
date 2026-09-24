@@ -3,7 +3,7 @@
 
 背景（2026-09-23 真机根因）：本客户端「撤退」按钮颜色偏一点，`IN_MAP` 相似度落在 10.0~10.4，
 而上游阈值是 10 → "已进图"被判成"不在图内"，`enter_map` 白等 62s 后 `GameStuckError`。
-修法是 `apply_in_map_threshold_compat()` 只放宽**这一个素材**的阈值（见 `docs/device-stall-in-map.md`）。
+修法是 `apply_in_map_threshold_compat()` 只放宽**这一个素材**的阈值（见 `docs/archive/history/device-stall-in-map.md`）。
 
 **为什么需要这条**：修完之后一直只有手工验证。垫片是"少一行调用就静默失效"的东西 ——
 没有断言，将来任何人重构 `op_s3_campaign_init` 都可能把它丢掉，而症状（真机卡死 62 秒）

@@ -6,7 +6,7 @@
 少数手工进入后命中的规则单独列出，不能据此声称产品导航可达。
 
 设备：MuMu 模拟器 1280x720 @ `127.0.0.1:16384`（国服，新主界面 UI）。
-生成脚本：`tools/diagnostics/report_pages.py`（数据源 `docs/page-verification.json`，
+生成脚本：`tools/diagnostics/report_pages.py`（数据源 `docs/archive/reports/page-verification.json`，
 由 `tools/diagnostics/verify_pages.py` 逐批累积）。
 
 ## 汇总

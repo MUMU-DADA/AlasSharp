@@ -15,7 +15,7 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
 ARCHIVE = Path(__file__).resolve().parent / 'queue-evidence'
-DOC = ROOT / 'docs' / 'queue-evidence.md'
+DOC = ROOT / 'docs' / 'archive/reports/queue-evidence.md'
 SCHEMA = 'queue-evidence/1'
 KINDS = {'account_state', 'observe', 'navigate', 'os_state', 'os_action',
          'periodic_plan', 'periodic_preflight', 'periodic_run'}

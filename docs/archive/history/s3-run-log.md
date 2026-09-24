@@ -1,15 +1,18 @@
 # S3 真机跑图记录（逐次留档）
 
-> 2026-09-23 更新：旧记录中的少行地图失败来自宿主漏合并章节 Config。当前统一修复及重验记录见 [上游整体适配](s3-upstream-adaptation.md)；历史症状不能作为地图不支持清单。
+> 历史归档：保留调查过程和旧快照，不代表当前实现或待办。当前说明见[核心文档](../../README.md)。
+> 隐私处理：仅删除账号昵称，等级、运行结果和证据判据保持原记录。
+
+> 2026-09-23 更新：旧记录中的少行地图失败来自宿主漏合并章节 Config。当前统一修复及重验记录见 [上游整体适配](../../s3-upstream-adaptation.md)；历史症状不能作为地图不支持清单。
 >
-> 2026-09-23 R0 更新：**通关判据以 [结果合同](result-contract.md) 为准** —— 本页历史条目里的
+> 2026-09-23 R0 更新：**通关判据以 [结果合同](../../result-contract.md) 为准** —— 本页历史条目里的
 > "打完/撤退"是当时的现场判断；凡被归档日志覆盖的部分，已由
-> [实机结果证据核对](result-evidence.md) 逐条重核（战果点击 / `In stage.` / `CAMPAIGN END` /
+> [实机结果证据核对](../reports/result-evidence.md) 逐条重核（战果点击 / `In stage.` / `CAMPAIGN END` /
 > 有没有撤退夹在中间）。`CampaignEnd` 单独不构成通关。
 
 > 这份表只记**真机跑过的**（`--run --allow-actions`），不是推演、不是 dry-run。
 > 目的：把"覆盖到哪几张图"变成可核对的事实，避免再出现"以为跑过其实没跑"。
-> 每行的证据都在 `%TEMP%\<日志>.log` 或 `docs/s3-entry-sequence.md` 里能对上。
+> 每行的证据都在 `%TEMP%\<日志>.log` 或 `docs/archive/history/s3-entry-sequence.md` 里能对上。
 
 > ⚠️ **账号换过（2026-09-23 00:10 用户告知"我换号了"）**
 > 下面所有实测记录都是在**上一个账号**上做的，换号后需要重新取基线：
@@ -25,7 +28,7 @@
 
 `python tools/diagnostics/account_probe.py --chapters 1-16` 的结果：
 **第 1 章 = 2 关 `['1-1','1-2']`；第 2–16 章全部 `GameTooManyClickError: CHAPTER_NEXT`（未解锁）**。
-主界面：指挥官 `pgeS`、**Lv.20**、油 25000、"累计登录 2 天" → 全新号。
+主界面：指挥官昵称已脱敏、**Lv.20**、油 25000、"累计登录 2 天" → 全新号。
 
 关键含义：新号可用面**只有第 1 章**，而 1-1 恰好是单行图（`No vertical line detected`，见文末"已知不能跑的图"）——
 不过 1-1 已经是三星，**不挡进度**。
@@ -134,7 +137,7 @@
 5. **两套流程各跑一次**并逐行记录到上面的表：默认（BOSS 一刷出来就打）与 `--clear-all`
    （先清光小怪再打 BOSS）。
 
-命令行（两套战斗流程的区别见 `docs/s3-entry-sequence.md` 末章）：
+命令行（两套战斗流程的区别见 `docs/archive/history/s3-entry-sequence.md` 末章）：
 
 ```powershell
 # 场景A：BOSS 一刷出来就打

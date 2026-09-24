@@ -4,7 +4,7 @@
 为什么用"就地观测"而不是"复刻"：`enter_map` 内部有计时器与状态
 （campaign_timer/map_timer/fleet_timer、campaign_click/map_click/fleet_click、checked_in_map），
 手工按顺序单独调用会被内部状态跳过或走错分支 —— 实测过，**复刻不等价**（见
-docs/s3-entry-sequence.md）。
+docs/archive/history/s3-entry-sequence.md）。
 
 流程（每一步都先校验，不满足就停）：
   0. **导航到 page_campaign 并校验**（上一轮 A 就是因为游戏停在 page_main 而一开局就失败）；

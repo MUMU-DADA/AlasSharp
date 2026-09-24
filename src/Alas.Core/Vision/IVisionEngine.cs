@@ -73,7 +73,7 @@ public interface IVisionEngine : IDisposable
     /// 执行上游 Campaign.run() 的完整出击流程；IR 用于展示关卡规则。
     /// C# 传递运行配置并报告上游执行结果。
     /// `dryRun` 默认 true：只回计划内容，不碰游戏；真跑必须 `allowActions = true`
-    /// （宿主侧还有一道硬性安全联锁）。详见 docs/s3-entry-sequence.md。
+    /// （宿主侧还有一道硬性安全联锁）。历史背景见 docs/archive/history/s3-entry-sequence.md。
     /// `clearAll` 选的是上游两套战斗流程里的哪一套：
     ///   false（默认）= `battle_{battle_count}`：BOSS 一刷出来就打 BOSS；
     ///   true         = `MAP_CLEAR_ALL_THIS_TIME` 分支：先清光小怪，清完才打 BOSS。

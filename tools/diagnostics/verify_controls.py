@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """控件识别 + 控制能力验证（真机）。
 
-页面识别已经在 docs/page-verification.md 里逐页验完；这里验**控件**：
+页面识别已经在 docs/archive/reports/page-verification.md 里逐页验完；这里验**控件**：
 
 - 20 个模块级 Switch / Scroll 规则，挑本账号可达的目标页逐个真机命中检查；
 - 并在 Scroll 自己的区域里**真滑一次**，看 at_top/at_bottom 是否随之翻转 ——
@@ -240,7 +240,7 @@ ONLY = os.environ.get('ONLY')          # 只跑某一步（定向重跑，见 PL
 DATA = os.path.join(HERE, '..', 'data', 'controls_verify.json')
 print('=== 控件识别与滑动控制验证 ===')
 if REPORT_ONLY:
-    # 只重建 docs/controls.md：改文档措辞不该再跑一遍真机点击
+    # 只重建 docs/archive/reports/controls.md：改文档措辞不该再跑一遍真机点击
     report = json.load(open(DATA, encoding='utf-8'))
     print('[模式 ] 仅重建报告（读 %s，不连设备）' % os.path.abspath(DATA))
 elif not ensure_device():
@@ -579,7 +579,7 @@ def build_doc():
         '```',
         '',
     ]
-    path = os.path.join(HERE, '..', 'docs', 'controls.md')
+    path = os.path.join(HERE, '..', 'docs', 'archive/reports/controls.md')
     with open(path, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
     print('报告: %s' % os.path.abspath(path))

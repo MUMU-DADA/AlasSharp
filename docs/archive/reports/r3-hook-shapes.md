@@ -41,7 +41,7 @@
 - 只做数据改写（`data_only`）的钩子：10 个 —— 这些留在上游，不搬进 C#。
 - 纯委托（`pure_delegate`）：2 个 —— 没有工作量。
 
-> 与 `docs/r3-candidates.md`（按覆盖数排序）**配合使用**：覆盖数决定"影响面"，
+> 与 `docs/archive/reports/r3-candidates.md`（按覆盖数排序）**配合使用**：覆盖数决定"影响面"，
 > 形态决定"值不值得做、做了能不能对拍"。上一轮 `map_data_init` 就是覆盖数第一但形态不统一。
 
 复现：`python tools/diagnostics/r3_hook_shapes.py`。

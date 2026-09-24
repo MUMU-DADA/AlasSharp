@@ -1,6 +1,8 @@
 # 地图识别：手工分析与踩坑记录（**不要放进生成物**）
 
-`docs/map-detection.md` 是 `tools/diagnostics/verify_map_detection.py` 的**生成物**，
+> 历史归档：保留调查过程和旧快照，不代表当前实现或待办。当前说明见[核心文档](../../README.md)。
+
+`docs/archive/reports/map-detection.md` 是 `tools/diagnostics/verify_map_detection.py` 的**生成物**，
 每次跑验收都会被整体重写 —— 实测踩过一次，手工补的两节被整段删掉 ✗。
 所以人工写的分析、复核、踩坑一律放这里，生成物末尾只留一个指回本文件的指针。
 
@@ -218,7 +220,7 @@ if not self.emotion.is_ignore:      # is_ignore = 'ignore' in config.Emotion_Mod
 
 ## 困难图 1-4 的那节标题已过时
 
-`docs/map-detection.md` 里"困难图（1-4）：未能检出"那节是**加 5 档降阈值重试之前**的结论；
+`docs/archive/reports/map-detection.md` 里"困难图（1-4）：未能检出"那节是**加 5 档降阈值重试之前**的结论；
 现在用同一张 `data/fixtures/map_hard_1_4.png`（真图内帧）能识别出 `shape=[6,2]`＝21 格 ✓，
 详见上面的两后端对照表。这节标题由生成器输出，改不了，特此备注。
 ## 小图卡点的机制：内线族为 0，而**边界线族在同一帧上能检出 5 条垂直线**

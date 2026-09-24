@@ -1,6 +1,6 @@
 # 页面规则的合成正对照
 
-**这不是真机命中。** 真机命中见 `page-verification.md`（29/53）。
+**这不是真机命中。** 真机命中见 `page-verification.md`（覆盖数见 `status.md`）。
 正对照的做法是：把每条页面规则的 check 素材**自己的模板图**贴到**它自己的 area** 上，
 再跑一次上游的 `ui_page_appear` —— 规则此时应当返回真。
 

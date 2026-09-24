@@ -3,7 +3,7 @@
 
 路线 R3 的纪律是"先做高频、低耦合、可对拍的操作，不由某张地图是否失败决定"。
 所以这里只做一件事：从 S0 冻结的关卡 IR（`data/campaign/**`）里统计
-`campaign.native_overrides` 的覆盖情况，按覆盖章节数排序，产出 `docs/r3-candidates.md`。
+`campaign.native_overrides` 的覆盖情况，按覆盖章节数排序，产出 `docs/archive/reports/r3-candidates.md`。
 
 同时**核对既有文档里的数字**：README 里写着"非 battle_* 的引擎钩子涉及 49 个关卡、
 去重后仅 17 个方法"。这个脚本会独立数一遍并报差异 —— 数字对不上就是其中之一过期了
@@ -111,15 +111,15 @@ def main() -> int:
         '复现：`python tools/diagnostics/r3_candidates.py`。',
         '',
     ]
-    DOCS.mkdir(exist_ok=True)
-    (DOCS / 'r3-candidates.md').write_text('\n'.join(lines), encoding='utf-8')
+    DOCS.mkdir(parents=True, exist_ok=True)
+    (DOCS / 'archive/reports/r3-candidates.md').write_text('\n'.join(lines), encoding='utf-8')
 
     print()
     for index, (hook, sources) in enumerate(ranked[:8], 1):
         print(f'  {index:2d}. {hook:34s} {len(sources):3d} 章')
     print(f'  … 共 {len(ranked)} 个方法')
     print()
-    print('报告: docs/r3-candidates.md')
+    print('报告: docs/archive/reports/r3-candidates.md')
     mismatch = (len(with_hooks) != DOCUMENTED['chapters']
                 or len(by_hook) != DOCUMENTED['methods'])
     print('结果: ' + ('OK（与文档数字一致）' if not mismatch

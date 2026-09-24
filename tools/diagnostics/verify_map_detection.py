@@ -57,7 +57,7 @@ def ir_expectation(chapter_rel):
 
     上游地图数据里 `shape='F4'` 的含义是 `node2location('F4') = (5, 3)`，
     而网格数是 **shape+1**（6x4=24）；这条"差一"规则在 MapIR 里已经和上游活对象
-    穷尽对照过（见 docs/map-ir.md），所以这里可以直接拿它当期望值。
+    穷尽对照过（见 docs/archive/reports/map-ir.md），所以这里可以直接拿它当期望值。
     """
     path = os.path.join(DATA, 'campaign', chapter_rel)
     if not os.path.exists(path):
@@ -273,10 +273,10 @@ def main():
         '识别通过只证明该帧的识别结果；完整通关仍需上游 CampaignEnd 和实战证据。',
         '',
         '复现：`python tools/diagnostics/verify_map_detection.py`。',
-        '手工分析保存在 [map-detection-notes.md](./map-detection-notes.md)。',
+        '补充分析归档在 [map-detection-notes.md](../history/map-detection-notes.md)，不作为运行时规则来源。',
         '',
     ]
-    out = os.path.join(DOCS, 'map-detection.md')
+    out = os.path.join(DOCS, 'archive/reports/map-detection.md')
     with open(out, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
     with open(os.path.join(DATA, 'map_detection_verify.json'), 'w', encoding='utf-8') as f:

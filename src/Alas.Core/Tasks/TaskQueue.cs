@@ -389,7 +389,7 @@ public sealed class TaskQueue
         // **先继承上一份断点**：`completed` 是**累积**语义（"到目前为止做完的"），
         // 若只写本次运行的切片，一次"全都跳过"的运行会把历史清空 —— 下一次 `--resume`
         // 就会重新执行那些任务。对战役域就是**再打一遍、再花一次石油**，而且不报错，
-        // 只在日志里表现为"这次怎么又多打了几个图"（见 `docs/runtime.md` 第十二节）。
+        // 只在日志里表现为"这次怎么又多打了几个图"（见 `docs/runtime.md` 的工件与断点）。
         for (int index = 0; index < requests.Count; index++)
         {
             var request = requests[index];

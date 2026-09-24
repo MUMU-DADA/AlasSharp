@@ -227,7 +227,7 @@ lines += [
     '其实是连接问题），所以"connect → devices 校验 → 操作"必须在同一进程内完成并重试。',
     '',
 ]
-path = os.path.join(HERE, '..', 'docs', 'primitives.md')
+path = os.path.join(HERE, '..', 'docs', 'archive/reports/primitives.md')
 with open(path, 'w', encoding='utf-8', newline='\n') as f:
     f.write('\n'.join(lines))
 print('报告: %s' % os.path.abspath(path))

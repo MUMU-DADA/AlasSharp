@@ -2,7 +2,7 @@
 """页面规则的**合成正对照**：把每条规则的 check 素材贴到它自己的区域，看规则返回真。
 
 这不是真机命中，口径必须说清楚：
-- 真机命中 = 真实游戏画面上规则返回真（`docs/page-verification.md`，29/53）；
+- 真机命中 = 真实游戏画面上规则返回真（`docs/archive/reports/page-verification.md`）；
 - 合成正对照 = 把素材自己的模板图贴到它自己的 area 上，规则应当返回真。
   它证明的是"规则是活的"：素材能加载、区域与模板配对正确、判定方向没写反。
 
@@ -60,7 +60,7 @@ def main():
     print('明细: %s' % os.path.abspath(out2))
 
     # 与真机验证结果对照：哪些页面"正对照过了但真机到不了"
-    with open(os.path.join(HERE, '..', 'docs', 'page-verification.json'),
+    with open(os.path.join(HERE, '..', 'docs', 'archive/reports/page-verification.json'),
               encoding='utf-8') as f:
         prog = json.load(f)
     verified = set(prog['verified'])
@@ -71,7 +71,7 @@ def main():
     lines = [
         '# 页面规则的合成正对照',
         '',
-        '**这不是真机命中。** 真机命中见 `page-verification.md`（29/53）。',
+        '**这不是真机命中。** 真机命中见 `page-verification.md`（覆盖数见 `status.md`）。',
         '正对照的做法是：把每条页面规则的 check 素材**自己的模板图**贴到**它自己的 area** 上，',
         '再跑一次上游的 `ui_page_appear` —— 规则此时应当返回真。',
         '',
@@ -162,7 +162,7 @@ def main():
         '```',
         '',
     ]
-    path = os.path.join(HERE, '..', 'docs', 'positive-control.md')
+    path = os.path.join(HERE, '..', 'docs', 'archive/reports/positive-control.md')
     with open(path, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
     print('报告: %s' % os.path.abspath(path))

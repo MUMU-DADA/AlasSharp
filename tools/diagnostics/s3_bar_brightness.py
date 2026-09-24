@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """离线复算 `bar_opened()` 的亮度判据：弄清"下拉展开时 ALAS 到底看不看得见"。
 
-背景（见 docs/s3-entry-sequence.md）：`FleetOperator.open()` 会
+背景（见归档 `docs/archive/history/s3-entry-sequence.md`）：`FleetOperator.open()` 会
 `if bar_opened(): break else click(choose)`，`Timer(3, count=6)` 点满 6 次就
 `GameTooManyClickError`。而判据是**亮度**，不是素材匹配：
 

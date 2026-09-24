@@ -2,7 +2,7 @@
 
 这些脚本是**定位具体问题时临时写的**，问题解决后它们的价值已经沉淀到别处：
 
-- 结论与数据 → `docs/*.md`（例如 `docs/matching.md`、`docs/primitives.md`、`docs/map-detection.md`）
+- 当前结论 → `docs/` 核心文档；历史调查 → `docs/archive/history/`；生成报告 → `docs/archive/reports/`
 - 决策过程 → 对应的 git 提交信息
 
 保留它们而不是删除，是为了**结论可复现**：想重跑当年的某个诊断，脚本还在；

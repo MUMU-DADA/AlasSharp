@@ -53,7 +53,9 @@ git -C .worktrees/docs-audit status --short --branch
 
 集成后的最低检查是受影响模块的回归、`git diff --check`、`tools/diagnostics/verify_architecture.py` 和 `tools/diagnostics/verify_privacy.py`；改动结果合同、导出结构或稳定战役链时按 `AGENTS.md` 追加对应专项检查。隐私扫描覆盖本轮改动与当前已跟踪文件，原始设备证据只留在忽略目录。真机失败、空目标和用户现场观察分开记录，不用一个成功队列代替实际效果。
 
-确认分支已集成、worktree 无未提交改动后，主 agent 才清理对应工作树；不使用强制删除，也不清理其他人仍在使用的目录。
+确认任务已停止、分支已集成且 worktree 无未提交改动后，主 agent 才清理对应工作树；不使用强制删除，也不清理其他人仍在使用的目录。
+删除前检查目录内的 junction/symlink：共享运行时和设备配置的链接只移除链接本身，不能递归进入目标。
+完成后移除临时通信文件与任务草稿；有审计用途的日志、截图和原始工件保留在本地忽略目录，不能为清理路径改写证据或哈希。
 
 ```powershell
 git -C .worktrees/docs-audit status --porcelain

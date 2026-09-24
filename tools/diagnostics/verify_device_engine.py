@@ -25,7 +25,7 @@ except Exception:
 import alas_vision as av          # noqa: E402
 
 SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
-# 本机实测可用且已设为默认的组合（见 docs/device-engine.md）
+# 本机实测可用且已设为默认的组合（见 docs/archive/history/device-engine.md）
 CASES = [
     ('scrcpy', 'MaaTouch'),
     ('adb', 'ADB'),

@@ -800,7 +800,7 @@ def op_task_catalog(args):
 def op_task_schedule(args):
     """周期任务的**调度状态**（只读）：哪些任务开着、下次什么时候跑。
 
-    为什么要有它（`docs/tasks.md` 第九节）：周期任务的动作要真机，但"哪些任务开着、下次什么时候跑"
+    为什么要有它（`docs/tasks.md` 的已注册任务）：周期任务的动作要真机，但"哪些任务开着、下次什么时候跑"
     完全在配置里 —— R4 前端与"跑之前先知道会跑什么"都需要它，且零账号消耗。
 
     数据来源是两个**别混为一谈**的东西（第七节已查实）：
@@ -933,7 +933,7 @@ def _resolve_periodic_target(task):
 def op_periodic_plan(args):
     """周期任务的**执行前勘察**（只读）：上游调度器会调用哪个原生方法。
 
-    为什么先做这个（`docs/tasks.md` 第九节之后的动作半边）：周期任务的动作要真机，而且
+    为什么先做这个（`docs/tasks.md` 的周期任务授权边界）：周期任务的动作要真机，而且
     科研/建造/委托这类会**消耗账号资源**，不能无人值守乱跑。但"跑 X 会发生什么"是可查的 ——
     上游把 Scheduler.Command 写在生成的 `args.json`，再由调度器用
     `inflection.underscore()` 映射到 `alas.py` 的方法：
@@ -982,7 +982,7 @@ def op_periodic_plan(args):
 def op_periodic_preflight(args):
     """周期任务执行的**放行判定**（两道闸），**不执行任何游戏动作**。
 
-    为什么先做闸门而不是执行（`docs/tasks.md`"周期任务的动作半边"）：查代码发现连"收委托"
+    为什么先做闸门而不是执行（`docs/tasks.md` 的周期任务授权边界）：查代码发现连"收委托"
     都有花费路径（油满买食物），所以执行入口必须是**按任务显式授权**，不能"授权一次全能跑"。
     闸门可以先做好、先测好，执行留到有真实授权时再接 —— 风险面先被钉住。
 
@@ -1032,7 +1032,7 @@ def op_config_get(args):
     """按**点分路径**读账号配置里的值（只读）：args = {"keys": ["Dorm.BuyFurniture.Enable", ...]}。
 
     为什么需要它：R4 的"配置"面里最要紧的一类值是**决定任务会不会花资源的开关**
-    （docs/tasks.md 花费路径表：dorm 看 BuyFurniture、meowfficer 看 BuyAmount …）。
+    （docs/archive/history/tasks-20260924.md 花费路径表：dorm 看 BuyFurniture、meowfficer 看 BuyAmount …）。
     判"能不能无人值守跑某个周期任务"时，第一步就是把这些开关的值报出来。
 
     **通用实现，不写任何具体键名**：调用方给什么路径就读什么路径；读不到时如实区分
@@ -1092,7 +1092,7 @@ class _LoggedNativeFailure(logging.Handler):
 def op_periodic_run(args):
     """周期任务的**执行**入口：复用上游任务目录和 AzurLaneAutoScript 调度。
 
-    为什么要两道闸（`docs/tasks.md` 的"周期任务的动作半边"）：查代码发现连"收委托"
+    为什么要两道闸（`docs/tasks.md` 的周期任务授权边界）：查代码发现连"收委托"
     都有花费路径（油满买食物），所以执行入口必须**按任务显式授权**，不能"授权一次全能跑"。
 
       1. `allow_actions=true` —— 运行时的动作总开关；
@@ -1699,7 +1699,7 @@ def apply_withdraw_trace_compat():
 def apply_auto_search_skip_compat():
     """客户端适配：`handle_auto_search()` 的**开关状态判定**在本客户端不可靠。
 
-    实测（docs/s3-entry-sequence.md）：进 3-1 时 `enter_map` 在该处理器上反复点击
+    历史现场记录见归档 `docs/archive/history/s3-entry-sequence.md`：进 3-1 时 `enter_map` 在该处理器上反复点击
     `AUTO_SEA`（**被截断的按钮名**；真实按钮是 `AUTO_SEARCH_MAP_OPTION_ON/OFF`，
     位于 (1205,549,1275,566)），19.8s 后 `GameTooManyClickError`。
     上游判定是"双重 appear"（`module/handler/auto_search.py:179`：offset 窗口内一次 + 精确一次），
@@ -1809,7 +1809,7 @@ def apply_in_map_threshold_compat():
         （舰队已就位、右下角「撤退」按钮在屏），但 `IN_MAP` 颜色比对相似度 = **10.19**，
         上游 `appear(button, threshold=10)` 要求 < 10 → 判"不在图内"。
       * 上游 `enter_map()` 的等待集里就含 `IN_MAP`，于是它一直等到 `stuck_record_check`
-        抛 `GameStuckError: Wait too long`（实测 62s，见 `docs/device-stall-in-map.md`）。
+        抛 `GameStuckError: Wait too long`（实测 62s，见 `docs/archive/history/device-stall-in-map.md`）。
       * 同一客户端的地图帧上，该按钮相似度分布为 3.33 / 10.06 / 10.19 / 10.33；
         非地图帧最近的在 83 以上（本批 92.07，另一批 83.11）。**阈值 10 恰好卡在真实取值带里。**
       * 为什么不改颜色常量：另一个真实取值 (210,124,124)（相似度 3.33 那类帧）换个常量后
@@ -2228,9 +2228,9 @@ def op_s3_campaign_call(args):
 
 # 客户端专属弹窗：「关卡 xxx 正在攻略中，请选择前往继续攻略或撤退 [撤退][立即前往]」
 # 上游没有它的素材/处理器，导致 enter_map 干等 60s 后 GameStuckError（实测，见
-# docs/s3-entry-sequence.md）。这里用 **OCR 识别文字** + 固定坐标点击来适配。
+# 归档 S3 入口记录）。这里用 **OCR 识别文字** + 固定坐标点击来适配。
 # 「关卡 xxx 正在攻略中…[撤退][立即前往]」是**客户端专属弹窗**，上游没有它的素材/处理器，
-# 导致 enter_map 干等 60s 后 GameStuckError（实测 3-2，见 docs/s3-entry-sequence.md）。
+# 导致 enter_map 干等 60s 后 GameStuckError（实测 3-2，见归档 S3 入口记录）。
 #
 # 判定方式：**像素特征**而不是 OCR —— 弹窗底部那枚红色「撤退」按钮是最稳的特征。
 # 实测（1280x720）：弹窗帧红占比 **0.3271**，普通帧 **0.0000**（两帧），阈值取 0.15 余量充足。
@@ -2424,7 +2424,7 @@ def op_s3_run_plan(args):
     if r.get('campaign_end'):
         # 导航期间上游自己调了 `withdraw()`（客户端状态残留时会发生）：这是"上一局/客户端
         # 状态"的清理，不是本局结论，但**必须留在证据里**。归档日志里 2026-09-23 02:10:37
-        # 那次就被静默吞掉了 —— 事后只能靠原始日志猜（见 docs/result-evidence.md）。
+        # 那次就被静默吞掉了 —— 事后只能靠原始日志猜（见 docs/archive/reports/result-evidence.md）。
         ui_step['navigation_end'] = r.get('outcome')
         ui_step['navigation_withdrawn'] = bool((r.get('end_evidence') or {}).get('withdrawn'))
     steps.append(ui_step)
@@ -2655,7 +2655,7 @@ def op_map_detect(args):
     out['detected'] = bool(getattr(v, '_detected', False)) or 'grid_shape' in out
 
     # ---- 战场判据：**地图上必定有船**
-    # 实测（docs/device-engine.md "误报"一节）：战役章节选择页会把章节预览图误判成地图
+    # 实测（docs/archive/history/device-engine.md "误报"一节）：战役章节选择页会把章节预览图误判成地图
     # （10 帧里 6 帧误报），而那些误报帧的逐格标志**全为 0**；四张真地图的船标志都 ≥3。
     # 道理直白：在战斗中画面上不可能没有己方舰队。所以"检出网格 + 至少一个船标志"
     # 才算真的在地图上；`detected_raw` 保留原判，便于诊断时看到底层检出。
@@ -2740,7 +2740,7 @@ def op_globe_detect(args):
         if cap is not None:
             import re as _re
             # 上游日志行开头的耗时（`0.080s`）每次运行都不同，而它不是证据：
-            # 不归一掉的话，生成的 `docs/map-detection.md` 每跑一次都会多出一个纯计时 diff，
+            # 不归一掉的话，生成的 `docs/archive/reports/map-detection.md` 每跑一次都会多出一个纯计时 diff，
             # 既污染工作区，也会把真正的改动淹掉。相似度等实质内容一律保留。
             timing = _re.compile(r'^\d+(?:\.\d+)?s\s+')
             lines = [m for m in cap.messages

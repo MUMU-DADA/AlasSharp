@@ -8,7 +8,7 @@
 
 所以本脚本不再假设两者相等，而是：把差异如实打印（供做周期任务域时确认用哪个），
 再验 C# 任务路径报出来的数与**独立读出的**两个来源一致，并钉住一条关键不变量 ——
-**分组集合与任务集合不同**（上游若改了目录结构，这条会红，提示重读 docs/tasks.md）。
+**分组集合与任务集合不同**（上游若改了目录结构，这条会红，提示重读 docs/archive/history/tasks-20260924.md）。
 
 用法：
     python tools/diagnostics/verify_task_catalog.py
@@ -114,7 +114,7 @@ def main() -> int:
                     ('任务数与独立数一致', evidence.get('task_count') == len(expected_tasks),
                      f"任务={evidence.get('task_count')} 独立={len(expected_tasks)}"),
                     # 关键不变量：分组集合与任务集合**不是同一回事** —— 这条如果哪天成立，
-                    # 说明上游改了目录结构，docs/tasks.md 里那段结论要跟着重写。
+                    # 说明上游改了目录结构，docs/archive/history/tasks-20260924.md 里那段结论要跟着重写。
                     ('分组确实是分组（与任务集合不同）',
                      bool(evidence.get('groups')) and set(evidence.get('groups') or []) == source_names
                      and set(evidence.get('groups') or []) != expected_tasks,

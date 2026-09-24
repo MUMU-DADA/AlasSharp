@@ -1,17 +1,9 @@
 # -*- coding: utf-8 -*-
-"""一条命令跑完整套验收（识别 + 控件 + 原语 + 正对照 + 文档刷新）。
+"""统一验收入口。
 
-为什么需要它：这套验证现在有 8 个脚本、5 份证据文件。手工按顺序跑容易漏、顺序错了
-还会互相污染（比如控件验证依赖导航器，正对照又要在真截图上下文中运行）。
-更需要的是**外部条件一变就能一键重跑**：活动开跑了、账号解锁了新功能、
-或者换了客户端版本，跑这一条就知道哪些从"到不了"变成了"跑通"。
-
-用法：
-    python verify_all.py                # 全套（含真机，约 20 分钟）
-    python verify_all.py --docs-only    # 只用现有证据重建文档（几秒）
-    python verify_all.py --device-only  # 只跑真机部分，不重建文档
-
-每一步失败都不会中断整轮：各自 try/except 并记录，最后给一张总表。
+--docs-only：执行离线检查并重建归档报告，跳过设备步骤。
+--device-only：仅执行设备步骤。省略模式参数则运行全套（包含设备动作）。
+每步独立记录结果，任何失败、超时或缺失都会令最终退出码非零。
 """
 import json
 import os
@@ -34,14 +26,8 @@ except Exception:
     pass
 
 # (脚本, 说明, 需要真机, 超时秒)
-# 为什么有三个 verify_*.py **不在这里**（别再来试一遍，第 149-150 轮已经试过）：
-#   * verify_all.py     —— 套件自身，不是一步；
-#   * verify_pages.py   —— **驱动**而不是自包含检查：需要调用方给 SEGMENTS 环境变量
-#                          （逐段页面清单），硬登记的话有设备的运行会直接 KeyError 崩掉；
-#   * verify_page.py    —— 全仓库（文档/脚本/README）**没有任何引用**，疑似被
-#                          verify_pages / regress_pages 取代。保留不动：删是一个决定，不是顺手做的事。
-# 另外：verify_map_ir.py 曾经也在这里之外，它因此烂了很久（判据把"跳过"当失败，永远红）。
-# **任何 verify_* 脚本都该在套件里跑，除非像上面那样写清为什么不在。**
+# verify_pages.py 需要调用方提供分段页面清单；verify_page.py 是退役诊断入口。
+# 两者不作为自包含步骤注册，页面产品回归由 regress_pages.py 执行。
 STEPS = [
     ('verify_privacy.py', '隐私边界（个人目录/明确凭据/本机工件不入库）', False, 120),
     ('verify_architecture.py', '整体架构边界（宿主/数据/路径/禁止地图特例）', False, 120),
@@ -135,7 +121,7 @@ def read_numbers():
                 return json.load(f)
         except Exception:
             return d
-    prog = load(os.path.join(DOCS, 'page-verification.json'), {}) or {}
+    prog = load(os.path.join(DOCS, 'archive/reports/page-verification.json'), {}) or {}
     reg = load(os.path.join(DATA, 'regress_pages.json'), []) or []
     ctrl = load(os.path.join(DATA, 'controls_verify.json'), []) or []
     prim = load(os.path.join(DATA, 'primitives_verify.json'), []) or []
@@ -162,7 +148,7 @@ def main():
     for i, a in enumerate(sys.argv):
         if a == '--only' and i + 1 < len(sys.argv):
             only = {s.strip() for s in sys.argv[i + 1].split(',') if s.strip()}
-    mode = '只重建文档' if docs_only else ('只跑真机' if device_only else '全套')
+    mode = '离线检查与归档报告' if docs_only else ('只跑真机' if device_only else '全套')
     if only:
         mode += '，只跑 %s' % ', '.join(sorted(only))
     print('=== 全套验收（%s）===' % mode)

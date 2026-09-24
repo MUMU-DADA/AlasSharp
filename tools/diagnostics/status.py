@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""把四份验收证据汇总成 docs/status.md：一页回答"上游识别与控制跑到什么程度了"。
+"""把四份验收证据汇总成 docs/archive/reports/status.md：一页回答"上游识别与控制跑到什么程度了"。
 
 数据全部来自已有证据文件，不重新跑设备、也不重复维护分类：
-  docs/page-verification.json   页面规则历史命中与导航未达记录（两者可能重叠）
+  docs/archive/reports/page-verification.json   页面规则历史命中与导航未达记录（两者可能重叠）
   data/controls_verify.json     控件规则与动作（滑动/开关驱动）
   data/primitives_verify.json   控制原语（返回键/长按/滑动）
   data/regress_pages.json       全量回归（产品路径导航）
@@ -30,7 +30,7 @@ def load(path, default=None):
 
 
 def main():
-    pages = load(os.path.join(DOCS, 'page-verification.json'), {})
+    pages = load(os.path.join(DOCS, 'archive/reports/page-verification.json'), {})
     ctrl = load(os.path.join(DATA, 'controls_verify.json'), [])
     prim = load(os.path.join(DATA, 'primitives_verify.json'), [])
     text = load(os.path.join(DATA, 'text_input_verify.json'), {}) or {}
@@ -154,7 +154,7 @@ def main():
         '```',
         '',
     ]
-    out = os.path.join(DOCS, 'status.md')
+    out = os.path.join(DOCS, 'archive/reports/status.md')
     with open(out, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
     print('页面 %d/%d 曾命中（导航未达记录 %d，其中重叠 %d；其余原因已定位 %d）'

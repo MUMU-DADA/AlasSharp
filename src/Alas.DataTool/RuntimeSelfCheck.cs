@@ -651,7 +651,7 @@ internal sealed class StubVisionEngine : VisionEngineBase
                     return clone;
                 }
                 throw new VisionWorkerException(op, $"替身没有这一关的文档: {chapter}", "<stub>");
-            // ---- 小型导航环境（规格见 docs/runtime.md 第十五节）----
+            // ---- 小型导航环境（规格见 docs/archive/history/runtime-20260924.md 的小型导航环境）----
             // 一张固定小图 + 一个"随点击迁移"的当前页状态机，用来在离线自检里真正驱动
             // PageNavigator（不再只是"构造得出来"，而是"跑得起来、且能跑到失败"）。
             // 注意：这里的小图是**测试夹具**，不是第二份页面表 —— 产品路径永远用真上游图。

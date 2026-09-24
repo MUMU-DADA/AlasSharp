@@ -327,7 +327,7 @@ class S3DryRunTests(unittest.TestCase):
 
         真机证据：`data/s3_native_small_and_clearall.log` 02:10:37
         `handle_campaign_ui_additional -> self.withdraw()`，当时这一步在 `ensure_campaign_ui`
-        的返回里被吞掉，事后只能翻原始日志（见 `docs/result-evidence.md`）。
+        的返回里被吞掉，事后只能翻原始日志（见 `docs/archive/reports/result-evidence.md`）。
         """
         with self.native_protocol(navigation_withdraw=True) as state:
             result = self.invoke(chapter='campaign.campaign_main.campaign_2_1',

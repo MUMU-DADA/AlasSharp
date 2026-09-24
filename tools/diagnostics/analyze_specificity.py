@@ -25,7 +25,7 @@ DATA = os.path.join(ROOT, 'data')
 def main():
     with open(os.path.join(DATA, 'regress_pages.json'), encoding='utf-8') as f:
         regress = json.load(f)
-    with open(os.path.join(DOCS, 'page-verification.json'), encoding='utf-8') as f:
+    with open(os.path.join(DOCS, 'archive/reports/page-verification.json'), encoding='utf-8') as f:
         progress = json.load(f)
     verified = progress['verified']
     blocked = progress['blocked']
@@ -119,7 +119,7 @@ def main():
         % ', '.join('`%s`' % r for r in other_never),
         '',
     ]
-    out = os.path.join(DOCS, 'specificity.md')
+    out = os.path.join(DOCS, 'archive/reports/specificity.md')
     with open(out, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
     print('精确命中 %d / 共命中 %d / 从未命中 %d（其中漏检嫌疑 %d）'

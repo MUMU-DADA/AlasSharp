@@ -1,7 +1,7 @@
-# S3 计划词表清点（从关卡 IR 统计「要实现哪些引擎调用」）
+# S3 导出调用词表（离线统计）
 
-S3 = 执行上游的**声明式关卡计划**（`campaign.battles[].calls`）。写引擎之前先清点词表，
-免得凭感觉排期 —— 源码里的"方法数"不等于**被计划实际调用的集合**。
+统计 `campaign.battles[].calls` 中可导出的调用，仅用于覆盖调查。
+生产流程执行原生 `Campaign.run()`；IR 分级与调用频次不证明可运行、通关或迁移优先级。
 
 脚本：`tools/diagnostics/s3_plan_inventory.py`；数据：`data/s3_plan_inventory.json`。
 
@@ -15,10 +15,9 @@ S3 = 执行上游的**声明式关卡计划**（`campaign.battles[].calls`）。
 | 引擎钩子（native_overrides） | 61 |
 | **调用词表** | **57 个不同名字 / 6421 次出现** |
 
-## 最小实现目标：tier A 用到的调用（9 个）
+## tier A 用到的调用（9 个）
 
-tier A 有 **1000 章**（占 73%），而它只用到这 9 个调用 —— 先把它们做出来，
-就能覆盖近七成章节。其中 tier A **独有**的 %d 个（未在 B/C 出现）是更小的起步集。
+同一方法可能多次调用；出现次数与章节数量分别统计。
 
 | 调用 | 总次数 | 用到的章节数 | A | B | C |
 | --- | --- | --- | --- | --- | --- |
@@ -94,14 +93,8 @@ tier A 有 **1000 章**（占 73%），而它只用到这 9 个调用 —— 先
 | `siren_list.pop` | 1 | 1 | 0 | 0 | 1 | 仅 tier C |
 | `image_color_count` | 1 | 1 | 1 | 0 | 0 | 仅 tier A |
 
-## tier C 独有（22 个）——实施顺序上排最后
+## tier C 独有调用（22 个）
 
 `map.select` `clear_chosen_enemy` `check_accessibility` `goto` `mob_move` `fleet_at` `device.disable_stuck_detection` `__getattribute__` `fleet_2_rescue` `air_strike` `battle_boss` `bored_visit` `fleet_2.clear_chosen_mystery` `fleet_boss.clear_chosen_enemy` `fleet_ensure` `_goto` `clear_potential_boss` `device.sleep` `execute_actions` `fleet_1.clear_chosen_enemy` `fleet_boss.battle_default` `siren_list.pop`
 
-## 建议的实施顺序（数据驱动，不是拍脑袋）
-
-1. **tier A 的 9 个调用** → 解锁 1000 章（73%）；
-2. **tier B 追加的调用**（A 与 B 的差集）→ 再解锁 212 章；
-3. **tier C 的 22 个**（含 `map.select`/`goto`/`mob_move` 这类细粒度控制）→ 最后 162 章。
-
-引擎钩子（%d 个）与 tier C 的细粒度调用是同一类工作：需要接近 ALAS 运行时的能力，排期时按"每章一次性验证"而不是"每个调用一次性实现"来估。
+迁移边界见[当前路线](../../architecture-roadmap.md)，不能按此词表重放战役或添加地图特例。

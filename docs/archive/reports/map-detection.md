@@ -133,4 +133,4 @@ Camera outside map 表示上游相机恢复分支；静态帧无法验证滑动�
 识别通过只证明该帧的识别结果；完整通关仍需上游 CampaignEnd 和实战证据。
 
 复现：`python tools/diagnostics/verify_map_detection.py`。
-手工分析保存在 [map-detection-notes.md](./map-detection-notes.md)。
+补充分析归档在 [map-detection-notes.md](../history/map-detection-notes.md)，不作为运行时规则来源。

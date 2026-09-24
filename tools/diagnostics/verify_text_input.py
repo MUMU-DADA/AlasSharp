@@ -206,7 +206,7 @@ lines += [
     '```',
     '',
 ]
-path = os.path.join(HERE, '..', 'docs', 'text-input.md')
+path = os.path.join(HERE, '..', 'docs', 'archive/reports/text-input.md')
 with open(path, 'w', encoding='utf-8', newline='\n') as f:
     f.write('\n'.join(lines))
 print('报告: %s' % os.path.abspath(path))

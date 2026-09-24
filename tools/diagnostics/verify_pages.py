@@ -172,7 +172,7 @@ with open(out, 'w', encoding='utf-8') as f:
 print('detail written to %s' % os.path.abspath(out))
 
 # 累计进度写进 docs/（版本库内，作为证据），批次明细留在 data/（运行期产物）
-prog_path = os.path.join(HERE, '..', 'docs', 'page-verification.json')
+prog_path = os.path.join(HERE, '..', 'docs', 'archive/reports/page-verification.json')
 try:
     with open(prog_path, encoding='utf-8') as f:
         prog = json.load(f)

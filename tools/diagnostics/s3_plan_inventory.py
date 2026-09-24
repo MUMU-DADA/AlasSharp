@@ -6,7 +6,7 @@
 否则会凭感觉排期（"120 个方法"这类数字来自源码方法数，不等于实际被计划调用的集合）。
 
 输出：
-  docs/s3-plan-vocabulary.md      人看的清单（含"最小实现目标"建议）
+  docs/archive/reports/s3-plan-vocabulary.md      离线调用清单（不作为运行计划）
   data/s3_plan_inventory.json     机读结果
 
 判据说明：tier 来自导出器（A=JSON 规则表即可 / B=计划完整但用了词表外算子 / C=需原生实现）。
@@ -22,7 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
 CAMPAIGN = os.path.join(ROOT, 'data', 'campaign')
 DATA_OUT = os.path.join(ROOT, 'data', 's3_plan_inventory.json')
-DOC_OUT = os.path.join(ROOT, 'docs', 's3-plan-vocabulary.md')
+DOC_OUT = os.path.join(ROOT, 'docs', 'archive/reports/s3-plan-vocabulary.md')
 
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -93,10 +93,10 @@ def main():
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     lines = [
-        '# S3 计划词表清点（从关卡 IR 统计「要实现哪些引擎调用」）',
+        '# S3 导出调用词表（离线统计）',
         '',
-        'S3 = 执行上游的**声明式关卡计划**（`campaign.battles[].calls`）。写引擎之前先清点词表，',
-        '免得凭感觉排期 —— 源码里的"方法数"不等于**被计划实际调用的集合**。',
+        '统计 `campaign.battles[].calls` 中可导出的调用，仅用于覆盖调查。',
+        '生产流程执行原生 `Campaign.run()`；IR 分级与调用频次不证明可运行、通关或迁移优先级。',
         '',
         '脚本：`tools/diagnostics/s3_plan_inventory.py`；数据：`data/s3_plan_inventory.json`。',
         '',
@@ -111,12 +111,9 @@ def main():
         '| 引擎钩子（native_overrides） | %d |' % hooks,
         '| **调用词表** | **%d 个不同名字 / %d 次出现** |' % (len(calls), sum(calls.values())),
         '',
-        '## 最小实现目标：tier A 用到的调用（%d 个）' % len(a_names),
+        '## tier A 用到的调用（%d 个）' % len(a_names),
         '',
-        'tier A 有 **%d 章**（占 %.0f%%），而它只用到这 %d 个调用 —— 先把它们做出来，'
-        % (chapters_by_tier.get('A', 0), 100.0 * chapters_by_tier.get('A', 0) / max(files, 1),
-           len(a_names)),
-        '就能覆盖近七成章节。其中 tier A **独有**的 %d 个（未在 B/C 出现）是更小的起步集。',
+        '同一方法可能多次调用；出现次数与章节数量分别统计。',
         '',
         '| 调用 | 总次数 | 用到的章节数 | A | B | C |',
         '| --- | --- | --- | --- | --- | --- |',
@@ -142,23 +139,14 @@ def main():
                      % (r['call'], r['total'], r['chapters'], r['A'], r['B'], r['C'], note))
     lines += [
         '',
-        '## tier C 独有（%d 个）——实施顺序上排最后' % len(c_only),
+        '## tier C 独有调用（%d 个）' % len(c_only),
         '',
         # 次数相同的按名字再排一次：只按 -calls 排，同分项的顺序取决于 set 的迭代顺序，
         # 而 Python 的字符串哈希每个进程都不同（PYTHONHASHSEED）→ 生成产物每次都在抖，
         # `git status` 里反复出现"只换了几个词的位置"的假改动（实测踩过）。
         ' '.join('`%s`' % n for n in sorted(c_only, key=lambda n: (-calls[n], n))),
         '',
-        '## 建议的实施顺序（数据驱动，不是拍脑袋）',
-        '',
-        '1. **tier A 的 %d 个调用** → 解锁 %d 章（%.0f%%）；' % (len(a_names),
-            chapters_by_tier.get('A', 0), 100.0 * chapters_by_tier.get('A', 0) / max(files, 1)),
-        '2. **tier B 追加的调用**（A 与 B 的差集）→ 再解锁 %d 章；' % chapters_by_tier.get('B', 0),
-        '3. **tier C 的 %d 个**（含 `map.select`/`goto`/`mob_move` 这类细粒度控制）→ 最后 %d 章。'
-        % (len(c_only), chapters_by_tier.get('C', 0)),
-        '',
-        '引擎钩子（%d 个）与 tier C 的细粒度调用是同一类工作：需要接近 ALAS 运行时的能力，'
-        '排期时按"每章一次性验证"而不是"每个调用一次性实现"来估。',
+        '迁移边界见[当前路线](../../architecture-roadmap.md)，不能按此词表重放战役或添加地图特例。',
         '',
     ]
     with open(DOC_OUT, 'w', encoding='utf-8', newline='\n') as f:

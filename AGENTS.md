@@ -79,7 +79,7 @@ Frozen：结论口径写在 `docs/result-contract.md`，生产方 `tools/sortie_
 - 改词表、不变量或违例码，必须**同时**改 Python 与 C# 两侧，并跑
   `python tools/diagnostics/verify_result_contract.py`（35 例）与
   `python tools/diagnostics/verify_architecture.py`（词表/违例码漂移会直接失败）。
-- `docs/result-evidence.md` 由 `tools/diagnostics/audit_real_records.py` 从本地 `data/*.log` 与
+- `docs/archive/reports/result-evidence.md` 由 `tools/diagnostics/audit_real_records.py` 从本地 `data/*.log` 与
   `tools/diagnostics/evidence/` 脱敏归档重建，不手写；
   发现"声称结果与原始证据对不上"时，先修证据链或补真机验证，不得改小核对规则来让它变绿。
 - 失败必须可定位：`error` 带调用栈尾部，存下来的失败帧必须登记在 `failure_frames`。
@@ -127,3 +127,10 @@ R2 起，新业务域必须实现 `Alas.Core/Tasks/ITaskRunner`（`Kind` / `Prec
 - `CampaignEnd`、威胁百分比、单张截图、撤退、超时和未知退出不能单独证明通关；必须有成功结算并返回章节页的证据。
 - 新业务域先进入 `Alas.Core` 的通用任务/状态模型，再接入 CLI 或前端；禁止在命令分支复制业务状态机。
 - 修改上述边界时，提交必须写明通用根因、上游语义、影响范围、阶段门槛和新增验证，并通过 `python tools/diagnostics/verify_architecture.py`。
+
+## 文档维护
+
+- `docs/` 顶层仅保留核心说明，入口是 `docs/README.md`；按主题更新，保持简明，不追加聊天、轮次或交接流水账。
+- 当前阶段和未完成项统一维护在 `docs/architecture-roadmap.md`，历史调查放在 `docs/archive/history/`。
+- 生成报告与累计证据输入放在 `docs/archive/reports/`；移动时同步全部生成器和引用，不能让下次验收恢复旧目录。
+- 文档清理不得改写真实运行日志、原始工件或其哈希；临时通信资料与审计证据分别处理。

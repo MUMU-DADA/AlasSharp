@@ -5,7 +5,7 @@
 这个跑的是"此前不可达"的集合（探索）。判定同样严格：
 队列 `navigate` 任务成功 **且** 随后 page_current 包含该页，才算真机命中。
 
-命中的页面会写回 docs/page-verification.json（唯一真值来源），
+命中的页面会写回 docs/archive/reports/page-verification.json（唯一真值来源），
 随后用 report_pages.py / status.py 重新生成文档即可。
 未命中的页面连同实测证据（落在哪一页、按钮分多少）一起打印，便于判断是
 "功能仍未解锁" 还是 "客户端 UI 变了"。
@@ -27,7 +27,7 @@ SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
 PROBE = os.path.join(HERE, '..', 'data', '_probe.png')
 ALASHUB = os.environ.get('ALASHUB', os.path.join(
     HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe'))
-PROGRESS = os.path.join(HERE, '..', 'docs', 'page-verification.json')
+PROGRESS = os.path.join(HERE, '..', 'docs', 'archive/reports/page-verification.json')
 
 # 岛屿相关按要求跳过（page_island 与 9 个 island 子页都不在列表里）
 DEFAULT_TARGETS = [

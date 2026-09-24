@@ -24,7 +24,7 @@ from queue_navigation import run_navigation  # noqa: E402
 try:
     ADB = os.environ['STUB_ADB']
 except KeyError:
-    # `--report-only` 只重建 docs/regression.md（不导航、不用 adb），不该被这个变量拦住；
+    # `--report-only` 只重建 docs/archive/reports/regression.md（不导航、不用 adb），不该被这个变量拦住；
     # 真机跑则给出**可照做的**报错，而不是一个光秃秃的 KeyError。
     if '--report-only' in sys.argv:
         ADB = ''
@@ -38,7 +38,7 @@ SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
 PROBE = os.path.join(HERE, '..', 'data', '_probe.png')
 ALASHUB = os.environ.get('ALASHUB', os.path.join(
     HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe'))
-PROGRESS = os.path.join(HERE, '..', 'docs', 'page-verification.json')
+PROGRESS = os.path.join(HERE, '..', 'docs', 'archive/reports/page-verification.json')
 # 图里**没有入边**的页面不可能是导航目标 —— 它们是同一张画面的另一种状态（皮肤变体）
 # 或浮层：page_main_white（新版主界面皮肤，与 page_main 同屏）、page_channel（临时浮层）、
 # page_unknown（Page(None)）。对这些页面只能验"同屏被检测到"，不能验"能导航到"。
@@ -84,7 +84,7 @@ def main():
     report_only = '--report-only' in sys.argv
     no_in, node_n, edge_n = graph_info()
     if report_only:
-        # 只重建 docs/regression.md：改文档措辞不该再跑一遍 5 分钟真机导航
+        # 只重建 docs/archive/reports/regression.md：改文档措辞不该再跑一遍 5 分钟真机导航
         with open(os.path.join(HERE, '..', 'data', 'regress_pages.json'),
                   encoding='utf-8') as f:
             results = json.load(f)
@@ -139,7 +139,7 @@ def main():
 
 
 def write_report(results, no_in, node_n, edge_n):
-    """生成 docs/regression.md。独立成函数是为了 `--report-only` 能只重建文档。"""
+    """生成 docs/archive/reports/regression.md。独立成函数是为了 `--report-only` 能只重建文档。"""
     ok_n = sum(1 for r in results if r['verdict'] == 'ok')
     bad = [r for r in results if r['verdict'] != 'ok']
     entry_note = (
@@ -166,7 +166,7 @@ def write_report(results, no_in, node_n, edge_n):
             return ('账号前提：未找到 `data/account_probe.json`，**本次基线未记录账号解锁进度** —— '
                     '与历史数字比较前，先确认两次跑的是同一个账号。')
 
-    # ---- 报告（生成 docs/regression.md，避免手写漂移）
+    # ---- 报告（生成 docs/archive/reports/regression.md，避免手写漂移）
     lines = [
         '# 页面识别全量回归（产品路径）',
         '',
@@ -224,7 +224,7 @@ def write_report(results, no_in, node_n, edge_n):
         '```',
         '',
     ]
-    path = os.path.join(HERE, '..', 'docs', 'regression.md')
+    path = os.path.join(HERE, '..', 'docs', 'archive/reports/regression.md')
     with open(path, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(lines))
     print('报告: %s' % os.path.abspath(path))
