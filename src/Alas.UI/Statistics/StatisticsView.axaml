@@ -1,0 +1,94 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:stats="using:Alas.UI.Statistics" x:Class="Alas.UI.Statistics.StatisticsView"
+             x:DataType="stats:StatisticsViewModel">
+  <UserControl.Styles>
+    <Style Selector="Border.stat-panel">
+      <Setter Property="Background" Value="{DynamicResource AlasSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AlasBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="16" />
+    </Style>
+    <Style Selector="Button.category">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Padding" Value="12,7" />
+    </Style>
+    <Style Selector="Button.category:selected">
+      <Setter Property="Background" Value="{DynamicResource AlasAccentSoftBrush}" />
+    </Style>
+    <Style Selector="TextBlock.metric-label"><Setter Property="Foreground" Value="{DynamicResource AlasTextMutedBrush}" /></Style>
+    <Style Selector="TextBlock.note"><Setter Property="Foreground" Value="{DynamicResource AlasTextMutedBrush}" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+  </UserControl.Styles>
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="14" Margin="0,18,0,28">
+      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+        <StackPanel Grid.RowSpan="2" Spacing="4">
+          <TextBlock Text="资源统计" Classes="page-title" />
+          <TextBlock Text="沿用上游 report schema，按分类查看趋势与原始记录。" Classes="note" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+          <Button Content="刷新" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsLoading}" />
+          <Button Content="导出分类" Command="{Binding ExportCommand}" IsEnabled="{Binding CanExport}" />
+        </StackPanel>
+        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ExportStatus}" Classes="note" HorizontalAlignment="Right" />
+      </Grid>
+      <Border Classes="stat-panel" Padding="8">
+        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+          <ItemsControl ItemsSource="{Binding Categories}">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="stats:StatisticsOption">
+                <Button Classes="category" Content="{Binding Label}" Command="{Binding $parent[UserControl].((stats:StatisticsViewModel)DataContext).SelectCategoryCommand}" CommandParameter="{Binding Key}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Border>
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10" IsVisible="{Binding IsConnected}">
+        <TextBlock Grid.Row="0" Text="分类" Classes="metric-label" />
+        <TextBlock Grid.Row="1" Text="{Binding CategoryLabel}" FontWeight="SemiBold" />
+        <TextBlock Grid.Column="1" Grid.Row="0" Text="日期范围" Classes="metric-label" />
+        <StackPanel Grid.Column="1" Grid.Row="1" Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsResourceCategory}">
+          <ComboBox ItemsSource="{Binding DayOptions}" SelectedItem="{Binding Days}" Width="96" />
+          <TextBlock Text="天" VerticalAlignment="Center" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Grid.Row="1" Orientation="Horizontal" Spacing="4" IsVisible="{Binding !IsResourceCategory}">
+          <DatePicker SelectedDate="{Binding MonthDate}" Width="140" />
+        </StackPanel>
+        <TextBlock Grid.Column="2" Grid.Row="0" Text="月份" Classes="metric-label" IsVisible="{Binding IsCommissionCategory}" />
+        <ComboBox Grid.Column="2" Grid.Row="1" ItemsSource="{Binding PeriodOptions}" SelectedItem="{Binding Period}" Width="100" IsVisible="{Binding IsCommissionCategory}" />
+        <TextBlock Grid.Column="5" Grid.Row="1" Text="{Binding Error}" Classes="note" Foreground="{DynamicResource AlasDangerBrush}" HorizontalAlignment="Right" />
+      </Grid>
+      <Border Classes="stat-panel" IsVisible="{Binding IsLoading}"><StackPanel Spacing="8"><ProgressBar IsIndeterminate="True" /><TextBlock Text="正在加载统计报告…" Classes="note" /></StackPanel></Border>
+      <Border Classes="stat-panel" IsVisible="{Binding HasNoReport}"><StackPanel Spacing="8"><TextBlock Text="{Binding EmptyTitle}" FontWeight="SemiBold" /><TextBlock Text="{Binding EmptyMessage}" Classes="note" /><Button Content="重试" Command="{Binding RefreshCommand}" HorizontalAlignment="Left" /></StackPanel></Border>
+      <ItemsControl ItemsSource="{Binding Report.Metrics}" IsVisible="{Binding HasReport}">
+        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel Orientation="Horizontal" ItemWidth="190" ItemHeight="90" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate><DataTemplate x:DataType="stats:StatisticsMetric"><Border Classes="stat-panel" Margin="0,0,8,8"><StackPanel Spacing="8"><TextBlock Text="{Binding Label}" Classes="metric-label" /><StackPanel Orientation="Horizontal" Spacing="5"><TextBlock Text="{Binding DisplayValue}" FontSize="23" FontWeight="SemiBold" /><TextBlock Text="{Binding Unit}" Classes="metric-label" VerticalAlignment="Bottom" Margin="0,0,0,4" /></StackPanel></StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <Border Classes="stat-panel" IsVisible="{Binding HasReport}">
+        <StackPanel Spacing="8">
+          <Grid ColumnDefinitions="*,Auto"><TextBlock Text="趋势" FontSize="17" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="{Binding Report.Month}" Classes="note" /></Grid>
+          <stats:StatisticsChart x:CompileBindings="False" Model="{Binding Chart}" TextBrush="{DynamicResource AlasTextMutedBrush}" GridBrush="{DynamicResource AlasBorderBrush}" AccentBrush="{DynamicResource AlasAccentBrush}" NegativeBrush="{DynamicResource AlasDangerBrush}" />
+        </StackPanel>
+      </Border>
+      <ItemsControl ItemsSource="{Binding Tables}" IsVisible="{Binding HasReport}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="stats:StatisticsTableViewModel">
+            <Border Classes="stat-panel" Margin="0,0,0,12">
+              <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{Binding Table.Title}" FontSize="17" FontWeight="SemiBold" /><Button Grid.Column="1" Content="导出明细" Command="{Binding ExportCommand}" /></Grid>
+                <TextBlock Text="{Binding Table.Note}" Classes="note" IsVisible="{Binding HasNote}" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"><TextBox Text="{Binding Search}" PlaceholderText="搜索此表" /><TextBlock Grid.Column="1" Text="{Binding RecordSummary}" Classes="note" VerticalAlignment="Center" /></Grid>
+                <ScrollViewer HorizontalScrollBarVisibility="Auto"><ItemsControl ItemsSource="{Binding PageRows}"><ItemsControl.ItemTemplate><DataTemplate><ItemsControl ItemsSource="{Binding}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" Width="140" Margin="0,4" /></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+                <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right"><Button Content="上一页" Command="{Binding PreviousCommand}" /><TextBlock Text="{Binding PageSummary}" VerticalAlignment="Center" /><Button Content="下一页" Command="{Binding NextCommand}" /></StackPanel>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>      <ItemsControl ItemsSource="{Binding Report.Notes}" IsVisible="{Binding HasReport}"><ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" Classes="note" Margin="0,2" /></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
+
+
+
