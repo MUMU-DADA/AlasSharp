@@ -109,6 +109,22 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public CoreConfigInstancesBackend ConfigManagerBackend { get; }
     public CoreDeploySettingsBackend SettingsBackend { get; }
     public bool IsBackendConnected => _backend.IsConnected;
+    public bool IsUiOnly => _backend.IsSimulation;
+    public string UiOnlyNotice => Simulation.SimulatedUiBackend.Notice;
+
+    public async Task AppendSimulationLogsAsync()
+    {
+        if (_backend is not Simulation.SimulatedUiBackend simulation) return;
+        if (!HasInstance)
+        {
+            string? first = simulation.Instances.FirstOrDefault()?.Name;
+            if (first is null) return;
+            SelectInstance(first);
+        }
+        SelectNav("overview");
+        simulation.AppendLogs(InstanceName);
+        await RefreshBackendStateAsync();
+    }
     public StatisticsViewModel Statistics { get; }
     public TaskEditorViewModel TaskEditor { get; private set; }
     public IMeowfficerReportBackend MeowfficerBackend { get; }
@@ -460,6 +476,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         foreach (var item in _backend.Instances) Instances.Add(item.Name);
         Notify(nameof(InstancesSummary));
         Notify(nameof(IsBackendConnected));
+        if (IsUiOnly) _ = RefreshBackendStateAsync();
     }
 
     public async Task RefreshBackendStateAsync()

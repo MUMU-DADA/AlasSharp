@@ -25,7 +25,7 @@ public sealed class CoreDeploySettingsBackend(IAlasUiBackend backend) : ISetting
                 var field = node!.AsObject();
                 string kind = Text(field["type"]);
                 return new SettingsField(Text(field["key"]), Text(field["label"]), Text(field["value"]),
-                    !response.Demo, kind, field["options"]?.AsArray().Select(Text).ToArray(),
+                    !response.Demo || backend.IsSimulation, kind, field["options"]?.AsArray().Select(Text).ToArray(),
                     Help: Regex.Replace(Text(field["help"]), "<[^>]*>", ""), IsInteger: kind == "int");
             }).ToArray();
             return new SettingsGroup(Text(group["label"]), fields, Text(group["key"]));

@@ -75,7 +75,8 @@ public partial class MainView : UserControl
         MeowfficerPage.Backend = Model.MeowfficerBackend;
         UpdateMeowfficerPage();
         _stateTimer.Tick += async (_, _) => await Model.RefreshBackendStateAsync();
-        SizeChanged += (_, _) => Model.UpdateViewport(Bounds.Width, Bounds.Height);
+        Layout.SizeChanged += (_, _) => Model.UpdateViewport(Layout.Bounds.Width, Layout.Bounds.Height);
+        SimulationLogsButton.Click += async (_, _) => await Model.AppendSimulationLogsAsync();
         // 遮罩点击关闭当前浮层：窄屏抽屉与右栏浮层共用同一个收起命令。
         Scrim.PointerPressed += (_, args) =>
         {
@@ -92,13 +93,14 @@ public partial class MainView : UserControl
     public ShellViewModel Model { get; }
     public Settings.SettingsView SettingsPage { get; }
     public RemoteAccess.RemoteAccessView RemotePage { get; }
+    public bool IsBackendPolling => _stateTimer.IsEnabled;
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        if (Bounds.Width > 0) Model.UpdateViewport(Bounds.Width, Bounds.Height);
+        if (Layout.Bounds.Width > 0) Model.UpdateViewport(Layout.Bounds.Width, Layout.Bounds.Height);
         ApplyLayout();
-        _stateTimer.Start();
+        if (!Model.IsUiOnly) _stateTimer.Start();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)

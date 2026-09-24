@@ -35,6 +35,7 @@ internal static class Program
             await UiFilesChecks.Verify();
             await TaskEditorChecks.Verify();
             await CoreUiBackendChecks.Verify();
+            await UiOnlyChecks.Verify();
             // Dispatch may complete inline on its own worker. Async disposal lets that worker
             // unwind instead of synchronously waiting for itself in IDisposable.Dispose().
             await using (var session = HeadlessUnitTestSession.StartNew(typeof(Program)))
@@ -52,6 +53,7 @@ internal static class Program
 
     private static void Verify(string output)
     {
+        UiOnlyChecks.VerifyControls(output);
         TaskEditorChecks.VerifyControls();
         ConfigManagerChecks.Run(output);
         DevToolsChecks.Run();

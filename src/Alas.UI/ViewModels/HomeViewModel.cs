@@ -17,7 +17,7 @@ namespace Alas.UI.ViewModels;
 /// </summary>
 public interface IInstanceSource
 {
-    /// <summary>是否真的连着 Alas 服务；false 时主页显示断线态且不渲染任何实例卡。</summary>
+    /// <summary>数据源是否可用；显式 UI 隔离模式使用带演示标识的内存数据源。</summary>
     bool IsConnected { get; }
 
     /// <summary>服务返回的实例列表；未连接时必须是空列表。</summary>
@@ -383,7 +383,7 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         {
             refreshable.Refresh();
             Reload();
-            StatusMessage = IsConnected
+            StatusMessage = _source is IAlasUiBackend { IsSimulation: true } ? "已重新读取内存中的模拟实例。" : IsConnected
                 ? "已重新连接 Alas 服务。"
                 : "仍然未连接 Alas 服务：请确认服务已启动并监听正确端口。";
             return;

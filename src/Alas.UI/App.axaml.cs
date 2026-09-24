@@ -38,7 +38,8 @@ public partial class App : Application
         {
             desktop.MainWindow = new Window
             {
-                Title = "AlasSharp · 界面预览", Width = 1280, Height = 820,
+                Title = _backend?.IsSimulation == true ? "AlasSharp · UI 隔离模式" : "AlasSharp",
+                Width = 1280, Height = 820,
                 MinWidth = 380, MinHeight = 520, Content = view,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen,
             };

@@ -106,6 +106,14 @@ $onlineSource
     Save-PackageCache
     Invoke-Dotnet @('build', 'Alas.UI.slnx', '-c', 'Release', '--no-restore')
 
+    # Reuse the WASM workload's bundled Node to verify the browser startup switch.
+    $node = Get-ChildItem -LiteralPath (Join-Path $sdkDirectory 'packs') -Directory -Filter 'Microsoft.NET.Runtime.Emscripten.*.Node.*' |
+        ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Recurse -File -Filter 'node.exe' } |
+        Select-Object -First 1
+    if (-not $node) { throw 'WASM workload Node runtime is missing.' }
+    & $node.FullName (Join-Path $PSScriptRoot 'diagnostics/verify_ui_launch.mjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Browser UI-only startup check failed.' }
+
     # Native Headless backend only. Bound shutdown as well as assertions so a hung
     # renderer cannot be mistaken for a successful run or remain in the background.
     $start = [Diagnostics.ProcessStartInfo]::new($dotnet)

@@ -22,7 +22,17 @@
   <Grid x:Name="Root">
     <Button x:Name="SkipLink" Classes="skip-link" Theme="{StaticResource TextButtonTheme}"
             Content="跳转到内容" AutomationProperties.Name="跳转到内容" />
-    <Grid x:Name="Layout" RowDefinitions="Auto,*" ColumnSpacing="{DynamicResource AlasShellGap}">
+  <Grid RowDefinitions="Auto,*">
+    <Border x:Name="SimulationBanner" Grid.Row="0" IsVisible="{Binding IsUiOnly}"
+            Background="{DynamicResource AlasSurfaceBrush}" BorderBrush="{DynamicResource AlasAccentBrush}"
+            BorderThickness="0,0,0,1" Padding="12,6">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+        <TextBlock Text="{Binding UiOnlyNotice}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
+        <Button x:Name="SimulationLogsButton" Grid.Column="1" Content="+100 模拟日志" Padding="10,6"
+                Theme="{StaticResource GhostButtonTheme}" AutomationProperties.Name="追加 100 条模拟日志" />
+      </Grid>
+    </Border>
+    <Grid x:Name="Layout" Grid.Row="1" RowDefinitions="Auto,*" ColumnSpacing="{DynamicResource AlasShellGap}">
       <Border x:Name="SidebarPanel" Grid.RowSpan="2" Grid.Column="0" Classes="sidebar" Width="232"
               HorizontalAlignment="Left">
         <views:SidebarView x:Name="Sidebar" />
@@ -89,5 +99,6 @@
       <Border x:Name="Scrim" Grid.RowSpan="2" Grid.ColumnSpan="3" Background="Transparent" ZIndex="5"
               IsVisible="{Binding IsScrimVisible}" AutomationProperties.Name="关闭浮层" />
     </Grid>
+  </Grid>
   </Grid>
 </UserControl>

@@ -38,4 +38,6 @@ public interface IAlasControlBackend
 
 public interface IAlasUiBackend : IRefreshableInstanceSource, IAlasControlBackend, IDisposable
 {
+    /// <summary>True only for an explicitly selected, memory-only UI data source.</summary>
+    bool IsSimulation => false;
 }

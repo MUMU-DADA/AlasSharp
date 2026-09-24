@@ -488,7 +488,15 @@ def main() -> int:
         "浏览器 UI 才使用网络适配器": "ControlClient" in read("src/Alas.UI.Browser/BrowserControlBackend.cs")
                                      and "../Alas.Client/Alas.Client.csproj" in read("src/Alas.UI.Browser/Alas.UI.Browser.csproj"),
         "UI 共享层不绑定传输": "ControlClient" not in read("src/Alas.UI/Alas.UI.csproj")
-                              and "Alas.Server" not in read("src/Alas.UI/Alas.UI.csproj"),
+                              and "Alas.Server" not in read("src/Alas.UI/Alas.UI.csproj")
+                              and "Alas.Core" not in read("src/Alas.UI/Alas.UI.csproj"),
+        "UI 隔离模式先选择内存数据源": "UiOnly ? new SimulatedUiBackend() : liveFactory()" in read("src/Alas.UI/Simulation/UiLaunchOptions.cs")
+                              and all('options.CreateBackend(static () => new ' in read(path)
+                                  for path in ('src/Alas.UI.Desktop/Program.cs', 'src/Alas.UI.Browser/Program.cs')),
+        "UI 隔离模式无后台轮询": "if (!Model.IsUiOnly) _stateTimer.Start();" in read("src/Alas.UI/Views/MainView.axaml.cs"),
+        "UI 模拟数据不调用生产能力": not any(re.search(pattern, read('src/Alas.UI/Simulation/SimulatedUiBackend.cs'))
+                              for pattern in (r'using\s+Alas\.(?:Runtime|Client)', r'\b(?:ControlClient|HttpClient|DirectCoreBackend|BrowserControlBackend)\b',
+                                              r'\b(?:File|Directory|Process|Socket|Timer)\.')),
         "路线记录 Core 与传输边界": "桌面 UI 在同一进程内通过能力接口调用 Core" in read("docs/architecture-roadmap.md"),
     }
     for label, ok in checks.items():

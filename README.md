@@ -7,7 +7,7 @@
 
 - 战役已接通上游完整加载与原生运行流程，已有主线、活动成功结算和撤退证据。
 - 通用队列、断点续跑、只读观测、原生导航和周期任务入口已实现；各域验证范围见[路线](docs/architecture-roadmap.md)。
-- `alashub control` 是本地浏览器原型。新的 Avalonia 桌面/WASM 共用界面已通过原生 Headless 离屏验证；当前为模拟数据预览，尚未接入服务，详见[统一 UI](docs/r4-ui-architecture.md)。
+- `alashub control` 是本地浏览器原型。Avalonia 桌面/WASM 共用界面已接入 Core/网络能力，并有不调用后端的 UI 隔离模式；验收范围详见[统一 UI](docs/r4-ui-architecture.md)。
 
 禁止逐地图、逐界面独立适配。JSON 导出仅用于展示、溯源和校验；通关结论只能使用
 [`sortie-result/1`](docs/result-contract.md)。完整开发边界见 [AGENTS.md](AGENTS.md)。
@@ -35,6 +35,8 @@ dotnet build src/Alas.DataTool/Alas.DataTool.csproj -c Release
 
 共享 UI 使用 PowerShell 7：首次 `./tools/build_ui.ps1 -Bootstrap -Publish`，以后
 `./tools/build_ui.ps1 -Publish` 使用项目内离线缓存；构建桌面/WASM 并运行 Headless，不打开窗口。
+只测界面时，桌面启动参数加 `--ui-only`，网页地址加 `?ui-only=1`：使用内存模拟实例，关闭后端轮询，
+界面操作不启动或调用 Core、Python、设备和控制 API。启动示例和验证边界见[UI 隔离模式](docs/r4-ui-architecture.md#ui-隔离模式)。
 
 ## 验证与上游同步
 
