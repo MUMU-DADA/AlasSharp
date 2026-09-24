@@ -18,9 +18,10 @@ public sealed class StatisticsChartViewModel : StatisticsObservable
     private string _mode = "line", _axis = "separate", _from = "", _to = "";
     private int _bucket;
     private bool _expanded;
-    public StatisticsChartViewModel(IReadOnlyList<StatisticsSeries> series)
+    private readonly Func<StatisticsExport, Task>? _export;
+    public StatisticsChartViewModel(IReadOnlyList<StatisticsSeries> series, Func<StatisticsExport, Task>? export = null)
     {
-        Series = series;
+        Series = series; _export = export;
         var first = series.FirstOrDefault(s => s.Points.Count > 0) ?? series.FirstOrDefault();
         if (first is not null) _selected.Add(first.Key);
     }
@@ -47,6 +48,13 @@ public sealed class StatisticsChartViewModel : StatisticsObservable
         return new StatisticsChartSeries(series, points, StatisticsData.Aggregate(points, Mode == "candlestick" && Bucket == 0 ? 60 : Bucket));
     }).ToArray();
     public StatisticsTable RawTable => StatisticsData.RawTable(SelectedSeries, From, To);
+    public bool CanExportPng => _export is not null;
+    public Task ExportPngAsync(byte[] png)
+    {
+        if (_export is null) return Task.CompletedTask;
+        return _export(new StatisticsExport(StatisticsData.SafeFileName("statistics-trend") + ".png", "image/png", png));
+    }
+    public Task ExportDataAsync(StatisticsExport export) => _export is null ? Task.CompletedTask : _export(export);
     public void Toggle(string key)
     {
         if (!Series.Any(s => s.Key == key && s.Points.Count > 0)) return;
@@ -226,20 +234,3 @@ public sealed class StatisticsChart : Control
     protected override void OnKeyDown(KeyEventArgs e) { base.OnKeyDown(e); if (e.Key == Key.Escape) { ResetZoom(); e.Handled = true; } }
 }
 
-public sealed class StatisticsChartPanel : UserControl
-{
-    public StatisticsChartPanel()
-    {
-        var root = new StackPanel { Spacing = 8 };
-        var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        var title = new TextBlock { Text = "趋势", FontSize = 17, FontWeight = FontWeight.SemiBold };
-        var mode = new ComboBox { ItemsSource = new[] { "line", "candlestick" }, Width = 130 };
-        mode.Bind(ComboBox.SelectedValueProperty, new Avalonia.Data.Binding("Mode") { Mode = Avalonia.Data.BindingMode.TwoWay });
-        Grid.SetColumn(mode, 1); heading.Children.Add(title); heading.Children.Add(mode); root.Children.Add(heading);
-        var chart = new StatisticsChart { Height = 360 };
-        chart.Bind(StatisticsChart.ModelProperty, new Avalonia.Data.Binding(".") { Mode = Avalonia.Data.BindingMode.OneWay });
-        root.Children.Add(chart);
-        var hint = new TextBlock { Text = "Ctrl + 滚轮缩放，Esc 恢复范围。", Foreground = Brushes.Gray }; root.Children.Add(hint);
-        Content = root;
-    }
-}

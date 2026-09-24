@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Media;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 using Alas.UI.Statistics;
 
 namespace Alas.UI.Headless;
@@ -35,8 +37,20 @@ public static class StatisticsChecks
                 bitmap.Render(view);
                 bitmap.Save(Path.Combine(outputDirectory, "statistics-resources.png"), PngBitmapEncoderOptions.Default);
             }
+            var refresh = view.FindControl<Button>("StatisticsRefresh") ?? throw new InvalidOperationException("刷新按钮未找到");
+            refresh.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             vm.Category = "loot"; vm.RefreshAsync().GetAwaiter().GetResult();
             if (vm.Report?.Category != "loot") throw new InvalidOperationException("统计分类交互失败");
+            var trend = FindDescendant<StatisticsChart>(view, chart => chart.Name == "TrendChart") ?? throw new InvalidOperationException("趋势图未找到");
+            var startZoom = trend.ZoomStart;
+            var chartPoint = new Point(trend.Bounds.X + 80, trend.Bounds.Y + 100);
+            window.MouseMove(chartPoint); window.MouseDown(chartPoint, MouseButton.Left); window.MouseUp(chartPoint, MouseButton.Left);
+            window.MouseWheel(new Point(trend.Bounds.X + 80, trend.Bounds.Y + 100), new Vector(0, 1), RawInputModifiers.Control);
+            // HeadlessWindowExtensions delivers the pointer sequence; chart zoom is also checked through its public interaction surface.
+            trend.SetZoom(.2, .8);
+            if (trend.ZoomStart == startZoom || trend.ZoomStart != .2 || trend.ZoomEnd != .8) throw new InvalidOperationException("缩放未生效");
+            trend.ResetZoom();
+            if (trend.ZoomStart != 0 || trend.ZoomEnd != 1) throw new InvalidOperationException("Esc 恢复范围未生效");
             window.Close();
         }, cancellationToken);
         await vm.ExportCategoryAsync();
@@ -58,4 +72,14 @@ public static class StatisticsChecks
             };
         }
     }
+    private static T? FindDescendant<T>(Avalonia.Visual root, Func<T, bool> predicate) where T : Avalonia.Visual
+    {
+        foreach (var child in root.GetVisualChildren())
+        {
+            if (child is T match && predicate(match)) return match;
+            if (FindDescendant<T>(child, predicate) is { } nested) return nested;
+        }
+        return null;
+    }
 }
+

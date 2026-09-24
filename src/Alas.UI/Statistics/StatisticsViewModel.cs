@@ -101,7 +101,7 @@ public sealed class StatisticsViewModel : StatisticsObservable, IDisposable
         private set
         {
             if (!Set(ref _report, value)) return;
-            _chart = value is null ? null : new(value.Series);
+            _chart = value is null ? null : new(value.Series, _export is null ? null : export => ExportAsync(export));
             _tables = value?.Tables.Select(t => new StatisticsTableViewModel(t, CanSaveFiles ? export => _ = ExportAsync(export) : null)).ToArray() ?? [];
             foreach (var name in new[] { nameof(CanExport), nameof(HasReport), nameof(HasNoReport), nameof(HasSeries), nameof(IsReportEmpty), nameof(Chart), nameof(Tables) }) Changed(name);
         }
