@@ -13,11 +13,14 @@ public sealed class ControlWorkspace
     private readonly string _tools;
     private readonly string _artifacts;
     private readonly string _control;
+    private readonly AlasSession.EngineFactory? _engineFactory;
     private readonly object _gate = new();
     private Task? _worker;
     private SessionLog? _log;
     private CancellationTokenSource? _stopSignal;
     private string? _mode;
+    private string? _kind;
+    private string? _instance;
     private string? _startedAt;
     private string? _finishedAt;
     private string? _error;
@@ -28,9 +31,10 @@ public sealed class ControlWorkspace
     private AlasSession? _session;
 
     public ControlWorkspace(string root, string repo, string data, string tools,
-                         string? artifacts, string? workspace)
+                         string? artifacts, string? workspace, AlasSession.EngineFactory? engineFactory = null)
     {
         _root = Path.GetFullPath(root);
+        _engineFactory = engineFactory;
         _repo = Path.GetFullPath(repo);
         _data = Path.GetFullPath(data);
         _tools = Path.GetFullPath(tools);
@@ -44,6 +48,8 @@ public sealed class ControlWorkspace
     {
         string? runDirectory;
         string? mode;
+        string? kind;
+        string? instance;
         string? started;
         string? finished;
         string? error;
@@ -55,6 +61,8 @@ public sealed class ControlWorkspace
             runDirectory = _runDirectory;
             running = _worker is { IsCompleted: false };
             mode = _mode;
+            kind = _kind;
+            instance = _instance;
             started = _startedAt;
             finished = _finishedAt;
             error = _error;
@@ -65,6 +73,9 @@ public sealed class ControlWorkspace
         {
             ["status"] = running ? "running" : started is null ? "idle" : error is null ? "completed" : "failed",
             ["mode"] = mode,
+            ["kind"] = kind,
+            ["instance"] = instance,
+            ["scheduler"] = kind == "scheduler_run" ? ReadSchedulerState(runDirectory) : null,
             ["started_at"] = started,
             ["finished_at"] = finished,
             ["stop_requested"] = stopRequested,
@@ -182,6 +193,9 @@ public sealed class ControlWorkspace
             _stopPath = Path.Combine(_control, $"stop-{id}.request");
             _runDirectory = null;
             _mode = mode;
+            var tasks = queue["tasks"]!.AsArray();
+            _kind = tasks.Count == 1 ? tasks[0]?["kind"]?.GetValue<string>() : "queue";
+            _instance = tasks.Count == 1 ? tasks[0]?["input"]?["instance"]?.GetValue<string>() : null;
             _startedAt = DateTimeOffset.Now.ToString("O");
             _finishedAt = null;
             _error = null;
@@ -197,7 +211,7 @@ public sealed class ControlWorkspace
                     AlasSession session;
                     lock (_gate)
                     {
-                        _session ??= AlasSession.Start(HostSessionOptions(options), log: log);
+                        _session ??= AlasSession.Start(HostSessionOptions(options), _engineFactory, log: log);
                         session = _session;
                         _log = session.Log;
                     }
@@ -250,8 +264,28 @@ public sealed class ControlWorkspace
             command = task;
             kind = "tool_run";
         }
+        StartInstanceRun(snapshot, kind, new JsonObject
+        {
+            ["instance"] = snapshot.Instance, ["task"] = command,
+            ["allow_actions"] = true, ["confirm"] = command,
+        });
+    }
+
+    public void StartScheduler(JsonObject body)
+    {
+        if (body["confirm_actions"]?.GetValue<bool>() != true)
+            throw new ArgumentException("调度器运行需要明确动作授权");
+        var snapshot = new ConfigWorkspace(_repo).Get(body["instance"]?.GetValue<string>() ?? "");
+        StartInstanceRun(snapshot, "scheduler_run", new JsonObject
+        {
+            ["instance"] = snapshot.Instance, ["allow_actions"] = true, ["confirm"] = snapshot.Instance,
+        });
+    }
+
+    private void StartInstanceRun(ConfigSnapshot snapshot, string kind, JsonObject input)
+    {
         string? serial = snapshot.Values["Alas"]?["Emulator"]?["Serial"]?.GetValue<string>();
-        if (kind == "periodic_run" && string.IsNullOrWhiteSpace(serial))
+        if (kind != "tool_run" && string.IsNullOrWhiteSpace(serial))
             throw new ArgumentException("实例没有配置设备串号，不能执行任务");
         StartRun(new JsonObject
         {
@@ -263,14 +297,25 @@ public sealed class ControlWorkspace
                 ["tasks"] = new JsonArray(new JsonObject
                 {
                     ["id"] = "single-task", ["kind"] = kind, ["required"] = true,
-                    ["input"] = new JsonObject
-                    {
-                        ["instance"] = snapshot.Instance, ["task"] = command,
-                        ["allow_actions"] = true, ["confirm"] = command,
-                    },
+                    ["input"] = input,
                 }),
             },
         });
+    }
+
+    private static JsonObject? ReadSchedulerState(string? runDirectory)
+    {
+        if (runDirectory is null || !Directory.Exists(runDirectory)) return null;
+        try
+        {
+            string? directory = Directory.EnumerateDirectories(runDirectory, "scheduler-*")
+                .OrderByDescending(Directory.GetLastWriteTimeUtc).FirstOrDefault();
+            if (directory is null) return null;
+            string state = Path.Combine(directory, "state.json");
+            return File.Exists(state) ? JsonNode.Parse(ArtifactReader.ReadAllText(state)) as JsonObject : null;
+        }
+        catch (IOException) { return null; }
+        catch (JsonException) { return null; }
     }
 
     /// <summary>Serialized upstream service call sharing the process-local Python host.</summary>
@@ -281,7 +326,7 @@ public sealed class ControlWorkspace
             if (_shuttingDown) throw new ControlWorkspaceUnavailableException("控制服务正在关闭");
             if (_worker is { IsCompleted: false })
                 throw new ControlWorkspaceUnavailableException("队列正在运行，暂不接受其他宿主调用");
-            _session ??= AlasSession.Start(ApiSessionOptions());
+            _session ??= AlasSession.Start(ApiSessionOptions(), _engineFactory);
             _log = _session.Log;
             return _session.Vision.CallTyped<JsonObject>(operation, arguments);
         }

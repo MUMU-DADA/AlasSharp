@@ -210,6 +210,25 @@ def native_tool_boundary_intact() -> list[str]:
     return problems
 
 
+def native_scheduler_boundary_intact() -> list[str]:
+    text = (ROOT / 'tools/native_scheduler.py').read_text(encoding='utf-8')
+    problems = []
+    for marker in ('class SchedulerRunner(AzurLaneAutoScript):', 'runner.loop()',
+                   'return super().wait_until(future)',
+                   'super().run(command, skip_first_screenshot=skip_first_screenshot)',
+                   "object.__setattr__(config, 'stop_event', stop)"):
+        if marker not in text:
+            problems.append(f'调度器没有保持原生循环/事件/分派语义: {marker}')
+    if 'def loop(' in text or 'def get_next_task(' in text:
+        problems.append('调度器适配器不得复制原生任务选择或循环状态机')
+    domain = (ROOT / 'src/Alas.Core/Tasks/SchedulerRunTask.cs').read_text(encoding='utf-8')
+    if not all(marker in domain for marker in
+               ('context.Options.DryRun', 'context.Options.AllowActions', 'token.Register',
+                'stop.request', 'CallTyped<JsonObject>("scheduler_run"', '"stop_observed"')):
+        problems.append('Core 调度器缺少授权/停止/确认边界')
+    return problems
+
+
 def cli_task_boundary_intact() -> list[str]:
     """CLI 只解析队列文件路径和公共参数；运行时持有会话与 runner 注册。
 
@@ -464,6 +483,7 @@ def main() -> int:
     problems.extend(periodic_run_gate_intact())
     problems.extend(periodic_run_session_gate_intact())
     problems.extend(native_tool_boundary_intact())
+    problems.extend(native_scheduler_boundary_intact())
     problems.extend(cli_task_boundary_intact())
     problems.extend(campaign_shims_installed())
     problems.extend(shims_all_called())

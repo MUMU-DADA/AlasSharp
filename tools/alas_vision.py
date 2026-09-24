@@ -1349,6 +1349,11 @@ def op_tool_plan(args):
     return out
 
 
+def op_scheduler_run(args):
+    from native_scheduler import run_scheduler
+    return run_scheduler(args, sys.modules[__name__])
+
+
 def op_tool_run(args):
     """Use the upstream webui tool dispatch, preserving lazy config/device access.
 
@@ -1404,7 +1409,7 @@ def op_tool_run(args):
             def device(self):
                 nonlocal device, previous_config
                 if device is None:
-                    if not _DEVICE_ARGS.get('serial'):
+                    if args.get('device_configured') is not True or not _DEVICE_ARGS.get('serial'):
                         raise RuntimeError('工具需要设备，但会话未配置实例串号')
                     device = _device_engine(config=self.config)
                     previous_config = device.config
@@ -3657,6 +3662,7 @@ OPS = {
     'periodic_run': op_periodic_run,
     'tool_plan': op_tool_plan,
     'tool_run': op_tool_run,
+    'scheduler_run': op_scheduler_run,
     'config_get': op_config_get,
     'statistics_report': op_statistics_report,
     'statistics_refresh_loot': op_statistics_refresh_loot,

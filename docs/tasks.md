@@ -53,6 +53,7 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 | `periodic_preflight` | `task`、`confirm`、`allow_actions`，检查计划与放行条件 | `executes=false`，放行不等于执行 |
 | `periodic_run` | 按上游配置执行任务，可使用一次性配置覆盖 | 动作会话及任务确认均须满足 |
 | `tool_run` | `instance`、`task` 来自上游 `get_available_func()`；独立工具原生分派 | 动作会话、`allow_actions=true`、`confirm=task` |
+| `scheduler_run` | `instance`，运行原生连续调度循环 | 动作会话、设备、工件目录、`allow_actions=true`、`confirm=instance` |
 
 具体字段与约束以各 `*Task.cs` 的输入校验和对应离线回归为准。
 `TaskEnd`、绑定、`opsi_*`、活动参数均由上游 `AzurLaneAutoScript.run()` 调度处理，
@@ -67,6 +68,11 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 独立工具走 `AzurLaneAutoScript(instance).run(method, skip_first_screenshot=True)`，配置与设备按上游实际访问延迟构造；
 工具自行绑定任务配置，不套用周期任务的 `Scheduler.Command`。工具正常返回只证明原生执行完成，不能推导领取或通关。
 取消在工具返回后的队列边界生效；持续运行的守护工具不会被强杀。尚未迁入当前引擎的工具明确拒绝，不以 UI 菜单代替注册表。
+
+连续调度直接调用上游 `loop/get_next_task/wait_until/run`，保留任务排序、首次重启跳过、配置重载和失败处理。
+Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等待或任务切换检查响应；不打断正在执行的战斗。
+每次原生分派记录 `dispatch-*.json`，运行状态写 `state.json`，均在队列的 `scheduler-<id>/` 下。
+正常停止记为取消，不能当作全部任务成功；失败优先保留。服务器维护等待仍沿用上游重试，停止延迟可能包含该等待。
 
 ## 战役与活动
 
@@ -96,6 +102,7 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 `verify_runtime.py` 覆盖通用队列、导航和观测；各域由 `verify_account_state.py`、`verify_os_state.py`、
 `verify_os_action.py`、`verify_event_state.py`、`verify_task_catalog.py`、`verify_task_schedule.py`、
 `verify_config_get.py`、`verify_periodic_plan.py`、`verify_native_tools.py` 等离线检查覆盖。
+`verify_native_scheduler.py` 对真实原生循环使用合成依赖；`verify_scheduler_control.py` 验证 Core 接单、常驻宿主、停止、关闭及工件。
 地图故障边界由 `verify_map_detect_failures.py` 验证。
 
 当前真实样本与剩余缺口统一见[路线](architecture-roadmap.md)，不在此复制阶段状态。

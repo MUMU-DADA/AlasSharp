@@ -50,7 +50,7 @@
         </Grid>
       <Button x:Name="SchedulerToggle" Theme="{StaticResource PrimaryButtonTheme}"
               Command="{Binding Overview.ToggleSchedulerCommand}" IsEnabled="{Binding Overview.IsSchedulerControlEnabled}"
-              ToolTip.Tip="{Binding Overview.PendingNotice}"
+              ToolTip.Tip="{Binding Overview.SchedulerStatusText}"
                 AutomationProperties.Name="{Binding Overview.SchedulerButtonText}">
           <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
             <controls:Icon Data="{StaticResource IconPlay}" Size="14" VerticalAlignment="Center" />

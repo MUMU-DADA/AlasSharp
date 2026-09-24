@@ -78,7 +78,7 @@ def host_checks(workspace):
         'module.eventstory.eventstory': types.SimpleNamespace(EventStory=EventStory),
     }
     def run(task='Benchmark', **extra):
-        return av.op_tool_run(dict(task=task, instance='fixture', allow_actions=True,
+        return av.op_tool_run(dict(task=task, instance='fixture', allow_actions=True, device_configured=True,
                                    confirm=task, **extra))
 
     with patch.object(av, 'FORK', str(workspace)), patch.object(av, '_device_engine', get_device), \
@@ -113,6 +113,9 @@ def host_checks(workspace):
         assert got['decision'] == 'ran', got
         assert events == ['config', 'device', 'stuck', 'click', 'story-init', 'story-run'], events
         assert device.config is original
+        stale = av.op_tool_run(dict(task='EventStory', instance='fixture', allow_actions=True,
+                                    confirm='EventStory', device_configured=False))
+        assert stale['decision'] == 'error' and device.config is original, stale
         with patch.object(av, '_DEVICE_ARGS', {}):
             state['mode'] = 'success'
             events.clear()

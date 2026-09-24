@@ -232,6 +232,13 @@ public sealed class ControlServer
                 await Reply(context, 202, new JsonObject { ["ok"] = true });
                 return;
             }
+            if (HttpMethods.IsPost(request.Method) && path == "/api/scheduler/start")
+            {
+                RequireToken(request);
+                _workspace.StartScheduler(await ReadBody(request));
+                await Reply(context, 202, new JsonObject { ["ok"] = true });
+                return;
+            }
             if (HttpMethods.IsPatch(request.Method) && TryInstancePath(path, "config", out configInstance))
             {
                 RequireToken(request);

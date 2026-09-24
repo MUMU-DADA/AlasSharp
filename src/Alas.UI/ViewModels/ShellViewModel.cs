@@ -34,6 +34,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
 
     private readonly Dictionary<(string Instance, string Task), TaskEditorViewModel> _editors = new();
     private long _editorLoadVersion;
+    private bool _stateRefreshInFlight;
     private readonly IAlasUiBackend _backend;
     private bool _isNarrow;
     private bool _isDrawerOpen;
@@ -56,7 +57,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         _backend = backend ?? DisconnectedInstanceSource.Instance;
         Home = new HomeViewModel(_backend);
         Home.InstanceSelected += (_, instance) => SelectInstance(instance);
-        Overview = new OverviewViewModel(previewData);
+        Overview = new OverviewViewModel(previewData, previewData ? null : _backend);
         Statistics = new StatisticsViewModel(
             async (query, cancellationToken) => await _backend.ReadStatisticsAsync(ToStatisticsRequest(query), cancellationToken).ConfigureAwait(true),
             (instance, cancellationToken) => _backend.RefreshStatisticsLootAsync(instance, cancellationToken));
@@ -343,7 +344,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         Overview.SetInstance(instance);
         Rail.SetInstance(instance);
         Statistics.Instance = instance;
-        _ = LoadBackendStateAsync();
+        _ = RefreshBackendStateAsync();
         _activeNavKey = "overview";
         BuildNavigation();
         ActivePage = "overview";
@@ -368,17 +369,21 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         Notify(nameof(InstancesSummary));
     }
 
-    private async Task LoadBackendStateAsync()
+    public async Task RefreshBackendStateAsync()
     {
-        if (!HasInstance || !_backend.IsConnected) return;
+        if (_stateRefreshInFlight || !HasInstance || !_backend.IsConnected) return;
+        _stateRefreshInFlight = true;
+        string instance = InstanceName;
         try
         {
-            Overview.ApplyState(await _backend.ReadStateAsync().ConfigureAwait(true));
+            var state = await _backend.ReadStateAsync().ConfigureAwait(true);
+            if (HasInstance && InstanceName == instance) Overview.ApplyState(state);
         }
-        catch (Exception error) when (error is IOException or InvalidOperationException)
+        catch (Exception error)
         {
-            Overview.ReportBackendError(error.Message);
+            if (HasInstance && InstanceName == instance) Overview.ReportBackendError(error.Message);
         }
+        finally { _stateRefreshInFlight = false; }
     }
 
     /// <summary>选择任务只读取配置；执行必须经过编辑器确认和 Core 队列。</summary>
@@ -573,17 +578,24 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     private double _contentHeight = 745.5;
     private readonly List<LogLineViewModel> _allLogs = new();
     private readonly bool _previewData;
+    private readonly IAlasControlBackend? _backend;
+    private bool _schedulerBusy;
+    private bool _stateKnown;
+    private bool _otherInstanceRunning;
+    private bool _stopRequested;
+    private string _schedulerPhase = "idle";
 
-    public OverviewViewModel(bool previewData = false)
+    public OverviewViewModel(bool previewData = false, IAlasControlBackend? backend = null)
     {
         _previewData = previewData;
+        _backend = backend;
         ToggleFilterCommand = new PreviewCommand(_ => IsFilterOpen = !IsFilterOpen);
         ToggleFollowCommand = new PreviewCommand(_ => IsFollowing = !IsFollowing);
         ToggleOrderCommand = new PreviewCommand(_ => IsDescending = !IsDescending);
         ClearCommand = new PreviewCommand(_ => ClearLogs());
         ShowLogsCommand = new PreviewCommand(_ => MonitorView = "logs");
         ShowPreviewCommand = new PreviewCommand(_ => MonitorView = "preview");
-        ToggleSchedulerCommand = new PreviewCommand(_ => ToggleScheduler());
+        ToggleSchedulerCommand = new PreviewCommand(async _ => await ToggleSchedulerAsync());
         Resources = previewData
             ? new ObservableCollection<ResourceCardViewModel>
             {
@@ -673,9 +685,12 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         }
     }
 
-    public string SchedulerButtonText => IsSchedulerRunning ? "停止运行" : "启动调度器";
-    public string SchedulerStatusText => IsSchedulerRunning ? "运行中" : "已停止";
-    public bool IsSchedulerControlEnabled => _previewData;
+    public string SchedulerButtonText => _stopRequested ? "正在停止…" : IsSchedulerRunning ? "停止运行" : "启动调度器";
+    public string SchedulerStatusText => _stopRequested ? "等待任务边界停止" :
+        IsSchedulerRunning ? _schedulerPhase == "waiting" ? "等待中" : "运行中" :
+        _schedulerPhase is "failed" or "error" ? "运行失败" : "已停止";
+    public bool IsSchedulerControlEnabled => _previewData ||
+        (_backend is not null && _stateKnown && !_schedulerBusy && !_otherInstanceRunning && !_stopRequested);
 
     /// <summary>本阶段未接后端的入口统一禁用，并用这条提示说明原因。</summary>
     public string PendingNotice => "第一阶段未接后端：该入口在后续切片实现，当前不可用。";
@@ -747,8 +762,8 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>调度器合同尚未接入时保持状态不变，不能把本地切换伪装成真实运行。</summary>
-    private void ToggleScheduler()
+    /// <summary>通过 Core 请求启停；界面状态以运行时回报为准，停止须等上游边界确认。</summary>
+    public async Task ToggleSchedulerAsync()
     {
         if (_previewData)
         {
@@ -756,24 +771,60 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
             AppendLog(IsSchedulerRunning ? "模拟调度器已启动。" : "模拟调度器已停止。");
             return;
         }
-        AppendLog("调度器控制尚未接入 Alas.Core，当前操作未执行。", "WARNING");
+        if (!IsSchedulerControlEnabled || _backend is null) return;
+        _schedulerBusy = true;
+        string instance = InstanceName;
+        Notify(nameof(IsSchedulerControlEnabled));
+        try
+        {
+            if (IsSchedulerRunning)
+            {
+                if (!await _backend.RequestStopAsync())
+                    throw new InvalidOperationException("当前没有可停止的运行任务");
+            }
+            else
+                await _backend.StartSchedulerAsync(new InstanceSchedulerRunRequest
+                    { Instance = instance, ConfirmActions = true });
+            var state = await _backend.ReadStateAsync();
+            if (InstanceName == instance) ApplyState(state);
+        }
+        catch (Exception error)
+        {
+            if (InstanceName == instance) ReportBackendError(error.Message);
+        }
+        finally
+        {
+            _schedulerBusy = false;
+            Notify(nameof(IsSchedulerControlEnabled));
+        }
     }
 
     public void SetInstance(string instance)
     {
         if (string.IsNullOrWhiteSpace(instance) || _instanceName == instance) return;
         _instanceName = instance;
+        _stateKnown = false;
+        _otherInstanceRunning = false;
+        _stopRequested = false;
+        _schedulerPhase = "idle";
+        IsSchedulerRunning = false;
         Notify(nameof(InstanceName));
+        NotifyScheduler();
     }
 
     public void ApplyState(JsonObject state)
     {
         if (state["active"] is not JsonObject active) return;
         string status = active["status"]?.GetValue<string>() ?? "idle";
-        IsSchedulerRunning = status == "running";
+        bool selected = active["instance"]?.GetValue<string>() == InstanceName;
+        _stateKnown = true;
+        _otherInstanceRunning = status == "running" && !selected;
+        IsSchedulerRunning = status == "running" && selected;
+        _stopRequested = IsSchedulerRunning && active["stop_requested"]?.GetValue<bool>() == true;
+        _schedulerPhase = selected ? active["scheduler"]?["phase"]?.GetValue<string>() ?? status : "idle";
         _allLogs.Clear();
         VisibleLogs.Clear();
-        if (state["recent_logs"] is JsonArray logs)
+        if (selected && state["recent_logs"] is JsonArray logs)
         {
             foreach (var item in logs.OfType<JsonObject>())
             {
@@ -784,10 +835,22 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
                     parsed == default ? DateTime.Now : parsed);
             }
         }
-        Notify(nameof(SchedulerStatusText));
+        NotifyScheduler();
     }
 
-    public void ReportBackendError(string message) => AppendLog(message, "ERROR");
+    private void NotifyScheduler()
+    {
+        Notify(nameof(SchedulerButtonText));
+        Notify(nameof(SchedulerStatusText));
+        Notify(nameof(IsSchedulerControlEnabled));
+    }
+
+    public void ReportBackendError(string message)
+    {
+        _stateKnown = false;
+        NotifyScheduler();
+        AppendLog(message, "ERROR");
+    }
 
     /// <summary>
     /// 追加一条日志：超出上限时丢弃最旧一条。逐条增量维护可见行（等价于上游按 id 合并增量），

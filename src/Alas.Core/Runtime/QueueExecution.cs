@@ -69,6 +69,7 @@ public static class QueueExecution
                 .Register(new ConfigGetTask())
                 .Register(new PeriodicRunTask())
                 .Register(new ToolRunTask())
+                .Register(new SchedulerRunTask())
                 .Register(new ObserveTask());
 
             foreach (var id in completed) queue.ResumeCompleted.Add(id);

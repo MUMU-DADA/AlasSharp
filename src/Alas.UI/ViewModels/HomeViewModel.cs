@@ -68,6 +68,7 @@ public sealed class DisconnectedInstanceSource : IAlasUiBackend
     public Task SaveQueueAsync(JsonObject queue, CancellationToken cancellationToken = default) => Task.FromException(Unavailable());
     public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default) => Task.FromException(Unavailable());
     public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default) => Task.FromException(Unavailable());
+    public Task StartSchedulerAsync(InstanceSchedulerRunRequest request, CancellationToken cancellationToken = default) => Task.FromException(Unavailable());
     public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default) => Task.FromException<bool>(Unavailable());
     public Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());
     public Task<JsonObject> RefreshStatisticsLootAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());

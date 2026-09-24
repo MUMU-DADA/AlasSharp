@@ -10,6 +10,7 @@
 | `AlasSession` / `SessionOptions` | 宿主、设备后端、公共授权、日志和工件目录；同一会话只初始化一次 |
 | `QueueExecution` | 队列解析、runner 注册、断点、停止文件及任务调度入口 |
 | `ControlWorkspace` | 控制工作区、单队列运行快照、状态与关闭门禁；调用 `QueueExecution` |
+| `SchedulerRunTask` / `native_scheduler.py` | 原生连续调度生命周期、边界停止及逐次分派工件；不复制上游调度状态机 |
 | `Alas.Server/ControlServer` | Kestrel HTTP 传输、回环与同源/令牌检查；不引用 UI |
 | `CampaignBatchRunner` | 逐关原生执行、合同裁决、批次工件与失败即停 |
 | `SessionLog` / `RuntimeErrors` | 结构化日志、统一错误分类与释放 |

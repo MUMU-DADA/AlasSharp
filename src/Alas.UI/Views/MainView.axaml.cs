@@ -18,6 +18,7 @@ public partial class MainView : UserControl
     private static readonly TranslateTransform DrawerClosed = new(-250, 0);
     private static readonly TranslateTransform DrawerOpen = new(0, 0);
     private static readonly TranslateTransform None = new(0, 0);
+    private readonly Avalonia.Threading.DispatcherTimer _stateTimer = new() { Interval = TimeSpan.FromSeconds(2) };
 
     public MainView()
         : this(new Theming.MemoryThemeStore())
@@ -32,6 +33,7 @@ public partial class MainView : UserControl
         Model.PropertyChanged += OnModelChanged;
         MeowfficerPage.Backend = Model.MeowfficerBackend;
         UpdateMeowfficerPage();
+        _stateTimer.Tick += async (_, _) => await Model.RefreshBackendStateAsync();
         SizeChanged += (_, _) => Model.UpdateViewport(Bounds.Width, Bounds.Height);
         // 遮罩点击关闭当前浮层：窄屏抽屉与右栏浮层共用同一个收起命令。
         Scrim.PointerPressed += (_, args) =>
@@ -48,6 +50,13 @@ public partial class MainView : UserControl
         base.OnAttachedToVisualTree(e);
         if (Bounds.Width > 0) Model.UpdateViewport(Bounds.Width, Bounds.Height);
         ApplyLayout();
+        _stateTimer.Start();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _stateTimer.Stop();
+        base.OnDetachedFromVisualTree(e);
     }
 
     private void OnModelChanged(object? sender, PropertyChangedEventArgs args)

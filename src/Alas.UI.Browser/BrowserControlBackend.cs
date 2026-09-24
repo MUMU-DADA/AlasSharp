@@ -88,6 +88,9 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
     public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default)
         => _client.StartTaskAsync(request, cancellationToken);
 
+    public Task StartSchedulerAsync(InstanceSchedulerRunRequest request, CancellationToken cancellationToken = default)
+        => _client.StartSchedulerAsync(request, cancellationToken);
+
     public async Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)
     {
         await _client.RequestStopAsync(cancellationToken).ConfigureAwait(false);

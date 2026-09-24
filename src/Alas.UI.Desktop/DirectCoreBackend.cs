@@ -100,6 +100,12 @@ internal sealed class DirectCoreBackend : IAlasUiBackend
     public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().RequestStop(), cancellationToken);
 
+    public Task StartSchedulerAsync(InstanceSchedulerRunRequest request, CancellationToken cancellationToken = default)
+        => Task.Run(() => WorkspaceOrThrow().StartScheduler(new JsonObject
+        {
+            ["instance"] = request.Instance, ["confirm_actions"] = request.ConfirmActions,
+        }), cancellationToken);
+
     public Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default)
         => ReadHostAsync("statistics_report", new JsonObject
         {

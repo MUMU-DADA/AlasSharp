@@ -35,7 +35,35 @@ internal static class CoreUiBackendChecks
         await ExpectFailure(() => editor.ValidateScriptAsync("fixture", "Shop", "bad", CancellationToken.None));
         await editor.RunAsync("fixture", "Reward", CancellationToken.None);
         Check(backend.Started is { Instance: "fixture", Task: "Reward", ConfirmActions: true }, "task intent preserves selected instance");
+        await VerifyScheduler(backend);
         Console.WriteLine("PASS: shared Core adapters preserve upstream report fields and strict strategy diagnostics");
+    }
+
+    private static async Task VerifyScheduler(FixtureBackend backend)
+    {
+        var overview = new OverviewViewModel(backend: backend);
+        overview.SetInstance("fixture");
+        Check(!overview.IsSchedulerControlEnabled, "scheduler waits for an authoritative state");
+        overview.ApplyState(backend.State);
+        Check(overview.IsSchedulerControlEnabled, "idle scheduler can start");
+        await overview.ToggleSchedulerAsync();
+        Check(backend.SchedulerStarted is { Instance: "fixture", ConfirmActions: true }
+              && overview.IsSchedulerRunning, "start reaches Core capability and updates state");
+        backend.State["active"]!["scheduler"] = new JsonObject { ["phase"] = "waiting" };
+        overview.ApplyState(backend.State);
+        Check(overview.SchedulerStatusText == "等待中", "native waiting status is shown");
+        await overview.ToggleSchedulerAsync();
+        Check(backend.StopRequests == 1 && !overview.IsSchedulerControlEnabled &&
+              overview.SchedulerButtonText == "正在停止…", "stop waits for native boundary acknowledgement");
+        overview.SetInstance("another");
+        overview.ApplyState(backend.State);
+        Check(!overview.IsSchedulerRunning && !overview.IsSchedulerControlEnabled,
+              "another instance cannot claim or stop this run");
+        backend.State["active"]!["status"] = "completed";
+        overview.ApplyState(backend.State);
+        Check(overview.IsSchedulerControlEnabled, "completed foreign run releases the single device slot");
+        overview.ReportBackendError("fixture connection failure");
+        Check(!overview.IsSchedulerControlEnabled, "unknown state does not allow duplicate starts");
     }
 
     private static async Task ExpectFailure(Func<Task> action)
@@ -51,6 +79,9 @@ internal static class CoreUiBackendChecks
     {
         public string? Cleared;
         public InstanceTaskRunRequest? Started;
+        public InstanceSchedulerRunRequest? SchedulerStarted;
+        public int StopRequests;
+        public JsonObject State = new() { ["active"] = new JsonObject { ["status"] = "idle" } };
         public JsonObject Validation = JsonNode.Parse("""
             {"valid":false,"diagnostics":[{"code":"forbidden_statement","message":"fixture diagnostic","line":2,"column":3}]}
             """)!.AsObject();
@@ -70,7 +101,13 @@ internal static class CoreUiBackendChecks
             => Task.FromResult((JsonObject)Validation.DeepClone());
         public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default)
         { Started = request; return Task.CompletedTask; }
-        public Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task StartSchedulerAsync(InstanceSchedulerRunRequest request, CancellationToken cancellationToken = default)
+        {
+            SchedulerStarted = request;
+            State["active"] = new JsonObject { ["status"] = "running", ["kind"] = "scheduler_run", ["instance"] = request.Instance };
+            return Task.CompletedTask;
+        }
+        public Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default) => Task.FromResult((JsonObject)State.DeepClone());
         public Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -81,7 +118,8 @@ internal static class CoreUiBackendChecks
         public Task<InstanceImportListResponse> ReadInstanceImportsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task SaveQueueAsync(JsonObject queue, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)
+        { StopRequests++; State["active"]!["stop_requested"] = true; return Task.FromResult(true); }
         public Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<JsonObject> RefreshStatisticsLootAsync(string instance, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }

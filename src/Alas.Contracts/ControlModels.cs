@@ -37,6 +37,9 @@ public sealed record ControlActivity
     // "completed" is worker completion, never proof of a successful game task.
     public required string Status { get; init; }
     public string? Mode { get; init; }
+    public string? Kind { get; init; }
+    public string? Instance { get; init; }
+    public JsonObject? Scheduler { get; init; }
     public string? StartedAt { get; init; }
     public string? FinishedAt { get; init; }
     public bool StopRequested { get; init; }
@@ -74,6 +77,12 @@ public sealed record InstanceTaskRunRequest
 {
     public required string Instance { get; init; }
     public required string Task { get; init; }
+    public bool ConfirmActions { get; init; }
+}
+
+public sealed record InstanceSchedulerRunRequest
+{
+    public required string Instance { get; init; }
     public bool ConfirmActions { get; init; }
 }
 
@@ -178,6 +187,7 @@ public sealed record MeowfficerRequest
 [JsonSerializable(typeof(ControlQueueRequest))]
 [JsonSerializable(typeof(ControlRunRequest))]
 [JsonSerializable(typeof(InstanceTaskRunRequest))]
+[JsonSerializable(typeof(InstanceSchedulerRunRequest))]
 [JsonSerializable(typeof(ControlAcknowledgement))]
 [JsonSerializable(typeof(ControlError))]
 [JsonSerializable(typeof(InstanceSummary))]

@@ -47,7 +47,9 @@ public sealed class ToolRunTask : ITaskRunner
         }
         try
         {
-            var run = context.Session.Vision.CallTyped<JsonObject>("tool_run", request.Input);
+            var arguments = (JsonObject)request.Input!.DeepClone();
+            arguments["device_configured"] = context.Options.ShouldConfigureDevice;
+            var run = context.Session.Vision.CallTyped<JsonObject>("tool_run", arguments);
             result.Evidence = (JsonObject)run.DeepClone();
             // A native return is dispatch evidence, never a campaign-clear verdict.
             if (run["decision"]?.GetValue<string>() == "ran" &&

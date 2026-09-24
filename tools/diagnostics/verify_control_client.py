@@ -58,6 +58,8 @@ await client.SaveQueueAsync(queue);
 Check(JsonNode.DeepEquals((await client.GetStateAsync()).Queue, queue), "Draft roundtrip");
 var authorization = await Throws<ControlApiException>(() => client.StartRunAsync(new() { Queue = queue, Mode = ControlRunMode.Actions }));
 Check(authorization.StatusCode == HttpStatusCode.BadRequest && authorization.Message.Contains("授权"), "Server enforces explicit action authorization");
+var schedulerAuthorization = await Throws<ControlApiException>(() => client.StartSchedulerAsync(new() { Instance = "fixture" }));
+Check(schedulerAuthorization.StatusCode == HttpStatusCode.BadRequest && schedulerAuthorization.Message.Contains("授权"), "Scheduler also enforces explicit authorization before resolving instance");
 Check((await client.GetStateAsync()).Runs["runs"]?.AsArray().Count == 0, "Rejected action must not create run artifacts");
 Check((await Throws<ControlApiException>(() => client.GetReportAsync("absent"))).StatusCode == HttpStatusCode.NotFound, "Missing report keeps 404");
 Check((await Throws<ControlApiException>(() => client.GetReportAsync("../escape"))).StatusCode == HttpStatusCode.BadRequest, "Report identifier stays query data");

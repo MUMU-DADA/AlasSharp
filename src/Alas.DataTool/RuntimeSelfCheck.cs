@@ -317,6 +317,7 @@ internal static class RuntimeSelfCheck
              .Register(new Alas.Tasks.OsStateTask())
              .Register(new Alas.Tasks.PeriodicRunTask())
              .Register(new Alas.Tasks.ToolRunTask())
+             .Register(new Alas.Tasks.SchedulerRunTask())
              .Register(new Alas.Tasks.OsActionTask())
              .Register(new PreconditionFailureTask());
             if (node["resume_completed"] is JsonArray resumed)

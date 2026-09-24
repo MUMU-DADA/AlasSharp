@@ -211,6 +211,10 @@ public sealed partial class ControlClient : IDisposable
         => WriteAsync("api/tasks/run", request, ControlJsonContext.Default.InstanceTaskRunRequest,
             HttpStatusCode.Accepted, cancellationToken);
 
+    public Task StartSchedulerAsync(InstanceSchedulerRunRequest request, CancellationToken cancellationToken = default)
+        => WriteAsync("api/scheduler/start", request, ControlJsonContext.Default.InstanceSchedulerRunRequest,
+            HttpStatusCode.Accepted, cancellationToken);
+
     private async Task WriteAsync<T>(string path, T body, JsonTypeInfo<T> type,
                                     HttpStatusCode expected, CancellationToken cancellationToken)
     {
