@@ -1,0 +1,52 @@
+{
+  "id": "hard-first-clear",
+  "kind": "campaign_batch",
+  "required": true,
+  "input": {
+    "submarine": 0,
+    "max_seconds": 420,
+    "max_rounds": 6,
+    "clear_all": false,
+    "fleet1": 1,
+    "mode": "hard",
+    "chapters": [
+      "campaign.campaign_main.campaign_1_1"
+    ],
+    "fleet2": 0
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 80.8,
+  "boundary_state": {
+    "available": false,
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "宿主还没有当前画面：先 screenshot_load / screenshot_set / device_capture_set，或传 capture=true 从设备抓一帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "batch_outcome": "cleared",
+    "cleared": true,
+    "stopped_early": false,
+    "index_artifact": "<project>/data/mainline-device/live-20260925-hard-campaign/artifacts/20260925T035913/index.json",
+    "stages": [
+      {
+        "chapter": "campaign.campaign_main.campaign_1_1",
+        "stage": "1-1",
+        "requested_mode": "hard",
+        "campaign_mode": "hard",
+        "outcome": "cleared",
+        "cleared": true,
+        "failed": false,
+        "skipped": false,
+        "error_kind": "none",
+        "error": null,
+        "contract_violations": [],
+        "artifact": "<project>/data/mainline-device/live-20260925-hard-campaign/artifacts/20260925T035913/sortie-1-1.json"
+      }
+    ]
+  }
+}

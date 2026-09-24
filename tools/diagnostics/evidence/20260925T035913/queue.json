@@ -1,0 +1,46 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 81.4,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "hard-first-clear",
+      "kind": "campaign_batch",
+      "required": true,
+      "input": {
+        "submarine": 0,
+        "max_seconds": 420,
+        "max_rounds": 6,
+        "clear_all": false,
+        "fleet1": 1,
+        "mode": "hard",
+        "chapters": [
+          "campaign.campaign_main.campaign_1_1"
+        ],
+        "fleet2": 0
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 80.8,
+      "artifact": "<project>/data/mainline-device/live-20260925-hard-campaign/artifacts/20260925T035913/task-hard-first-clear.json"
+    },
+    {
+      "id": "hard-after",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.5,
+      "artifact": "<project>/data/mainline-device/live-20260925-hard-campaign/artifacts/20260925T035913/task-hard-after.json"
+    }
+  ]
+}
