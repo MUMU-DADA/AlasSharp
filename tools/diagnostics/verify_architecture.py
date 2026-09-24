@@ -406,6 +406,10 @@ def main() -> int:
         "控制服务无 UI 引用": "Microsoft.AspNetCore.App" in read("src/Alas.Server/Alas.Server.csproj")
                               and "Alas.UI" not in read("src/Alas.Server/Alas.Server.csproj")
                               and "Avalonia" not in read("src/Alas.Server/Alas.Server.csproj"),
+        "共享客户端与合同不依赖宿主或 UI": all(
+            forbidden not in read(project)
+            for project in ("src/Alas.Client/Alas.Client.csproj", "src/Alas.Contracts/Alas.Contracts.csproj")
+            for forbidden in ("Alas.Core", "Alas.Server", "Alas.UI", "Avalonia", "Microsoft.AspNetCore")),
     }
     for label, ok in checks.items():
         if not ok:

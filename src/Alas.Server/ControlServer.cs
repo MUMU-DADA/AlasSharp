@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Alas.Contracts;
 using Alas.Runtime;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -15,7 +16,7 @@ namespace Alas.Server;
 /// <summary>Kestrel 传输层；队列生命周期与全部执行语义由 Alas.Core/Runtime 管理。</summary>
 public sealed class ControlServer
 {
-    private const int BodyLimit = 1024 * 1024;
+    private const int BodyLimit = ControlProtocol.MaxRequestBodyBytes;
     private readonly ControlWorkspace _workspace;
     private readonly string _tools;
     private readonly int _port;
@@ -108,7 +109,7 @@ public sealed class ControlServer
             }
             if (HttpMethods.IsPost(request.Method) && path is "/api/queue" or "/api/run" or "/api/stop")
             {
-                if (request.Headers["X-Alas-Token"] != _token)
+                if (request.Headers[ControlProtocol.TokenHeader] != _token)
                 {
                     await Reply(context, 403, Error("请求令牌无效"));
                     return;

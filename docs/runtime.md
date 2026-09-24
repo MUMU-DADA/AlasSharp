@@ -91,6 +91,13 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 输入错误返回 400，授权/来源错误返回 403，已有队列或服务关闭中的写请求返回 409，错误对象包含 `error`。
 一次服务只运行一个队列；任务输入、结果合同和授权语义仍由运行时决定。
 
+`Alas.Contracts` 定义请求与状态信封，`Alas.Client/ControlClient` 提供共享 HTTP 客户端，两者不引用 UI、Core 或 Python。
+客户端先 `GetStateAsync()` 获取本次服务令牌，再保存队列、开始运行或请求停止；`StartRunAsync()` 只确认接受，最终结论读取状态与报告。
+队列、报告、任务证据保持原始 JSON；`runs` 是包含 `artifacts_root/exists/returned/runs` 的对象，不是裸数组。
+序列化使用生成元数据，请求提供明确 UTF-8 字节长度。默认传输禁用重定向；注入自定义 `HttpClient` 时也必须禁用自动重定向和重试。
+取消 HTTP 请求或释放客户端不会发送停止命令；网络错误可能发生在接单之后，应重新查询状态，不自动重放写请求。
+服务重启后需重新读取状态获取令牌。当前没有幂等请求键、自动重连或事件流；UI 尚未接入该客户端。
+
 ## 验证
 
 使用项目 Python 执行 `tools/diagnostics/` 下的以下脚本：
@@ -100,9 +107,11 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 | 会话、取消、输入和断点 | `verify_runtime.py`、`verify_cli_errors.py`、`verify_stop.py` |
 | 工件与报告 | `verify_artifact_paths.py`、`verify_report.py`、`verify_report_html.py` |
 | 控制服务 | `verify_control.py`、`verify_control_shutdown.py` |
+| 共享客户端 | `verify_control_client.py`（真实 HTTP、禁用反射序列化、传输错误及取消） |
 | 旧控制页静态结构 | `verify_control_ui.py`（不打开浏览器） |
 | 结构边界与隐私 | `verify_architecture.py`、`verify_privacy.py` |
 
 控制台离线回归通过真实 HTTP 执行 dry-run，断言设备配置次数为零；不证明真实游戏任务效果。
 关闭回归通过公开 shutdown token 实测延迟 POST 拒绝、停止标记 IO 失败和完整落盘；系统 Ctrl-C/SIGTERM 与长于 HTTP 关闭期限的实战仍需分别验收。
+客户端回归验证已接受队列在客户端释放后完成、dry-run 结果原样保留、边界停止和全部工件，以及不跟随 307、不重试写请求；不代替 WASM 浏览器传输或系统输入验收。
 真机记录见[队列审计](archive/reports/queue-evidence.md)。

@@ -28,7 +28,7 @@ flowchart LR
   Runtime --> Engine[上游 Python 与设备后端]
 ```
 
-- `Alas.UI` 保存共享界面、交互、主题和客户端状态；后续 `Contracts` 保存传输模型，不引用设备或 Python 实现。
+- `Alas.UI` 保存共享界面、交互、主题和客户端状态；`Alas.Contracts` 保存传输信封，`Alas.Client` 提供 HTTP 客户端，两者不引用设备或 Python 实现。
 - `UI.Desktop` 负责窗口、托盘、文件选择及本机服务生命周期；既能连接本机，也能连接远程服务。
 - `UI.Browser` 使用同一共享界面；文件、剪贴板、下载和页面地址由浏览器适配层处理，不能直接访问服务器文件系统。
 - `Server` 独立发布，只运行 Kestrel、业务运行时和设备依赖，并托管预构建 WASM 静态文件；不启动 Avalonia 桌面、浏览器、显示服务或 Node.js。
@@ -95,7 +95,7 @@ SDK 固定为 10.0.401，依赖保存在 `.runtime/dotnet`、`.runtime/nuget`，
 
 尚未验收：真实浏览器/系统输入法、DPI、无障碍、首载与内存、复杂编辑器/玻璃效果、双端现场视觉一致性。
 本地控制 API 已迁入 `Alas.Server` 的 Kestrel，仍由 `alashub control` 启动；编排收口至 `Alas.Core/Runtime/ControlWorkspace`，合同见[运行时](runtime.md)。
-共享 UI 客户端、事件流、远程认证、独立服务发行与其他平台/架构仍待实现或验证；Headless 结果不能替代这些结论。状态统一见[路线](architecture-roadmap.md)。
+共享 HTTP 客户端已通过真实服务与禁用反射序列化的离线回归，尚未接入 UI；WASM 实际传输、事件流、远程认证、独立服务发行与其他平台/架构仍待实现或验证。Headless 结果不能替代这些结论。状态统一见[路线](architecture-roadmap.md)。
 
 ## 依据
 

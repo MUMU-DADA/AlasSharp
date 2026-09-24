@@ -5,9 +5,4 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <ProjectReference Include="../Alas.Core/Alas.Core.csproj" />
-    <ProjectReference Include="../Alas.Contracts/Alas.Contracts.csproj" />
-  </ItemGroup>
 </Project>
