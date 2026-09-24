@@ -35,6 +35,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     private readonly Dictionary<(string Instance, string Task), TaskEditorViewModel> _editors = new();
     private long _editorLoadVersion;
     private bool _stateRefreshInFlight;
+    private long _instanceVersion;
+    private long _refreshVersion;
     private readonly IAlasUiBackend _backend;
     private bool _isNarrow;
     private bool _isDrawerOpen;
@@ -337,6 +339,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public void SelectInstance(string instance)
     {
         if (string.IsNullOrWhiteSpace(instance)) return;
+        _instanceVersion++;
         _editorLoadVersion++;
         _instanceName = instance;
         Notify(nameof(InstanceName));
@@ -354,6 +357,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     /// <summary>回到无实例外壳（上游点面包屑「主页」）。</summary>
     public void GoHome()
     {
+        _instanceVersion++;
         _editorLoadVersion++;
         HasInstance = false;
         _activeNavKey = "home";
@@ -371,19 +375,21 @@ public sealed class ShellViewModel : INotifyPropertyChanged
 
     public async Task RefreshBackendStateAsync()
     {
-        if (_stateRefreshInFlight || !HasInstance || !_backend.IsConnected) return;
+        if (!HasInstance || !_backend.IsConnected || (_stateRefreshInFlight && _refreshVersion == _instanceVersion)) return;
+        long version = _instanceVersion;
+        _refreshVersion = version;
         _stateRefreshInFlight = true;
         string instance = InstanceName;
         try
         {
-            var state = await _backend.ReadStateAsync().ConfigureAwait(true);
-            if (HasInstance && InstanceName == instance) Overview.ApplyState(state);
+            var state = await _backend.ReadInstanceStateAsync(instance).ConfigureAwait(true);
+            if (HasInstance && _instanceVersion == version) Overview.ApplyState(state);
         }
         catch (Exception error)
         {
-            if (HasInstance && InstanceName == instance) Overview.ReportBackendError(error.Message);
+            if (HasInstance && _instanceVersion == version) Overview.ReportBackendError(error.Message);
         }
-        finally { _stateRefreshInFlight = false; }
+        finally { if (_refreshVersion == version) _stateRefreshInFlight = false; }
     }
 
     /// <summary>选择任务只读取配置；执行必须经过编辑器确认和 Core 队列。</summary>
@@ -585,6 +591,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     private bool _stopRequested;
     private string _schedulerPhase = "idle";
     private string? _logStream;
+    private long _instanceGeneration;
     private long _nativeLogCursor;
     private long _coreLogCursor;
     private JsonObject? _observation;
@@ -780,6 +787,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         if (!IsSchedulerControlEnabled || _backend is null) return;
         _schedulerBusy = true;
         string instance = InstanceName;
+        long generation = _instanceGeneration;
         Notify(nameof(IsSchedulerControlEnabled));
         try
         {
@@ -791,12 +799,12 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
             else
                 await _backend.StartSchedulerAsync(new InstanceSchedulerRunRequest
                     { Instance = instance, ConfirmActions = true });
-            var state = await _backend.ReadStateAsync();
-            if (InstanceName == instance) ApplyState(state);
+            var state = await _backend.ReadInstanceStateAsync(instance);
+            if (_instanceGeneration == generation) ApplyState(state);
         }
         catch (Exception error)
         {
-            if (InstanceName == instance) ReportBackendError(error.Message);
+            if (_instanceGeneration == generation) ReportBackendError(error.Message);
         }
         finally
         {
@@ -808,6 +816,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     public void SetInstance(string instance)
     {
         if (string.IsNullOrWhiteSpace(instance) || _instanceName == instance) return;
+        _instanceGeneration++;
         _instanceName = instance;
         _stateKnown = false;
         _otherInstanceRunning = false;
@@ -838,7 +847,9 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         IsSchedulerRunning = status == "running" && selected;
         _stopRequested = IsSchedulerRunning && active["stop_requested"]?.GetValue<bool>() == true;
         _schedulerPhase = selected ? active["scheduler"]?["phase"]?.GetValue<string>() ?? status : "idle";
-        _observation = selected ? active["scheduler"] as JsonObject : null;
+        var configured = state["overview"] as JsonObject;
+        if (configured?["instance"]?.GetValue<string>() != InstanceName) configured = null;
+        _observation = IsSchedulerRunning && active["scheduler"] is JsonObject native ? native : configured;
         NativeTasks = SchedulerObservation.Tasks(_observation, IsSchedulerRunning);
         if (!_previewData)
         {
@@ -871,7 +882,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
                 }
         }
         Collect(state["recent_logs"] as JsonArray, ref _coreLogCursor);
-        Collect(_observation?["logs"]?["entries"] as JsonArray, ref _nativeLogCursor);
+        Collect(active["scheduler"]?["logs"]?["entries"] as JsonArray, ref _nativeLogCursor);
         foreach (var entry in additions.OrderBy(entry => DateTimeOffset.TryParse(entry["time"]?.GetValue<string>(),
                      CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var timestamp) ? timestamp : DateTimeOffset.MinValue))
         {

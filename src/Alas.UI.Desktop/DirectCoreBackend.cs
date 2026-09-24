@@ -49,6 +49,9 @@ internal sealed class DirectCoreBackend : IAlasUiBackend
     public Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().State(), cancellationToken);
 
+    public Task<JsonObject> ReadInstanceStateAsync(string instance, CancellationToken cancellationToken = default)
+        => Task.Run(() => WorkspaceOrThrow().State(instance), cancellationToken);
+
     public Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().Report(stamp), cancellationToken);
 
@@ -154,15 +157,15 @@ internal sealed class DirectCoreBackend : IAlasUiBackend
 
         try
         {
-            var items = _configs.List();
+            var items = WorkspaceOrThrow().Instances(_configs);
             _instances.Clear();
             foreach (var item in items)
             {
                 _instances.Add(InstanceCardViewModel.Create(
                     item.Instance,
-                    "stopped",
+                    item.Status,
                     item.Server,
-                    item.Serial ?? string.Empty));
+                    item.Serial ?? string.Empty, item.CurrentTask));
             }
             _connected = true;
         }

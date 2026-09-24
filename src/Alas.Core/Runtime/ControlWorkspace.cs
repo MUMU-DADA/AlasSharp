@@ -44,7 +44,7 @@ public sealed class ControlWorkspace
         Directory.CreateDirectory(_artifacts);
     }
 
-    public JsonObject State()
+    public JsonObject State(string? selectedInstance = null)
     {
         string? runDirectory;
         string? mode;
@@ -84,7 +84,7 @@ public sealed class ControlWorkspace
         };
         JsonObject? report = runDirectory is not null && RunReport.IsRunDirectory(runDirectory)
             ? RunReport.Build(runDirectory).ToJson() : null;
-        return new JsonObject
+        var state = new JsonObject
         {
             ["queue"] = LoadQueue(),
             ["active"] = active,
@@ -94,6 +94,29 @@ public sealed class ControlWorkspace
                 : new JsonArray(log.Recent(80).Select(entry => (JsonNode)entry.ToJson()).ToArray()),
             ["runs"] = RunReport.Summarize(_artifacts, 20),
         };
+        if (selectedInstance is not null)
+        {
+            // This read works before the first run and while another instance owns the host.
+            var config = new ConfigWorkspace(_repo).Get(selectedInstance);
+            var overview = InstanceOverview.FromConfig(config, DateTime.Now);
+            overview["status"] = InstanceOverview.Status(config.Instance, active, report);
+            state["overview"] = overview;
+        }
+        return state;
+    }
+
+    public IReadOnlyList<ConfigInstance> Instances(ConfigWorkspace configs)
+    {
+        var state = State();
+        var active = state["active"]!.AsObject();
+        return configs.List().Select(item => item with
+        {
+            Status = InstanceOverview.Status(item.Instance, active, state["report"] as JsonObject),
+            CurrentTask = active["instance"]?.GetValue<string>() == item.Instance &&
+                          active["status"]?.GetValue<string>() == "running" &&
+                          active["scheduler"]?["phase"]?.GetValue<string>() == "running"
+                ? active["scheduler"]?["task"]?.GetValue<string>() : null,
+        }).ToArray();
     }
 
     public JsonObject? Report(string? stamp)

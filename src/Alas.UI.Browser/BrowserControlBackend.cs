@@ -40,7 +40,7 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
             var response = await _client.ListInstancesAsync().ConfigureAwait(false);
             _instances.Clear();
             foreach (var item in response.Instances)
-                _instances.Add(InstanceCardViewModel.Create(item.Instance, "stopped", item.Server, item.Serial ?? string.Empty));
+                _instances.Add(InstanceCardViewModel.Create(item.Instance, item.Status, item.Server, item.Serial ?? string.Empty, item.CurrentTask));
             _connected = true;
         }
         catch (Exception error) when (error is HttpRequestException or ControlApiException or ControlProtocolException)
@@ -56,6 +56,13 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
         var state = await _client.GetStateAsync(cancellationToken).ConfigureAwait(false);
         return JsonSerializer.SerializeToNode(state, ControlJsonContext.Default.ControlState)?.AsObject()
             ?? throw new ControlProtocolException("控制状态无法转换为共享快照");
+    }
+
+    public async Task<JsonObject> ReadInstanceStateAsync(string instance, CancellationToken cancellationToken = default)
+    {
+        var state = await _client.GetInstanceStateAsync(instance, cancellationToken).ConfigureAwait(false);
+        return JsonSerializer.SerializeToNode(state, ControlJsonContext.Default.ControlState)?.AsObject()
+            ?? throw new ControlProtocolException("实例状态无法转换为共享快照");
     }
 
     public async Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default)

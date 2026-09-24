@@ -17,7 +17,12 @@ string root = args[0];
 string repo = Path.Combine(root, "repo");
 Directory.CreateDirectory(Path.Combine(repo, "config"));
 File.WriteAllText(Path.Combine(repo, "config", "fixture.json"), """
-{"Alas":{"Emulator":{"Serial":"fixture-device","ScreenshotMethod":"adb","ControlMethod":"ADB"}}}
+{"Alas":{"Emulator":{"Serial":"fixture-device","ScreenshotMethod":"adb","ControlMethod":"ADB"}},
+ "Reward":{"Scheduler":{"Enable":true,"NextRun":"2000-01-01 00:00:00"}},
+ "Dashboard":{"Oil":{"Value":1234,"Record":"2026-01-01 00:00:00"}}}
+""");
+File.WriteAllText(Path.Combine(repo, "config", "second.json"), """
+{"Alas":{},"Research":{"Scheduler":{"Enable":true,"NextRun":"2999-01-01 00:00:00"}}}
 """);
 File.WriteAllText(Path.Combine(repo, "config", "template.json"), """{"Alas":{}}""");
 var engine = new Engine();
@@ -28,6 +33,11 @@ var start = new JsonObject { ["instance"] = "fixture", ["confirm_actions"] = tru
 try { workspace.StartScheduler(new JsonObject { ["instance"]="fixture" }); throw new Exception("Missing authorization accepted"); }
 catch (ArgumentException) { }
 Check(constructed == 0, "No host for denied start");
+var idle = workspace.State("fixture");
+Check(idle["overview"]!["pending"]![0]!["name"]!.GetValue<string>() == "Reward" &&
+      idle["overview"]!["resources"]![0]!["value"]!.GetValue<int>() == 1234 && constructed == 0,
+    "Idle overview reads saved task/resource records without starting a host");
+var configFiles = Directory.GetFiles(Path.Combine(repo, "config")).ToDictionary(path => path, File.ReadAllText);
 // Read-only service first: the action queue must reuse and configure this same host.
 workspace.ReadHostJson("fixture-read", new JsonObject());
 string? firstLogPath = null;
@@ -47,6 +57,14 @@ for (int attempt = 0; attempt < 2; attempt++)
     Check(state["recent_logs"]!.AsArray().All(entry => entry!["id"]!.GetValue<long>() > 0), "Core logs carry stable IDs");
     Check(state["recent_logs"]!.AsArray().Count(entry => entry?["message"]?.GetValue<string>() == "开始任务队列") == 1,
         "Live logs contain only the current batch even when the host is reused");
+    var other = workspace.State("second");
+    Check(other["overview"]!["instance"]!.GetValue<string>() == "second" &&
+          other["overview"]!["waiting"]![0]!["name"]!.GetValue<string>() == "Research" &&
+          other["overview"]!["status"]!.GetValue<string>() == "stopped",
+        "Another instance can read its own overview while the shared host is occupied");
+    var instances = workspace.Instances(new ConfigWorkspace(repo));
+    Check(instances.Single(i => i.Instance == "fixture").Status == "running" &&
+          instances.Single(i => i.Instance == "second").Status == "stopped", "Instance list reflects actual activity");
     try { workspace.StartScheduler(start); throw new Exception("Concurrent start accepted"); }
     catch (ControlWorkspaceUnavailableException) { }
     Task? shutdown = null;
@@ -78,6 +96,7 @@ for (int attempt = 0; attempt < 2; attempt++)
     }
 }
 Check(constructed == 1 && engine.Configurations == 1 && engine.Disposed, "Single host/device configuration, disposed at shutdown");
+Check(configFiles.All(item => File.ReadAllText(item.Key) == item.Value), "Overview never writes configuration");
 try { workspace.StartScheduler(start); throw new Exception("Shutdown accepted new run"); }
 catch (ControlWorkspaceUnavailableException) { }
 Console.WriteLine("PASS: direct Core scheduler selected instance, live state, shared host, concurrent-start rejection, boundary stop, shutdown and artifacts");

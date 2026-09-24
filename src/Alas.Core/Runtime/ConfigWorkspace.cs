@@ -409,7 +409,11 @@ public sealed class ConfigWorkspace
                            StringComparison.OrdinalIgnoreCase);
 }
 
-public sealed record ConfigInstance(string Instance, string Revision, string? Serial, string? Server);
+public sealed record ConfigInstance(string Instance, string Revision, string? Serial, string? Server)
+{
+    public string Status { get; init; } = "stopped";
+    public string? CurrentTask { get; init; }
+}
 public sealed record ConfigImport(string Name, DateTimeOffset ModifiedAt);
 public sealed record ConfigSnapshot(string Instance, string Revision, JsonObject Values);
 public sealed record ConfigSchema(JsonObject Menu, JsonObject Args, JsonObject Translations);

@@ -71,9 +71,9 @@ public sealed class ControlServer
         return 0;
     }
 
-    private JsonObject ReadState()
+    private JsonObject ReadState(string? instance = null)
     {
-        var state = _workspace.State();
+        var state = _workspace.State(instance);
         state["token"] = _token;
         return state;
     }
@@ -111,7 +111,8 @@ public sealed class ControlServer
             }
             if (HttpMethods.IsGet(request.Method) && path == "/api/state")
             {
-                await Reply(context, 200, ReadState());
+                string? selected = request.Query.ContainsKey("instance") ? RequiredQuery(request, "instance") : null;
+                await Reply(context, 200, ReadState(selected));
                 return;
             }
             if (HttpMethods.IsGet(request.Method) && path == "/api/events")
@@ -127,7 +128,7 @@ public sealed class ControlServer
             }
             if (HttpMethods.IsGet(request.Method) && path == "/api/instances")
             {
-                await Reply(context, 200, Instances(_config.List()));
+                await Reply(context, 200, Instances(_workspace.Instances(_config)));
                 return;
             }
             if (HttpMethods.IsGet(request.Method) && path == "/api/schema")
@@ -401,6 +402,8 @@ public sealed class ControlServer
             ["revision"] = item.Revision,
             ["serial"] = item.Serial,
             ["server"] = item.Server,
+            ["status"] = item.Status,
+            ["current_task"] = item.CurrentTask,
         }).ToArray()),
     };
 

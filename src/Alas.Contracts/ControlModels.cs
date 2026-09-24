@@ -30,6 +30,7 @@ public sealed record ControlState
     public required JsonArray LiveTasks { get; init; }
     public required JsonArray RecentLogs { get; init; }
     public required JsonObject Runs { get; init; }
+    public JsonObject? Overview { get; init; }
 }
 
 public sealed record ControlActivity
@@ -102,6 +103,8 @@ public sealed record InstanceSummary
     public required string Revision { get; init; }
     public string? Serial { get; init; }
     public string? Server { get; init; }
+    public string Status { get; init; } = "stopped";
+    public string? CurrentTask { get; init; }
 }
 
 public sealed record InstanceListResponse

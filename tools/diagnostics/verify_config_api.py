@@ -41,6 +41,9 @@ def main() -> int:
         repo = root / "repo"
         (repo / 'config').mkdir(parents=True)
         template = {'Alas': {'Emulator': {'PackageName': 'com.bilibili.azurlane', 'Serial': 'fixture-device', 'ServerName': 'cn'}}}
+        template['Reward'] = {'Scheduler': {'Enable': True, 'NextRun': '2000-01-01 00:00:00'}}
+        template['Research'] = {'Scheduler': {'Enable': True, 'NextRun': '2999-01-01 00:00:00'}}
+        template['Dashboard'] = {'Oil': {'Value': 1234, 'Limit': 25000, 'Record': '2026-01-01 00:00:00'}}
         for name in ('template', 'alas'):
             (repo / 'config' / (name + '.json')).write_text(json.dumps(template), encoding='utf-8')
         (repo / 'config/not-an-instance.json').write_text('{}', encoding='utf-8')
@@ -68,6 +71,16 @@ def main() -> int:
             status, listing = request(base, "/api/instances")
             assert status == 200 and [i['instance'] for i in listing['instances']] == ['alas']
             assert listing['instances'][0]['server'] == 'cn'
+            assert listing['instances'][0]['status'] == 'stopped'
+            status, instance_state = request(base, '/api/state?instance=alas')
+            assert status == 200 and instance_state['recent_logs'] == []
+            overview = instance_state['overview']
+            assert overview['source'] == 'configuration' and overview['instance'] == 'alas'
+            assert [item['name'] for item in overview['pending']] == ['Reward']
+            assert [item['name'] for item in overview['waiting']] == ['Research']
+            assert overview['resources'][0]['value'] == 1234
+            assert request(base, '/api/state?instance=missing')[0] == 404
+            assert request(base, '/api/state?instance=..%2Fescape')[0] == 400
             schema_status, schema = request(base, "/api/schema?language=zh-CN")
             assert schema_status == 200 and {"menu", "args", "translations"} <= schema.keys()
             get_status, config = request(base, "/api/config/alas")

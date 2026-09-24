@@ -107,11 +107,17 @@ Check((await Throws<ControlApiException>(() => client.RequestStopAsync())).Statu
 
 // These tests isolate faults which cannot be induced deterministically in a
 // healthy local service. They are transport tests, not game/runtime evidence.
-string fixture = JsonSerializer.Serialize(initial, ControlJsonContext.Default.ControlState);
+string fixture = JsonSerializer.Serialize(initial with { Overview = new JsonObject
+    { ["instance"] = "fixture", ["resources"] = new JsonArray(new JsonObject { ["name"] = "Oil", ["value"] = 1234 }) } },
+    ControlJsonContext.Default.ControlState);
 var fault = new FaultHandler(fixture);
 using var transport = new HttpClient(fault);
 var probe = new ControlClient(transport, endpoint);
 await probe.GetStateAsync();
+var selectedState = await probe.GetInstanceStateAsync("实例 & name");
+Check(fault.LastRequestUri?.Query == "?instance=" + Uri.EscapeDataString("实例 & name") &&
+      selectedState.Overview?["resources"]?[0]?["value"]?.GetValue<int>() == 1234,
+    "Instance state escapes the selected name and preserves overview through generated JSON metadata");
 fault.Behavior = "drop";
 await Throws<HttpRequestException>(() => probe.StartRunAsync(new() { Queue = queue }));
 Check(fault.Writes == 1 && fault.Stops == 0, "Unknown acceptance must not retry or send stop");
@@ -164,9 +170,11 @@ sealed class FaultHandler(string fixture) : HttpMessageHandler
     public int Writes, Stops;
     public bool ExplicitLength;
     public string? WriteToken;
+    public Uri? LastRequestUri;
     public TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
     {
+        LastRequestUri = request.RequestUri;
         if (request.Method == HttpMethod.Post)
         {
             Writes++;

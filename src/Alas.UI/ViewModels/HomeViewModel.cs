@@ -57,6 +57,7 @@ public sealed class DisconnectedInstanceSource : IAlasUiBackend
 
     private static InvalidOperationException Unavailable() => new("未连接 Alas 服务");
     public Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());
+    public Task<JsonObject> ReadInstanceStateAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());
     public Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default) => Task.FromException<JsonObject?>(Unavailable());
     public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default) => Task.FromException<SchemaResponse>(Unavailable());
     public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<ConfigResponse>(Unavailable());

@@ -63,8 +63,17 @@ public sealed partial class ControlClient : IDisposable
 
     /// <summary>Fetch a snapshot and acquire this service instance's write token.</summary>
     public async Task<ControlState> GetStateAsync(CancellationToken cancellationToken = default)
+        => await ReadStateAsync("api/state", cancellationToken).ConfigureAwait(false);
+
+    public Task<ControlState> GetInstanceStateAsync(string instance, CancellationToken cancellationToken = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_endpoint, "api/state"));
+        ArgumentException.ThrowIfNullOrWhiteSpace(instance);
+        return ReadStateAsync("api/state?instance=" + Uri.EscapeDataString(instance), cancellationToken);
+    }
+
+    private async Task<ControlState> ReadStateAsync(string path, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_endpoint, path));
         var state = await SendAsync(request, HttpStatusCode.OK, ControlJsonContext.Default.ControlState, cancellationToken)
             .ConfigureAwait(false);
         AcceptState(state);

@@ -37,6 +37,8 @@ internal static class CoreUiBackendChecks
         Check(backend.Started is { Instance: "fixture", Task: "Reward", ConfirmActions: true }, "task intent preserves selected instance");
         await VerifyScheduler(backend);
         VerifyObservation();
+        VerifyInstanceProjection();
+        VerifyLateInstanceResponse();
         Console.WriteLine("PASS: shared Core adapters preserve upstream report fields and strict strategy diagnostics");
     }
 
@@ -127,8 +129,71 @@ internal static class CoreUiBackendChecks
     private static void Check(bool ok, string message)
     { if (!ok) throw new Exception("Core UI: " + message); }
 
-    private sealed class FixtureBackend : IAlasControlBackend
+    private static void VerifyInstanceProjection()
     {
+        var overview = new OverviewViewModel();
+        var rail = new RailViewModel(overview);
+        overview.SetInstance("fixture");
+        var state = JsonNode.Parse("""
+            {"active":{"instance":"another","status":"running"},"overview":{"instance":"fixture",
+              "pending":[{"name":"Reward","next_run":"2020-01-01 00:00:00"}],
+              "waiting":[{"name":"Research","next_run":"2999-01-01 00:00:00"}],
+              "resources":[{"name":"Oil","value":1234,"record":"2026-01-01 00:00:00"}]},
+             "recent_logs":[{"id":1,"message":"another instance log"}]}
+            """)!.AsObject();
+        overview.ApplyState(state);
+        Check(!overview.IsSchedulerRunning && rail.PendingCount == "1" && rail.WaitingCount == "1" &&
+              overview.Resources[0].Value.Contains("234") && overview.CachedLogCount == 0,
+            "idle instance uses its saved plan/resources even while another instance runs");
+        state["active"] = JsonNode.Parse("""
+            {"instance":"fixture","status":"running","scheduler":{"phase":"running","task":"Commission",
+              "pending":[],"waiting":[],"resources":[],"logs":{"entries":[]}}}
+            """);
+        state["recent_logs"] = new JsonArray();
+        overview.ApplyState(state);
+        Check(rail.RunningCount == "1" && rail.PendingCount == "0", "live native lists take precedence over config display");
+        state["active"]!["status"] = "completed";
+        state["active"]!["scheduler"]!["logs"]!["entries"]!.AsArray().Add(new JsonObject
+            { ["id"] = 1L, ["message"] = "final native log", ["level"] = "INFO" });
+        state["recent_logs"] = new JsonArray();
+        overview.ApplyState(state);
+        Check(rail.RunningCount == "0" && rail.PendingCount == "1" && overview.VisibleLogs.Single().Message == "final native log",
+            "completed run returns to saved plan and still consumes its final log tail");
+    }
+
+    private static void VerifyLateInstanceResponse()
+    {
+        var pending = new List<TaskCompletionSource<JsonObject>>();
+        var backend = new FixtureBackend { InstanceRead = name =>
+        {
+            var response = new TaskCompletionSource<JsonObject>();
+            pending.Add(response);
+            return response.Task;
+        } };
+        var shell = new ShellViewModel(new Alas.UI.Theming.MemoryThemeStore(), backend);
+        shell.SelectInstance("first");
+        shell.SelectInstance("second");
+        shell.SelectInstance("first");
+        Check(pending.Count == 3, "changing instance does not wait for an obsolete request");
+        JsonObject Snapshot(string name, int value) => JsonNode.Parse($$$"""
+            {"active":{"status":"idle"},"overview":{"instance":"{{{name}}}","pending":[],"waiting":[],
+              "resources":[{"name":"Oil","value":{{{value}}},"record":"2026-01-01 00:00:00"}]}}
+            """)!.AsObject();
+        pending[2].SetResult(Snapshot("first", 333));
+        pending[0].SetResult(Snapshot("first", 111));
+        pending[1].SetResult(Snapshot("second", 222));
+        Check(shell.Overview.Resources[0].Value == "333", "late A/B responses cannot overwrite the newest A selection");
+        Console.WriteLine("PASS: idle instance overview, native precedence, final logs and delayed instance switch isolation");
+    }
+
+    private sealed class FixtureBackend : IAlasUiBackend
+    {
+        public bool IsConnected => true;
+        public IReadOnlyList<InstanceCardViewModel> Instances => [];
+        public event EventHandler? Changed { add { } remove { } }
+        public void Refresh() { }
+        public void Dispose() { }
+        public Func<string, Task<JsonObject>>? InstanceRead;
         public string? Cleared;
         public InstanceTaskRunRequest? Started;
         public InstanceSchedulerRunRequest? SchedulerStarted;
@@ -160,6 +225,8 @@ internal static class CoreUiBackendChecks
             return Task.CompletedTask;
         }
         public Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default) => Task.FromResult((JsonObject)State.DeepClone());
+        public Task<JsonObject> ReadInstanceStateAsync(string instance, CancellationToken cancellationToken = default)
+            => InstanceRead?.Invoke(instance) ?? ReadStateAsync(cancellationToken);
         public Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default) => throw new NotSupportedException();

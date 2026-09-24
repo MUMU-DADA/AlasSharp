@@ -10,6 +10,7 @@ namespace Alas.UI.ViewModels;
 public interface IAlasControlBackend
 {
     Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default);
+    Task<JsonObject> ReadInstanceStateAsync(string instance, CancellationToken cancellationToken = default);
     Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default);
     Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default);
     Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default);
