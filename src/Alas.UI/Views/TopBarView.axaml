@@ -1,7 +1,15 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Alas.UI.ViewModels" xmlns:controls="using:Alas.UI.Controls"
              x:Class="Alas.UI.Views.TopBarView" x:DataType="vm:ShellViewModel">
-  <Grid ColumnDefinitions="Auto,*,Auto">
+  <Grid x:Name="TopbarRoot" ColumnDefinitions="Auto,*,Auto">
+    <StackPanel x:Name="LegacyBrand" Grid.Column="0" Orientation="Horizontal" Spacing="10"
+                VerticalAlignment="Center" IsVisible="{Binding IsLegacyDesktop}">
+      <Image Width="28" Height="28" Source="avares://Alas.UI/Assets/Brand/azurpilot-64.png" />
+      <TextBlock Text="AzurPilot" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" />
+    </StackPanel>
+    <TextBlock x:Name="LegacyTitle" Grid.ColumnSpan="3" Text="{Binding BreadcrumbTail}" FontSize="17"
+               FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"
+               IsVisible="{Binding IsLegacyDesktop}" />
     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="{Binding TopbarSpacing}" VerticalAlignment="Center">
       <Button x:Name="MobileToggle" Theme="{StaticResource IconButtonTheme}" Classes="narrow-toggle"
               Classes.narrow="{Binding IsNarrow}" Command="{Binding OpenDrawerCommand}"
@@ -14,7 +22,7 @@
         <controls:Icon Data="{StaticResource IconCalendarClock}" Size="18" />
       </Button>
     </StackPanel>
-    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{Binding TopbarSpacing}"
+    <StackPanel x:Name="Breadcrumb" Grid.Column="1" Orientation="Horizontal" Spacing="{Binding TopbarSpacing}"
                 HorizontalAlignment="{Binding BreadcrumbAlignment}" VerticalAlignment="Center">
     <StackPanel x:Name="TopbarActions" Classes="topbar-actions" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
       <!-- 上游这里还有「标签模式 / 标签字号」两个悬停展开的开关；它们作用于实例标签条，
@@ -23,7 +31,7 @@
       <Button x:Name="HomeLink" Theme="{StaticResource TextButtonTheme}" FontSize="13"
               Foreground="{DynamicResource AlasMutedBrush}" Padding="8,6"
               Command="{Binding SelectNavCommand}" CommandParameter="home" AutomationProperties.Name="主页">
-        <TextBlock Text="主页" />
+        <TextBlock Classes="breadcrumb-link" Text="主页" />
       </Button>
     </StackPanel>
     <TextBlock Classes="breadcrumb-separator" Text="/" VerticalAlignment="Center" />

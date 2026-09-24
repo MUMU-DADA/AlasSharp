@@ -55,6 +55,7 @@ internal static class Program
         ConfigManagerChecks.Run(output);
         DevToolsChecks.Run();
         DevToolsShellChecks.Run(output);
+        ThemeLayoutChecks.Run(output);
         // 1) 对照帧：每种尺寸/主题用全新的视图与窗口，避免交互状态（筛选行、日志条数、指针悬停）进入对照图。
         CaptureClean(output, 1280, 820, dark: false, "overview-light-1280x820.png");
         CaptureClean(output, 1280, 820, dark: true, "overview-dark-1280x820.png");
@@ -89,7 +90,7 @@ internal static class Program
             Check(homeNav.ItemCount == 8, $"eight global nav entries without an instance (got {homeNav.ItemCount})");
             Check(string.Join('/', model.PrimaryNav.Select(entry => entry.Label))
                 == "主页/更新器/界面设置/远程访问/配置管理/系统设置/开发者工具/开源项目", "global nav order matches upstream");
-            Check(Find<ItemsControl>(view, "TaskNav").ItemCount == 0, "no task groups without an instance");
+            Check(model.TaskGroups.Count == 0 && !model.IsSidebarTaskNavVisible, "no task navigation without an instance");
             Check(!model.Home.IsConnected && model.Home.ShowDisconnected, "home reports the real disconnected state");
             // 主页自身的一批断言（子 agent 交付，要求调用时主页是当前可见页）。
             HomeChecks.Run(window, view);

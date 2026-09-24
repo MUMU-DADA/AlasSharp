@@ -20,7 +20,7 @@ public sealed class CardGrid : Panel
 
     static CardGrid()
     {
-        AffectsMeasure<CardGrid>(MinItemWidthProperty, ItemGapProperty);
+        AffectsMeasure<CardGrid>(MinItemWidthProperty, ItemGapProperty, ColumnsProperty);
     }
 
     public double MinItemWidth
@@ -35,6 +35,19 @@ public sealed class CardGrid : Panel
         set => SetValue(ItemGapProperty, value);
     }
 
+    /// <summary>
+    /// 固定列数；0 表示按 <see cref="MinItemWidth"/> 自适应（上游 flex 布局）。
+    /// 上游资源卡是**固定 4 列**（窄屏 2 列），宽屏下不会因为容器变宽而增加列数。
+    /// </summary>
+    public static readonly StyledProperty<int> ColumnsProperty =
+        AvaloniaProperty.Register<CardGrid, int>(nameof(Columns), 0);
+
+    public int Columns
+    {
+        get => GetValue(ColumnsProperty);
+        set => SetValue(ColumnsProperty, value);
+    }
+
     protected override Size MeasureOverride(Size availableSize)
     {
         var count = Children.Count;
@@ -43,7 +56,7 @@ public sealed class CardGrid : Panel
         var width = double.IsInfinity(availableSize.Width)
             ? count * MinItemWidth + (count - 1) * gap
             : availableSize.Width;
-        var columns = Columns(width, count, gap);
+        var columns = ColumnCount(width, count, gap);
         var itemWidth = Math.Max(0, (width - (columns - 1) * gap) / columns);
 
         var rows = new List<double>();
@@ -69,7 +82,7 @@ public sealed class CardGrid : Panel
         var count = Children.Count;
         if (count == 0) return finalSize;
         var gap = Math.Max(0, ItemGap);
-        var columns = Columns(finalSize.Width, count, gap);
+        var columns = ColumnCount(finalSize.Width, count, gap);
         var itemWidth = Math.Max(0, (finalSize.Width - (columns - 1) * gap) / columns);
 
         var offset = 0d;
@@ -88,8 +101,11 @@ public sealed class CardGrid : Panel
         return finalSize;
     }
 
-    private int Columns(double width, int count, double gap)
+    private int ColumnCount(double width, int count, double gap)
     {
+        // 固定列数优先（上游资源卡是固定 4 列 / 窄屏 2 列，宽屏不会增加列数）；
+        // 为 0 时才按 MinItemWidth 自适应（上游 flex: 1 1 150px 的等价物）。
+        if (Columns > 0) return Columns;
         var perRow = (int)Math.Floor((width + gap) / (Math.Max(1, MinItemWidth) + gap));
         return Math.Clamp(perRow, 1, count);
     }

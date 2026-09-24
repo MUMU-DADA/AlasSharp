@@ -2,7 +2,7 @@
              xmlns:vm="using:Alas.UI.ViewModels" xmlns:controls="using:Alas.UI.Controls"
              x:Class="Alas.UI.Views.RightRailView" x:DataType="vm:ShellViewModel">
   <Grid RowDefinitions="Auto,Auto,*">
-    <Grid x:Name="RailHeader" Grid.Row="0" Height="72" Margin="18,0" ColumnDefinitions="*,Auto">
+    <Grid x:Name="RailHeader" Grid.Row="0" Height="72" Margin="18,0" ColumnDefinitions="*,Auto" IsVisible="{Binding !HidesOverviewTitle}">
       <StackPanel VerticalAlignment="Center" Spacing="2">
         <TextBlock Classes="rail-eyebrow" Text="实例工作区" />
         <TextBlock Classes="rail-instance" Text="{Binding InstanceName}" />
@@ -66,8 +66,8 @@
                        Foreground="{DynamicResource AlasMutedBrush}" />
         <TextBlock Grid.Column="1" Text="任务计划" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="8,0,0,0"
                    Foreground="{DynamicResource AlasMutedBrush}" />
-        <Border Grid.Column="2" CornerRadius="10" Padding="7,3" VerticalAlignment="Center">
-          <TextBlock Classes="rail-count-badge" Text="{Binding Rail.PlanCountText}" />
+        <Border Grid.Column="2" CornerRadius="10" Padding="7,3" VerticalAlignment="Center" Background="{DynamicResource AlasSurfaceMutedBrush}">
+          <TextBlock Classes="rail-count-badge" Text="{Binding Rail.PlanCountText}" FontSize="11" Foreground="{DynamicResource AlasMutedBrush}" />
         </Border>
       </Grid>
       <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"

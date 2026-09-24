@@ -29,7 +29,7 @@
   </UserControl.Styles>
 
   <Grid RowDefinitions="Auto,Auto,*">
-    <Grid x:Name="PageTitle" Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,48,0,14">
+    <Grid x:Name="PageTitle" Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,48,0,14" IsVisible="{Binding !HideTitle}">
       <Border x:Name="TitleGlass" Background="{DynamicResource AlasTitleFillBrush}" VerticalAlignment="Center">
         <TextBlock x:Name="TitleText" Classes="page-title" Text="{Binding InstanceName}" />
       </Border>
@@ -44,7 +44,7 @@
     <ItemsControl x:Name="ResourceCards" Grid.Row="1" ItemsSource="{Binding Resources}" Margin="0,0,0,10">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
-          <controls:CardGrid MinItemWidth="150" ItemGap="8" />
+          <controls:CardGrid MinItemWidth="150" ItemGap="8" Columns="{Binding ResourceColumns}" />
         </ItemsPanelTemplate>
       </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>

@@ -2,19 +2,26 @@
              xmlns:vm="using:Alas.UI.ViewModels" xmlns:controls="using:Alas.UI.Controls"
              x:Class="Alas.UI.Views.SidebarView" x:DataType="vm:ShellViewModel">
   <DockPanel LastChildFill="True">
-    <Grid DockPanel.Dock="Top" Height="56" Margin="10,0,10,10" ColumnDefinitions="Auto,*,Auto">
+    <Grid x:Name="BrandBlock" DockPanel.Dock="Top" Height="56" Margin="10,0,10,10" ColumnDefinitions="Auto,*,Auto">
       <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
         <Border Width="32" Height="32" CornerRadius="{DynamicResource AlasLogoRadius}" ClipToBounds="True"
                 VerticalAlignment="Center">
-          <Image x:Name="BrandLogo" Width="32" Height="32" Source="avares://Alas.UI/Assets/Brand/azurpilot-64.png"
+          <Image x:Name="BrandLogo" Width="32" Height="32" IsVisible="{Binding !IsLegacyDesktop}" Source="avares://Alas.UI/Assets/Brand/azurpilot-64.png"
                  AutomationProperties.Name="AzurPilot 标识" />
         </Border>
-        <TextBlock Classes="brand-title" Text="AzurPilot" VerticalAlignment="Center" />
-        <Border Classes="update-notice" VerticalAlignment="Center">
-          <TextBlock Text="新" />
+        <!-- 品牌名会在窄宽度下被省略：品牌行是 Auto,*,Auto，若左边 Auto 列过宽会把关闭按钮挤出可点区域。 -->
+        <TextBlock Classes="brand-title" Text="AzurPilot" VerticalAlignment="Center" IsVisible="{Binding !IsLegacyDesktop}"
+                   TextTrimming="CharacterEllipsis" />
+        <!-- 角标是纯装饰（上游是个 span）：不参与命中测试；窄屏（抽屉态）下让位，
+             否则品牌行会比 232 宽的抽屉更宽，把关闭按钮挤出可点区域（实测按钮 205..249 被裁）。 -->
+        <Border Classes="update-notice" VerticalAlignment="Center" IsHitTestVisible="False"
+                IsVisible="{Binding !IsNarrow}">
+          <!-- 上游 nav.newBadge =「新着」 -->
+          <TextBlock Text="新" IsHitTestVisible="False" />
         </Border>
       </StackPanel>
       <Button x:Name="DrawerCloseButton" Grid.Column="2" Theme="{StaticResource IconButtonTheme}"
+              MinWidth="44" MinHeight="44"
               IsVisible="{Binding IsNarrow}" Command="{Binding CloseDrawerCommand}"
               AutomationProperties.Name="关闭导航">
         <controls:Icon Data="{StaticResource IconX}" Size="18" />
@@ -24,12 +31,14 @@
     <ItemsControl x:Name="PrimaryNav" DockPanel.Dock="Top" ItemsSource="{Binding PrimaryNav}" Margin="0,0,0,28">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
-          <StackPanel Spacing="5" />
+          <StackPanel x:Name="NavPanel" Spacing="5" />
         </ItemsPanelTemplate>
       </ItemsControl.ItemsPanel>
       <ItemsControl.ItemTemplate>
         <DataTemplate x:DataType="vm:NavEntry">
-          <Button Theme="{StaticResource NavItemTheme}" Classes.active="{Binding IsActive}"
+          <Button Theme="{StaticResource NavItemTheme}" Classes="nav-item" Height="{Binding $parent[UserControl].((vm:ShellViewModel)DataContext).NavItemHeight}"
+                  MinHeight="{Binding $parent[UserControl].((vm:ShellViewModel)DataContext).NavItemHeight}"
+                  Padding="{Binding $parent[UserControl].((vm:ShellViewModel)DataContext).NavItemPadding}" Classes.active="{Binding IsActive}"
                   Command="{Binding $parent[UserControl].((vm:ShellViewModel)DataContext).SelectNavCommand}"
                   CommandParameter="{Binding Key}" AutomationProperties.Name="{Binding Label}">
             <StackPanel Orientation="Horizontal" Spacing="12">
@@ -41,25 +50,32 @@
       </ItemsControl.ItemTemplate>
     </ItemsControl>
 
-    <StackPanel DockPanel.Dock="Top">
+    <StackPanel DockPanel.Dock="Top" IsVisible="{Binding IsSidebarTaskNavVisible}">
       <Grid Height="28" Margin="0,0,0,8" ColumnDefinitions="Auto,*,Auto">
         <TextBlock Classes="sidebar-label" Text="任务配置" VerticalAlignment="Center" Margin="10,0,0,0" />
         <Button x:Name="TaskSearchButton" Grid.Column="2" Theme="{StaticResource IconButtonTheme}" Classes="sidebar-search"
+                Command="{Binding ToggleTaskSearchCommand}" ToolTip.Tip="搜索任务"
                 AutomationProperties.Name="搜索任务">
           <controls:Icon Data="{StaticResource IconSearch}" Size="15" />
         </Button>
       </Grid>
+      <!-- 搜索框：点放大镜后展开（上游「任务配置」标题右侧的搜索），实时过滤下面的任务分组。 -->
+      <TextBox x:Name="TaskSearchBox" IsVisible="{Binding IsTaskSearchOpen}" Margin="8,0,8,8" Height="30"
+               PlaceholderText="搜索任务…" Text="{Binding TaskSearchText, Mode=TwoWay}"
+               AutomationProperties.Name="搜索任务输入" />
       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="2,0,2,15">
         <ItemsControl x:Name="TaskNav" ItemsSource="{Binding TaskGroups}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-              <StackPanel Spacing="2" />
+              <StackPanel x:Name="TaskNavPanel" Spacing="2" />
             </ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:TaskGroupEntry">
               <StackPanel>
-                <Button Theme="{StaticResource TaskGroupTheme}" Classes="task-group"
+                <Button Theme="{StaticResource TaskGroupTheme}" Classes="task-group" Height="{Binding $parent[UserControl].((vm:ShellViewModel)DataContext).TaskGroupHeight}"
+                        MinHeight="{Binding $parent[UserControl].((vm:ShellViewModel)DataContext).TaskGroupHeight}"
+                        Padding="{Binding $parent[UserControl].((vm:ShellViewModel)DataContext).TaskGroupPadding}"
                         Command="{Binding $parent[UserControl].((vm:ShellViewModel)DataContext).ToggleTaskGroupCommand}"
                         CommandParameter="{Binding}" AutomationProperties.Name="{Binding Title}">
                   <Grid ColumnDefinitions="Auto,*,Auto">

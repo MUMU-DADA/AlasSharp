@@ -46,6 +46,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     private bool _hasInstance;
     private string _activeNavKey = "home";
     private string _activeTaskKey = string.Empty;
+    private bool _isTaskSearchOpen;
+    private string _taskSearchText = string.Empty;
 
     public ShellViewModel()
         : this(new MemoryThemeStore(), null, previewData: true)
@@ -76,6 +78,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         ReloadBackendInstances();
         SelectNavCommand = new PreviewCommand(parameter => SelectNav(parameter as string));
         GoHomeCommand = new PreviewCommand(_ => GoHome());
+        ToggleTaskSearchCommand = new PreviewCommand(_ => IsTaskSearchOpen = !IsTaskSearchOpen);
         OpenDrawerCommand = new PreviewCommand(_ => IsDrawerOpen = true);
         CloseDrawerCommand = new PreviewCommand(_ => { IsDrawerOpen = false; IsRailOpen = false; });
         ToggleRailCommand = new PreviewCommand(_ => IsRailOpen = !IsRailOpen);
@@ -91,7 +94,9 @@ public sealed class ShellViewModel : INotifyPropertyChanged
             Notify(nameof(CurrentTheme));
             Notify(nameof(IsLegacyLayout));
             Notify(nameof(IsExtremeLayout));
+            NotifyLayout();
         };
+        NotifyLayout();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -114,6 +119,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
 
     public ICommand SelectNavCommand { get; }
     public ICommand GoHomeCommand { get; }
+    public ICommand ToggleTaskSearchCommand { get; }
     public ICommand OpenDrawerCommand { get; }
     public ICommand CloseDrawerCommand { get; }
     public ICommand ToggleRailCommand { get; }
@@ -136,6 +142,41 @@ public sealed class ShellViewModel : INotifyPropertyChanged
 
     /// <summary>紧凑皮肤不渲染页面标题、工具栏吸顶合并为一行。</summary>
     public bool IsExtremeLayout => CurrentTheme == UiTheme.Extreme;
+
+    public bool IsClassicLayout => CurrentTheme is UiTheme.Light or UiTheme.Dark;
+    public bool IsLegacyDesktop => IsLegacyLayout && !IsNarrow;
+    public bool IsExtremeDesktop => IsExtremeLayout && !IsNarrow;
+    public bool IsLegacyOverview => IsLegacyDesktop && IsOverviewActive;
+    public double SidebarWidth => IsNarrow ? 232 : IsLegacyLayout ? 192 : IsExtremeLayout ? 178 : IsClassicLayout ? 232 : 240;
+    public double ShellGap => IsNarrow || !IsClassicLayout ? 0 : 14;
+    public double NavItemHeight => IsNarrow ? 44 : IsExtremeLayout ? 30 : CurrentTheme == UiTheme.Minimal ? 42 : 44;
+    public double TaskGroupHeight => IsNarrow ? 44 : IsExtremeLayout ? 30 : IsLegacyLayout ? 44 : CurrentTheme == UiTheme.Minimal ? 42 : 43;
+    public Thickness NavItemPadding => IsExtremeDesktop ? new Thickness(8, 4) : new Thickness(12, 6);
+    public Thickness TaskGroupPadding => IsExtremeDesktop ? new Thickness(7, 4) : new Thickness(9, 10);
+    public bool HidesOverviewTitle => IsLegacyLayout || IsExtremeDesktop;
+
+    private void NotifyLayout()
+    {
+        foreach (string property in new[] { nameof(IsClassicLayout), nameof(IsLegacyDesktop), nameof(IsExtremeDesktop),
+            nameof(IsLegacyOverview), nameof(SidebarWidth), nameof(ShellGap), nameof(NavItemHeight), nameof(TaskGroupHeight),
+            nameof(HidesOverviewTitle), nameof(RailWidth), nameof(TopbarHeight), nameof(MainPadding), nameof(ContentMinHeight), nameof(IsRailVisible),
+            nameof(NavItemPadding), nameof(TaskGroupPadding) })
+            Notify(property);
+        Overview.HideTitle = HidesOverviewTitle;
+        Overview.ContentHeight = ContentMinHeight;
+    }
+
+    public bool IsTaskSearchOpen
+    {
+        get => _isTaskSearchOpen;
+        set { if (SetField(ref _isTaskSearchOpen, value) && !value) TaskSearchText = string.Empty; }
+    }
+
+    public string TaskSearchText
+    {
+        get => _taskSearchText;
+        set { if (SetField(ref _taskSearchText, value ?? string.Empty)) RebuildTaskGroups(); }
+    }
 
     /// <summary>应用一条主题偏好（界面设置页调用）；systemDark 供 auto 模式解析。</summary>
     public void ApplyTheme(ThemePreference preference, bool systemDark = false)
@@ -171,7 +212,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
 
     public bool IsWide => !IsNarrow;
     public bool IsCompact => ViewportWidth <= CompactBreakpoint;
-    public double RailWidth => IsNarrow ? 360 : ViewportWidth > 1562.5 ? 320 : 292;
+    public double RailWidth => IsNarrow ? 360 : IsLegacyLayout ? 280 : IsExtremeLayout ? 244
+        : !IsClassicLayout ? 320 : ViewportWidth > 1562.5 ? 320 : 292;
     public double TopbarSpacing => IsNarrow ? 6 : 16;
 
     /// <summary>窄屏顶栏把面包屑贴右（上游 ≤950px 的顶栏布局），宽屏紧跟左侧开关。</summary>
@@ -180,12 +222,15 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public double ViewportHeight { get; private set; } = 820;
 
     /// <summary>顶栏行高：宽屏取上游 41.5px，窄屏 56px（apple.css:306）。</summary>
-    public double TopbarHeight => IsNarrow ? 56 : 41.5;
+    public double TopbarHeight => IsNarrow || IsLegacyLayout ? 56 : IsExtremeLayout ? 44 : IsClassicLayout ? 41.5 : 69;
 
     /// <summary>内容区内边距：宽屏 0 32 32、窄屏 28 18（apple.css:96 / 314，经典主题窄屏覆盖共享层）。</summary>
     public Thickness MainPadding => IsHomeActive
         ? new Thickness(0)
-        : IsNarrow ? new Thickness(18, 28, 18, 28) : new Thickness(32, 0, 32, 32);
+        : IsNarrow ? new Thickness(18, 28, 18, 28)
+        : IsLegacyLayout ? new Thickness(IsLegacyOverview ? RailWidth + 42 : 28, 14, 28, 24)
+        : IsExtremeLayout ? new Thickness(4)
+        : IsClassicLayout ? new Thickness(32, 0, 32, 32) : new Thickness(28, 0, 28, 24);
 
     /// <summary>
     /// 内容区至少可用的高度。上游 <c>main</c> 是 flex 列、总览的监控面板 <c>flex:1</c> 撑满剩余空间；
@@ -194,7 +239,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     /// </summary>
     public double ContentMinHeight =>
         // 减 2px 吸收布局取整：内容正好等于最小高度时，round 后的 extent 会比 viewport 略大而弹出滚动条。
-        Math.Max(200, ViewportHeight - TopbarHeight - MainPadding.Top - MainPadding.Bottom - 2);
+        Math.Max(200, ViewportHeight - TopbarHeight - (IsLegacyDesktop ? 42 : 0) - MainPadding.Top - MainPadding.Bottom - 2);
 
 
     public bool IsDrawerOpen
@@ -210,7 +255,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     }
 
     public bool IsScrimVisible => IsNarrow && (IsDrawerOpen || IsRailOpen);
-    public bool IsRailVisible => HasInstance && (IsWide || IsRailOpen);
+    public bool IsRailVisible => HasInstance && (IsWide || IsRailOpen) && (!IsLegacyDesktop || IsOverviewActive);
     public bool IsSidebarVisible => IsWide || IsDrawerOpen;
 
     /// <summary>有实例外壳还是无实例外壳（上游 App.tsx:242 按 instance 二分）。</summary>
@@ -250,6 +295,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
             Overview.ContentHeight = ContentMinHeight;
             Notify(nameof(ContentMinHeight));
             Notify(nameof(BreadcrumbTail));
+            NotifyLayout();
         }
     }
 
@@ -310,6 +356,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         Notify(nameof(ContentMinHeight));
         Notify(nameof(RailWidth));
         Notify(nameof(IsBreadcrumbVisible));
+        NotifyLayout();
     }
 
     private void BuildNavigation()
@@ -334,6 +381,12 @@ public sealed class ShellViewModel : INotifyPropertyChanged
             PrimaryNav.Add(new NavEntry("openSource", "开源项目", "ExternalLink", _activeNavKey == "openSource"));
         }
 
+        RebuildTaskGroups();
+    }
+
+    private void RebuildTaskGroups()
+    {
+        var expanded = TaskGroups.Where(group => group.IsExpanded).Select(group => group.Key).ToHashSet();
         TaskGroups.Clear();
         if (!HasInstance) return;
         // 分组与任务来自上游静态目录 menu.json + zh-CN i18n，顺序原样保留。
@@ -341,8 +394,13 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         {
             var entries = new List<TaskEntry>();
             for (var index = 0; index < tasks.Length; index++)
-                entries.Add(new TaskEntry(tasks[index], labels[index], groupLabel));
-            TaskGroups.Add(new TaskGroupEntry(group, groupLabel, icon, entries));
+            {
+                var entry = new TaskEntry(tasks[index], labels[index], groupLabel);
+                if (entry.Matches(TaskSearchText)) entries.Add(entry);
+            }
+            if (entries.Count > 0)
+                TaskGroups.Add(new TaskGroupEntry(group, groupLabel, icon, entries)
+                { IsExpanded = expanded.Contains(group) || !string.IsNullOrWhiteSpace(TaskSearchText) });
         }
     }
 
@@ -583,7 +641,12 @@ public sealed class TaskGroupEntry : INotifyPropertyChanged
 }
 
 /// <summary>侧栏任务分组下的一个任务（名称来自上游 Task.<key>.name）。</summary>
-public sealed record TaskEntry(string Key, string Label, string GroupTitle);
+public sealed record TaskEntry(string Key, string Label, string GroupTitle)
+{
+    public bool Matches(string query) => string.IsNullOrWhiteSpace(query)
+        || Label.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)
+        || GroupTitle.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase);
+}
 
 /// <summary>运行总览页：资源卡与运行监控（对齐上游 Overview.tsx + ResourceCards + MonitorPanel）。</summary>
 public sealed class OverviewViewModel : INotifyPropertyChanged
@@ -760,7 +823,16 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         {
             if (!SetField(ref _isWideLayout, value)) return;
             Notify(nameof(PanelHeight));
+            Notify(nameof(ResourceColumns));
         }
+    }
+
+    public int ResourceColumns => IsWideLayout ? 4 : 2;
+    private bool _hideTitle;
+    public bool HideTitle
+    {
+        get => _hideTitle;
+        set { if (SetField(ref _hideTitle, value)) Notify(nameof(PanelHeight)); }
     }
 
     /// <summary>总览页标题区高度：48 上边距 + 50 标题行 + 14 下边距（上游实测）。</summary>
@@ -776,7 +848,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     /// 窄屏按上游 apple.css:331 的 ≤950px 规则固定 520px。
     /// </summary>
     public double PanelHeight => IsWideLayout
-        ? Math.Max(320, ContentHeight - OverviewTitleBlockHeight - OverviewCardsBlockHeight)
+        ? Math.Max(320, ContentHeight - (HideTitle ? 0 : OverviewTitleBlockHeight) - OverviewCardsBlockHeight)
         : 520;
 
     /// <summary>内容区可用高度，由外壳在视口变化时写入（上游 main 的高度预算）。</summary>

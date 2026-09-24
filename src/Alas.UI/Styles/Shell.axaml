@@ -8,7 +8,7 @@
     <ControlTheme x:Key="NavItemTheme" TargetType="Button">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Padding" Value="12,11" />
+      <Setter Property="Padding" Value="12,6" />
       <Setter Property="CornerRadius" Value="{DynamicResource AlasNavItemRadius}" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="HorizontalContentAlignment" Value="Left" />
@@ -332,6 +332,35 @@
   </Style>
 
   <!-- 侧栏 -->
+  <Style Selector="UserControl.shell.extreme Button.nav-item">
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="MinHeight" Value="30" />
+  </Style>
+  <Style Selector="UserControl.shell.extreme Button.task-group">
+    <Setter Property="Padding" Value="7,4" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="MinHeight" Value="30" />
+  </Style>
+  <Style Selector="Button.task-submenu-item">
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="CornerRadius" Value="9" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+  <Style Selector="UserControl.shell.extreme Button.task-submenu-item">
+    <Setter Property="MinHeight" Value="26" />
+    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="FontSize" Value="11" />
+  </Style>
+  <Style Selector="UserControl.shell.legacy Button.task-submenu-item">
+    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="CornerRadius" Value="18" />
+  </Style>
+  <Style Selector="UserControl.shell.extreme TextBlock.brand-title">
+    <Setter Property="FontSize" Value="18" />
+  </Style>
   <Style Selector="Border.sidebar">
     <Setter Property="Background" Value="{DynamicResource AlasSidebarBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource AlasGlassEdgeBrush}" />
@@ -369,7 +398,7 @@
 
   <!-- 顶栏 -->
   <Style Selector="Border.topbar">
-    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Background" Value="{DynamicResource AlasSurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource AlasGlassEdgeBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="26,0,0,26" />
@@ -481,7 +510,7 @@
     <Setter Property="BoxShadow" Value="{DynamicResource AlasRailWaitingShadow}" />
   </Style>
   <Style Selector="Border.task-state">
-    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="CornerRadius" Value="6" />
     <Setter Property="Padding" Value="7,4" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="BorderBrush" Value="{DynamicResource AlasBadgeBorderBrush}" />

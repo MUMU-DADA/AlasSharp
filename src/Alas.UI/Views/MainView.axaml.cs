@@ -96,7 +96,8 @@ public partial class MainView : UserControl
         if (args.PropertyName is nameof(ShellViewModel.IsNarrow) or nameof(ShellViewModel.HasInstance)
             or nameof(ShellViewModel.IsDrawerOpen)
             or nameof(ShellViewModel.IsRailOpen) or nameof(ShellViewModel.IsRailVisible)
-            or nameof(ShellViewModel.ViewportWidth) or nameof(ShellViewModel.ViewportHeight))
+            or nameof(ShellViewModel.ViewportWidth) or nameof(ShellViewModel.ViewportHeight)
+            or nameof(ShellViewModel.CurrentTheme) or nameof(ShellViewModel.IsLegacyOverview))
             ApplyLayout();
         if (args.PropertyName is nameof(ShellViewModel.InstanceName) or nameof(ShellViewModel.IsMeowfficerActive))
             UpdateMeowfficerPage();
@@ -110,40 +111,57 @@ public partial class MainView : UserControl
 
     private void ApplyLayout()
     {
-        var narrow = Model.IsNarrow;
-        Layout.ColumnDefinitions = narrow
-            ? new ColumnDefinitions("0,*,0")
-            // 无实例时上游只有两列（232 + 内容），右栏列不占位：多一列会多算一次列间距。
-            : Model.HasInstance
-                ? new ColumnDefinitions($"232,*,{Model.RailWidth}")
-                : new ColumnDefinitions("232,*");
-        Layout.ColumnSpacing = narrow ? 0 : 14;
-        // 整份替换 ColumnDefinitions 后，子元素会保留上一次排布算出的「单元格编号」
-        // （实测：无实例两列 → 有实例三列时，右栏仍按「被夹到最后一列」的位置摆放，
-        //  停在内容列右缘 682 而不是 988）。重新写一遍单元格编号并让网格失效重排。
-        Grid.SetColumn(RailPanel, 1);
-        Grid.SetColumn(RailPanel, 2);
-        Grid.SetColumn(MainScroll, 1);
+        bool narrow = Model.IsNarrow;
+        bool legacy = Model.IsLegacyDesktop;
+        bool inlineRail = Model.IsLegacyOverview;
+        bool railColumn = Model.IsRailVisible && !legacy && !narrow;
+        Layout.ColumnDefinitions = narrow ? new ColumnDefinitions("0,*,0")
+            : railColumn ? new ColumnDefinitions($"{Model.SidebarWidth},*,{Model.RailWidth}")
+            : new ColumnDefinitions($"{Model.SidebarWidth},*");
+        Layout.ColumnSpacing = Model.ShellGap;
+        Layout.RowDefinitions = legacy ? new RowDefinitions("56,42,*") : new RowDefinitions("Auto,*");
+        int contentRow = legacy ? 2 : 1;
+        Grid.SetRow(SidebarPanel, legacy ? 1 : 0);
+        Grid.SetRowSpan(SidebarPanel, 2);
         Grid.SetColumn(SidebarPanel, 0);
+        Grid.SetColumn(TopbarPanel, legacy ? 0 : 1);
+        Grid.SetColumnSpan(TopbarPanel, legacy || railColumn ? 3 : 2);
+        foreach (var page in new Control[] { MainScroll, ConfigManagerHost, DevToolsHost })
+        {
+            Grid.SetRow(page, contentRow);
+            Grid.SetColumn(page, 1);
+        }
+        Grid.SetRow(RailPanel, contentRow);
+        // Reassign a different column first: Avalonia otherwise keeps the old cell
+        // after the column definitions change from two columns to three.
+        Grid.SetColumn(RailPanel, inlineRail ? 2 : 1);
+        Grid.SetColumn(RailPanel, inlineRail ? 1 : 2);
+        Grid.SetRowSpan(Scrim, legacy ? 3 : 2);
+        Topbar.SetBreadcrumbHost(legacy ? LegacyNavigationHost : null);
         Layout.InvalidateMeasure();
         Layout.InvalidateArrange();
-        RailPanel.InvalidateMeasure();
-        RailPanel.InvalidateArrange();
 
-        SidebarPanel.Width = 232;
+        SidebarPanel.Width = Model.SidebarWidth;
         SidebarPanel.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left;
         SidebarPanel.ZIndex = narrow ? 10 : 0;
-        SidebarPanel.RenderTransform = narrow
-            ? Model.IsDrawerOpen ? DrawerOpen : DrawerClosed
-            : None;
+        SidebarPanel.RenderTransform = narrow ? Model.IsDrawerOpen ? DrawerOpen : DrawerClosed : None;
         SidebarPanel.BoxShadow = Shadow(narrow ? "AlasDrawerShadow" : "AlasSidebarShadow");
+        SidebarPanel.CornerRadius = Model.IsClassicLayout ? new CornerRadius(0, 26, 26, 0) : new CornerRadius(0);
+        SidebarPanel.Padding = Model.IsExtremeDesktop ? new Thickness(8, 0, 8, 8)
+            : new Thickness(14, legacy ? 14 : 0, 14, 14);
+        Sidebar.ApplySkin();
 
         TopbarPanel.Height = Model.TopbarHeight;
-        TopbarPanel.Margin = new Thickness(narrow ? 12 : 24, 0, 0, 0);
-        TopbarPanel.Padding = narrow ? new Thickness(10, 5.75, 10, 5.75) : new Thickness(18, 5.75, 18, 5.75);
+        TopbarPanel.Margin = narrow ? new Thickness(12, 0, 0, 0)
+            : Model.IsClassicLayout ? new Thickness(24, 0, 0, 0) : new Thickness(0);
+        TopbarPanel.Padding = narrow ? new Thickness(10, 5.75)
+            : Model.IsClassicLayout ? new Thickness(18, 5.75) : new Thickness(12, 0);
+        TopbarPanel.CornerRadius = Model.IsClassicLayout ? new CornerRadius(26, 0, 0, 26) : new CornerRadius(0);
 
         RailPanel.Width = narrow ? Math.Min(360, Math.Max(280, Model.ViewportWidth - 12)) : Model.RailWidth;
-        RailPanel.Margin = narrow ? new Thickness(0, Model.TopbarHeight, 0, 0) : new Thickness(0);
+        RailPanel.Margin = narrow ? new Thickness(0, Model.TopbarHeight, 0, 0)
+            : inlineRail ? new Thickness(28, 14, 0, 24) : new Thickness(0);
+        RailPanel.HorizontalAlignment = inlineRail ? Avalonia.Layout.HorizontalAlignment.Left : Avalonia.Layout.HorizontalAlignment.Right;
         RailPanel.ZIndex = narrow ? 10 : 0;
         RailPanel.BoxShadow = Shadow(narrow ? "AlasRailDrawerShadow" : "AlasRailShadow");
     }

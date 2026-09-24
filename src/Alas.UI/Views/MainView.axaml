@@ -2,6 +2,7 @@
              xmlns:vm="using:Alas.UI.ViewModels" xmlns:views="using:Alas.UI.Views" xmlns:statistics="using:Alas.UI.Statistics" xmlns:taskeditor="using:Alas.UI.TaskEditor" xmlns:configs="using:Alas.UI.ConfigManager" xmlns:dev="using:Alas.UI.DevTools"
              x:Class="Alas.UI.Views.MainView" x:DataType="vm:ShellViewModel" Classes="shell"
              Classes.narrow="{Binding IsNarrow}" Classes.compact="{Binding IsCompact}"
+             Classes.extreme="{Binding IsExtremeDesktop}" Classes.legacy="{Binding IsLegacyDesktop}"
              FontFamily="{DynamicResource AlasFontSans}" FontSize="14"
              Foreground="{DynamicResource AlasTextBrush}" Background="{DynamicResource AlasBgBrush}">
   <Grid x:Name="Root">
@@ -10,6 +11,9 @@
               HorizontalAlignment="Left">
         <views:SidebarView x:Name="Sidebar" />
       </Border>
+
+      <Panel x:Name="LegacyNavigationHost" Grid.Row="1" Grid.Column="1" Margin="28,0"
+             IsVisible="{Binding IsLegacyDesktop}" />
 
       <Border x:Name="TopbarPanel" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" Classes="topbar"
               Height="41.5" Margin="24,0,0,0" Padding="18,5.75" VerticalAlignment="Top">

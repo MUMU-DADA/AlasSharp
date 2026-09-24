@@ -7,4 +7,12 @@ public partial class TopBarView : UserControl
 {
     public TopBarView() => InitializeComponent();
 
+    public void SetBreadcrumbHost(Panel? host)
+    {
+        var target = host ?? TopbarRoot;
+        if (ReferenceEquals(Breadcrumb.Parent, target)) return;
+        if (Breadcrumb.Parent is Panel previous) previous.Children.Remove(Breadcrumb);
+        target.Children.Add(Breadcrumb);
+    }
+
 }
