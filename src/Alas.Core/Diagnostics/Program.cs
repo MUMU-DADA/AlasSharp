@@ -410,6 +410,16 @@ public static class DiagnosticCommands
                 }
                 return CampaignLoopCheck.Run(dataDir, loopFixture);
             }
+            if (command == "r5-path")
+            {
+                // 寻路成本场（离线）：按上游 find_path_initial 语义算成本与连接，供逐格对拍。
+                string pathFixture = Path.Combine(paths.ToolsDirectory, "diagnostics", "r5-path-fixture.json");
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--fixture") pathFixture = args[i + 1];
+                }
+                return CampaignPathCheck.Run(pathFixture);
+            }
             if (command == "r5-exec")
             {
                 // 原语执行闭环（干跑）：读夹具、驱动已登记原语、记录动作，不连设备。
@@ -506,7 +516,7 @@ public static class DiagnosticCommands
                 _ => Fail($"未知命令: {command}"
                            + "（可用: verify / list / show / imaging / matching / vision / campaign / "
                            + "map / map-ir / capture / device / queue / plan-queue / report / runs / run / goto / "
-                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop）"),
+                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path）"),
             };
         }
         catch (Exception ex)

@@ -99,6 +99,7 @@ STEPS = [
     ('verify_r5_selection.py', 'R5 目标选择对拍（C# 移植 vs 上游 Filter，离线无设备）', False, 180),
     ('verify_r5_execution.py', 'R5 计划→原语→动作闭环（干跑记录 vs 上游选敌规则）', False, 180),
     ('verify_r5_loop.py', 'R5 关卡循环（run/execute_a_battle/battle_function vs 上游钩子选择规则）', False, 180),
+    ('verify_r5_path.py', 'R5 寻路成本场（vs 上游 find_path_initial / _find_path，逐格对拍）', False, 180),
     ('verify_os_state.py', 'R2 大世界/海域只读探针（存盘帧；capture 前置条件口径）', False, 600),
     ('verify_os_action.py', 'R2 大世界动作入口（真实 CLI dry-run 拒绝动作并留工件）', False, 300),
     ('verify_os_combat_reentry.py', 'R2 大世界自动寻敌跳过准备画面后重新接管战斗', False, 120),

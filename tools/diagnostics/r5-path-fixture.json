@@ -1,0 +1,76 @@
+{
+  "note": "R5 寻路夹具：供 `Alas.Server r5-path --fixture <本文件>` 与 tools/diagnostics/verify_r5_path.py 使用。rows 用上游地图令牌写法（-- 空地 / ++ 陆地 / ME 可能有敌 / MS 可能有塞壬 / MY 可能有神秘 / SP 出生点）。对拍时 Python 侧会用上游 module.map.map_base.CampaignMap 跑同一份 rows。",
+  "cases": [
+    {
+      "name": "G4：从 A1 出发，陆地 `++` 阻挡，`ME` 可进但不继续扩散",
+      "rows": [
+        "SP -- -- ++ ++ -- --",
+        "-- ME -- -- -- -- --",
+        "-- -- ++ -- ME -- --",
+        "-- -- -- -- -- -- --"
+      ],
+      "start": "A1",
+      "destination": "G4",
+      "has_ambush": false,
+      "has_enemy": true
+    },
+    {
+      "name": "G4：has_ambush=true（空地进入代价 10）",
+      "rows": [
+        "SP -- -- ++ ++ -- --",
+        "-- ME -- -- -- -- --",
+        "-- -- ++ -- ME -- --",
+        "-- -- -- -- -- -- --"
+      ],
+      "start": "A1",
+      "destination": "G4",
+      "has_ambush": true,
+      "has_enemy": true
+    },
+    {
+      "name": "G4：has_enemy=false（敌方格也继续扩散）",
+      "rows": [
+        "SP -- -- ++ ++ -- --",
+        "-- ME -- -- -- -- --",
+        "-- -- ++ -- ME -- --",
+        "-- -- -- -- -- -- --"
+      ],
+      "start": "A1",
+      "destination": "G4",
+      "has_ambush": false,
+      "has_enemy": false
+    },
+    {
+      "name": "识别结果把 B2 标成敌人：非海域格不再扩散",
+      "rows": [
+        "SP -- -- ++ ++ -- --",
+        "-- ME -- -- -- -- --",
+        "-- -- ++ -- ME -- --",
+        "-- -- -- -- -- -- --"
+      ],
+      "start": "A1",
+      "destination": "G4",
+      "has_ambush": false,
+      "has_enemy": true,
+      "cells": [
+        { "location": "B2", "is_enemy": true }
+      ]
+    },
+    {
+      "name": "机关阻挡：C3 被机关挡住，从 D3 绕行",
+      "rows": [
+        "SP -- -- -- --",
+        "-- -- -- -- --",
+        "-- -- ++ -- --",
+        "-- -- -- -- --"
+      ],
+      "start": "A1",
+      "destination": "E4",
+      "has_ambush": false,
+      "has_enemy": true,
+      "cells": [
+        { "location": "C3", "is_mechanism_block": true }
+      ]
+    }
+  ]
+}

@@ -22,6 +22,10 @@ public sealed record CampaignGrid(
     bool IsFortress = false,
     bool MayBoss = false,
     bool MayAmmo = false,
+    bool MayEnemy = false,
+    bool MayMystery = false,
+    bool MaySiren = false,
+    bool MayAmbush = false,
     bool IsCaughtBySiren = false,
     bool IsFleet = false,
     bool IsCleared = false,
@@ -123,6 +127,30 @@ public static class CampaignLocations
     {
         if (x is < 0 or > 25) throw new NotSupportedException($"列 {x} 超出 A–Z（未移植多字母列名）");
         return $"{(char)('A' + x)}{y + 1}";
+    }
+
+    /// <summary>上游 <c>node2location()</c> 的逆变换：<c>B8</c> → <c>(1, 7)</c>。</summary>
+    public static (int X, int Y) ToCoordinates(string node)
+    {
+        if (string.IsNullOrEmpty(node)) throw new NotSupportedException("格子节点名为空");
+        char column = char.ToUpperInvariant(node[0]);
+        if (column is < 'A' or > 'Z' || !int.TryParse(node[1..], out int row) || row < 1)
+        {
+            throw new NotSupportedException($"无法解析格子节点名：{node}");
+        }
+        return (column - 'A', row - 1);
+    }
+
+    /// <summary>越界坐标返回 false（用于四邻接判定，不抛异常）。</summary>
+    public static bool TryToNode(int x, int y, out string node)
+    {
+        if (x is < 0 or > 25 || y < 0)
+        {
+            node = "";
+            return false;
+        }
+        node = $"{(char)('A' + x)}{y + 1}";
+        return true;
     }
 }
 

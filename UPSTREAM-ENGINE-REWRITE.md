@@ -430,6 +430,34 @@
 > （`module/map/map_operation.py:410`）。干跑把"撤退 ⇒ 本关结束"当作近似；**成功通关时的结束时机**
 > 仍需模拟器验证（这是 P2 硬要求里剩下的关键一项）。
 
+#### P2-11 已完成：寻路成本场（对拍逐格一致）（2026-09-26）
+
+`src/Alas.Core/Campaign/CampaignPathfinder.cs`，逐条对应上游 `module/map/map_base.py`：
+
+| 上游 | C# 移植 | 关键语义 |
+| --- | --- | --- |
+| `grid_connection_initial()` | `Neighbours()` | 四邻接（上下左右），只连形状范围内存在的格子；越界坐标不抛异常（上游用 `if arr in total` 天然过滤） |
+| `find_path_initial(location, has_ambush, has_enemy)` | `FindPathInitial()` | 起点 cost=0；进入代价 `1`（或 `may_ambush` 时 `ambush_cost=10/1`）；陆地与机关阻挡不可进入；**非海域格不继续扩散**（除非 `has_enemy=False`）；等代价且横向相邻（x 差 1）时改写 connection——上游的确定性 tie-break 照抄 |
+| `_find_path(location)` | `FindPath()` | 沿 connection 回溯路线；上游的 `Route too long > 30` 只记 warning |
+
+**`may_ambush` 的来源照抄上游 `GridInfo.decode()`**：令牌不是 `ME/MB/MM/MA` 之一即为真
+（`--` 空地 → may_ambush=True；`ME` 可能有敌 → False）。
+
+**对拍方式（真跑上游实现）**：新增只读命令 `Alas.Server r5-path --fixture tools/diagnostics/r5-path-fixture.json`
++ 检查脚本 `tools/diagnostics/verify_r5_path.py`——后者**构造上游 `CampaignMap` 并在其上跑
+`find_path_initial` / `_find_path`**，与 C# 的成本场、连接、路线逐格比对：
+
+```
+[r5-path] 用例 5 个，逐格比较 132 格；连接差异（等代价）0 处 → PASS
+```
+
+用例覆盖：陆地阻挡、`ME` 可进不扩散、`has_ambush=true`（代价 10）、`has_enemy=false`（敌人格也扩散）、
+识别结果标成敌人（非海域不扩散）、机关阻挡绕行。已登记进 `verify_all.py`。
+
+**这一步的意义**：剩余 54 步里最大的一块（依赖寻路的 35 步：`brute_clear_boss` 20、`fleet_2_rescue` 4、
+`fleet_2_step_on` 11）此前完全没有地基；现在成本场与路线已经与上游逐格一致，`brute_find_roadblocks`
+等上层算法可以在其上继续移植。
+
 #### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
 
 | 新增原语 | 对应上游 | 关键语义 |
