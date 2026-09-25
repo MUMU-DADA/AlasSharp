@@ -113,6 +113,38 @@ def build_cases(states: int, seed: int) -> list[dict]:
     return cases
 
 
+class FleetProxy:
+    """舰队代理：把"哪一队"带进记录（上游 `self.fleet_2.goto(...)` 就是切到 2 队再走）。"""
+
+    def __init__(self, stub: "RecordingStub", index: int) -> None:
+        self._stub = stub
+        self._index = index
+
+    def switch_to(self, *args, **kwargs):
+        # 与 C# `RecordingCampaignHost.EnsureFleet` 同语义：**只在舰队真的变化时才记一次**。
+        # （上游快照里 `Fleet.switch_to` 只是基类的 `pass`，真正的设备实现不在快照里；
+        #  两边统一按"变化才记录"对齐，避免把同一次切换记成两次。）
+        if self._stub.fleet_current_index != self._index:
+            self._stub.calls.append(("switch_to", str(self._index)))
+            self._stub.fleet_current_index = self._index
+
+    def goto(self, location, expected="", **kwargs):
+        # 上游 `self.fleet_2.goto(...)` 隐含"用 2 队走"（真机实现会确保舰队切换，快照里看不到），
+        # C# 侧是显式 `EnsureFleet(2)` + `Goto` —— 这里把隐含的切换也记上，两边才可比。
+        if self._stub.fleet_current_index != self._index:
+            self._stub.calls.append(("switch_to", str(self._index)))
+            self._stub.fleet_current_index = self._index
+        self._stub.calls.append(("goto", str(location)))
+
+    def clear_chosen_enemy(self, grid, expected="", fleet=None):
+        self._stub.calls.append(("clear_chosen_enemy", str(grid)))
+        self._stub.battle_count += 1
+
+    def __getattr__(self, name):
+        # 其余属性/方法透传到宿主替身（如 `fleet_1.fleet_1_location` 之类）
+        return getattr(self._stub, name)
+
+
 class RecordingStub:
     """替身：只提供 config / 舰队属性 / 记录型动作；`map` 用真实 `CampaignMap`。
 
@@ -144,18 +176,19 @@ class RecordingStub:
         from module.map.map import Map  # noqa: PLC0415
         return Map.select_grids(grids, **kwargs)
 
-    # 舰队属性：上游这几个属性会先 fleet_ensure 再返回 self，这里只需要"返回 self"的语义
+    # 舰队属性：上游这几个属性会先 fleet_ensure 再返回舰队对象（`self.fleet_2.goto(...)`）。
+    # 返回**按编号记录的代理**，这样"哪一队做的"也能进对拍序列（上游切舰队是真实设备动作）。
     @property
     def fleet_1(self):
-        return self
+        return FleetProxy(self, 1)
 
     @property
     def fleet_2(self):
-        return self
+        return FleetProxy(self, 2)
 
     @property
     def fleet_boss(self):
-        return self
+        return FleetProxy(self, self.fleet_boss_index)
 
     @property
     def fleet_boss_index(self):
@@ -176,7 +209,9 @@ class RecordingStub:
         return None
 
     def ensure_no_info_bar(self, *args, **kwargs):
+        # C# 侧也把这个记为动作，所以要进同一条序列（否则序列对拍会假红）
         self.ensure_no_info_bar_calls += 1
+        self.calls.append(("ensure_no_info_bar", ""))
 
     def switch_to(self, *args, **kwargs):
         self.calls.append(("switch_to", "self"))
@@ -297,7 +332,48 @@ def upstream_target(case: dict) -> tuple[str | None, bool | None]:
         result = method(stub)
     target = next((location for name, location in stub.calls
                    if name in ("clear_chosen_enemy", "goto")), None)
-    return target, result, costs
+    return target, result, costs, normalize_upstream(stub.calls)
+
+
+# 上游替身记录到的调用 → 与 C# `Actions` 可比的 (操作, 目标) 序列。
+# 只保留**设备动作**：上游的 `show_select_grids`/`show_fleet`/`map.show_cost` 是界面/日志行为，
+# `logger` 更不是动作；`switch_to` 是切舰队（C# 侧记为 `ensure_fleet`）。
+UPSTREAM_ACTION_MAP = {
+    "clear_chosen_enemy": "clear_chosen_enemy",
+    "goto": "goto",
+    "submarine_move_near_boss": "submarine_move_near_boss",
+    "switch_to": "ensure_fleet",
+    "clear_chosen_mystery": "clear_chosen_mystery",
+    "ensure_no_info_bar": "ensure_no_info_bar",
+}
+
+
+def normalize_upstream(calls: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    normalized = []
+    for name, argument in calls:
+        op = UPSTREAM_ACTION_MAP.get(name)
+        if op is None:
+            continue
+        if op == "ensure_fleet":
+            normalized.append((op, argument))       # 代理记录的就是舰队编号
+            continue
+        normalized.append((op, argument))
+    return normalized
+
+
+def normalize_csharp(actions: list[str] | None) -> list[tuple[str, str]]:
+    """C# 记录的动作字符串 → (操作, 目标)。纯状态操作（如清塞壬标记）不算设备动作，跳过。"""
+    normalized = []
+    for action in actions or []:
+        op = action.split("(", 1)[0].strip()
+        if op in ("clear_caught_by_siren_flags",):
+            continue
+        # C# 侧的动作名 → 与上游替身记录一致的名字
+        op = {"fleet_ensure": "ensure_fleet"}.get(op, op)
+        inside = action[len(op) + 1:].rstrip(")") if "(" in action else ""
+        first = inside.split(",", 1)[0].strip()
+        normalized.append((op, first))
+    return normalized
 
 
 # 只比**排序键**：上游 `SelectedGrids.add` 的 `set` 打乱的是"谁先被加入"，
@@ -318,6 +394,26 @@ def same_rank(left: dict, right: dict) -> bool:
     return (left.get("cost", 9999) < 9999) == (right.get("cost", 9999) < 9999)
 
 
+def only_submarine_arg_differs(left: list[tuple[str, str]], right: list[tuple[str, str]]) -> bool:
+    """两条序列是否**只在 `submarine_move_near_boss` 的实参**上不同。
+
+    上游 `clear_boss` 传给它的是 `grids[0]`，而那个 `grids` 是 `add()` 之后**未排序**的集合——
+    第一个元素取决于身份哈希序（与 `SelectedGrids.add` 用 `set` 同一个根因），不可复现。
+    真正有意义的动作 `clear_chosen_enemy(sorted[0])` 两边一致（目标比较已覆盖）。
+    """
+    if len(left) != len(right) or not left:
+        return False
+    differing = False
+    for (left_op, left_arg), (right_op, right_arg) in zip(left, right):
+        if left_op != right_op:
+            return False
+        if left_arg != right_arg:
+            if left_op != "submarine_move_near_boss":
+                return False
+            differing = True
+    return differing
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="R5 复合原语扫描")
     # 默认 20 个状态：上游 `clear_potential_boss` 的路障兜底会**指数枚举**敌人子集
@@ -332,12 +428,12 @@ def main() -> int:
 
     # 第一遍：跑上游拿期望，并把**上游算出的成本场**写回夹具，
     # 这样 C# 侧读到的 cost/cost_1/cost_2 与上游看到的完全一致（否则是两套状态）。
-    expected_by_name: dict[str, str | None] = {}
+    expected_by_name: dict[str, tuple[str | None, list[tuple[str, str]]]] = {}
     skipped: dict[str, int] = {}
     skip_examples: dict[str, list[str]] = {}
     for case in cases:
         try:
-            target, _, costs = upstream_target(case)
+            target, _, costs, sequence = upstream_target(case)
         except Exception as error:                     # noqa: BLE001 —— 上游跑不动就如实记，不算通过
             key = f"上游执行失败：{type(error).__name__}: {error}"[:110]
             skipped[key] = skipped.get(key, 0) + 1
@@ -345,7 +441,7 @@ def main() -> int:
             if len(bucket) < 3:
                 bucket.append(case["name"])
             continue
-        expected_by_name[case["name"]] = target
+        expected_by_name[case["name"]] = (target, sequence)
         for grid in case["grids"]:
             if grid["location"] in costs:
                 grid["cost"], grid["cost_1"], grid["cost_2"] = costs[grid["location"]]
@@ -364,7 +460,12 @@ def main() -> int:
 
     mismatches: list[tuple[str, str, str]] = []
     artifacts: list[tuple[str, str, str]] = []
+    sequence_only_diffs: list[tuple[str, str, str]] = []
+    dry_run_prefix: list[tuple[str, str, str]] = []
+    order_diffs: list[tuple[str, str, str]] = []
+    set_order: list[tuple[str, str, str]] = []
     compared = 0
+    sequence_compared = sequence_identical = 0
     for case in cases:
         result = results.get(case["name"])
         if result is None:
@@ -372,8 +473,36 @@ def main() -> int:
             continue
         if case["name"] not in expected_by_name:
             continue                                   # 上游侧跳过过，如实计入 skipped
-        expected = expected_by_name[case["name"]]
+        expected, expected_sequence = expected_by_name[case["name"]]
         compared += 1
+
+        # **整条动作序列**对拍（比"只看第一个目标"强：能抓到"打完又去踩 may_boss"这类后续动作）。
+        actual_sequence = normalize_csharp(result.get("actions"))
+        sequence_compared += 1
+        if actual_sequence == expected_sequence:
+            sequence_identical += 1
+        elif actual_sequence[:1] != expected_sequence[:1]:
+            # 第一动作就不同：可能是等价位集合序伪影（见下），也可能是**动作先后顺序**不同。
+            # 单列出来（只看"目标"时它们可能被判成一致），报告里带例子便于判断性质。
+            if only_submarine_arg_differs(actual_sequence, expected_sequence):
+                set_order.append((case["name"], case["kind"], f"C# {actual_sequence} vs 上游 {expected_sequence}"))
+            else:
+                order_diffs.append((case["name"], case["kind"],
+                                    f"C# {actual_sequence} vs 上游 {expected_sequence}"))
+        elif (actual_sequence
+              and len(actual_sequence) < len(expected_sequence)
+              and expected_sequence[:len(actual_sequence)] == actual_sequence
+              and all(item == actual_sequence[-1] for item in expected_sequence[len(actual_sequence):])):
+            # **干跑前缀**：上游那种"靠设备状态变化才会停"的循环（如 `fleet_2_protect` 的 20 轮），
+            # 干跑不改变状态，C# 只做一轮就退出（`Fleet2Protect`/`ClearAllMystery` 里都写明了）。
+            # 上游在替身上不会停，于是记满 20 轮同样的动作 —— 这是**有意的偏离**，单列不记为不一致。
+            dry_run_prefix.append((case["name"], case["kind"],
+                                   f"C# {len(actual_sequence)} 步 vs 上游 {len(expected_sequence)} 步"))
+        else:
+            sequence_only_diffs.append((
+                case["name"], f"{case['kind']}",
+                f"C# {actual_sequence} vs 上游 {expected_sequence}"))
+
         if result["selected"] != expected:
             # 上游 `SelectedGrids.add` 是 `set(self.grids + grids.grids)`——**走哈希集合**，
             # 于是"追加顺序"其实是身份哈希序：等 (weight, cost) 的格子谁排前面不可复现。
@@ -385,6 +514,7 @@ def main() -> int:
                 continue
             mismatches.append((case["name"], f"{case['kind']} {json.dumps({k: v for k, v in case.items() if k not in ('grids', 'name', 'kind')}, ensure_ascii=False)}",
                                f"C# {result['selected']!r} vs 上游 {expected!r}"))
+    mismatches.extend(sequence_only_diffs)
 
     lines = ["# R5 复合原语扫描（C# 原语 vs 上游真实方法）", "",
              "> 本报告由 `tools/diagnostics/r5_composite_sweep.py` 重建，不手写。",
@@ -395,8 +525,16 @@ def main() -> int:
              f"- 状态数：**{options.states}**（seed={options.seed}，每种状态 × {len(PRIMITIVES)} 原语 × {len(CONFIGS)} 配置）",
              f"- 用例数：**{len(cases)}**；实际比较 **{compared}**",
              f"- 不一致：**{len(mismatches)}**",
+             f"- **动作序列对拍**：比较 {sequence_compared} 条，完全相同 {sequence_identical}；"
+             f"干跑前缀（有意偏离）{len(dry_run_prefix)} 条；"
+             f"集合序伪影（只在 `submarine_move_near_boss` 实参上不同）{len(set_order)} 条；"
+             f"其余顺序差异 {len(order_diffs)} 条",
              f"- 等价位**集合序伪影**：**{len(artifacts)}** 处（上游 `SelectedGrids.add` 走 `set`，"
              f"等 weight/cost 的格子谁在前不可复现；两侧都选中同价位格子）", ""]
+    if order_diffs:
+        lines += ["## 第一动作不同（前 10 条，需人工判断性质）", "", "| 用例 | 种类 | 序列 |", "| --- | --- | --- |"]
+        lines += [f"| {name} | {kind} | {detail} |" for name, kind, detail in order_diffs[:10]]
+        lines.append("")
     if artifacts:
         lines += ["## 集合序伪影（前 10 条，信息项）", "", "| 用例 | C# | 上游 |", "| --- | --- | --- |"]
         lines += [f"| {name} | `{left}` | `{right}` |" for name, left, right in artifacts[:10]]
