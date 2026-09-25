@@ -61,7 +61,17 @@ class UpstreamGrid:
 
 
 def grid_str(item: dict) -> str:
-    """上游 GridInfo.encode() 的敌人分支：scale + genre 首字母（无则 E）。"""
+    """上游 `GridInfo.encode()`（`module/map_detection/grid_info.py`）的**前几支**。
+
+    分支顺序必须照抄上游，否则会得出错的期望（实测踩过）：
+        `++`（is_land）→ `BO`（is_boss）→ 塞壬分支 → **敌人**分支 `{scale}{genre[0]|E}` → …
+    原来的替身只写了敌人分支，`is_boss` 的格子被当成 `1E` 之类，于是扫描报了 421 处
+    "不一致"——**其实是替身不忠实**，不是引擎选错。
+    """
+    if item.get("is_land"):
+        return "++"
+    if item.get("is_boss"):
+        return "BO"
     if not item.get("is_enemy"):
         return ""
     genre = item.get("enemy_genre") or ""

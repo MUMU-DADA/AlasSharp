@@ -24,8 +24,8 @@ PYTHON = ROOT / ".runtime" / "venv314" / "Scripts" / "python.exe"
 SWEEP = ROOT / "tools" / "diagnostics" / "r5_selection_sweep.py"
 REPORT = ROOT / "docs" / "archive" / "reports" / "r5-selection-sweep.md"
 
-# 已声明上限（只许下降）：当前实测 421/2166。下次把选择语义修对之后要把它调小。
-MAX_MISMATCHES = 421
+# 已声明上限（只许下降）：**0**。曾经因为替身不忠实（漏了 boss/land 分支）报过 421 处假红，
+MAX_MISMATCHES = 0
 
 
 def main() -> int:
