@@ -50,6 +50,17 @@
 3. **运行期标志**：`self.map_is_clear_mode` 由上游 handler 层设置（`module/handler/fast_forward.py` 的 `handle_fast_forward`），语义是`map_has_clear_mode and config.Campaign_UseClearMode` —— **已实现**（默认没开快进 → 确定为假；开了但还没识别到 `map_has_clear_mode` → 阻塞报原因）。**更正**：本报告此前写成「上游快照里只有使用、没有定义」，那是本机 grep 用错参数（`-Include` 在递归下漏扫 `module/handler/`）造成的误判；快照里该文件与完整仓库哈希一致；
 4. 其它形态（`compare` 条件、`for` 循环、`raise` 体）另计，需要单独设计，不要硬塞进上面的结构。
 
+## 剩下这几个为什么先不做（按出现次数算成本/收益）
+
+| 偏门写法 | 全库出现 | 涉及文件 | 结论 |
+| --- | --- | --- | --- |
+| 改写地图数据 `self.map.weight_data = …` | 3 处 | `campaign_9_2` 一个文件 | 只值 1 个钩子，不做 |
+| 动态派发 `getattr`/`setattr` | 1 处 | `event_20230525_cn/sp` 一个文件 | 运行时拼函数名，静态表达不了，不做 |
+| 局部路段表 `road_x = [road_y]` | 4 处 | `campaign_7_3` 一个文件 | 只值 1 个钩子，不做 |
+| `FUNCTION_NAME_BASE` 拼函数名 | 5 处 | `campaign_15_1..15_4` | 只有 2 个钩子受影响，其余已可表达；不做 |
+
+判断依据：这四类各自只影响 **1-2 个钩子**，而每加一种语言特性都要动导出器 + 执行器 + 检查三处；相比之下**设备路径**（`loop=csharp` 接线与同局对照）才是剩下的主要工作。棘轮基线会保证这几个数不会再涨。
+
 ## 已经量化过、结论是「先不做」的两条路
 
 | 设想 | 量化结果 | 为什么不做 |

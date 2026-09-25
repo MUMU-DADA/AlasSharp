@@ -835,14 +835,16 @@ C# 侧新增 `CampaignCallTranslator`（纯函数）：把计划步骤翻成"上
 
 ```text
 # 1) 同局对照运行：生产路径仍是上游 Campaign.run()，loop 默认 shadow（记录上游动作与日志）
-Alas.Server queue --file <队列.json> --run --allow-actions --artifacts <运行目录>
+Alas.Server queue --file tools/diagnostics/r5-evidence-queue.json --run --allow-actions --artifacts <运行目录>
 
 # 2) 拿这次运行目录做三层对照（决策/动作/路线），不需要再连设备
 Alas.Server r5-diff --run <运行目录> --json
 ```
 
-- 队列里放一个 `campaign_batch` 任务、章节写 `campaign.campaign_main.campaign_1_1`（与既有证据
-  `tools/diagnostics/evidence/20260923T144951/` 同形），这样结果判定仍由 `sortie-result/1` 生产方给出。
+- 队列文件已经在仓库里（`tools/diagnostics/r5-evidence-queue.json`）：一个 `campaign_batch`
+  任务、章节写 `campaign.campaign_main.campaign_1_1`（与既有证据
+  `tools/diagnostics/evidence/20260923T144951/` 同形）+ 一个 `account_state`（`capture=true`）抓返页帧；
+  这样结果判定仍由 `sortie-result/1` 生产方给出。该队列已用**干跑**验证过（不碰设备：`failed=0 skipped=1`）。
 - **能证明**：C# 引擎在**同一局真实数据**上的决策、动作序列与路线是否与上游一致；`shadow` 记录里
   有上游日志与动作，`r5-diff` 会逐项报出差异。
 - **不能证明**：C# 驱动设备的能力（这仍需要 P3 步骤 1–2 的接线，且接线前不得改 `CampaignBatchRunner`）。

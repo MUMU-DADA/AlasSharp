@@ -1,0 +1,29 @@
+{
+  "note": "R5 同局对照证据用的任务队列（授权后一条命令即可跑）。用法见 docs/upstream-engine-rewrite.md 的「一次授权运行的执行清单」：`Alas.Server queue --file tools/diagnostics/r5-evidence-queue.json --run --allow-actions --artifacts <运行目录>`，随后用 `Alas.Server r5-diff --run <运行目录> --json` 做决策/动作/路线三层对照。生产路径仍是上游 Campaign.run()，本队列只是把「哪一关、什么开关」写死，不改结果判据。（\u0007ccount_state 用 capture=true 抓返页帧；**干跑**下没有设备帧，这个任务会如实报 failed——那正是干跑与真跑的差别，不是队列错误。）",
+  "tasks": [
+    {
+      "id": "r5-evidence-sortie",
+      "kind": "campaign_batch",
+      "required": true,
+      "input": {
+        "chapters": [
+          "campaign.campaign_main.campaign_1_1"
+        ],
+        "max_seconds": 1500,
+        "max_rounds": 20,
+        "clear_all": false,
+        "fleet1": 1,
+        "fleet2": 0,
+        "submarine": 0
+      }
+    },
+    {
+      "id": "r5-evidence-after-stage",
+      "kind": "account_state",
+      "required": false,
+      "input": {
+        "capture": true
+      }
+    }
+  ]
+}
