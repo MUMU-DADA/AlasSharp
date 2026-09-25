@@ -33,6 +33,19 @@ dotnet build src/Alas.DataTool/Alas.DataTool.csproj -c Release
 控制台默认地址为 `http://127.0.0.1:8765/`，默认 dry-run。队列格式与动作授权见
 [任务说明](docs/tasks.md)，控制台和停止方式见[运行时](docs/runtime.md)。
 
+改完代码后的日常构建用根目录 `build.ps1`（PowerShell 7，默认增量：不清理输出、没改动的项目不重编、
+还原过期才执行，重复构建只花几秒；不发布、不启动窗口、不访问设备）：
+
+```powershell
+./build.ps1                                                   # 增量构建 Alas.sln（Release）
+./build.ps1 -Project src/Alas.DataTool/Alas.DataTool.csproj    # 只构建单个项目，内循环最快
+./build.ps1 -Ui                                               # 追加构建共享 UI 解决方案 Alas.UI.slnx
+./build.ps1 -Clean                                            # 非增量：先清理再重建
+```
+
+发布与验收不在这里：共享 UI 的发布与 Headless 验收在 `tools/build_ui.ps1`，服务端发布在
+`tools/publish_server.ps1`。
+
 共享 UI 使用 PowerShell 7：首次 `./tools/build_ui.ps1 -Bootstrap -Publish`，以后
 `./tools/build_ui.ps1 -Publish` 使用项目内离线缓存；构建桌面/WASM 并运行 Headless，不打开窗口。
 只测界面时，桌面启动参数加 `--ui-only`，网页地址加 `?ui-only=1`：使用内存模拟实例，关闭后端轮询，
