@@ -470,6 +470,77 @@
       }
     },
     {
+      "name": "campaign_8_1 battle_4：brute_clear_boss 枚举敌人子集找出挡住 boss 的路障",
+      "chapter": "campaign_main",
+      "level": "campaign_8_1",
+      "hook": "battle_4",
+      "config": { "fleet_1_location": "A1", "map_has_ambush": false },
+      "grids": [
+        { "location": "A1", "is_fleet": true, "weight": 5, "cost": 0 },
+        { "location": "B1", "weight": 10, "cost": 1 },
+        { "location": "C1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 20, "cost": 2 },
+        { "location": "D1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 30, "cost": 3 }
+      ],
+      "expect": {
+        "completed": true,
+        "return": true,
+        "action_contains": "clear_chosen_enemy(C1",
+        "log_contains": "Brute clear BOSS roadblocks：打 C1"
+      }
+    },
+    {
+      "name": "campaign_8_1 battle_4：boss 本来就可达时退回 fleet_boss.clear_boss",
+      "chapter": "campaign_main",
+      "level": "campaign_8_1",
+      "hook": "battle_4",
+      "config": {
+        "fleet_1_location": "A1", "fleet_2_location": "B1", "map_has_ambush": false,
+        "fleet_boss": true, "fleet_2": true
+      },
+      "grids": [
+        { "location": "A1", "is_fleet": true, "weight": 5, "cost": 0 },
+        { "location": "B1", "is_fleet": true, "weight": 10, "cost": 1 },
+        { "location": "C1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 15, "cost": 2 }
+      ],
+      "expect": {
+        "completed": true,
+        "return": false,
+        "action_contains": "clear_chosen_enemy(C1, expected=boss)",
+        "log_contains": "clear_boss：打 C1"
+      }
+    },
+    {
+      "name": "campaign_3_1 battle_0：fleet_2_rescue 清掉挡住目标格 G2 的敌人",
+      "chapter": "campaign_main",
+      "level": "campaign_3_1",
+      "hook": "battle_0",
+      "config": {
+        "fleet_boss": true, "fleet_2": true, "map_has_ambush": false,
+        "fleet_1_location": "A1", "fleet_2_location": "C1"
+      },
+      "grids": [
+        { "location": "A1", "is_fleet": true, "weight": 5, "cost": 0 },
+        { "location": "B1", "weight": 10, "cost": 1 },
+        { "location": "C1", "is_fleet": true, "weight": 5, "cost": 1 },
+        { "location": "D1", "weight": 10, "cost": 2 },
+        { "location": "E1", "is_land": true, "weight": 10, "cost": 9999 },
+        { "location": "F1", "is_land": true, "weight": 10, "cost": 9999 },
+        { "location": "G1", "is_land": true, "weight": 10, "cost": 9999 },
+        { "location": "A2", "weight": 10, "cost": 2 },
+        { "location": "B2", "weight": 10, "cost": 3 },
+        { "location": "C2", "weight": 10, "cost": 2 },
+        { "location": "D2", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 20, "cost": 4 },
+        { "location": "E2", "weight": 10, "cost": 6 },
+        { "location": "F2", "weight": 10, "cost": 7 },
+        { "location": "G2", "weight": 10, "cost": 8 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(D2",
+        "log_contains": "Fleet_2 rescue"
+      }
+    },
+    {
       "name": "campaign_1_1 handle_boss_appear_refocus：super_delegate → 委托父类，不执行也不阻塞",
       "chapter": "campaign_main",
       "level": "campaign_1_1",

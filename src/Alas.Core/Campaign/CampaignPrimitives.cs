@@ -13,6 +13,7 @@ public sealed record CampaignRuntimeConfig(
     bool MapHasLandBased = false,
     bool MapHasMovableEnemy = false,
     bool MapHasMovableNormalEnemy = false,
+    bool MapHasAmbush = false,
     bool PoorMapData = false,
     bool ErrorHandleError = true)
 {
@@ -661,6 +662,85 @@ public static class CampaignPrimitives
             "清除机关后上游抛 MapEnemyMoved（战役循环需要重新识别地图）——该控制流尚未迁移");
     }
 
+    /// <summary>
+    /// 上游 <c>Map.brute_clear_boss()</c>：用暴力找路障的方式清 boss
+    /// （先找挡住 boss 的敌人 → 若两支舰队之间有路障先让它们会合 → 否则直接打路障；
+    /// 没找到路障就退回 <c>fleet_boss.clear_boss()</c>）。
+    /// </summary>
+    public static bool BruteClearBoss(ICampaignPrimitiveHost host)
+    {
+        var all = new CampaignGridSet(host.Grids);
+        var boss = all.Select(new CampaignGridFilter(IsBoss: true));
+        if (!boss.IsEmpty)
+        {
+            host.Log("Brute clear BOSS");
+            var search = CampaignBruteFinder.FindRoadblocks(host.Grids, boss[0].Location,
+                FleetStart(host, host.Config.FleetBossIndex), host.Config.MapHasAmbush);
+            if (search.Exhausted && !search.Found)
+            {
+                host.Log("brute_clear_boss：Enemy roadblock try exhausted.");
+            }
+            if (search.Found)
+            {
+                if (BruteFleetMeet(host)) return true;
+                var sorted = new CampaignGridSet(search.Roadblocks).Sort("weight", "cost");
+                host.Log($"Brute clear BOSS roadblocks：打 {sorted[0].Location}");
+                host.ClearChosenEnemy(sorted[0], "");
+                return true;
+            }
+            host.EnsureFleet(host.Config.FleetBossIndex);
+            return ClearBoss(host);
+        }
+
+        var caught = all.Select(new CampaignGridFilter(MayBoss: true, IsCaughtBySiren: true));
+        if (!caught.IsEmpty)
+        {
+            host.Log("brute_clear_boss：BOSS appear on fleet grid");
+            host.EnsureFleet(2);
+            return host.ClearChosenEnemy(caught[0], "");
+        }
+        host.Log("brute_clear_boss：BOSS not detected, trying all boss spawn point.");
+        return ClearPotentialBoss(host);
+    }
+
+    /// <summary>上游 <c>Map.brute_fleet_meet()</c>：为会合清掉两支舰队之间的路障。</summary>
+    public static bool BruteFleetMeet(ICampaignPrimitiveHost host)
+    {
+        if (host.Config.FleetBossIndex != 2 || string.IsNullOrEmpty(host.Fleet2Location)) return false;
+        var search = CampaignBruteFinder.FindRoadblocks(host.Grids, host.Fleet2Location,
+            FleetStart(host, 1), host.Config.MapHasAmbush);
+        if (!search.Found) return false;
+        host.Log("Brute clear roadblocks between fleets.");
+        var sorted = new CampaignGridSet(search.Roadblocks).Sort("weight", "cost");
+        host.Log($"brute_fleet_meet：打 {sorted[0].Location}");
+        host.ClearChosenEnemy(sorted[0], "");
+        return true;
+    }
+
+    /// <summary>上游 <c>Map.fleet_2_rescue(grid)</c>：用道中队清掉挡在目标格前的敌人。</summary>
+    public static bool Fleet2Rescue(ICampaignPrimitiveHost host, CampaignGrid grid)
+    {
+        if (host.Config.FleetBossIndex != 2) return false;
+        var search = CampaignBruteFinder.FindRoadblocks(host.Grids, grid.Location,
+            FleetStart(host, 2), host.Config.MapHasAmbush);
+        if (!search.Found) return false;
+        host.Log("Fleet_2 rescue");
+        // 上游 self.select_grids(grids)：按**恢复后**的成本场过滤 is_accessible，再按 weight/cost 排序取第一个。
+        var restored = CampaignPathfinder.FindPathInitial(host.Grids, FleetStart(host, host.FleetCurrentIndex),
+                                                          host.Config.MapHasAmbush, hasEnemy: true);
+        var accessible = new CampaignGridSet(search.Roadblocks
+            .Where(item => restored.CostOf(item.Location) < CampaignPathfinder.Unreachable));
+        var selected = CampaignTargetSelector.SelectGrids(accessible, new CampaignTargetOptions { IsAccessible = false });
+        if (selected.IsEmpty) return false;
+        host.Log($"fleet_2_rescue：打 {selected[0].Location}");
+        host.ClearChosenEnemy(selected[0], "");
+        return true;
+    }
+
+    /// <summary>按舰队索引取该舰队所在格（上游 <c>find_path_initial()</c> 用 <c>fleet_current</c> 作起点）。</summary>
+    private static string FleetStart(ICampaignPrimitiveHost host, int fleetIndex) =>
+        fleetIndex == 2 ? host.Fleet2Location : host.Fleet1Location;
+
     /// <summary>上游 <c>CampaignBase.battle_default()</c>。</summary>
     public static bool BattleDefault(ICampaignPrimitiveHost host)
     {
@@ -960,6 +1040,16 @@ public static class CampaignPrimitiveRegistry
         ["clear_mechanism"] = new CampaignPrimitive(
             "clear_mechanism", "清机关并抛 MapEnemyMoved 信号（上游 Map.clear_mechanism）", false,
             (host, step) => CampaignPrimitives.ClearMechanism(host, OptionalGrids(host, step))),
+        ["brute_clear_boss"] = new CampaignPrimitive(
+            "brute_clear_boss", "暴力找路障后清 boss（上游 Map.brute_clear_boss）", false,
+            (host, _) => CampaignPrimitives.BruteClearBoss(host)),
+        ["brute_fleet_meet"] = new CampaignPrimitive(
+            "brute_fleet_meet", "为两支舰队会合清路障（上游 Map.brute_fleet_meet）", false,
+            (host, _) => CampaignPrimitives.BruteFleetMeet(host)),
+        ["fleet_2_rescue"] = new CampaignPrimitive(
+            "fleet_2_rescue", "道中队救援：清掉挡在目标格前的敌人（上游 Map.fleet_2_rescue）",
+            NeedsArguments: true,
+            (host, step) => CampaignPrimitives.Fleet2Rescue(host, RequireGrid(host, step))),
     };
 
     /// <summary>已实现的原语名（排序返回，便于输出与对拍）。不含舰队前缀组合。</summary>

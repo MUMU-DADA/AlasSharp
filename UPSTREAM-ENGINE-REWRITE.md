@@ -458,6 +458,31 @@
 `fleet_2_step_on` 11）此前完全没有地基；现在成本场与路线已经与上游逐格一致，`brute_find_roadblocks`
 等上层算法可以在其上继续移植。
 
+#### P2-12 已完成：暴力找路障与 boss 救援（步覆盖 99.1% → 99.5%）（2026-09-26）
+
+| 新增 | 对应上游 | 关键语义 |
+| --- | --- | --- |
+| `CampaignBruteFinder.FindRoadblocks` | `Fleet.brute_find_roadblocks(grid, fleet)` | 先按目标舰队算成本场（可达即返回空）；否则枚举敌人**可重复子集**（`itertools.product(enemies, repeat=r)`，r 从 1 到敌人数），每次把该子集临时当非敌人重算成本场，第一个让目标可达的子集就是路障；枚举完仍不可达即 `Enemy roadblock try exhausted.` |
+| `brute_clear_boss` | `Map.brute_clear_boss()` | 找 boss → 暴力找路障 → 有路障先 `brute_fleet_meet` 再打；没找到路障退回 `fleet_boss.clear_boss()`；无 boss 但"被塞壬抓住的 may_boss"→ 切 2 队清掉；都没有 → `clear_potential_boss()` |
+| `brute_fleet_meet` | `Map.brute_fleet_meet()` | `fleet_boss_index != 2` 或没 2 队位置 → 假；否则为 1 队清出通往 2 队的路障 |
+| `fleet_2_rescue` | `Map.fleet_2_rescue(grid)` | `fleet_boss_index != 2` → 假；暴力找挡在目标格前的敌人 → 按**恢复后**的成本场过滤 `is_accessible` → 按 weight/cost 打第一个 |
+
+与上游的两点差异（如实记录）：① 上游临时改写 `grid.is_enemy` 再改回来，这里用不可变副本；
+② 上游枚举没有上限，这里保留 `maxTries`（默认 20 万）以防指数爆炸，触顶时**明确报出**
+`Exhausted`，不静默当成"没有路障"。
+
+**对拍**：`verify_r5_execution.py` 扩到 **35 个用例**（新增：boss 被敌人挡住时暴力枚举出 `C1` 并打掉；
+boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉挡在 `G2` 前的 `D2`），全部通过；
+注册原语 **24 个**（含舰队前缀组合 28 个已实现）。
+
+**剩余 30 步（收敛到三类）**：
+
+| 类别 | 步骤 | 说明 |
+| --- | --- | --- |
+| 导出缺口 | **12** | `clear_bouncing_enemy`：需要导出 `MAP.bouncing_enemy_data` |
+| 实参是方法内局部变量 | **11** | `fleet_2_step_on(step_on, roadblocks=[...])`：实参是模块级 `SelectedGrids([E4, D3, …])` 与局部路段变量，需要导出器解析 `SelectedGrids([符号])` 与关键字路段参数 |
+| 设计上不执行 | **7** | `super().handle_boss_appear_refocus`（委托父类，本层不执行） |
+
 #### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
 
 | 新增原语 | 对应上游 | 关键语义 |
