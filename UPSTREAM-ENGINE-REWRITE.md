@@ -89,6 +89,36 @@
   - **结论**：把关卡覆写"原语化"是可行的（强形式在覆写这一块可达），弱形式目标（静态规则 + 有限原语 + 保留识图）有现实路径。
 - P0 余项：把 100 个 helper 收敛成**原语清单**（每个原语的语义、参数、对拍方式）；按域给出静态化可达性三档结论。
 
+#### P0 结论（第二批：原语清单与收敛度）
+
+- **调用序列收敛度（决定 DSL 规模）**：1904 个 `logic` 方法归一化后**只有 138 种调用序列**；
+  Top 20 覆盖 **88.0%**、Top 50 覆盖 **94.1%**；最大单一序列
+  `battle_default+clear_filter_enemy+clear_siren` 覆盖 **857** 个方法（45.0%），
+  其次 `battle_default+clear_siren` 259、`battle_default+clear_enemy+clear_siren` 118。
+- **原语实现位置**（定义侧，`module/` 内可定位 22/100 个，其余为动态属性或子对象方法）：
+  `module/map/map.py`（`Map.clear_siren`/`clear_filter_enemy`/`clear_enemy`/`clear_roadblocks`/`fleet_2_*`/`pick_up_ammo`…）、
+  `module/map/fleet.py`（`check_accessibility`/`goto`/`fleet_at`）、
+  `module/campaign/campaign_base.py`（`battle_default`）、
+  `module/campaign/campaign_ui.py`（`campaign_ensure_mode`/`campaign_ensure_chapter`）、
+  `module/ui/ui.py`（`ui_page_appear`）、`module/base/base.py`（`appear`）。
+  定义体规模普遍很小：**2–13 条语句 / 14–51 行**。
+- **分层证据（抽查 `battle_default` 与 `clear_enemy`）**：原语内部是**控制流 + 地图状态查询 + 配置读取**——
+  `self.clear_enemy()`、`self.map.select(is_enemy=True, is_boss=False)`、
+  `self.config.EnemyPriority_EnemyScaleBalanceWeight`、`self.select_grids(grids, **kwargs)`；
+  只有再往下（`clear_chosen_enemy(grids[0])`）才落到识别与设备动作。
+
+#### P0-3 静态化可达性（三档结论）
+
+| 层 | 内容 | 结论 |
+| --- | --- | --- |
+| 关卡覆写层 | 81 个钩子 / 3192 个方法 / **138 种序列** | **纯静态可达**：导出为关卡规则数据（钩子 + 序列 + 参数） |
+| 战役与地图原语层 | `battle_default` / `clear_*` / `fleet_2_*` / `select_grids` / `campaign_ensure_*` 等约 100 个名字，实现 2–13 条语句 | **C# 可实现**：控制流 + 地图状态查询 + 配置读取；内部的地图查询 DSL（`select` / `SelectedGrids`）需一并实现 |
+| 动作与感知底层 | 模板/颜色/OCR/页面判定、ADB/MaaTouch 输入、抓帧 | **保留**（识图不重写；设备动作可在允许第三方库的前提下逐步替代） |
+| 规则与参数 | `Config` 属性 14619 个、模块级声明 11118 个、`MAP` 网格 | **需补导出**：确认现有导出器覆盖"引擎实际读取的字段"（P1 的工作） |
+
+**据此，P0 的可行性判断成立**：关卡层可完全数据化、原语层可 C# 实现、只有感知与设备动作保留 Python，
+因此"静态规则 + 有限原语 + 保留识图"的弱形式目标是可落地的；强形式（连感知也不依赖 Python）不在本轮目标内。
+
 ### P1 静态导出补全
 
 把引擎需要的规则与配置**全部**导出为数据，包括目前只在运行时才存在的字段；导出器沿用静态解析（不导入游戏代码），并纳入现有导出校验链（`tools/verify_export.py` / `alashub`/`Alas.Server verify`）。

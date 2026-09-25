@@ -93,6 +93,87 @@
 | `get` | 2 | 6 |
 | `map` | 1 | 2 |
 
+### 调用序列收敛度（决定原语 DSL 规模）
+
+`logic` 方法归一化后的**不同调用序列 138 种**，覆盖 1904 个方法：
+
+| 序列（去重后按名字排序） | 方法数 |
+| --- | --- |
+| `battle_default+clear_filter_enemy+clear_siren` | 857 |
+| `battle_default+clear_siren` | 259 |
+| `` | 135 |
+| `battle_default+clear_enemy+clear_siren` | 118 |
+| `battle_default+clear_filter_enemy` | 95 |
+| `battle_default+clear_any_enemy+clear_filter_enemy+clear_siren` | 43 |
+| `battle_default+clear_enemy` | 34 |
+| `ui_page_appear` | 16 |
+| `battle_default+clear_siren+fleet_2_protect` | 14 |
+| `check_accessibility+clear_roadblocks` | 12 |
+| `battle_default+clear_all_mystery` | 12 |
+| `battle_default+clear_bouncing_enemy+clear_filter_enemy+clear_siren` | 12 |
+| `battle_default+check_accessibility+clear_all_mystery` | 11 |
+| `clear_chosen_enemy` | 10 |
+| `battle_default+clear_potential_roadblocks+clear_roadblocks` | 9 |
+
+Top 20 序列覆盖 **1676/1904（88.0%）**；Top 50 覆盖 **1792/1904（94.1%）**
+
+### 原语实现位置与规模（定义侧）
+
+| helper | 调用次数 | 定义位置 | 类 | 语句/行 | 首行说明 |
+| --- | --- | --- | --- | --- | --- |
+| `battle_default` | 1585 | `module\campaign\campaign_base.py:14` | `CampaignBase` | 3/6 |  |
+| `clear_siren` | 1371 | `module\map\map.py:453` | `Map` | 7/26 | Returns: |
+| `clear_filter_enemy` | 1041 | `module\map\map.py:663` | `Map` | 10/40 | If EnemyPriority_EnemyScaleBalanceWeight |
+| `clear_enemy` | 417 | `module\map\map.py:191` | `Map` | 6/24 | Methods to clear a enemy. May not do any |
+| `clear_roadblocks` | 88 | `module\map\map.py:216` | `Map` | 7/29 | Clear roadblocks. |
+| `clear_all_mystery` | 57 | `module\map\map.py:171` | `Map` | 3/19 | Methods to pick up all mystery. |
+| `clear_any_enemy` | 56 | `module\map\map.py:480` | `Map` | 6/28 | Returns: |
+| `campaign_ensure_mode` | 53 | `module\campaign\campaign_ui.py:119` | `CampaignUI` | 3/30 | Args: |
+| `campaign_ensure_chapter` | 49 | `module\campaign\campaign_ui.py:62` | `CampaignUI` | 6/47 | Args: |
+| `clear_chosen_enemy` | 48 | `module\map\map.py:15` | `Map` | 11/22 | Args: |
+| `clear_potential_roadblocks` | 45 | `module\map\map.py:246` | `Map` | 7/29 | Avoid roadblock that only has one grid e |
+| `fleet_2_push_forward` | 43 | `module\map\map.py:569` | `Map` | 13/36 | Move fleet 2 to the grid with lower grid |
+| `check_accessibility` | 39 | `module\map\fleet.py:976` | `Fleet` | 4/27 | Args: |
+| `fleet_2_protect` | 31 | `module\map\map.py:629` | `Map` | 4/33 | Mob fleet moves around boss fleet, clear |
+| `goto` | 27 | `module\map\fleet.py:470` | `Fleet` | 4/41 | Args: |
+| `ui_goto_event` | 26 | `module\campaign\campaign_event.py:151` | `CampaignEvent` | 3/14 |  |
+| `ui_page_appear` | 24 | `module\ui\ui.py:27` | `UI` | 3/19 | Args: |
+| `appear` | 19 | `module\base\base.py:214` | `ModuleBase` | 6/51 | Args: |
+| `pick_up_ammo` | 15 | `module\map\map.py:49` | `Map` | 2/24 | Args: |
+| `fleet_2_step_on` | 14 | `module\map\map.py:509` | `Map` | 9/36 | Fleet step on a grid which can reduce th |
+| `mob_move` | 13 | （上游 module/ 内未找到同名定义） | — | — | — |
+| `fleet_at` | 12 | `module\map\fleet.py:960` | `Fleet` | 2/15 | Args: |
+| `_campaign_ball_set` | 12 | （上游 module/ 内未找到同名定义） | — | — | — |
+| `clear_bouncing_enemy` | 12 | `module\map\map.py:704` | `Map` | 10/43 | Clear enemies which are bouncing in a fi |
+| `ui_goto_sp` | 11 | `module\campaign\campaign_event.py:166` | `CampaignEvent` | 3/14 |  |
+| `pick_up_light_house` | 10 | （上游 module/ 内未找到同名定义） | — | — | — |
+| `clear_mechanism` | 10 | `module\map\map.py:74` | `Map` | 6/27 | Args: |
+| `_campaign_separate_name` | 10 | `module\campaign\campaign_ocr.py:62` | `CampaignOcr` | 4/26 | Args: |
+| `ui_click` | 9 | `module\ui\ui.py:78` | `UI` | 6/52 | Args: |
+| `is_in_stage` | 8 | `module\handler\enemy_searching.py:72` | `EnemySearchingHandler` | 3/6 |  |
+
+原语定义在 module/ 内可定位 **75/100** 个；其余为动态属性或子对象方法。
+
+### 原语参数形态（调用侧）
+
+| helper | 参数形态分布 |
+| --- | --- |
+| `battle_default` | 无参=1585 |
+| `clear_siren` | 无参=1370，关键字=1 |
+| `clear_filter_enemy` | 上文字段+关键字=1033，关键字+字面量=8 |
+| `clear_enemy` | 关键字=417 |
+| `clear_roadblocks` | 表达式=72，关键字+表达式=12，上文字段=4 |
+| `clear_all_mystery` | 无参=55，关键字=2 |
+| `clear_any_enemy` | 关键字=56 |
+| `campaign_ensure_mode` | 字面量=53 |
+| `campaign_ensure_chapter` | 上文字段=45，字面量=4 |
+| `clear_chosen_enemy` | 上文字段=35，上文字段+关键字=13 |
+| `clear_potential_roadblocks` | 表达式=37，关键字+表达式=5，上文字段=3 |
+| `fleet_2_push_forward` | 无参=43 |
+| `check_accessibility` | 关键字+表达式=30，上文字段+关键字=9 |
+| `fleet_2_protect` | 无参=31 |
+| `goto` | 上文字段+关键字=16，上文字段=11 |
+
 ### 按钩子看形态（Top 12）
 
 | 钩子 | 合计 | 形态分布 |

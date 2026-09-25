@@ -127,6 +127,8 @@ def audit_campaign(engine: pathlib.Path) -> dict:
     helper_calls: collections.Counter = collections.Counter()
     statements: collections.Counter = collections.Counter()
     lines: list[int] = []
+    sequences: collections.Counter = collections.Counter()
+    arg_shapes: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
     classes = methods = config_attrs = module_assigns = failures = 0
     per_file: list[int] = []
 
@@ -164,11 +166,16 @@ def audit_campaign(engine: pathlib.Path) -> dict:
                         else "6-10" if len(body) <= 10 else ">10"
                     statements[bucket] += 1
                     lines.append((item.end_lineno or item.lineno) - item.lineno + 1)
+                    sequence: list[str] = []
                     for call in (n for n in ast.walk(item) if isinstance(n, ast.Call)):
                         fn = call.func
                         if isinstance(fn, ast.Attribute) and isinstance(fn.value, ast.Name) \
                                 and fn.value.id == "self":
                             helper_calls[fn.attr] += 1
+                            sequence.append(fn.attr)
+                            arg_shapes[fn.attr][describe_args(call)] += 1
+                    # 归一化后的调用序列：决定"原语 DSL"需要多少种组合
+                    sequences["+".join(sorted(set(sequence)))] += 1
         per_file.append(count)
 
     lines.sort()
@@ -185,7 +192,55 @@ def audit_campaign(engine: pathlib.Path) -> dict:
         "shapes": shapes, "bases": bases, "delegates": delegates, "helper_calls": helper_calls,
         "statements": statements, "lines": lines, "per_file": per_file,
         "families": families, "families_by_name": families_by_name,
+        "sequences": sequences, "arg_shapes": arg_shapes,
     }
+
+
+def describe_args(call: ast.Call) -> str:
+    """把调用实参归类，用于判断原语的参数形态（0 参 / 字面量 / 上文字段 / 混合）。"""
+    if not call.args and not call.keywords:
+        return "无参"
+    kinds = set()
+    for arg in call.args:
+        if isinstance(arg, ast.Constant):
+            kinds.add("字面量")
+        elif isinstance(arg, ast.Tuple):
+            kinds.add("元组/坐标")
+        elif isinstance(arg, (ast.Name, ast.Attribute)):
+            kinds.add("上文字段")
+        else:
+            kinds.add("表达式")
+    if call.keywords:
+        kinds.add("关键字")
+    return "+".join(sorted(kinds))
+
+
+def audit_primitives(engine: pathlib.Path, helper_names: set[str]) -> dict[str, dict]:
+    """在原语实现位置（module/**）反查每个 helper 的定义，给出规模与首行说明。"""
+    found: dict[str, dict] = {}
+    for path in (engine / "module").rglob("*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+            for item in cls.body:
+                if not isinstance(item, ast.FunctionDef) or item.name not in helper_names:
+                    continue
+                if item.name in found:
+                    continue
+                doc = ast.get_docstring(item) or ""
+                body = [n for n in item.body
+                        if not (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant))]
+                found[item.name] = {
+                    "file": str(path.relative_to(engine)),
+                    "line": item.lineno,
+                    "class": cls.name,
+                    "statements": len(body),
+                    "lines": (item.end_lineno or item.lineno) - item.lineno + 1,
+                    "doc": doc.strip().splitlines()[0] if doc.strip() else "",
+                }
+    return found
 
 
 def audit_vision() -> tuple[list[tuple[str, str]], list[tuple[str, str, int]]]:
@@ -234,6 +289,7 @@ def audit_libraries(engine: pathlib.Path) -> tuple[dict[str, int], dict[str, dic
 
 def render(engine: pathlib.Path) -> str:
     campaign = audit_campaign(engine)
+    primitives = audit_primitives(engine, set(campaign["helper_calls"]))
     methods, calls = audit_vision()
     lib_totals, lib_subs = audit_libraries(engine)
 
@@ -302,6 +358,47 @@ def render(engine: pathlib.Path) -> str:
     add("| --- | --- | --- |")
     for family, count in campaign["families"].most_common():
         add(f"| `{family}` | {campaign['families_by_name'][family]} | {count} |")
+    add("")
+    add("### 调用序列收敛度（决定原语 DSL 规模）")
+    add("")
+    sequences = campaign["sequences"]
+    covered = sum(sequences.values()) or 1
+    add(f"`logic` 方法归一化后的**不同调用序列 {len(sequences)} 种**，覆盖 {covered} 个方法：")
+    add("")
+    add("| 序列（去重后按名字排序） | 方法数 |")
+    add("| --- | --- |")
+    for sequence, count in sequences.most_common(15):
+        add(f"| `{sequence}` | {count} |")
+    top = sum(count for _, count in sequences.most_common(20))
+    top50 = sum(count for _, count in sequences.most_common(50))
+    add("")
+    add(f"Top 20 序列覆盖 **{top}/{covered}（{top / covered:.1%}）**；Top 50 覆盖 **{top50}/{covered}（{top50 / covered:.1%}）**")
+    add("")
+    add("### 原语实现位置与规模（定义侧）")
+    add("")
+    add("| helper | 调用次数 | 定义位置 | 类 | 语句/行 | 首行说明 |")
+    add("| --- | --- | --- | --- | --- | --- |")
+    for name, count in campaign["helper_calls"].most_common(30):
+        info = primitives.get(name)
+        if not info:
+            add(f"| `{name}` | {count} | （上游 module/ 内未找到同名定义） | — | — | — |")
+            continue
+        location = f"`{info['file']}:{info['line']}`"
+        doc = info["doc"][:40].replace("|", "\\|")
+        add(f"| `{name}` | {count} | {location} | `{info['class']}` | {info['statements']}/{info['lines']} | {doc} |")
+    add("")
+    add(f"原语定义在 module/ 内可定位 **{len(primitives)}/{len(campaign['helper_calls'])}** 个；其余为动态属性或子对象方法。")
+    add("")
+    add("### 原语参数形态（调用侧）")
+    add("")
+    add("| helper | 参数形态分布 |")
+    add("| --- | --- |")
+    for name, _ in campaign["helper_calls"].most_common(15):
+        shapes = campaign["arg_shapes"].get(name)
+        if not shapes:
+            continue
+        parts = "，".join(f"{k}={v}" for k, v in shapes.most_common())
+        add(f"| `{name}` | {parts} |")
     add("")
     add("### 按钩子看形态（Top 12）")
     add("")
