@@ -45,7 +45,7 @@ except ImportError:
     from upstream_map_export import MapResolver
     from upstream_campaign_export import CampaignResolver
 
-EXPORTER_VERSION = '2.5.0'
+EXPORTER_VERSION = '2.7.0'
 SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
@@ -281,20 +281,60 @@ def campaign_symbol_locations(tree) -> dict:
     return {name: [index % columns, index // columns] for index, name in enumerate(symbols)}
 
 
-def symbol_argument_resolver(locations: dict):
-    """裸格子符号 / 符号列表实参 → `{'__grid__': [x, y]}` / `{'__grids__': [[x, y], …]}`。
+def campaign_grid_list_variables(tree, locations: dict) -> dict:
+    """模块级 `name = SelectedGrids([符号…])` / `name = [符号…]` → `{name: [[x, y], …]}`。
 
-    上游关卡里 `pick_up_flare(H9)`、`fleet_2_rescue(G2)`、`clear_map_items([F1, I1])` 这类实参
-    传的是具体格子（原本只能记 `<expr>`）。解析不出时返回哨兵，照旧记 `<expr>`。
+    上游关卡常见写法：`step_on = SelectedGrids([E4, D3, G4, C3])`，随后
+    `self.fleet_2_step_on(step_on, …)`——实参是**变量名**而不是符号本身。
+    只解析"全是已知格子符号"的列表，解析不出就不进表（宁缺勿猜）。
     """
+    variables = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        value = node.value
+        if isinstance(value, ast.List):
+            elements = value.elts
+        elif isinstance(value, ast.Call) and isinstance(value.func, ast.Name) \
+                and value.func.id == 'SelectedGrids' and len(value.args) == 1 \
+                and isinstance(value.args[0], ast.List):
+            elements = value.args[0].elts
+        else:
+            continue
+        if not elements or not all(isinstance(e, ast.Name) and e.id in locations for e in elements):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                variables[target.id] = [locations[e.id] for e in elements]
+    return variables
+
+
+def symbol_argument_resolver(locations: dict, variables: dict | None = None):
+    """裸格子符号 / 符号列表 / `SelectedGrids([符号…])` / 模块级格子表变量 → `__grid__` / `__grids__`。
+
+    上游关卡里 `pick_up_flare(H9)`、`fleet_2_rescue(G2)`、`clear_map_items([F1, I1])`、
+    `fleet_2_step_on(step_on, …)`（`step_on = SelectedGrids([E4, D3, G4, C3])`）这类实参传的是具体格子
+    （原本只能记 `<expr>`）。解析不出时返回哨兵，照旧记 `<expr>`。
+    """
+    variables = variables or {}
+
     def resolve(node):
         if not locations:
             return _UNRESOLVED
-        if isinstance(node, ast.Name) and node.id in locations:
-            return {'__grid__': locations[node.id]}
+        if isinstance(node, ast.Name):
+            if node.id in variables:
+                return {'__grids__': variables[node.id]}
+            if node.id in locations:
+                return {'__grid__': locations[node.id]}
         if isinstance(node, ast.List) and node.elts and all(
                 isinstance(item, ast.Name) and item.id in locations for item in node.elts):
             return {'__grids__': [locations[item.id] for item in node.elts]}
+        # `SelectedGrids([E4, D3, …])`：包装一层构造调用
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+                and node.func.id == 'SelectedGrids' and len(node.args) == 1 \
+                and isinstance(node.args[0], ast.List) and node.args[0].elts \
+                and all(isinstance(item, ast.Name) and item.id in locations for item in node.args[0].elts):
+            return {'__grids__': [locations[item.id] for item in node.args[0].elts]}
         return _UNRESOLVED
     return resolve
 
@@ -599,7 +639,9 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
         # 用于解析 self.<NAME> / [road_*] 实参；解析不出的实参仍记 '<expr>'，不猜值。
         literal_resolver = attribute_literal_resolver(campaign_literal_attributes(tree, module, root))
         road_resolver = road_argument_resolver(campaign_road_table(tree))
-        symbol_resolver = symbol_argument_resolver(campaign_symbol_locations(tree))
+        grid_locations = campaign_symbol_locations(tree)
+        symbol_resolver = symbol_argument_resolver(
+            grid_locations, campaign_grid_list_variables(tree, grid_locations))
 
         def resolve_argument(node, _literal=literal_resolver, _road=road_resolver, _symbol=symbol_resolver):
             value = _literal(node)

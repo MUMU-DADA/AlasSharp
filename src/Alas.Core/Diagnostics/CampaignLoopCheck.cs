@@ -66,6 +66,7 @@ internal static class CampaignLoopCheck
                 ErrorHandleError: testCase.Config?.ErrorHandleError ?? true);
             var host = new RecordingCampaignHost((testCase.Grids ?? []).Select(Grid), config)
             {
+                BouncingRoutes = plan.Map?.BouncingEnemyData ?? [],
                 BattleCount = testCase.Config?.BattleCount ?? 0,
                 AmmoCount = testCase.Config?.AmmoCount ?? 3,
                 FleetAmmo = testCase.Config?.FleetAmmo ?? 5,

@@ -14,6 +14,7 @@ public sealed record CampaignRuntimeConfig(
     bool MapHasMovableEnemy = false,
     bool MapHasMovableNormalEnemy = false,
     bool MapHasAmbush = false,
+    bool MapHasBouncingEnemy = false,
     bool PoorMapData = false,
     bool ErrorHandleError = true)
 {
@@ -99,6 +100,9 @@ public interface ICampaignPrimitiveHost
 
     ISet<string> PickedFlare { get; }
 
+    /// <summary>上游 <c>MAP.bouncing_enemy_data</c>：巡逻敌人的路线（每条路线是一串格子节点名）。</summary>
+    IReadOnlyList<IReadOnlyList<string>> BouncingRoutes { get; }
+
     void Log(string message);
 }
 
@@ -174,6 +178,9 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
     public int FleetAmmo { get; set; } = 5;
 
     public ISet<string> PickedLightHouse { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>干跑时由夹具给出的巡逻路线（真机来自关卡导出的 <c>MAP.bouncing_enemy_data</c>）。</summary>
+    public IReadOnlyList<IReadOnlyList<string>> BouncingRoutes { get; set; } = [];
 
     public ISet<string> PickedFlare { get; } = new HashSet<string>(StringComparer.Ordinal);
 
@@ -741,6 +748,93 @@ public static class CampaignPrimitives
     private static string FleetStart(ICampaignPrimitiveHost host, int fleetIndex) =>
         fleetIndex == 2 ? host.Fleet2Location : host.Fleet1Location;
 
+    /// <summary>
+    /// 上游 <c>Map.clear_bouncing_enemy()</c>：找一条"有可达巡逻敌人"的路线，沿路线循环走过去，
+    /// 直到 <c>battle_count</c> 增长（打掉了巡逻敌人）或超过 12 次尝试。
+    /// 上游在成功时会把该路线的 <c>may_bouncing_enemy</c> 置假并重新识别——干跑不改变地图状态，
+    /// 因此这里只记日志（真机由识别刷新）。
+    /// </summary>
+    public static bool ClearBouncingEnemy(ICampaignPrimitiveHost host)
+    {
+        if (!host.Config.MapHasBouncingEnemy) return false;
+
+        IReadOnlyList<string>? route = null;
+        foreach (var candidate in host.BouncingRoutes)
+        {
+            var grids = new CampaignGridSet(candidate
+                .Select(host.GridAt)
+                .Where(grid => grid is not null)!);
+            if (!grids.Select(new CampaignGridFilter(MayBouncingEnemy: true, IsAccessible: true)).IsEmpty)
+            {
+                route = candidate;
+                break;
+            }
+        }
+        if (route is null) return false;
+
+        host.Log($"Clear bouncing enemy: {string.Join(" ", route)}");
+        int previous = host.BattleCount;
+        for (int n = 0; ; n++)
+        {
+            string location = route[n % route.Count];
+            host.Goto(host.GridAt(location), "combat_nothing");
+            if (host.BattleCount > previous)
+            {
+                host.Log($"Cleared an bouncing enemy（{location}）");
+                return true;
+            }
+            if (n >= 12)
+            {
+                host.Log("Failed to clear bouncing enemy after 12 trial");
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 上游 <c>Map.fleet_2_step_on(grids, roadblocks)</c>：让道中队踩到能降低另一队伏击率的位置；
+    /// 走不过去时就清路障。`FLEET_2` 未开启、或 2 队已经在其中任一格上时返回假。
+    /// </summary>
+    public static bool Fleet2StepOn(ICampaignPrimitiveHost host, IReadOnlyList<CampaignGrid> grids,
+                                    IReadOnlyList<CampaignRoad> roads)
+    {
+        if (!host.Config.Fleet2) return false;
+        if (grids.Any(grid => host.Fleet2Location == grid.Location)) return false;
+
+        bool allCleared = grids.All(grid => grid.IsCleared);
+        host.Log("Fleet 2 step on");
+        foreach (var grid in grids)
+        {
+            if (grid.IsEnemy || (!allCleared && grid.IsCleared)) continue;
+            if (CheckAccessibility(host, grid, 2))
+            {
+                host.Log($"Fleet_2 step on {grid.Location}");
+                host.EnsureFleet(2);
+                host.Goto(grid);
+                host.EnsureFleet(1);
+                return false;
+            }
+        }
+
+        host.Log("Fleet_2 step on got roadblocks.");
+        host.EnsureFleet(1);
+        bool cleared = ClearRoadblocks(host, roads);
+        ClearAllMystery(host);
+        return cleared;
+    }
+
+    /// <summary>
+    /// 上游 <c>Fleet.check_accessibility(grid, fleet)</c>：按**该舰队**的成本场判断可达性
+    /// （当前舰队直接看现有成本；否则临时换舰队重算再恢复）。
+    /// </summary>
+    private static bool CheckAccessibility(ICampaignPrimitiveHost host, CampaignGrid grid, int fleetIndex)
+    {
+        if (fleetIndex == host.FleetCurrentIndex) return grid.IsAccessible;
+        var field = CampaignPathfinder.FindPathInitial(host.Grids, FleetStart(host, fleetIndex),
+                                                      host.Config.MapHasAmbush, hasEnemy: true);
+        return field.CostOf(grid.Location) < CampaignPathfinder.Unreachable;
+    }
+
     /// <summary>上游 <c>CampaignBase.battle_default()</c>。</summary>
     public static bool BattleDefault(ICampaignPrimitiveHost host)
     {
@@ -1050,6 +1144,13 @@ public static class CampaignPrimitiveRegistry
             "fleet_2_rescue", "道中队救援：清掉挡在目标格前的敌人（上游 Map.fleet_2_rescue）",
             NeedsArguments: true,
             (host, step) => CampaignPrimitives.Fleet2Rescue(host, RequireGrid(host, step))),
+        ["fleet_2_step_on"] = new CampaignPrimitive(
+            "fleet_2_step_on", "道中队踩到能降低伏击率的位置，否则清路障（上游 Map.fleet_2_step_on）",
+            NeedsArguments: true,
+            (host, step) => CampaignPrimitives.Fleet2StepOn(host, RequireGrids(host, step), DecodeRoads(step))),
+        ["clear_bouncing_enemy"] = new CampaignPrimitive(
+            "clear_bouncing_enemy", "清巡逻敌人（上游 Map.clear_bouncing_enemy）", false,
+            (host, _) => CampaignPrimitives.ClearBouncingEnemy(host)),
     };
 
     /// <summary>已实现的原语名（排序返回，便于输出与对拍）。不含舰队前缀组合。</summary>
@@ -1236,7 +1337,12 @@ public static class CampaignPrimitiveRegistry
     /// </summary>
     private static IReadOnlyList<CampaignRoad> DecodeRoads(CampaignPlanStep step)
     {
-        foreach (var value in step.Args?.Positional ?? [])
+        // 路段实参可能在位置参数（`clear_roadblocks([road_main])`），
+        // 也可能在关键字参数（`fleet_2_step_on(step_on, roadblocks=[roadblocks_d4])`）。
+        var candidates = new List<JsonNode?>(step.Args?.Positional ?? []);
+        if (step.Args is { } args) candidates.AddRange(args.Keyword.Values);
+
+        foreach (var value in candidates)
         {
             if (value is not JsonObject payload || !payload.ContainsKey("__roads__")) continue;
             if (payload["__roads__"] is not JsonArray roads) continue;

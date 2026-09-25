@@ -483,6 +483,49 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 | 实参是方法内局部变量 | **11** | `fleet_2_step_on(step_on, roadblocks=[...])`：实参是模块级 `SelectedGrids([E4, D3, …])` 与局部路段变量，需要导出器解析 `SelectedGrids([符号])` 与关键字路段参数 |
 | 设计上不执行 | **7** | `super().handle_boss_appear_refocus`（委托父类，本层不执行） |
 
+#### P1-4 已完成：模块级格子表实参导出（`<expr>` 32 → 22）（2026-09-26）
+
+- **根因**：`self.fleet_2_step_on(step_on, roadblocks=[roadblocks_d4])` 的位置实参是**模块级变量**
+  `step_on = SelectedGrids([E4, D3, G4, C3])`——既不是字面量也不是格子符号本身。
+- **改动**：导出器新增 `campaign_grid_list_variables()`（模块级 `name = SelectedGrids([符号…])` /
+  `= [符号…]` → `{name: [[x, y], …]}`），`symbol_argument_resolver()` 先查变量表再查符号表，
+  并支持 `SelectedGrids([符号…])` 这种包装调用；导出器版本 2.6.0 → 2.7.0。
+- **结果**：`<expr>` 32 → **22**；结构化实参 **117** 个；`verify_export` 的 `plan_issues = 0`、`map_issues = 0`。
+- **剩余 22 个 `<expr>`**：`super().handle_boss_appear_refocus` 7（委托父类，本就不执行）、
+  `clear_filter_enemy` 6、`clear_roadblocks` / `clear_potential_roadblocks` / `clear_first_roadblocks` 共 7
+  （方法内局部路段变量）、`fleet_2_step_on` 2。
+- **更正一处此前的错误判断**：`MAP.bouncing_enemy_data`（`clear_bouncing_enemy` 依赖的巡逻路线）
+  **其实早已导出**（12 个关卡），我在 P2-12 里把它记成"导出缺口"是错的——实际缺口只在"格子表变量"这一处。
+
+#### P2-13 已完成：步覆盖 **99.9%**（巡逻敌人 + 道中队踩点）（2026-09-26）
+
+| 新增原语 | 对应上游 | 关键语义 |
+| --- | --- | --- |
+| `clear_bouncing_enemy` | `Map.clear_bouncing_enemy()` | 无 `MAP_HAS_BOUNCING_ENEMY` → 假；选第一条"有可达巡逻敌人"的路线（`MAP.bouncing_enemy_data`），沿路线循环走过去，直到 `battle_count` 增长或超过 12 次尝试（上游循环上限照抄）；成功时上游会把该路线的 `may_bouncing_enemy` 置假并重新识别——干跑不改地图状态，只记日志 |
+| `fleet_2_step_on` | `Map.fleet_2_step_on(grids, roadblocks)` | 无 `FLEET_2` → 假；2 队已在其中任一格 → 假；跳过敌人格（`all_cleared` 时也跳过已清格）→ 逐格 `check_accessibility(grid, fleet=2)`，可达就走过去并返回**假**（上游如此）；都走不过去 → 切回 1 队 `clear_roadblocks(roadblocks)` + `clear_all_mystery()`，返回前者结果 |
+| `Fleet.check_accessibility`（内部） | 同上游 | 当前舰队直接看现有成本；否则按**该舰队**位置重算成本场再判断可达性 |
+
+配套：格子模型增加 `may_bouncing_enemy`；配置增加 `MAP_HAS_BOUNCING_ENEMY`、`MAP_HAS_AMBUSH`；
+`CampaignPlanMap` 增加 `bouncing_enemy_data`；宿主增加 `BouncingRoutes`；
+`DecodeRoads` 现在同时扫描**位置与关键字**实参（`roadblocks=[…]` 是关键字，之前只扫位置参数）。
+
+**对拍**：`verify_r5_execution.py` 扩到 **39 个用例**（新增：巡逻路线走 13 次仍未打成 → 记 12 次失败；
+没有可达巡逻敌人 → 直接返回假；`fleet_2_step_on` 踩到可达格 → 切 2 队并返回假；都走不过去 → 转清路障），
+全部通过；注册原语 **26 个**（含舰队前缀组合 30 个已实现）。
+
+**当前状态（全库）**：
+
+| 指标 | 数值 |
+| --- | --- |
+| 步骤指向已实现原语 | **5687 / 5694（99.9%）** |
+| 剩余未实现 | **7 步**——全部是 `super().handle_boss_appear_refocus`（委托父类，本层设计上不执行） |
+| 涉及原语 | 31 个（其中 30 个已实现） |
+| 实参完整（无 `<expr>`） | 5672 / 5694（99.6%） |
+
+> 夹具设计的三点教训（都被检查脚本当场抓到）：① 格子集合必须是**连续矩形**，否则邻接为空、什么都不可达；
+> ② 引用的符号（如 `G4`）必须存在于地图状态，否则如实报错；③ 可达性由**几何 + 成本场**决定，
+> 不能靠夹具里手写的 `cost` 值伪造。
+
 #### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
 
 | 新增原语 | 对应上游 | 关键语义 |

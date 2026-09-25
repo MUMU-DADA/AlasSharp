@@ -72,9 +72,11 @@ internal static class CampaignExecutionCheck
                 MapHasMovableEnemy: testCase.Config?.MapHasMovableEnemy ?? false,
                 MapHasLandBased: testCase.Config?.MapHasLandBased ?? false,
                 MapHasAmbush: testCase.Config?.MapHasAmbush ?? false,
+                MapHasBouncingEnemy: testCase.Config?.MapHasBouncingEnemy ?? false,
                 MapHasMovableNormalEnemy: testCase.Config?.MapHasMovableNormalEnemy ?? false);
             var host = new RecordingCampaignHost(grids, config)
             {
+                BouncingRoutes = plan.Map?.BouncingEnemyData ?? [],
                 FleetCurrentIndex = testCase.Config?.FleetCurrentIndex ?? 1,
                 BattleCount = testCase.Config?.BattleCount ?? 0,
                 AmmoCount = testCase.Config?.AmmoCount ?? 3,
@@ -119,6 +121,7 @@ internal static class CampaignExecutionCheck
         MayAmmo: grid.MayAmmo,
         IsLand: grid.IsLand,
         MayAmbush: grid.MayAmbush,
+        MayBouncingEnemy: grid.MayBouncingEnemy,
         IsMechanismTrigger: grid.IsMechanismTrigger,
         IsMechanismBlock: grid.IsMechanismBlock,
         IsCaughtBySiren: grid.IsCaughtBySiren,
@@ -166,6 +169,7 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("map_has_movable_enemy")] public bool? MapHasMovableEnemy { get; init; }
         [JsonPropertyName("map_has_land_based")] public bool? MapHasLandBased { get; init; }
         [JsonPropertyName("map_has_ambush")] public bool? MapHasAmbush { get; init; }
+        [JsonPropertyName("map_has_bouncing_enemy")] public bool? MapHasBouncingEnemy { get; init; }
         [JsonPropertyName("battle_count")] public int? BattleCount { get; init; }
         [JsonPropertyName("ammo_count")] public int? AmmoCount { get; init; }
         [JsonPropertyName("fleet_ammo")] public int? FleetAmmo { get; init; }
@@ -185,6 +189,7 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("may_ammo")] public bool MayAmmo { get; init; }
         [JsonPropertyName("is_land")] public bool IsLand { get; init; }
         [JsonPropertyName("may_ambush")] public bool MayAmbush { get; init; }
+        [JsonPropertyName("may_bouncing_enemy")] public bool MayBouncingEnemy { get; init; }
         [JsonPropertyName("is_mechanism_trigger")] public bool IsMechanismTrigger { get; init; }
         [JsonPropertyName("is_mechanism_block")] public bool IsMechanismBlock { get; init; }
         [JsonPropertyName("is_caught_by_siren")] public bool IsCaughtBySiren { get; init; }

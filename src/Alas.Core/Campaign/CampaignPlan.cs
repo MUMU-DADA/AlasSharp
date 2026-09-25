@@ -148,6 +148,9 @@ public sealed class CampaignPlanMap
     [JsonPropertyName("camera_data")] public JsonNode? CameraData { get; init; }
     [JsonPropertyName("camera_data_spawn_point")] public JsonNode? CameraSpawnPoint { get; init; }
     [JsonPropertyName("weight_data")] public JsonNode? WeightData { get; init; }
+
+    /// <summary>上游 <c>MAP.bouncing_enemy_data</c>：巡逻敌人路线（每条形如 `["C2","C3","C4"]`）。</summary>
+    [JsonPropertyName("bouncing_enemy_data")] public IReadOnlyList<IReadOnlyList<string>> BouncingEnemyData { get; init; } = [];
 }
 
 /// <summary>关卡计划的读取与统计（只读 <c>data/campaign/**</c>）。</summary>

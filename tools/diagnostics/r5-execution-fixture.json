@@ -541,6 +541,106 @@
       }
     },
     {
+      "name": "a1 battle_0：clear_bouncing_enemy 沿巡逻路线走 13 次仍未打成 → 记 12 次尝试失败",
+      "chapter": "event_20220224_cn",
+      "level": "a1",
+      "hook": "battle_0",
+      "config": { "map_has_bouncing_enemy": true },
+      "grids": [
+        { "location": "C2", "may_bouncing_enemy": true, "weight": 10, "cost": 1 },
+        { "location": "C3", "weight": 10, "cost": 2 },
+        { "location": "C4", "weight": 10, "cost": 3 }
+      ],
+      "expect": {
+        "return": false,
+        "action_contains": "goto(C2, expected=combat_nothing)",
+        "log_contains": "Failed to clear bouncing enemy after 12 trial"
+      }
+    },
+    {
+      "name": "a1 battle_0：没有可达的巡逻敌人 → clear_bouncing_enemy 直接返回假",
+      "chapter": "event_20220224_cn",
+      "level": "a1",
+      "hook": "battle_0",
+      "config": { "map_has_bouncing_enemy": true },
+      "grids": [
+        { "location": "C2", "may_bouncing_enemy": true, "weight": 10, "cost": 9999 },
+        { "location": "C3", "weight": 10, "cost": 2 },
+        { "location": "C4", "weight": 10, "cost": 3 }
+      ],
+      "expect": { "actions_exclude": "combat_nothing" }
+    },
+    {
+      "name": "campaign_10_4 battle_0：fleet_2_step_on 踩到可达格 → 切 2 队并返回假（上游就是返回假）",
+      "chapter": "campaign_main",
+      "level": "campaign_10_4",
+      "hook": "battle_0",
+      "config": { "fleet_2": true, "fleet_1_location": "A1", "fleet_2_location": "B2", "map_has_ambush": false },
+      "grids": [
+        { "location": "A1", "is_fleet": true, "weight": 50, "cost": 0 },
+        { "location": "B1", "weight": 50, "cost": 1 },
+        { "location": "C1", "weight": 50, "cost": 2 },
+        { "location": "D1", "weight": 50, "cost": 3 },
+        { "location": "E1", "weight": 50, "cost": 4 },
+        { "location": "A2", "weight": 50, "cost": 1 },
+        { "location": "B2", "is_fleet": true, "weight": 50, "cost": 2 },
+        { "location": "C2", "weight": 50, "cost": 3 },
+        { "location": "D2", "weight": 50, "cost": 4 },
+        { "location": "E2", "weight": 50, "cost": 5 },
+        { "location": "A3", "weight": 50, "cost": 2 },
+        { "location": "B3", "weight": 50, "cost": 3 },
+        { "location": "C3", "is_land": true, "weight": 50, "cost": 9999 },
+        { "location": "D3", "is_land": true, "weight": 50, "cost": 9999 },
+        { "location": "E3", "weight": 50, "cost": 6 },
+        { "location": "A4", "weight": 50, "cost": 3 },
+        { "location": "B4", "weight": 50, "cost": 4 },
+        { "location": "C4", "weight": 50, "cost": 5 },
+        { "location": "D4", "weight": 50, "cost": 6 },
+        { "location": "E4", "weight": 10, "cost": 7 },
+        { "location": "G4", "is_land": true, "weight": 50, "cost": 9999 }
+      ],
+      "expect": {
+        "action_contains": "goto(E4)",
+        "log_contains": "Fleet_2 step on E4",
+        "steps_contains": "fleet_2_step_on: 假（尝试）"
+      }
+    },
+    {
+      "name": "campaign_10_4 battle_0：grids 都走不过去 → 转为清路障（clear_roadblocks 命中）",
+      "chapter": "campaign_main",
+      "level": "campaign_10_4",
+      "hook": "battle_0",
+      "config": { "fleet_2": true, "fleet_1_location": "A1", "fleet_2_location": "B2", "map_has_ambush": false },
+      "grids": [
+        { "location": "A1", "is_fleet": true, "weight": 50, "cost": 0 },
+        { "location": "B1", "weight": 50, "cost": 1 },
+        { "location": "C1", "weight": 50, "cost": 2 },
+        { "location": "D1", "weight": 50, "cost": 3 },
+        { "location": "E1", "weight": 50, "cost": 4 },
+        { "location": "A2", "weight": 50, "cost": 1 },
+        { "location": "B2", "is_fleet": true, "weight": 50, "cost": 2 },
+        { "location": "C2", "weight": 50, "cost": 3 },
+        { "location": "D2", "weight": 50, "cost": 4 },
+        { "location": "E2", "weight": 50, "cost": 5 },
+        { "location": "A3", "weight": 50, "cost": 2 },
+        { "location": "B3", "weight": 50, "cost": 3 },
+        { "location": "C3", "is_land": true, "weight": 50, "cost": 9999 },
+        { "location": "D3", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 20, "cost": 5 },
+        { "location": "E3", "weight": 50, "cost": 6 },
+        { "location": "A4", "weight": 50, "cost": 3 },
+        { "location": "B4", "weight": 50, "cost": 4 },
+        { "location": "C4", "weight": 50, "cost": 5 },
+        { "location": "D4", "weight": 50, "cost": 6 },
+        { "location": "E4", "is_land": true, "weight": 50, "cost": 9999 },
+        { "location": "G4", "is_land": true, "weight": 50, "cost": 9999 }
+      ],
+      "expect": {
+        "return": true,
+        "log_contains": "Fleet_2 step on got roadblocks.",
+        "steps_contains": "fleet_2_step_on: 真（尝试）"
+      }
+    },
+    {
       "name": "campaign_1_1 handle_boss_appear_refocus：super_delegate → 委托父类，不执行也不阻塞",
       "chapter": "campaign_main",
       "level": "campaign_1_1",

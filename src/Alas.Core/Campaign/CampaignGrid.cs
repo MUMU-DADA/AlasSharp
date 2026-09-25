@@ -26,6 +26,7 @@ public sealed record CampaignGrid(
     bool MayMystery = false,
     bool MaySiren = false,
     bool MayAmbush = false,
+    bool MayBouncingEnemy = false,
     bool IsCaughtBySiren = false,
     bool IsFleet = false,
     bool IsCleared = false,
@@ -170,6 +171,7 @@ public sealed record CampaignGridFilter(
     bool? IsFleet = null,
     bool? IsCleared = null,
     bool? IsLand = null,
+    bool? MayBouncingEnemy = null,
     bool? IsMechanismTrigger = null,
     bool? IsMechanismBlock = null,
     bool? IsSea = null,
@@ -193,6 +195,7 @@ public sealed record CampaignGridFilter(
         (IsFleet is null || grid.IsFleet == IsFleet) &&
         (IsCleared is null || grid.IsCleared == IsCleared) &&
         (IsLand is null || grid.IsLand == IsLand) &&
+        (MayBouncingEnemy is null || grid.MayBouncingEnemy == MayBouncingEnemy) &&
         (IsMechanismTrigger is null || grid.IsMechanismTrigger == IsMechanismTrigger) &&
         (IsMechanismBlock is null || grid.IsMechanismBlock == IsMechanismBlock) &&
         (IsSea is null || grid.IsSea == IsSea) &&
