@@ -10,7 +10,15 @@ public sealed record CampaignHostCall(
     string? FleetPrefix,
     IReadOnlyList<JsonNode?> Args,
     IReadOnlyList<KeyValuePair<string, JsonNode?>> KeywordArgs,
-    string? Unsupported);
+    string? Unsupported)
+{
+    /// <summary>
+    /// 实参里有**只能运行期解析**的引用（局部变量 / 钩子参数）：执行器在调用前会替换成具体值
+    /// （`SubstituteLocals` / `ResolveSuperDelegate`），静态翻译到这里只能到此为止。
+    /// **与 <see cref="Unsupported"/> 分开**：这不是"翻译不了"，而是"翻译的时机在运行期"。
+    /// </summary>
+    public string? RuntimeOnly { get; init; }
+}
 
 /// <summary>
 /// 把计划步骤翻成**宿主调用**（路线 (a)：C# 决定"做哪个原语、对哪个格子"，上游方法负责执行）。
@@ -67,29 +75,57 @@ public static class CampaignCallTranslator
         }
         var args = new List<JsonNode?>();
         var keywords = new List<KeyValuePair<string, JsonNode?>>();
+        bool runtimeOnly = false;
         if (step.Args is not null)
         {
-            foreach (var value in step.Args.Positional) args.Add(Encode(value));
-            // 关键字实参**按关键字传给宿主**（Python 调用语义本来就是关键字），不折算成位置参数：
-            // 折算会改变语义（上游签名顺序不是我们能假设的）。
-            foreach (var (key, value) in step.Args.Keyword)
+            try
             {
-                keywords.Add(new KeyValuePair<string, JsonNode?>(key, Encode(value)));
+                foreach (var value in step.Args.Positional)
+                {
+                    args.Add(Encode(value, ref runtimeOnly));
+                }
+                // 关键字实参**按关键字传给宿主**（Python 调用语义本来就是关键字），不折算成位置参数：
+                // 折算会改变语义（上游签名顺序不是我们能假设的）。
+                foreach (var (key, value) in step.Args.Keyword)
+                {
+                    keywords.Add(new KeyValuePair<string, JsonNode?>(key, Encode(value, ref runtimeOnly)));
+                }
+            }
+            catch (NotSupportedException error)
+            {
+                // **未知的实参结构不再原样透传**：以前 `default:` 直接克隆，宿主收到一个它不认识的
+                // JSON 对象也可能"看起来能跑"——那是假绿。现在显式报出。
+                return new CampaignHostCall(step.Op, upstreamName, fleetPrefix, [], [], error.Message);
             }
         }
-        return new CampaignHostCall(step.Op, upstreamName, fleetPrefix, args, keywords, null);
+        return new CampaignHostCall(step.Op, upstreamName, fleetPrefix, args, keywords, null)
+        {
+            RuntimeOnly = runtimeOnly
+                ? "实参含运行期引用（`__local__` 局部变量 / `__param__` 钩子参数）：执行器调用前替换成具体值"
+                : null,
+        };
     }
 
     /// <summary>
     /// 计划里的实参 → 宿主引用形式。**返回 `JsonNode`**：标量原样克隆（`GetValue&lt;object&gt;()` 会报
     /// "An element of type 'String' cannot be converted to a 'System.Object'"，实测踩过）。
     /// </summary>
-    private static JsonNode? Encode(JsonNode? value)
+    private static JsonNode? Encode(JsonNode? value, ref bool runtimeOnly)
     {
         switch (value)
         {
             case null:
                 return null;
+            case JsonObject payload when payload.ContainsKey("__local__"):
+                // 局部变量引用：由**执行器**在运行期替换成 `{"__grid__": …}`（见 `SubstituteLocals`），
+                // 静态翻译到这里只能标记"运行期解析"，不能编造一个格子。
+                runtimeOnly = true;
+                return JsonValue.Create("#runtime-local");
+            case JsonObject payload when payload.ContainsKey("__param__"):
+                // 钩子**参数引用**（`super().handle_boss_appear_refocus(preset)`）：执行器用计划里记的
+                // 参数默认值还原（`ResolveSuperDelegate`），同样是运行期解析。
+                runtimeOnly = true;
+                return JsonValue.Create("#runtime-param");
             case JsonObject payload when payload.ContainsKey("__grid__"):
                 return JsonValue.Create("#" + Location(payload["__grid__"]));
             case JsonObject payload when payload.ContainsKey("__grids__"):
@@ -107,7 +143,13 @@ public static class CampaignCallTranslator
                             (JsonNode?)JsonValue.Create(Cell(cell))).ToArray())).ToArray())).ToArray());
                 return JsonValue.Create("#roads:" + roads.ToJsonString());
             case JsonArray array:
-                return new JsonArray(array.Select(Encode).ToArray());
+                var items = new List<JsonNode?>();
+                foreach (var item in array) items.Add(Encode(item, ref runtimeOnly));
+                return new JsonArray(items.ToArray());
+            case JsonObject payload:
+                // 未知的对象形状：**报错**而不是原样透传（原样透传会让"翻译不了"看起来像"翻译好了"）。
+                throw new NotSupportedException(
+                    $"实参里出现未识别的结构：{payload.ToJsonString()[..Math.Min(80, payload.ToJsonString().Length)]}");
             default:
                 return value.DeepClone();
         }

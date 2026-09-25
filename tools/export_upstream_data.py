@@ -635,6 +635,18 @@ def _is_bare_return_true(body) -> bool:
             and s.value.value is True)
 
 
+def _local_reference(node, locals_):
+    """把 `boss` / `boss[0]` 这类**局部变量引用**归一成 `{"__local__": …}`；不是局部就返回 None。"""
+    if isinstance(node, ast.Name) and node.id in locals_:
+        return {'__local__': node.id}
+    if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) \
+            and node.value.id in locals_:
+        index = node.slice
+        if isinstance(index, ast.Constant) and isinstance(index.value, int):
+            return {'__local__': node.value.id, '__index__': index.value}
+    return None
+
+
 def derive_plan(body: list, where: str, resolve=None):
     """
     把 battle_N 方法体归一成步骤序列。
@@ -655,66 +667,114 @@ def derive_plan(body: list, where: str, resolve=None):
     计划看起来完整，实际少调用一次，而当时的校验只查「计划里的算子在源码中出现」，
     查不出这种**丢步**。是 S3 解释器对拍（执行序列 vs 计划序列）才把它暴露出来（26 个关卡）。
     """
-    steps, unparsed, dead = [], [], []
-    terminated = False
+    # 方法内已绑定的**局部变量**（\oss = self.map.select(is_boss=True)\ 这类"观察"）。
+    # 按 Python 语义向外层累积：外层绑定的名字在内层分支体里同样可见。
+    locals_: set = set()
+
+    def arg_resolve(node):
+        """先看局部变量（含 `boss[0]` 这种下标），再走原来的字面量/路段/符号解析。"""
+        local = _local_reference(node, locals_)
+        return local if local is not None else resolve(node)
 
     def self_call_step(node, kind, **extra):
-        s = {'op': call_name(node), 'args': call_args(node, resolve), 'kind': kind}
+        s = {'op': call_name(node), 'args': call_args(node, arg_resolve), 'kind': kind}
         s.update(extra)
         return s
 
-    for stmt in body:
-        if terminated:
-            # Python 语义：`return` 之后的语句**不可达**。
-            # 上游确实存在这种手滑留下的死代码，实测 campaign/event_20211028_tw/c3.py：
-            #     return self.battle_default()
-            #     return self.battle_default()      ← 永不执行
-            # 记进 dead 以便追溯，但绝不能当成步骤 —— 否则解释器会执行一次永不发生的调用
-            # （实测会让解释器执行序列与计划序列对不上，2 个关卡）。
-            dead.append(type(stmt).__name__)
-            continue
+    def branch_test(test):
+        """把 `if` 的条件归一成 `{"local": …}` 或 `{"call": …}`（带 `negate`）；表示不了返回 None。"""
+        negate = False
+        node = test
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            negate = True
+            node = node.operand
+        local = _local_reference(node, locals_)
+        if local is not None:
+            return {'local': local['__local__'], 'negate': negate}
+        if is_self_call(node):
+            return {'call': {'op': call_name(node), 'args': call_args(node, arg_resolve)},
+                    'negate': negate}
+        return None
 
-        if isinstance(stmt, ast.If):
-            t = stmt.test
-            if not stmt.orelse and _is_bare_return_true(stmt.body):
-                if is_self_call(t):
-                    steps.append(self_call_step(t, 'conditional'))
-                    continue
-                if isinstance(t, ast.UnaryOp) and isinstance(t.op, ast.Not) \
-                        and is_self_call(t.operand):
-                    steps.append(self_call_step(t.operand, 'conditional_negated'))
-                    continue
-            # 分支体不是单纯的 return True（例如分支里还有调用/返回别的值）：
-            # 表示不了就如实标为未解析，绝不给出一份少几步的"完整"计划。
-            unparsed.append('If(nested)')
-        elif isinstance(stmt, ast.Return):
-            if stmt.value is not None and is_self_call(stmt.value):
-                steps.append(self_call_step(stmt.value, 'terminal'))
-                terminated = True
-            elif is_super_delegate(stmt.value):
-                # `return super().X(...)`：纯委托，本类没有新增逻辑，只是覆写钩子。
-                steps.append({'op': super_call_name(stmt.value), 'args': call_args(stmt.value, resolve),
-                              'kind': 'super_delegate'})
-                terminated = True
-            else:
-                unparsed.append('Return(expr)')
-        elif isinstance(stmt, ast.Expr):
-            if is_self_call(stmt.value):
-                steps.append(self_call_step(stmt.value, 'call'))
-            else:
-                unparsed.append('Expr')
-        elif isinstance(stmt, ast.Assign):
-            v = stmt.value
-            if is_self_call(v) and len(stmt.targets) == 1 \
-                    and isinstance(stmt.targets[0], ast.Name):
-                steps.append(self_call_step(v, 'assign', target=stmt.targets[0].id))
-            else:
-                unparsed.append('Assign')
-        elif isinstance(stmt, ast.Pass):
-            continue
-        else:
-            unparsed.append(type(stmt).__name__)
+    def normalize(body):
+        steps, unparsed, dead = [], [], []
+        terminated = False
+        for stmt in body:
+            if terminated:
+                # Python 语义：`return` 之后的语句**不可达**。
+                # 上游确实存在这种手滑留下的死代码，实测 campaign/event_20211028_tw/c3.py：
+                #     return self.battle_default()
+                #     return self.battle_default()      ← 永不执行
+                # 记进 dead 以便追溯，但绝不能当成步骤 —— 否则解释器会执行一次永不发生的调用
+                # （实测会让解释器执行序列与计划序列对不上，2 个关卡）。
+                dead.append(type(stmt).__name__)
+                continue
 
+            if isinstance(stmt, ast.If):
+                t = stmt.test
+                if not stmt.orelse and _is_bare_return_true(stmt.body):
+                    if is_self_call(t):
+                        steps.append(self_call_step(t, 'conditional'))
+                        continue
+                    if isinstance(t, ast.UnaryOp) and isinstance(t.op, ast.Not) \
+                            and is_self_call(t.operand):
+                        steps.append(self_call_step(t.operand, 'conditional_negated'))
+                        continue
+                # 分支体不是单纯的 `return True`：用 `branch` 步骤带上**嵌套体**
+                # （上游 `battle_6` 一族：`if boss:` → `if not self.check_accessibility(boss[0], …):`）。
+                test = branch_test(t)
+                if test is None:
+                    unparsed.append('If(cond)')
+                    continue
+                then_steps, then_unparsed, then_dead, then_end = normalize(stmt.body)
+                else_steps, else_unparsed, else_dead, else_end = normalize(stmt.orelse)
+                if then_unparsed or else_unparsed:
+                    # 任一分支表示不了 → 整条 if 记为未解析（附加原因便于定位）
+                    unparsed.append('If(nested)')
+                    unparsed.extend(then_unparsed)
+                    unparsed.extend(else_unparsed)
+                    continue
+                steps.append({'kind': 'branch', 'test': test,
+                              'body': then_steps, 'orelse': else_steps})
+                dead.extend(then_dead)
+                dead.extend(else_dead)
+                # 只有**两条分支都必然返回**时，后面的语句才不可达
+                if then_end and (not stmt.orelse or else_end):
+                    terminated = True
+            elif isinstance(stmt, ast.Return):
+                if stmt.value is not None and is_self_call(stmt.value):
+                    steps.append(self_call_step(stmt.value, 'terminal'))
+                    terminated = True
+                elif is_super_delegate(stmt.value):
+                    # `return super().X(...)`：纯委托，本类没有新增逻辑，只是覆写钩子。
+                    steps.append({'op': super_call_name(stmt.value), 'args': call_args(stmt.value, resolve),
+                                  'kind': 'super_delegate'})
+                    terminated = True
+                else:
+                    unparsed.append('Return(expr)')
+            elif isinstance(stmt, ast.Expr):
+                if is_self_call(stmt.value):
+                    steps.append(self_call_step(stmt.value, 'call'))
+                else:
+                    unparsed.append('Expr')
+            elif isinstance(stmt, ast.Assign):
+                v = stmt.value
+                if is_self_call(v) and len(stmt.targets) == 1 \
+                        and isinstance(stmt.targets[0], ast.Name):
+                    target = stmt.targets[0].id
+                    steps.append(self_call_step(v, 'assign', target=target))
+                    # 记成局部变量：后面的 `if <name>:` / `<name>[0]` 才算得出来
+                    locals_.add(target)
+                else:
+                    unparsed.append('Assign')
+            elif isinstance(stmt, ast.Pass):
+                continue
+            else:
+                unparsed.append(type(stmt).__name__)
+
+        return steps, unparsed, dead, terminated
+
+    steps, unparsed, dead, terminated = normalize(body)
     plan_complete = not unparsed
     if not plan_complete:
         steps = []

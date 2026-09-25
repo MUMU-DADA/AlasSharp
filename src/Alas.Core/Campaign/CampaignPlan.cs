@@ -80,6 +80,42 @@ public sealed class CampaignPlanBattle
 public sealed class CampaignPlanStep
 {
     [JsonPropertyName("kind")] public required string Kind { get; init; }
+
+    /// <summary>
+    /// 调用的方法名。`kind=branch` 的步骤**没有** `op`（它不是一次调用，而是带 `test`/`body`/`orelse` 的结构），
+    /// 所以这里默认空串；执行器对非 branch 的步骤仍会检查 op 是否已登记，不会因此漏掉未实现的原语。
+    /// </summary>
+    [JsonPropertyName("op")] public string Op { get; init; } = "";
+
+    [JsonPropertyName("args")] public CampaignPlanStepArgs? Args { get; init; }
+
+    /// <summary>`kind=assign` 时绑定的**局部变量名**（上游 `boss = self.map.select(is_boss=True)`）。</summary>
+    [JsonPropertyName("target")] public string? Target { get; init; }
+
+    /// <summary>`kind=branch` 的条件：局部变量真假，或一次原语调用的真假（可带 `negate`）。</summary>
+    [JsonPropertyName("test")] public CampaignPlanStepTest? Test { get; init; }
+
+    /// <summary>`kind=branch` 为真时执行的步骤序列（可再嵌套 `branch`）。</summary>
+    [JsonPropertyName("body")] public IReadOnlyList<CampaignPlanStep> Body { get; init; } = [];
+
+    /// <summary>`kind=branch` 为假时执行的步骤序列。</summary>
+    [JsonPropertyName("orelse")] public IReadOnlyList<CampaignPlanStep> OrElse { get; init; } = [];
+}
+
+/// <summary>`branch` 的条件：要么看局部变量（`{"local": "boss"}`），要么调一次原语（`{"call": …}`）。</summary>
+public sealed class CampaignPlanStepTest
+{
+    [JsonPropertyName("local")] public string? Local { get; init; }
+    [JsonPropertyName("call")] public CampaignPlanStepTestCall? Call { get; init; }
+    [JsonPropertyName("negate")] public bool Negate { get; init; }
+}
+
+/// <summary>
+/// `branch` 条件里的那次调用。它是**条件表达式**，不是一条步骤，所以没有 `kind`；
+/// 用单独的类型而不是放宽 `CampaignPlanStep`，免得主步骤漏了 `kind` 也照跑。
+/// </summary>
+public sealed class CampaignPlanStepTestCall
+{
     [JsonPropertyName("op")] public required string Op { get; init; }
     [JsonPropertyName("args")] public CampaignPlanStepArgs? Args { get; init; }
 }

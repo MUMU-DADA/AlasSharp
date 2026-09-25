@@ -39,6 +39,9 @@ internal static class CampaignCallCheck
         }
 
         var unsupported = new Dictionary<string, (int Count, string Reason)>(StringComparer.Ordinal);
+        // 实参里含"只能运行期解析"的引用（局部变量 / 钩子参数）的调用：**不算不支持**，
+        // 单独统计并在 JSON 里报出（执行器调用前会替换成具体值），别让"翻译的时机在运行期"看起来像缺口。
+        var runtime = new Dictionary<string, (int Count, string Reason)>(StringComparer.Ordinal);
         var methods = new SortedDictionary<string, int>(StringComparer.Ordinal);
         var rows = new JsonArray();
         int steps = 0, translated = 0;
@@ -57,6 +60,11 @@ internal static class CampaignCallCheck
                         continue;
                     }
                     translated++;
+                    if (call.RuntimeOnly is { } runtimeReason)
+                    {
+                        var currentRuntime = runtime.GetValueOrDefault(step.Op);
+                        runtime[step.Op] = (currentRuntime.Count + 1, runtimeReason);
+                    }
                     methods[call.Method] = methods.GetValueOrDefault(call.Method) + 1;
                     if (rows.Count < 400)
                     {
@@ -84,6 +92,12 @@ internal static class CampaignCallCheck
                 ["steps"] = steps,
                 ["translated"] = translated,
                 ["unsupported"] = new JsonArray(unsupported.Select(pair => (JsonNode)new JsonObject
+                {
+                    ["op"] = pair.Key,
+                    ["count"] = pair.Value.Count,
+                    ["reason"] = pair.Value.Reason,
+                }).ToArray()),
+                ["runtime_only"] = new JsonArray(runtime.Select(pair => (JsonNode)new JsonObject
                 {
                     ["op"] = pair.Key,
                     ["count"] = pair.Value.Count,

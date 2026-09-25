@@ -195,6 +195,19 @@ public static class CampaignLocations
         return (column - 'A', row - 1);
     }
 
+    /// <summary>`A1` → `(0, 0)`；不合法返回 false（不抛异常）。</summary>
+    public static bool TryParse(string node, out int x, out int y)
+    {
+        x = 0;
+        y = 0;
+        if (node.Length < 2) return false;
+        char column = char.ToUpperInvariant(node[0]);
+        if (column is < 'A' or > 'Z' || !int.TryParse(node[1..], out int row) || row < 1) return false;
+        x = column - 'A';
+        y = row - 1;
+        return true;
+    }
+
     /// <summary>越界坐标返回 false（用于四邻接判定，不抛异常）。</summary>
     public static bool TryToNode(int x, int y, out string node)
     {
@@ -220,6 +233,17 @@ public sealed record CampaignGridFilter(
     bool? IsMystery = null,
     bool? MayBoss = null,
     bool? MayAmmo = null,
+    /// <summary>
+    /// `map.select(may_enemy=True)` 这类**观察**要用的字段（上游 `SelectedGrids.select` 支持任意属性，
+    /// C# 侧按实际用量逐步补齐；`MapSelect` 里出现没补的键会显式报错）。
+    /// </summary>
+    bool? MayEnemy = null,
+    bool? MaySiren = null,
+    bool? MayMystery = null,
+    bool? IsAmmo = null,
+    bool? IsSubmarine = null,
+    bool? IsCurrentFleet = null,
+    bool? IsFlare = null,
     bool? IsCaughtBySiren = null,
     bool? IsFleet = null,
     bool? IsCleared = null,
@@ -244,6 +268,13 @@ public sealed record CampaignGridFilter(
         (IsMystery is null || grid.IsMystery == IsMystery) &&
         (MayBoss is null || grid.MayBoss == MayBoss) &&
         (MayAmmo is null || grid.MayAmmo == MayAmmo) &&
+        (MayEnemy is null || grid.MayEnemy == MayEnemy) &&
+        (MaySiren is null || grid.MaySiren == MaySiren) &&
+        (MayMystery is null || grid.MayMystery == MayMystery) &&
+        (IsAmmo is null || grid.IsAmmo == IsAmmo) &&
+        (IsSubmarine is null || grid.IsSubmarine == IsSubmarine) &&
+        (IsCurrentFleet is null || grid.IsCurrentFleet == IsCurrentFleet) &&
+        (IsFlare is null || grid.IsFlare == IsFlare) &&
         (IsCaughtBySiren is null || grid.IsCaughtBySiren == IsCaughtBySiren) &&
         (IsFleet is null || grid.IsFleet == IsFleet) &&
         (IsCleared is null || grid.IsCleared == IsCleared) &&

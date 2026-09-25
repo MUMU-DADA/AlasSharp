@@ -325,6 +325,43 @@ public static class CampaignPrimitives
         _ => throw new NotSupportedException($"未知的格子标志 {flag}（不在模型里；要同步新标志时在 ApplyFlag 里显式加）"),
     };
 
+    /// <summary>
+    /// 上游 `CampaignMap.select(**kwargs)`：按属性筛格子（`is_boss=True` 这类）。
+    /// 判定与上游 `SelectedGrids.select` 一致：**类型相同且值相等**才算命中；只支持布尔标志，
+    /// 出现没移植的键就显式报错（不猜语义）。
+    /// </summary>
+    public static CampaignGridSet MapSelect(ICampaignPrimitiveHost host, CampaignPlanStep step)
+    {
+        var filter = new CampaignGridFilter();
+        foreach (var (key, value) in step.Args?.Keyword ?? new Dictionary<string, JsonNode?>())
+        {
+            bool expected = value is JsonValue json && json.TryGetValue<bool>(out bool parsed) && parsed;
+            filter = key switch
+            {
+                "is_enemy" => filter with { IsEnemy = expected },
+                "is_boss" => filter with { IsBoss = expected },
+                "is_siren" => filter with { IsSiren = expected },
+                "is_fortress" => filter with { IsFortress = expected },
+                "is_mystery" => filter with { IsMystery = expected },
+                "is_ammo" => filter with { IsAmmo = expected },
+                "is_fleet" => filter with { IsFleet = expected },
+                "is_current_fleet" => filter with { IsCurrentFleet = expected },
+                "is_submarine" => filter with { IsSubmarine = expected },
+                "is_flare" => filter with { IsFlare = expected },
+                "is_cleared" => filter with { IsCleared = expected },
+                "is_caught_by_siren" => filter with { IsCaughtBySiren = expected },
+                "may_enemy" => filter with { MayEnemy = expected },
+                "may_boss" => filter with { MayBoss = expected },
+                "may_siren" => filter with { MaySiren = expected },
+                "may_mystery" => filter with { MayMystery = expected },
+                "may_ammo" => filter with { MayAmmo = expected },
+                _ => throw new NotSupportedException(
+                    $"map.select 的键 {key} 不在已移植白名单里（上游支持任意属性）——要支持时在这里显式加"),
+            };
+        }
+        return new CampaignGridSet(host.Grids).Select(filter);
+    }
+
     /// <summary>干跑时的循环上限，避免"清不完的神秘格子"把进程拖死。</summary>
     private const int MaxMysteryRounds = 100;
 
@@ -1215,6 +1252,129 @@ public sealed record CampaignHookExecution(
 /// </summary>
 public static class CampaignHookRunner
 {
+    /// <summary>
+    /// 求 `branch` 的条件：局部变量真假，或一次原语调用的真假（`negate` 取反）。
+    /// 取不到（变量没绑过、原语没实现、实参解析不了）就返回 <c>null</c> + 原因，由调用方**阻塞报出**，
+    /// 不猜一个真假继续往下跑。
+    /// </summary>
+    private static (bool? Value, string Why) EvaluateBranch(CampaignPlanStep step,
+                                                            ICampaignPrimitiveHost host,
+                                                            Dictionary<string, object?> env)
+    {
+        var test = step.Test;
+        if (test is null) return (null, "branch 没有 test 字段");
+        bool value;
+        string why;
+        if (test.Local is { Length: > 0 } name)
+        {
+            if (!env.TryGetValue(name, out var bound)) return (null, $"局部变量 {name} 没有绑定值");
+            value = Truthy(bound);
+            why = $"局部变量 {name} = {Describe(bound)}";
+        }
+        else if (test.Call is { } call)
+        {
+            if (!CampaignPrimitiveRegistry.TryGet(call.Op, out var primitive))
+                return (null, $"条件里的原语 {call.Op} 未实现");
+            var asStep = new CampaignPlanStep { Kind = "call", Op = call.Op, Args = call.Args };
+            CampaignPlanStep resolved;
+            try
+            {
+                resolved = SubstituteLocals(asStep, env);
+            }
+            catch (NotSupportedException error)
+            {
+                return (null, error.Message);
+            }
+            try
+            {
+                value = primitive.Execute(host, resolved);
+            }
+            catch (NotSupportedException error)
+            {
+                return (null, error.Message);
+            }
+            catch (CampaignControlFlowSignal signal)
+            {
+                return (null, signal.Message);
+            }
+            why = $"{call.Op} → {value}";
+        }
+        else
+        {
+            return (null, "branch 的 test 既不是局部变量也不是原语调用");
+        }
+        return (test.Negate ? !value : value, why);
+    }
+
+    /// <summary>局部变量的真假：格子集合看"非空"，布尔直接看值。</summary>
+    private static bool Truthy(object? value) => value switch
+    {
+        null => false,
+        bool flag => flag,
+        CampaignGridSet set => !set.IsEmpty,
+        _ => true,
+    };
+
+    private static string Describe(object? value) => value switch
+    {
+        null => "null",
+        bool flag => flag ? "真" : "假",
+        CampaignGridSet set => $"{set.Count} 格",
+        _ => value.ToString() ?? "?",
+    };
+
+    /// <summary>
+    /// 把步骤实参里的**局部变量引用**（`{"__local__": "boss", "__index__": 0}`）替换成具体的
+    /// `{"__grid__": [x, y]}` —— 后者是既有解码器认的形式，这样原语侧一行都不用改。
+    /// 变量没绑过、下标越界、或局部不是格子集合（当实参用不了）都抛 <see cref="NotSupportedException"/>。
+    /// </summary>
+    private static CampaignPlanStep SubstituteLocals(CampaignPlanStep step, Dictionary<string, object?> env)
+    {
+        if (step.Args is null) return step;
+        bool changed = false;
+
+        JsonNode? Replace(JsonNode? node)
+        {
+            if (node is not JsonObject payload || payload["__local__"] is not JsonValue nameNode
+                || !nameNode.TryGetValue<string>(out string? name))
+            {
+                return node;
+            }
+            if (!env.TryGetValue(name, out var bound) || bound is not CampaignGridSet set || set.IsEmpty)
+            {
+                throw new NotSupportedException($"局部变量 {name} 不是可用的格子集合（不能当实参）");
+            }
+            int index = payload["__index__"] is JsonValue indexNode && indexNode.TryGetValue<int>(out int parsed)
+                ? parsed
+                : 0;
+            if (index < 0 || index >= set.Count)
+            {
+                throw new NotSupportedException($"局部变量 {name} 的下标 {index} 越界（共 {set.Count} 格）");
+            }
+            var grid = set[index];
+            if (!CampaignLocations.TryParse(grid.Location, out int x, out int y))
+            {
+                throw new NotSupportedException($"格子 {grid.Location} 解析不出坐标");
+            }
+            changed = true;
+            return new JsonObject { ["__grid__"] = new JsonArray(x, y) };
+        }
+
+        var positional = step.Args.Positional.Select(Replace).ToArray();
+        var keyword = step.Args.Keyword.ToDictionary(pair => pair.Key, pair => Replace(pair.Value));
+        if (!changed) return step;
+        return new CampaignPlanStep
+        {
+            Kind = step.Kind,
+            Op = step.Op,
+            Args = new CampaignPlanStepArgs { Positional = positional, Keyword = keyword },
+            Target = step.Target,
+            Test = step.Test,
+            Body = step.Body,
+            OrElse = step.OrElse,
+        };
+    }
+
     /// <summary>跨钩子调用的最大递归深度（上游存在 `self.battle_0()` 这种调用同关卡其它钩子的写法）。</summary>
     private const int MaxCallDepth = 3;
 
@@ -1223,8 +1383,12 @@ public static class CampaignHookRunner
         Run(plan, battle, host, depth: 0);
 
     private static CampaignHookExecution Run(CampaignPlan plan, CampaignPlanBattle battle,
-                                             ICampaignPrimitiveHost host, int depth)
+                                             ICampaignPrimitiveHost host, int depth,
+                                             Dictionary<string, object?>? env = null)
     {
+        // **局部变量环境**：上游 `boss = self.map.select(is_boss=True)` 这类"观察"的绑定，
+        // 后续 `if boss:` / `check_accessibility(boss[0], …)` 都从它取值。分支体共享同一份（Python 作用域）。
+        env ??= new Dictionary<string, object?>(StringComparer.Ordinal);
         var stepLog = new List<string>();
         var actions = new List<string>();
         int actionsBefore = host is RecordingCampaignHost recording ? recording.Actions.Count : 0;
@@ -1243,6 +1407,79 @@ public static class CampaignHookRunner
 
         foreach (var step in battle.Steps)
         {
+            // `branch`：条件分支。条件要么看**局部变量**（`if boss:`），要么调一次原语
+            // （`if not self.check_accessibility(boss[0], fleet='boss')`）。分支体是步骤序列，可再嵌套。
+            if (step.Kind == "branch")
+            {
+                var (taken, why) = EvaluateBranch(step, host, env);
+                if (taken is null)
+                {
+                    stepLog.Add($"{step.Op}: {why}");
+                    return Result(plan, battle, null, why, stepLog, host, actionsBefore, actions);
+                }
+                stepLog.Add($"branch：条件为{(taken == true ? "真" : "假")}（{why}）");
+                var branchSteps = taken == true ? step.Body : step.OrElse;
+                if (branchSteps.Count == 0) continue;
+                var innerBattle = new CampaignPlanBattle
+                {
+                    Method = battle.Method,
+                    Calls = battle.Calls,
+                    PlanComplete = true,
+                    StatementCount = battle.StatementCount,
+                    Parameters = battle.Parameters,
+                    Steps = branchSteps,
+                };
+                var branchRun = Run(plan, innerBattle, host, depth, env);
+                stepLog.AddRange(branchRun.StepLog);
+                if (branchRun.Actions.Count > 0) actions.AddRange(branchRun.Actions);
+                if (branchRun.BlockedReason is not null)
+                {
+                    return Result(plan, battle, null, branchRun.BlockedReason, stepLog, host, actionsBefore, actions);
+                }
+                if (branchRun.ReturnValue is not null)
+                {
+                    return Result(plan, battle, branchRun.ReturnValue, null, stepLog, host, actionsBefore, actions);
+                }
+                continue;
+            }
+
+            // `assign`：把一次调用的结果绑定成局部变量。
+            //   * `map.select(**flags)` → 绑定一个**格子集合**（后续 `boss[0]` 会用到）
+            //   * 其它原语 → 绑定它的布尔结果（`if <name>:` 直接看真假）
+            if (step.Kind == "assign" && step.Target is { Length: > 0 } bind)
+            {
+                if (step.Op == "map.select")
+                {
+                    var selected = CampaignPrimitives.MapSelect(host, step);
+                    env[bind] = selected;
+                    stepLog.Add($"map.select → {selected.Count} 格（绑定 {bind}）");
+                    continue;
+                }
+                if (!CampaignPrimitiveRegistry.TryGet(step.Op, out var assigned))
+                {
+                    stepLog.Add($"{step.Op}: 原语未实现，停止执行");
+                    return Result(plan, battle, null, $"原语 {step.Op} 未实现", stepLog, host, actionsBefore, actions);
+                }
+                bool assignedValue;
+                try
+                {
+                    assignedValue = assigned.Execute(host, step);
+                }
+                catch (NotSupportedException error)
+                {
+                    stepLog.Add($"{step.Op}: {error.Message}");
+                    return Result(plan, battle, null, error.Message, stepLog, host, actionsBefore, actions);
+                }
+                catch (CampaignControlFlowSignal signal)
+                {
+                    stepLog.Add($"{step.Op}: 控制流信号 {signal.Kind}");
+                    return Result(plan, battle, null, signal.Message, stepLog, host, actionsBefore, actions);
+                }
+                env[bind] = assignedValue;
+                stepLog.Add($"{step.Op}: {(assignedValue ? "真" : "假")}（绑定 {bind}）");
+                continue;
+            }
+
             if (step.Kind == "super_delegate")
             {
                 // 委托父类：`super().X(...)` 在上游会调用**基类实现**（这 7 处实测都是 Fleet 的实现）。

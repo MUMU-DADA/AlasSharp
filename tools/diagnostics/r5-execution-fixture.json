@@ -2,7 +2,7 @@
   "note": "R5 原语执行对拍夹具：供 `Alas.Server r5-exec --fixture <本文件>` 与 tools/diagnostics/verify_r5_execution.py 使用。关卡/钩子取自静态导出（data/campaign/**），地图状态与运行时配置由本夹具给出，动作只被干跑宿主记录。",
   "cases": [
     {
-      "name": "campaign_10_1 battle_6：计划不完整（静态无法表达的嵌套 if）→ 必须**阻塞报原因**，不许静默什么都不做",
+      "name": "campaign_10_1 battle_6：嵌套 if + 局部变量（`boss = map.select(...)` → `if boss:` → `if not check_accessibility(boss[0])`）——boss 可达时落到 terminal clear_boss",
       "chapter": "campaign_main",
       "level": "campaign_10_1",
       "hook": "battle_6",
@@ -16,8 +16,31 @@
         }
       ],
       "expect": {
-        "completed": false,
-        "blocked_contains": "计划不完整"
+        "completed": true
+      }
+    },
+    {
+      "name": "campaign_10_1 battle_6：boss 不可达 → 走否定分支里的 clear_roadblocks（`__roads__` 实参 + 局部变量实参）",
+      "chapter": "campaign_main",
+      "level": "campaign_10_1",
+      "hook": "battle_6",
+      "grids": [
+        {
+          "location": "A1",
+          "is_boss": true,
+          "is_enemy": true,
+          "weight": 10,
+          "cost": 9999
+        },
+        {
+          "location": "B1",
+          "is_enemy": true,
+          "weight": 20,
+          "cost": 1
+        }
+      ],
+      "expect": {
+        "completed": true
       }
     },
     {

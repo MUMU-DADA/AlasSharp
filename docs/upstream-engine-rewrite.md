@@ -43,17 +43,17 @@
 | 对拍 | 规模 | 结果 | 报告/入口 |
 | --- | --- | --- | --- |
 | 步覆盖（**步**口径） | 全库 5694 步 | **5694/5694（100%）**，`<expr>` 归零 | `r5-plan` 概览 |
-| 钩子可执行率（**钩子**口径） | 2951 个 `battle_*` 钩子 | **2788 个有可执行计划**；163 个 `plan_complete=false`（静态无法表达的嵌套 `if` 等）由引擎**拒绝执行并报原因**，不静默跳过 | `verify_r5_coverage.py` |
+| 钩子可执行率（**钩子**口径） | 2951 个 `battle_*` 钩子 | **计划语言扩展后**：`plan_complete=false` 从 163 降到 **122**（新增"观察步骤 + 局部绑定 + 分支体"，见下）；这些钩子由引擎**拒绝执行并报原因**，不静默跳过 | `verify_r5_coverage.py` / `r5_incomplete_hooks.py` |
 | 原语覆盖 | **30** 个已登记原语 | 29 个被夹具执行过；`check_accessibility` 已由复合原语扫描对拍、但暂无夹具钩子路径（原因写在 `ALLOWED_GAPS`） | `verify_r5_coverage.py` |
 | 钩子选择 | 1437 个模块 × 5 个 battle_count | **6660 次比较，不一致 0**（基准=上游真实 `battle_function`） | [决策层扫描](archive/reports/r5-decision-sweep.md) |
 | 寻路成本场 + 路线 + **逐格编码** | 1370 关 × **3 种配置** / **275,934 格** / **32,877 条路线** | 无伏击配置**成本差异 0**；有伏击配置 52 处全部是「上游偏大」（C# 已 relax 到不动点，**不可能更贵**）；**逐格编码不一致 0**（覆盖「令牌 → 标志 → 编码」整条链路）；连接差异 990 处全为等代价择向；路线完全相同 32,739、等代价择向 138、**不合法 0** | [寻路扫描](archive/reports/r5-path-sweep.md) |
-| 宿主调用翻译 | 全库 5694 步 | **5694/5694 可翻译，0 不支持** | `verify_r5_calls.py` |
+| 宿主调用翻译 | 全库 **5796** 步（含新分支体） | **5796/5796 可翻译，0 不支持**；7 条实参是**运行期解析**（`__local__`/`__param__`，执行器调用前替换） | `verify_r5_calls.py` |
 | 目标选择（过滤 DSL） | 200 个随机状态 × 2166 例 | 与上游 `Filter` **不一致 0**（真实过滤器串 + 两个优先级预设 + preserve） | [选择扫描](archive/reports/r5-selection-sweep.md) |
 | 目标选择（分支） | 120 个随机状态 × 1680 例 | 与上游 `Map.select_grids` **不一致 0**（`nearby`/`is_accessible`/`scale`·`genre` 无序 vs 有序/`strongest`/`weakest`/`sort` 多键） | [分支扫描](archive/reports/r5-selectgrids-sweep.md) |
 | 复合原语（**动作序列级**） | 20 个随机状态 × **16 原语** × 12 配置 / 3821 例 | 与上游**真实方法**（清敌/过滤敌/movable 委托/塞壬/boss/`brute_clear_boss`/`brute_fleet_meet`/`clear_potential_boss`/路段三变体/弹药/2 队推进与护航）**不一致 0**；序列完全相同 3265、干跑前缀 4（有意偏离）、集合序伪影 44 + 等价位 6、切舰队记录时机差异 28；19 处跳过是上游自身越界 | [复合扫描](archive/reports/r5-composite-sweep.md) |
 | 历史运行日志 | 4 段 / 17 轮出击 | 决策层一致 17/17 | [日志扫描](archive/reports/r5-log-sweep.md) |
 | 真机帧 | 6 帧（4 帧可识别） | 识别 → 状态 → 循环 → 两宿主序列一致 | [帧扫描](archive/reports/r5-frame-sweep.md) |
-| 不完整钩子普查 | 3019 个钩子条目 / 209 个"有真实语句但不完整"（`battle_*` 160） | 按 `if` 形态分类 + **棘轮基线 163**（只许下降）；先决条件写在报告里 | [不完整钩子](archive/reports/r5-incomplete-hooks.md) |
+| 不完整钩子普查 | 3019 个钩子条目 / **171** 个"有真实语句但不完整"（`battle_*` **122**） | 按 `if` 形态分类 + **棘轮基线 122**（只许下降） | [不完整钩子](archive/reports/r5-incomplete-hooks.md) |
 | 状态写入审计 | 30 个原语（上游方法体静态扫描） | 检测到状态写入的 **3 条全部核对**（`is_flare` / `is_caught_by_siren` / `may_bouncing_enemy`），**待确认 0** | [状态审计](archive/reports/r5-state-mutation-audit.md) |
 
 各自的口径与"不覆盖什么"写在报告里，不在这里重复。
