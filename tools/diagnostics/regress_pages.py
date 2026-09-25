@@ -4,7 +4,7 @@
 为什么值得单独跑：
 - 之前的页面验证是分批做的（脚本点坐标导航），而导航后来换成了产品实现
   （队列调用上游 UI.ui_ensure / ui_goto / ui_additional）。改了实现就要重新证明，
-  否则"29 个页面已验证"是旧代码的结论。
+  否则已验证页面数仍是旧代码的结论。
 - 一次跑完还能暴露"某些页只有从特定起点才到得了"这类顺序依赖。
 
 判定：导航任务成功且随后 `page_current` 里确实包含该页。
@@ -56,7 +56,7 @@ def graph_info():
         for link in node['links']:
             has_in.add(link['to'])
     no_in = sorted(n['name'] for n in g['nodes'] if n['name'] not in has_in)
-    return set(no_in), g['node_count'], g['edge_count']
+    return no_in, g['node_count'], g['edge_count']
 
 
 def op(op_name, **args):
@@ -173,7 +173,7 @@ def write_report(results, no_in, node_n, edge_n):
     ok_n = sum(1 for r in results if r['verdict'] == 'ok')
     bad = [r for r in results if r['verdict'] != 'ok']
     entry_note = (
-        '本次样本经 `Alas.Server queue --file` 的 `navigate` 任务采集。'
+        '本次样本经产品队列的 `navigate` 任务采集。'
         if results and all(r.get('navigation_entry') == 'queue:navigate' for r in results)
         else '当前存档是退役直接导航入口的历史样本；需重新运行脚本验证队列入口。')
     # ---- 账号前提：页面可达性受解锁进度影响，基线数字必须带上它。
@@ -200,8 +200,8 @@ def write_report(results, no_in, node_n, edge_n):
     lines = [
         '# 页面识别全量回归（产品路径）',
         '',
-        '用 `Alas.Server queue --file` 的 `navigate` 任务对**已验证的每个页面**重跑一遍：既验证页面规则在各自页面上命中，',
-        '也验证导航器（运行时取自上游的页面图 + 变体择优 + 未建模画面自救）本身没退化。',
+        '用产品队列的 `navigate` 任务对**已验证的每个页面**重跑一遍：既验证页面规则在各自页面上命中，',
+        '也验证上游 `UI.ui_ensure()` 的页面图、识别和点击流程本身没退化。',
         entry_note,
         '',
         '为什么需要单独做这一遍：早先的页面验证是分批做的（诊断脚本按资产坐标导航），',

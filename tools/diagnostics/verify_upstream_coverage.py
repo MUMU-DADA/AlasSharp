@@ -306,6 +306,7 @@ def check_navigation(av):
                 row = dict(source=source.name, destination=destination.name)
                 records.append(row)
                 current, hops, screenshots = [source], [], [0]
+                clears, settles = {'stuck': 0, 'click': 0}, []
 
                 def screenshot():
                     screenshots[0] += 1
@@ -320,7 +321,9 @@ def check_navigation(av):
                     current[0] = parent
 
                 device = SimpleNamespace(config=SimpleNamespace(SERVER=av.server_module.server),
-                                         screenshot=screenshot, click=click, has_cached_image=True)
+                                         screenshot=screenshot, click=click, has_cached_image=True,
+                                         stuck_record_clear=lambda: clears.__setitem__('stuck', clears['stuck'] + 1),
+                                         click_record_clear=lambda: clears.__setitem__('click', clears['click'] + 1))
 
                 def initialize(ui, config, injected_device):
                     ui.config, ui.device = config, injected_device
@@ -329,10 +332,13 @@ def check_navigation(av):
 
                 try:
                     with patch.object(UI, '__init__', initialize), \
-                            patch.object(av, '_device_engine', return_value=device):
+                            patch.object(av, '_device_engine', return_value=device), \
+                            patch.object(av.time, 'sleep', lambda seconds: settles.append(seconds)):
                         result = av.op_ui_ensure(dict(destination=destination.name, allow_actions=True))
                     if not result['arrived'] or result.get('error'):
                         raise AssertionError(result)
+                    if clears != {'stuck': 1, 'click': 1} or device.click is not click or settles != [1.0] * len(hops):
+                        raise AssertionError('Native task-boundary guards or click stabilization diverged')
                     if any(page.parent is not None for page in Page.all_pages.values()) and hops:
                         raise AssertionError('Native connection state leaked after navigation')
                     row.update(status='passed', hops=len(hops))
