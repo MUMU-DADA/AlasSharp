@@ -1297,6 +1297,30 @@ public static class CampaignHookRunner
             value = Truthy(bound);
             why = $"局部变量 {name} = {Describe(bound)}";
         }
+        else if (test.BattleCount is { } countTest && countTest["op"] is { } opNode
+                 && countTest["value"] is { } valueNode
+                 && opNode.GetValue<string>() is { } compare
+                 && valueNode.GetValue<int>() is int threshold)
+        {
+            // `self.battle_count >= 3` 这类状态比较：左侧就是宿主的 BattleCount
+            int count = host.BattleCount;
+            value = compare switch
+            {
+                ">=" => count >= threshold,
+                ">" => count > threshold,
+                "<=" => count <= threshold,
+                "<" => count < threshold,
+                "==" => count == threshold,
+                "!=" => count != threshold,
+                _ => throw new NotSupportedException($"不支持的 battle_count 比较 {compare}"),
+            };
+            why = $"battle_count({count}) {compare} {threshold}";
+        }
+        else if (test.BattleCountIn is { Count: > 0 } allowed)
+        {
+            value = allowed.Contains(host.BattleCount);
+            why = $"battle_count({host.BattleCount}) in {string.Join(",", allowed)}";
+        }
         else if (test.Grid is { } gridNode && test.Attribute is { Length: > 0 } attribute)
         {
             // `<GRID>.is_xxx`：从**当前地图状态**取那个格子，再看属性（白名单外显式报错）
@@ -1512,6 +1536,14 @@ public static class CampaignHookRunner
                 {
                     return Result(plan, battle, branchRun.ReturnValue, null, stepLog, host, actionsBefore, actions);
                 }
+                continue;
+            }
+
+            // `log`：上游 `logger.info(...)` 这类纯日志调用。**没有引擎副作用**（不改地图状态、
+            // 不发设备动作），但计划里保留它并写进步骤日志——不静默丢，也不假装它做了什么。
+            if (step.Kind == "log")
+            {
+                stepLog.Add($"log: {step.Text}");
                 continue;
             }
 

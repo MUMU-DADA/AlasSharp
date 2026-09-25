@@ -2,6 +2,38 @@
   "note": "R5 原语执行对拍夹具：供 `Alas.Server r5-exec --fixture <本文件>` 与 tools/diagnostics/verify_r5_execution.py 使用。关卡/钩子取自静态导出（data/campaign/**），地图状态与运行时配置由本夹具给出，动作只被干跑宿主记录。",
   "cases": [
     {
+      "name": "campaign_12_4 battle_0：`if self.battle_count >= 3:` 状态条件（battle_count=3 → 走分支体 pick_up_ammo）+ 路段条件",
+      "chapter": "campaign_main",
+      "level": "campaign_12_4",
+      "hook": "battle_0",
+      "config": {
+        "fleet_boss": true,
+        "fleet_2": true,
+        "fleet_1_location": "A1",
+        "fleet_2_location": "B1",
+        "battle_count": 3
+      },
+      "grids": [
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "may_ammo": true,
+          "weight": 5,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "is_fleet": true,
+          "weight": 5,
+          "cost": 1
+        }
+      ],
+      "expect": {
+        "completed": true,
+        "steps_contains": "battle_count(3) >= 3"
+      }
+    },
+    {
       "name": "event_20200917_cn hts2 battle_0：连续 `goto(..., expected='story')` + `raise CampaignEnd()`——信号结束本关，不发设备动作",
       "chapter": "event_20200917_cn",
       "level": "hts2",

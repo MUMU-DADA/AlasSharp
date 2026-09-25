@@ -635,6 +635,16 @@ def _is_bare_return_true(body) -> bool:
             and s.value.value is True)
 
 
+def _brief(node, limit: int = 70) -> str:
+    """未解析语句的**简短源码**（进 `unparsed`，便于按具体形态聚合与定位）。"""
+    try:
+        text = ast.unparse(node)
+    except Exception:                                   # noqa: BLE001 —— 反解析失败不该影响导出
+        return '<?>'
+    text = re.sub(r'\s+', ' ', text)
+    return text[:limit]
+
+
 def _local_reference(node, locals_):
     """把 `boss` / `boss[0]` 这类**局部变量引用**归一成 `{"__local__": …}`；不是局部就返回 None。"""
     if isinstance(node, ast.Name) and node.id in locals_:
@@ -691,6 +701,21 @@ def derive_plan(body: list, where: str, resolve=None):
         local = _local_reference(node, locals_)
         if local is not None:
             return {'local': local['__local__'], 'negate': negate}
+        if isinstance(node, ast.Compare) and isinstance(node.left, ast.Attribute) \
+                and isinstance(node.left.value, ast.Name) and node.left.value.id == 'self' \
+                and node.left.attr == 'battle_count' and len(node.ops) == 1 and len(node.comparators) == 1:
+            # `self.battle_count >= 3` 这类**状态比较**：C# 侧 `host.BattleCount` 就是它
+            right = node.comparators[0]
+            operator = {ast.GtE: '>=', ast.Gt: '>', ast.LtE: '<=', ast.Lt: '<', ast.Eq: '==', ast.NotEq: '!='}
+            if isinstance(right, ast.Constant) and isinstance(right.value, int) and type(node.ops[0]) in operator:
+                return {'battle_count': {'op': operator[type(node.ops[0])], 'value': right.value},
+                        'negate': negate}
+            if isinstance(right, (ast.List, ast.Tuple)) and isinstance(node.ops[0], (ast.In, ast.NotIn)):
+                values = [item.value for item in right.elts
+                          if isinstance(item, ast.Constant) and isinstance(item.value, int)]
+                if len(values) == len(right.elts):
+                    return {'battle_count_in': values,
+                            'negate': negate if isinstance(node.ops[0], ast.NotIn) else not negate}
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
             # `<GRID>.is_xxx`：裸格名是模块级 `A1, B1, ... = MAP.flatten()` 绑定的格子对象
             # （`campaign_15_1.py:40` 那一片）。用**已有的符号解析**把格名换成坐标，再带属性名。
@@ -735,13 +760,13 @@ def derive_plan(body: list, where: str, resolve=None):
                 # （上游 `battle_6` 一族：`if boss:` → `if not self.check_accessibility(boss[0], …):`）。
                 test = branch_test(t)
                 if test is None:
-                    unparsed.append('If(cond)')
+                    unparsed.append(f'If(cond)@{stmt.lineno}: {_brief(stmt.test)}')
                     continue
                 then_steps, then_unparsed, then_dead, then_end = normalize(stmt.body)
                 else_steps, else_unparsed, else_dead, else_end = normalize(stmt.orelse)
                 if then_unparsed or else_unparsed:
                     # 任一分支表示不了 → 整条 if 记为未解析（附加原因便于定位）
-                    unparsed.append('If(nested)')
+                    unparsed.append(f'If(nested)@{stmt.lineno}: {_brief(stmt.test)}')
                     unparsed.extend(then_unparsed)
                     unparsed.extend(else_unparsed)
                     continue
@@ -768,12 +793,21 @@ def derive_plan(body: list, where: str, resolve=None):
                                   'kind': 'super_delegate'})
                     terminated = True
                 else:
-                    unparsed.append('Return(expr)')
+                    unparsed.append(f'Return(expr)@{stmt.lineno}: {_brief(stmt.value)}')
             elif isinstance(stmt, ast.Expr):
                 if is_self_call(stmt.value):
                     steps.append(self_call_step(stmt.value, 'call'))
                 else:
-                    unparsed.append('Expr')
+                    if isinstance(stmt.value, ast.Call) and (
+                            (isinstance(stmt.value.func, ast.Attribute)
+                             and isinstance(stmt.value.func.value, ast.Name)
+                             and stmt.value.func.value.id == 'logger')
+                            or (isinstance(stmt.value.func, ast.Name) and stmt.value.func.id == 'print')):
+                        # 纯日志调用：没有引擎副作用（不改地图状态、不发设备动作），但**记进计划**，
+                        # 免得"静默丢掉"——执行器只把它写进步骤日志。
+                        steps.append({'kind': 'log', 'text': _brief(stmt.value, 120)})
+                    else:
+                        unparsed.append(f'Expr@{stmt.lineno}: {_brief(stmt.value)}')
             elif isinstance(stmt, ast.Assign):
                 v = stmt.value
                 if is_self_call(v) and len(stmt.targets) == 1 \
@@ -783,7 +817,7 @@ def derive_plan(body: list, where: str, resolve=None):
                     # 记成局部变量：后面的 `if <name>:` / `<name>[0]` 才算得出来
                     locals_.add(target)
                 else:
-                    unparsed.append('Assign')
+                    unparsed.append(f'Assign@{stmt.lineno}: {_brief(stmt)}')
             elif isinstance(stmt, ast.Pass):
                 continue
             else:
@@ -796,7 +830,7 @@ def derive_plan(body: list, where: str, resolve=None):
                     steps.append({'kind': 'raise', 'signal': stmt.exc.func.id})
                     terminated = True
                 else:
-                    unparsed.append(type(stmt).__name__)
+                    unparsed.append(f'{type(stmt).__name__}@{stmt.lineno}: {_brief(stmt)}')
 
         return steps, unparsed, dead, terminated
 

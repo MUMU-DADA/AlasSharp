@@ -5,8 +5,8 @@
 > 所以是「少做」而不是「做错」。本报告只说清还差什么。
 
 - 导出里的钩子条目：**3019**
-- `plan_complete=false` 且上游**有 ≥2 条语句**的：**151**（其中 `battle_*` **102**、变体/其它 **49**）
-- 棘轮基线：**102**（只允许下降）
+- `plan_complete=false` 且上游**有 ≥2 条语句**的：**146**（其中 `battle_*` **98**、变体/其它 **48**）
+- 棘轮基线：**98**（只允许下降）
 
 ## `if` 的形态分布（条件 / 语句体）
 
@@ -16,7 +16,7 @@
 
 | 条件形态 | 语句体形态 | 次数 |
 | --- | --- | --- |
-| self_call | return | 230 |
+| self_call | return | 222 |
 | other | if | 57 |
 | other | expr | 22 |
 | other | expr+return | 9 |
@@ -24,23 +24,23 @@
 | other | return | 7 |
 | other | assign+expr+return | 6 |
 | other | assign+if | 6 |
-| compare | return | 6 |
-| other | assign+expr+if | 6 |
-| compare | expr | 5 |
 | other | for | 5 |
+| other | expr+if | 5 |
+| compare | assign | 5 |
+| local_name | if | 4 |
 
 ## 例子
 
-- `campaign_hard/campaign_12_4` battle_0：`if self.battle_count >= 3` → 体内有 expr
-- `campaign_hard/campaign_12_4` battle_0：`if self.clear_roadblocks([road_main])` → 体内有 return
-- `campaign_hard/campaign_12_4` battle_0：`if self.clear_potential_roadblocks([road_main])` → 体内有 return
 - `campaign_hard/campaign_hard` clear_boss：`if grids` → 体内有 assign+expr+raise
-- `campaign_main/campaign_12_4` battle_0：`if self.battle_count >= 3` → 体内有 expr
-- `campaign_main/campaign_12_4` battle_0：`if self.clear_roadblocks([road_main])` → 体内有 return
-- `campaign_main/campaign_12_4` battle_0：`if self.clear_potential_roadblocks([road_main])` → 体内有 return
 - `campaign_main/campaign_14_2` battle_0：`if not self.picked_flare and H7.is_accessible and A` → 体内有 expr
 - `campaign_main/campaign_14_2` battle_0：`if self.clear_roadblocks([road_A5, road_H7], weakes` → 体内有 return
 - `campaign_main/campaign_14_2` battle_0：`if self.clear_filter_enemy(self.ENEMY_FILTER, prese` → 体内有 return
+- `campaign_main/campaign_14_4` map_data_init：`if not self.map_is_clear_mode` → 体内有 for
+- `campaign_main/campaign_15_1` battle_function：`if self.config.MAP_CLEAR_ALL_THIS_TIME and self.bat` → 体内有 assign+expr+return
+- `campaign_main/campaign_15_1` battle_0：`if not self.map_is_clear_mode and self.map_has_mob_` → 体内有 expr+if
+- `campaign_main/campaign_15_1` battle_0：`if self.clear_filter_enemy(self.ENEMY_FILTER, prese` → 体内有 return
+- `campaign_main/campaign_15_1` battle_0：`if B1.is_accessible` → 体内有 expr+return
+- `campaign_main/campaign_15_2` battle_function：`if self.config.MAP_CLEAR_ALL_THIS_TIME and self.bat` → 体内有 assign+expr+return
 
 ## 先决条件（按出现频次）
 

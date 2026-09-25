@@ -106,6 +106,9 @@ public sealed class CampaignPlanStep
 
     /// <summary>`kind=raise` 时抛出的**控制流信号**（上游 `raise CampaignEnd()` / `MapEnemyMoved()`）。</summary>
     [JsonPropertyName("signal")] public string? Signal { get; init; }
+
+    /// <summary>`kind=log` 时被记录的日志调用文本（上游 `logger.info(...)`：无引擎副作用）。</summary>
+    [JsonPropertyName("text")] public string? Text { get; init; }
 }
 
 /// <summary>`branch` 的条件：要么看局部变量（`{"local": "boss"}`），要么调一次原语（`{"call": …}`）。</summary>
@@ -119,6 +122,12 @@ public sealed class CampaignPlanStepTest
     /// <summary>`<GRID>.is_xxx` 这类**格子属性**条件（裸格名是模块级 `= MAP.flatten()` 的绑定）。</summary>
     [JsonPropertyName("grid")] public JsonNode? Grid { get; init; }
     [JsonPropertyName("attr")] public string? Attribute { get; init; }
+
+    /// <summary>`self.battle_count >= 3` 这类**状态比较**：`{"op": ">=", "value": 3}`。</summary>
+    [JsonPropertyName("battle_count")] public JsonNode? BattleCount { get; init; }
+
+    /// <summary>`self.battle_count in [0, 1]` 这类**集合包含**判断。</summary>
+    [JsonPropertyName("battle_count_in")] public IReadOnlyList<int>? BattleCountIn { get; init; }
 
     [JsonPropertyName("call")] public CampaignPlanStepTestCall? Call { get; init; }
     [JsonPropertyName("negate")] public bool Negate { get; init; }
