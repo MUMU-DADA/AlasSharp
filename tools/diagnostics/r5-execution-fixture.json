@@ -6,6 +6,7 @@
       "chapter": "campaign_main",
       "level": "campaign_1_1",
       "hook": "battle_0",
+      "cross_check": "clear_enemy",
       "grids": [
         { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 90, "cost": 8 },
         { "location": "B1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 50, "cost": 12 }
@@ -17,6 +18,7 @@
       "chapter": "campaign_main",
       "level": "campaign_1_1",
       "hook": "battle_0",
+      "cross_check": "clear_enemy",
       "grids": [
         { "location": "A1", "is_mystery": true, "weight": 90, "cost": 8 }
       ],
@@ -27,6 +29,7 @@
       "chapter": "campaign_main",
       "level": "campaign_1_1",
       "hook": "battle_0",
+      "cross_check": "clear_enemy",
       "config": { "enemy_priority": "S3_enemy_first" },
       "grids": [
         { "location": "A1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 1, "cost": 1 },
@@ -35,14 +38,106 @@
       "expect": { "return": true, "action_contains": "clear_chosen_enemy(C1" }
     },
     {
-      "name": "campaign_1_1 battle_1：terminal clear_boss（原语未实现）→ 停止执行并报阻塞",
+      "name": "campaign_1_1 battle_1：terminal clear_boss，地图上有 boss → 潜艇机动 + 打 boss，再退回踩 may_boss（本轮已实现）",
       "chapter": "campaign_main",
       "level": "campaign_1_1",
       "hook": "battle_1",
       "grids": [
-        { "location": "A1", "is_enemy": true, "is_boss": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 1, "cost": 1 }
+        { "location": "A1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 1, "cost": 5 }
       ],
-      "expect": { "completed": false, "blocked_contains": "clear_boss", "return": null }
+      "expect": {
+        "completed": true,
+        "return": false,
+        "action_contains": "submarine_move_near_boss(A1)",
+        "log_contains": "BOSS not detected, trying all boss spawn point."
+      }
+    },
+    {
+      "name": "campaign_1_1 battle_1：地图上没有 boss 但有 may_boss → 踩 may_boss 格子（fleet_boss）",
+      "chapter": "campaign_main",
+      "level": "campaign_1_1",
+      "hook": "battle_1",
+      "grids": [
+        { "location": "C3", "may_boss": true, "weight": 20, "cost": 7, "cost_2": 30 }
+      ],
+      "expect": {
+        "completed": true,
+        "action_contains": "clear_chosen_enemy(C3, expected=boss, fleet=boss)",
+        "log_contains": "Boss guessing incorrect."
+      }
+    },
+    {
+      "name": "campaign_1_1 battle_1：不可达的 may_boss → 明确报未移植（brute_find_roadblocks）",
+      "chapter": "campaign_main",
+      "level": "campaign_1_1",
+      "hook": "battle_1",
+      "grids": [
+        { "location": "D4", "may_boss": true, "weight": 20, "cost": 9999 }
+      ],
+      "expect": { "completed": false, "blocked_contains": "brute_find_roadblocks" }
+    },
+    {
+      "name": "event_20200326_cn a1 battle_0：conditional clear_siren（有塞壬）→ 短路返回真",
+      "chapter": "event_20200326_cn",
+      "level": "a1",
+      "hook": "battle_0",
+      "config": { "map_has_siren": true },
+      "grids": [
+        { "location": "B2", "is_siren": true, "weight": 50, "cost": 6 },
+        { "location": "C3", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 10, "cost": 4 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(B2, expected=siren)",
+        "steps_contains": "clear_siren: 真（尝试）"
+      }
+    },
+    {
+      "name": "event_20200326_cn a1 battle_0：没有塞壬 → clear_siren 返回假 → clear_enemy(scale=[3]) 接手",
+      "chapter": "event_20200326_cn",
+      "level": "a1",
+      "hook": "battle_0",
+      "config": { "map_has_siren": true },
+      "grids": [
+        { "location": "C3", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 10, "cost": 4 },
+        { "location": "D4", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 1, "cost": 1 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(C3",
+        "steps_contains": "clear_siren: 假（尝试）"
+      }
+    },
+    {
+      "name": "event_20230525_cn hts2 battle_5：clear_any_enemy(sort=['cost_2']) 按 cost_2 升序选（敌人 cost_2 更小 → 选敌人）",
+      "chapter": "event_20230525_cn",
+      "level": "hts2",
+      "hook": "battle_5",
+      "config": { "map_has_fortress": true },
+      "grids": [
+        { "location": "E5", "is_fortress": true, "weight": 80, "cost": 9, "cost_2": 40 },
+        { "location": "A1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 1, "cost": 1, "cost_2": 1 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(A1, expected=)",
+        "log_contains": "clear_any_enemy：选中 A1"
+      }
+    },
+    {
+      "name": "event_20230525_cn hts2 battle_5：只想要塞时 expected=fortress",
+      "chapter": "event_20230525_cn",
+      "level": "hts2",
+      "hook": "battle_5",
+      "config": { "map_has_fortress": true },
+      "grids": [
+        { "location": "E5", "is_fortress": true, "weight": 80, "cost": 9, "cost_2": 5 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(E5, expected=fortress)",
+        "log_contains": "expected=fortress"
+      }
     },
     {
       "name": "campaign_1_1 handle_boss_appear_refocus：super_delegate → 委托父类，不执行也不阻塞",

@@ -221,6 +221,26 @@
 `clear_potential_roadblocks`（35）。**这些步骤当前无法直接执行**——需要导出器对常见表达式求值
 （多数是 `self.config.*` 常量或同文件常量），列入 P1 待办。
 
+#### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
+
+| 新增原语 | 对应上游 | 关键语义 |
+| --- | --- | --- |
+| `clear_any_enemy` | `Map.clear_any_enemy(**kwargs)` | 敌人 + （`MAP_HAS_SIREN`）塞壬 + （`MAP_HAS_FORTRESS`）要塞；`expected` 取 fortress/siren/空；支持 `sort` 关键字（如 `cost_2`） |
+| `clear_siren` | `Map.clear_siren(**kwargs)` | 无塞壬且无要塞配置时**直接返回假**；`FLEET_2` 时 `sort=('weight','cost_2')`；`expected` 取 fortress/siren |
+| `clear_boss` | `Map.clear_boss()` | `is_boss+is_accessible` ＋「被塞壬抓住的 may_boss」；都没有时退回 `clear_potential_boss`；上游注释已标 deprecated 但关卡里仍有 575 处调用，按原样移植 |
+| `clear_potential_boss` | `Map.clear_potential_boss()` | 依次踩可达 may_boss（`fleet_boss.clear_chosen_enemy`），用 `battle_count` 判断猜中；**不可达 may_boss 分支需要 `brute_find_roadblocks`（寻路）——未移植，遇到即报错** |
+
+配套扩展：格子模型增加 `may_boss` / `is_caught_by_siren` / `cost_2`（含 `is_accessible_2`），
+`Sort` 支持 `weight`/`cost`/`cost_2`；宿主接口增加 `BattleCount`、`SubmarineMoveNearBoss`，
+`ClearChosenEnemy` 增加 `fleet` 维度（当前舰队 / `fleet_boss`）。
+
+**对拍**：`verify_r5_execution.py` 扩到 **11 个用例**（含"有塞壬短路"、"无塞壬交给 clear_enemy"、
+"有 boss 走潜艇机动 + 打 boss"、"只有 may_boss 时踩格子（fleet_boss）"、"不可达 may_boss 明确报未移植"、
+"`cost_2` 排序"），全部通过；`r5-plan` 概览显示 **已实现 7 个**原语。
+
+**本轮对拍还纠正了我自己的一个错误期望**：`clear_any_enemy(sort=['cost_2'])` 下应选 `cost_2` 最小的格子
+（敌人 A1 的 1 < 要塞 E5 的 40），我最初误以为要塞优先——C# 输出正确，已按上游语义修正夹具并补一例只想要塞的用例。
+
 每个切片必须齐四样，缺一不算完成：
 
 1. **对拍夹具**：上游行为录制、脱敏、可复跑；

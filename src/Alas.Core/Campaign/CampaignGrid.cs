@@ -20,13 +20,19 @@ public sealed record CampaignGrid(
     bool IsMystery = false,
     bool IsAmmo = false,
     bool IsFortress = false,
+    bool MayBoss = false,
+    bool IsCaughtBySiren = false,
     int EnemyScale = 0,
     string? EnemyGenre = null,
     int Weight = 0,
-    int Cost = 0)
+    int Cost = 0,
+    int Cost2 = 9999)
 {
     /// <summary>上游 <c>is_accessible = cost &lt; 9999</c>。</summary>
     public bool IsAccessible => Cost < 9999;
+
+    /// <summary>上游 <c>is_accessible_2 = cost_2 &lt; 9999</c>（第二舰队的可达性）。</summary>
+    public bool IsAccessible2 => Cost2 < 9999;
 
     /// <summary>上游 <c>is_nearby = cost &lt; 20</c>。</summary>
     public bool IsNearby => Cost < 20;
@@ -45,7 +51,10 @@ public sealed record CampaignGridFilter(
     bool? IsEnemy = null,
     bool? IsBoss = null,
     bool? IsSiren = null,
+    bool? IsFortress = null,
     bool? IsMystery = null,
+    bool? MayBoss = null,
+    bool? IsCaughtBySiren = null,
     bool? IsAccessible = null,
     bool? IsNearby = null,
     int? EnemyScale = null,
@@ -55,7 +64,10 @@ public sealed record CampaignGridFilter(
         (IsEnemy is null || grid.IsEnemy == IsEnemy) &&
         (IsBoss is null || grid.IsBoss == IsBoss) &&
         (IsSiren is null || grid.IsSiren == IsSiren) &&
+        (IsFortress is null || grid.IsFortress == IsFortress) &&
         (IsMystery is null || grid.IsMystery == IsMystery) &&
+        (MayBoss is null || grid.MayBoss == MayBoss) &&
+        (IsCaughtBySiren is null || grid.IsCaughtBySiren == IsCaughtBySiren) &&
         (IsAccessible is null || grid.IsAccessible == IsAccessible) &&
         (IsNearby is null || grid.IsNearby == IsNearby) &&
         (EnemyScale is null || grid.EnemyScale == EnemyScale) &&
@@ -109,21 +121,28 @@ public sealed class CampaignGridSet
     }
 
     /// <summary>
-    /// 上游 <c>sort(*args)</c>：按属性升序（<c>attrgetter</c>）。已移植 <c>weight</c> / <c>cost</c>；
-    /// 其余排序键（如 <c>cost_2</c>）属于未移植分支，遇到即报错而不是静默用错语义。
+    /// 上游 <c>sort(*args)</c>：按属性升序（<c>attrgetter</c> 的元组键）。已移植 <c>weight</c> / <c>cost</c> /
+    /// <c>cost_2</c>；遇到其它排序键直接报错，不静默用错语义。
     /// </summary>
     public CampaignGridSet Sort(params string[] attributes)
     {
         if (attributes.Length == 0 || _grids.Count == 0) return this;
         foreach (string attribute in attributes)
         {
-            if (attribute is not ("weight" or "cost"))
-                throw new NotSupportedException($"排序键 {attribute} 尚未移植（当前仅支持 weight/cost）");
+            if (attribute is not ("weight" or "cost" or "cost_2"))
+                throw new NotSupportedException($"排序键 {attribute} 尚未移植（当前支持 weight/cost/cost_2）");
         }
-        var sorted = _grids
-            .OrderBy(grid => attributes.Contains("weight") ? grid.Weight : 0)
-            .ThenBy(grid => attributes.Contains("cost") ? grid.Cost : 0)
-            .ToList();
-        return new CampaignGridSet(sorted);
+        IOrderedEnumerable<CampaignGrid>? ordered = null;
+        foreach (string attribute in attributes)
+        {
+            Func<CampaignGrid, int> key = attribute switch
+            {
+                "weight" => grid => grid.Weight,
+                "cost" => grid => grid.Cost,
+                _ => grid => grid.Cost2,
+            };
+            ordered = ordered is null ? _grids.OrderBy(key) : ordered.ThenBy(key);
+        }
+        return new CampaignGridSet(ordered!);
     }
 }

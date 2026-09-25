@@ -24,11 +24,22 @@ public interface ICampaignPrimitiveHost
 
     CampaignRuntimeConfig Config { get; }
 
-    /// <summary>清掉选中格子上的敌人（上游 <c>clear_chosen_enemy</c>）：返回是否真的打了。</summary>
-    bool ClearChosenEnemy(CampaignGrid grid, string expected);
+    /// <summary>上游 <c>self.battle_count</c>：判断"猜 boss"是否打中（真机由战斗结果刷新）。</summary>
+    int BattleCount { get; }
+
+    /// <summary>
+    /// 清掉选中格子上的敌人（上游 <c>clear_chosen_enemy</c>）。
+    /// <paramref name="expected"/> 与上游一致：空串表示普通战斗，另有 <c>siren</c>/<c>fortress</c>/<c>boss</c>
+    /// （设备侧把空串映射成 <c>combat</c>、其它映射成 <c>combat_&lt;expected&gt;</c>）。
+    /// <paramref name="fleet"/> 为空表示当前舰队，否则是上游的 <c>fleet_boss</c>/<c>fleet_1</c> 等。
+    /// </summary>
+    bool ClearChosenEnemy(CampaignGrid grid, string expected, string fleet = "");
 
     /// <summary>捡走选中格子上的神秘物资（上游 <c>clear_chosen_mystery</c>）。</summary>
     bool ClearChosenMystery(CampaignGrid grid);
+
+    /// <summary>把潜艇移到 boss 附近（上游 <c>Fleet.submarine_move_near_boss</c>，属设备侧机动）。</summary>
+    bool SubmarineMoveNearBoss(CampaignGrid grid);
 
     void Log(string message);
 }
@@ -46,21 +57,31 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
 
     public CampaignRuntimeConfig Config { get; }
 
+    /// <summary>干跑时默认不推进战斗计数（真机由战斗结果刷新）。</summary>
+    public int BattleCount { get; set; }
+
     /// <summary>干跑记录到的动作（按调用顺序）。</summary>
     public List<string> Actions { get; } = [];
 
     /// <summary>干跑记录到的日志（原语的判断依据，便于人工核对）。</summary>
     public List<string> Logs { get; } = [];
 
-    public bool ClearChosenEnemy(CampaignGrid grid, string expected)
+    public bool ClearChosenEnemy(CampaignGrid grid, string expected, string fleet = "")
     {
-        Actions.Add($"clear_chosen_enemy({grid.Location}, expected={expected})");
+        string suffix = string.IsNullOrEmpty(fleet) ? "" : $", fleet={fleet}";
+        Actions.Add($"clear_chosen_enemy({grid.Location}, expected={expected}{suffix})");
         return true;
     }
 
     public bool ClearChosenMystery(CampaignGrid grid)
     {
         Actions.Add($"clear_chosen_mystery({grid.Location})");
+        return true;
+    }
+
+    public bool SubmarineMoveNearBoss(CampaignGrid grid)
+    {
+        Actions.Add($"submarine_move_near_boss({grid.Location})");
         return true;
     }
 
@@ -95,7 +116,117 @@ public static class CampaignPrimitives
             return false;
         }
         host.Log($"clear_enemy：选中 {decision.Target.Location}（{decision.Target.FilterKey}，{decision.Branch}）");
-        return host.ClearChosenEnemy(decision.Target, "enemy");
+        return host.ClearChosenEnemy(decision.Target, "");
+    }
+
+    /// <summary>上游 <c>Map.clear_any_enemy(**kwargs)</c>：敌人 + （有塞壬时）塞壬 + （有要塞时）要塞。</summary>
+    public static bool ClearAnyEnemy(ICampaignPrimitiveHost host, CampaignTargetOptions? options = null)
+    {
+        var all = new CampaignGridSet(host.Grids);
+        var grids = all.Select(new CampaignGridFilter(IsEnemy: true, IsBoss: false));
+        if (host.Config.MapHasSiren)
+            grids = grids.Add(all.Select(new CampaignGridFilter(IsSiren: true)));
+        if (host.Config.MapHasFortress)
+            grids = grids.Add(all.Select(new CampaignGridFilter(IsFortress: true)));
+
+        var selected = CampaignTargetSelector.SelectGrids(grids, options);
+        if (selected.IsEmpty)
+        {
+            host.Log("clear_any_enemy：无目标");
+            return false;
+        }
+        var target = selected[0];
+        string expected = target.IsFortress ? "fortress" : target.IsSiren ? "siren" : "";
+        host.Log($"clear_any_enemy：选中 {target.Location}（{target.FilterKey}，expected={expected}）");
+        return host.ClearChosenEnemy(target, expected);
+    }
+
+    /// <summary>上游 <c>Map.clear_siren(**kwargs)</c>：无塞壬/要塞配置时直接返回假。</summary>
+    public static bool ClearSiren(ICampaignPrimitiveHost host, CampaignTargetOptions? options = null)
+    {
+        if (!host.Config.MapHasSiren && !host.Config.MapHasFortress)
+        {
+            host.Log("clear_siren：地图没有塞壬也没有要塞，直接返回假");
+            return false;
+        }
+        if (host.Config.Fleet2)
+        {
+            options = (options ?? new CampaignTargetOptions()) with { Sort = ["weight", "cost_2"] };
+        }
+        var all = new CampaignGridSet(host.Grids);
+        var grids = all.Select(new CampaignGridFilter(IsSiren: true));
+        if (host.Config.MapHasFortress)
+        {
+            grids = grids.Add(all.Select(new CampaignGridFilter(IsFortress: true)));
+        }
+        var selected = CampaignTargetSelector.SelectGrids(grids, options);
+        if (selected.IsEmpty)
+        {
+            host.Log("clear_siren：无目标");
+            return false;
+        }
+        var target = selected[0];
+        string expected = target.IsFortress ? "fortress" : "siren";
+        host.Log($"clear_siren：选中 {target.Location}（expected={expected}）");
+        return host.ClearChosenEnemy(target, expected);
+    }
+
+    /// <summary>
+    /// 上游 <c>Map.clear_boss()</c>：先找 boss（含"被塞壬抓住的 may_boss"），找不到就退回
+    /// <see cref="ClearPotentialBoss"/>。上游注释里这个方法已标记为 deprecated（复杂地图建议 brute_clear_boss），
+    /// 但关卡覆写里仍有 575 处调用，因此按原样移植。
+    /// </summary>
+    public static bool ClearBoss(ICampaignPrimitiveHost host)
+    {
+        var all = new CampaignGridSet(host.Grids);
+        var grids = all.Select(new CampaignGridFilter(IsBoss: true, IsAccessible: true));
+        grids = grids.Add(all.Select(new CampaignGridFilter(MayBoss: true, IsCaughtBySiren: true)));
+        host.Log($"clear_boss：boss 候选 {grids.Count} 个");
+        if (grids.IsEmpty)
+        {
+            grids = grids.Add(all.Select(new CampaignGridFilter(MayBoss: true, IsEnemy: true, IsAccessible: true)));
+            host.Log("clear_boss：BOSS not detected, using may_boss grids.");
+        }
+        if (!grids.IsEmpty)
+        {
+            host.SubmarineMoveNearBoss(grids[0]);
+            var sorted = grids.Sort("weight", "cost");
+            host.Log($"clear_boss：打 {sorted[0].Location}");
+            host.ClearChosenEnemy(sorted[0], "boss");
+        }
+        host.Log("clear_boss：BOSS not detected, trying all boss spawn point.");
+        return ClearPotentialBoss(host);
+    }
+
+    /// <summary>
+    /// 上游 <c>Map.clear_potential_boss()</c>：依次踩可达的 may_boss 格子，用 <c>battle_count</c> 判断
+    /// 是否猜中。**未移植**：不可达 may_boss 分支需要 <c>brute_find_roadblocks</c>（寻路），遇到即报错。
+    /// </summary>
+    public static bool ClearPotentialBoss(ICampaignPrimitiveHost host)
+    {
+        var all = new CampaignGridSet(host.Grids);
+        var reachable = all.Select(new CampaignGridFilter(MayBoss: true, IsAccessible: true)).Sort("weight", "cost");
+        int battleCount = host.BattleCount;
+        string expected = all.Select(new CampaignGridFilter(MayBoss: true)).Count == 1 ? "boss" : "";
+        foreach (var grid in reachable.Grids)
+        {
+            host.Log($"clear_potential_boss：踩 {grid.Location}（expected={expected}）");
+            host.ClearChosenEnemy(grid, expected, fleet: "boss");
+            if (host.BattleCount > battleCount)
+            {
+                host.Log("Boss guessing correct.");
+                return true;
+            }
+            host.Log("Boss guessing incorrect.");
+        }
+
+        var unreachable = all.Select(new CampaignGridFilter(MayBoss: true, IsAccessible: false));
+        if (!unreachable.IsEmpty)
+        {
+            throw new NotSupportedException(
+                $"clear_potential_boss：{unreachable.Count} 个不可达 may_boss 格子需要 brute_find_roadblocks（未移植）");
+        }
+        return false;
     }
 
     /// <summary>上游 <c>CampaignBase.battle_default()</c>。</summary>
@@ -137,7 +268,7 @@ public static class CampaignPrimitives
             return false;
         }
         host.Log($"clear_filter_enemy：选中 {decision.Target.Location}（{decision.Target.FilterKey}，{decision.Branch}）");
-        return host.ClearChosenEnemy(decision.Target, "enemy");
+        return host.ClearChosenEnemy(decision.Target, "");
     }
 }
 
@@ -293,6 +424,15 @@ public static class CampaignPrimitiveRegistry
         ["clear_filter_enemy"] = new CampaignPrimitive(
             "clear_filter_enemy", "按过滤串选敌人并清掉（上游 Map.clear_filter_enemy）", NeedsArguments: true,
             (host, step) => CampaignPrimitives.ClearFilterEnemy(host, DecodeFilter(step), DecodePreserve(step))),
+        ["clear_any_enemy"] = new CampaignPrimitive(
+            "clear_any_enemy", "敌人+塞壬+要塞一起选（上游 Map.clear_any_enemy）", false,
+            (host, step) => CampaignPrimitives.ClearAnyEnemy(host, DecodeOptions(step))),
+        ["clear_siren"] = new CampaignPrimitive(
+            "clear_siren", "打塞壬/要塞，无配置直接返回假（上游 Map.clear_siren）", false,
+            (host, step) => CampaignPrimitives.ClearSiren(host, DecodeOptions(step))),
+        ["clear_boss"] = new CampaignPrimitive(
+            "clear_boss", "找 boss 并清掉，找不到踩 may_boss（上游 Map.clear_boss）", false,
+            (host, _) => CampaignPrimitives.ClearBoss(host)),
     };
 
     /// <summary>已实现的原语名（排序返回，便于输出与对拍）。</summary>
@@ -335,6 +475,13 @@ public static class CampaignPrimitiveRegistry
             && strongValue.TryGetValue(out bool strongFlag))
         {
             options = options with { Strongest = strongFlag };
+        }
+        if (args.Keyword.TryGetValue("sort", out var sortNode) && sortNode is JsonArray sortArray)
+        {
+            options = options with
+            {
+                Sort = sortArray.OfType<JsonValue>().Select(value => value.GetValue<string>()).ToArray(),
+            };
         }
         return options;
     }

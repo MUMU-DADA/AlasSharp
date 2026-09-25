@@ -103,10 +103,13 @@ internal static class CampaignExecutionCheck
         IsMystery: grid.IsMystery,
         IsAmmo: grid.IsAmmo,
         IsFortress: grid.IsFortress,
+        MayBoss: grid.MayBoss,
+        IsCaughtBySiren: grid.IsCaughtBySiren,
         EnemyScale: grid.EnemyScale,
         EnemyGenre: grid.EnemyGenre,
         Weight: grid.Weight,
-        Cost: grid.Cost);
+        Cost: grid.Cost,
+        Cost2: grid.Cost2 ?? 9999);
 
     private static int Fail(string message)
     {
@@ -148,9 +151,12 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("is_mystery")] public bool IsMystery { get; init; }
         [JsonPropertyName("is_ammo")] public bool IsAmmo { get; init; }
         [JsonPropertyName("is_fortress")] public bool IsFortress { get; init; }
+        [JsonPropertyName("may_boss")] public bool MayBoss { get; init; }
+        [JsonPropertyName("is_caught_by_siren")] public bool IsCaughtBySiren { get; init; }
         [JsonPropertyName("enemy_scale")] public int EnemyScale { get; init; }
         [JsonPropertyName("enemy_genre")] public string? EnemyGenre { get; init; }
         [JsonPropertyName("weight")] public int Weight { get; init; }
         [JsonPropertyName("cost")] public int Cost { get; init; }
+        [JsonPropertyName("cost_2")] public int? Cost2 { get; init; }
     }
 }

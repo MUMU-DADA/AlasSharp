@@ -24,7 +24,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tools" / "diagnostics" / "r5-execution-fixture.json"
 SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
-EXPECTED_PRIMITIVES = ["battle_default", "clear_all_mystery", "clear_enemy", "clear_filter_enemy"]
+EXPECTED_PRIMITIVES = ["battle_default", "clear_all_mystery", "clear_any_enemy", "clear_boss",
+                       "clear_enemy", "clear_filter_enemy", "clear_siren"]
 
 
 def upstream_root() -> pathlib.Path:
@@ -138,8 +139,8 @@ def main() -> int:
         if "steps_contains" in expect and not any(expect["steps_contains"] in line for line in result["steps"]):
             problems.append(f"{case['name']}: 步骤 {result['steps']} 不含 {expect['steps_contains']!r}")
 
-        # 与上游规则独立对拍：clear_enemy 类用例应打的格子
-        if case["hook"].startswith("battle_") and case.get("grids") is not None:
+        # 与上游规则独立对拍：仅对声明了 cross_check=clear_enemy 的用例（其它原语的规则不同）
+        if case.get("cross_check") == "clear_enemy" and case.get("grids") is not None:
             expected = upstream_clear_enemy_pick(case)
             selected = None
             for action in result["actions"]:
