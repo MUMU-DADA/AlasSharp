@@ -2343,17 +2343,18 @@ def op_s3_campaign_init(args):
     for k in ('serial', 'screenshot', 'control'):
         if args.get(k):
             _DEVICE_ARGS[k] = args[k]
-    dev = _device_engine()            # 复用设备引擎（含 adb PATH 垫片与 multi_set 配置）
     cfg = _map_config()
     try:
         cfg.bind('Campaign')
     except Exception as e:
         return {'error': f'配置绑定 Campaign 失败: {type(e).__name__}: {e}',
                 'traceback_tail': traceback.format_exc().strip().splitlines()[-8:]}
+    # Validate the fresh account's connection identity before loading or taking
+    # a frame. Temporary transport overrides must survive native rebinds without
+    # persisting session backends or inheriting a previous task's overrides.
+    dev = _device_engine(config=cfg)
     # **配置必须跟着章节走**，否则 Campaign 会按错误关卡取参数（实测踩过：
     # 实例化 2-1，而 config.Campaign_Name 还是上一次跑过的 '12-4'）。
-    # 同时把截图/输入后端显式设回我们的默认 —— bind('Campaign') 会把它们重置成引擎默认
-    # （'auto' 会去跑性能基准）。
     import re as _re
     stage = ''
     m = _re.search(r'campaign_(\d+)_(\d+)$', chapter)
@@ -2363,8 +2364,6 @@ def op_s3_campaign_init(args):
         with cfg.multi_set():
             if stage:
                 cfg.Campaign_Name = stage
-            cfg.Emulator_ScreenshotMethod = str(_DEVICE_ARGS.get('screenshot') or 'scrcpy')
-            cfg.Emulator_ControlMethod = str(_DEVICE_ARGS.get('control') or 'MaaTouch')
             # **默认关掉"周回模式(ClearMode)"与"自律寻敌(AutoSearch)"** —— 上游自己的开关，
             # 比点 UI 可靠得多（本项目曾因误开自律把一场战斗打完）。要开就显式传 True。
             cfg.Campaign_UseClearMode = bool(args.get('clear_mode', False))
@@ -2709,7 +2708,10 @@ def _map_config(chapter=None):
     """S2 需要上游配置（`DETECTION_BACKEND` 等决定用 Homography 还是 Perspective 后端）。
     做法与 cached_rule_check 一致：用上游自己的 AzurLaneConfig，不自己造配置层。"""
     from module.config.config import AzurLaneConfig
-    cfg = AzurLaneConfig('alas')
+    # Follow the account that owns the session connection, but reload its native
+    # config so one-shot overrides from earlier tasks cannot leak into this map.
+    instance = _DEVICE_OBJ.config.config_name if _DEVICE_OBJ is not None else 'alas'
+    cfg = AzurLaneConfig(instance)
     if chapter:
         import copy
         module = importlib.import_module(chapter)

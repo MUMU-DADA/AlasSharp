@@ -30,6 +30,8 @@ from module.base.base import ModuleBase
 from module.base.utils import load_image
 from module.campaign.run import CampaignRun
 from module.config.config import AzurLaneConfig
+from module.config.config_updater import ConfigUpdater
+from module.config.utils import parse_value
 from module.exception import MapDetectionError
 from module.map_detection.view import View
 
@@ -174,6 +176,80 @@ class UpstreamLoadingTests(unittest.TestCase):
                 self.assertIsInstance(av._CAMPAIGN.get('loader'), CampaignRun)
                 self.assertEqual(config_values(actual.config, module),
                                  config_values(expected_loader.campaign.config, module))
+
+    def test_session_instance_and_transport_match_fresh_native_config(self):
+        """Real Config/loader and host binding; config storage and device are inert."""
+        catalog = json.loads((Path(av.FORK) / 'module/config/argument/args.json').read_text(encoding='utf-8'))
+        defaults = {task: {group: {key: parse_value(arg['value'], arg) for key, arg in fields.items()}
+                                  for group, fields in groups.items()} for task, groups in catalog.items()}
+        chapter = 'campaign.campaign_main.campaign_1_4'
+        for owner, backend, changed in ((None, 'scrcpy', False), ('fixture-alpha', 'scrcpy', False),
+                                        ('fixture-alpha', 'auto', False), ('fixture-alpha', 'scrcpy', True)):
+            with self.subTest(owner=owner, backend=backend, changed=changed):
+                store = {name: copy.deepcopy(defaults) for name in ('alas', 'fixture-alpha')}
+                for name, data in store.items():
+                    data['Alas']['Emulator'].update(Serial='fixture-device', ScreenshotMethod='adb',
+                                                   ControlMethod='ADB', PackageName='fixture.' + name)
+                    data['General']['Fixture'] = {'Value': name}
+                reads, devices, shots = [], [], []
+
+                def read(_config, name, is_template=False):
+                    reads.append(name)
+                    return copy.deepcopy(store[name])
+
+                def write(name, data, mod_name='alas'):
+                    self.assertEqual(mod_name, 'alas')
+                    store[name] = copy.deepcopy(data)
+
+                def construct(config):
+                    device = SimpleNamespace(config=config, image=np.zeros((8, 12, 3), dtype=np.uint8),
+                        screenshot=lambda: shots.append(True), stuck_record_clear=lambda: None,
+                        click_record_clear=lambda: None)
+                    devices.append(device)
+                    return device
+
+                with patch.object(ConfigUpdater, 'read_file', read), \
+                        patch.object(ConfigUpdater, 'write_file', staticmethod(write)), \
+                        patch('module.device.device.Device', side_effect=construct), \
+                        patch.object(av, '_DEVICE_OBJ', None), patch.object(av, '_DEVICE_KEY', None), \
+                        patch.object(av, '_DEVICE_ARGS', dict(serial='fixture-device', screenshot=backend, control='MaaTouch')):
+                    previous = None
+                    if owner:
+                        previous = AzurLaneConfig(owner, task='Reward')
+                        previous.override(Fixture_Value='previous-task-only')
+                        av._device_engine(config=previous)
+                    if changed:
+                        store[owner]['Alas']['Emulator']['PackageName'] = 'fixture.changed'
+                    reads.clear()
+                    emulator_before = copy.deepcopy(store[owner or 'alas']['Alas']['Emulator'])
+                    try:
+                        result = av.op_s3_campaign_init({'chapter': chapter})
+                    except RuntimeError as error:
+                        self.assertTrue(changed, str(error))
+                        self.assertIn('实例或设备配置已变化', str(error))
+                        result = {'error': str(error)}
+                    if changed:
+                        self.assertTrue(result.get('error'), result)
+                        self.assertEqual(av._CAMPAIGN, {})
+                        self.assertEqual(shots, [])
+                    else:
+                        self.assertTrue(result.get('instantiated'), result)
+                        actual, loader = av._CAMPAIGN['obj'], av._CAMPAIGN['loader']
+                        self.assertEqual(actual.config.config_name, owner or 'alas')
+                        self.assertEqual(loader.config.config_name, devices[0].config.config_name)
+                        self.assertEqual(actual.config.Fixture_Value, owner or 'alas')
+                        self.assertIsNot(loader.config, previous)
+                        self.assertIs(actual.device, devices[0])
+                        self.assertEqual(actual.config.Emulator_ScreenshotMethod,
+                                         'adb' if backend == 'auto' else backend)
+                        self.assertIs(actual.MAP, importlib.import_module(chapter).MAP)
+                        self.assertEqual(shots, [True])
+                    self.assertEqual(set(reads), {owner or 'alas'})
+                    self.assertEqual(len(devices), 1)
+                    self.assertEqual(store[owner or 'alas']['Alas']['Emulator'], emulator_before)
+                    if previous:
+                        self.assertIs(devices[0].config, previous)
+                        self.assertEqual(previous.Fixture_Value, 'previous-task-only')
 
     def test_explicit_mode_uses_native_override_before_chapter_merge(self):
         chapter = 'campaign.campaign_main.campaign_1_1'
