@@ -129,13 +129,19 @@ public interface ICampaignPrimitiveHost
 /// <summary>干跑宿主：记录原语要做的动作，但**什么都不执行**（不连设备、不点屏幕）。</summary>
 public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
 {
+    private readonly List<CampaignGrid> _grids;
+
     public RecordingCampaignHost(IEnumerable<CampaignGrid> grids, CampaignRuntimeConfig? config = null)
     {
-        Grids = grids.ToArray();
+        _grids = [.. grids];
         Config = config ?? new CampaignRuntimeConfig();
     }
 
-    public IReadOnlyList<CampaignGrid> Grids { get; }
+    /// <summary>
+    /// 宿主自己的地图模型。**可变**：状态类操作（如清 `is_caught_by_siren` 标记）要在模型上生效，
+    /// 否则干跑轨迹会与上游不一致——上游那边是直接改 `GridInfo` 对象（见设备宿主的同名方法）。
+    /// </summary>
+    public IReadOnlyList<CampaignGrid> Grids => _grids;
 
     public CampaignRuntimeConfig Config { get; }
 
@@ -241,7 +247,15 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
 
     public void EnsureEdgeInsight() => Actions.Add("ensure_edge_insight()");
 
-    public void ClearCaughtBySirenFlags() => Actions.Add("clear_caught_by_siren_flags()");
+    public void ClearCaughtBySirenFlags()
+    {
+        Actions.Add("clear_caught_by_siren_flags()");
+        // 与设备宿主同一语义：改自己的模型（上游就是逐格改 `GridInfo`），不产生设备动作。
+        for (int i = 0; i < _grids.Count; i++)
+        {
+            if (_grids[i].IsCaughtBySiren) _grids[i] = _grids[i] with { IsCaughtBySiren = false };
+        }
+    }
 
     public void Withdraw()
     {

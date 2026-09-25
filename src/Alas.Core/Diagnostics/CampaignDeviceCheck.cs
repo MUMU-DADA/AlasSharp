@@ -45,7 +45,7 @@ internal static class CampaignDeviceCheck
         var run = CampaignBattleLoop.Run(plan, host);
 
         // 状态类宿主操作的自检：`ClearCaughtBySirenFlags` 对应上游"逐格置假"那段，**不该有设备动作**。
-        // 用一个独立的小状态与独立渠道验证，避免污染上面的运行记录。
+        // 两个宿主都要覆盖：设备宿主（0 次渠道调用）与干跑宿主（模型也要真的被改，否则轨迹与上游不一致）。
         var stateChannel = new RecordingCampaignCallChannel();
         var stateGrids = grids.Take(3)
             .Select((grid, index) => grid with { IsCaughtBySiren = index < 2 })
@@ -55,10 +55,14 @@ internal static class CampaignDeviceCheck
         stateHost.ClearCaughtBySirenFlags();
         int caughtAfter = stateHost.Grids.Count(grid => grid.IsCaughtBySiren);
         int stateCalls = stateChannel.Calls.Count;
-        if (caughtAfter != 0 || stateCalls != 0)
+
+        var dryHost = new RecordingCampaignHost(stateGrids);
+        dryHost.ClearCaughtBySirenFlags();
+        int dryCaughtAfter = dryHost.Grids.Count(grid => grid.IsCaughtBySiren);
+        if (caughtAfter != 0 || dryCaughtAfter != 0 || stateCalls != 0)
         {
-            return Fail($"ClearCaughtBySirenFlags 语义不符：置假前 {caughtBefore} / 后 {caughtAfter}，" +
-                        $"设备调用 {stateCalls}（都应为 0 次调用、0 个残留标记）");
+            return Fail($"ClearCaughtBySirenFlags 语义不符：设备宿主置假前 {caughtBefore} / 后 {caughtAfter}，" +
+                        $"干跑宿主后 {dryCaughtAfter}，设备调用 {stateCalls}（都应清空且 0 次调用）");
         }
 
         if (asJson)
@@ -75,6 +79,7 @@ internal static class CampaignDeviceCheck
                     {
                         ["caught_before"] = caughtBefore,
                         ["caught_after"] = caughtAfter,
+                        ["dry_run_caught_after"] = dryCaughtAfter,
                         ["device_calls"] = stateCalls,
                     },
                 },
