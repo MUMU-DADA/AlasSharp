@@ -84,12 +84,32 @@ internal static class TaskEditorLoadChecks
         foreach (var (task, _) in Targets) steadyAllocated[task] = [];
         var inputChange = new List<double>();
         var inputAllocated = new List<long>();
+        var switchFrames = new List<FrameSample>();
+        var editFrames = new List<FrameSample>();
+        var scrollFrames = new List<FrameSample>();
 
         // ── M3 先跑：这是进程内第一次建任务页，JIT 与字体都还没热，最接近"冷启动" ────────
         var shell = new MainView(new MemoryThemeStore(), backend, resourceStore: new MemoryResourceSelectionStore());
         var window = new Window { Width = WindowWidth, Height = WindowHeight, Content = shell };
         window.Show();
         Pump();
+        int layoutUpdates = 0;
+        window.LayoutUpdated += (_, _) => layoutUpdates++;
+        FrameSample MeasureFrame(Action action)
+        {
+            Pump();
+            int beforeLayout = layoutUpdates;
+            long beforeAllocated = GC.GetAllocatedBytesForCurrentThread();
+            var watch = Stopwatch.StartNew();
+            action();
+            double actionMs = watch.Elapsed.TotalMilliseconds;
+            window.UpdateLayout();
+            double layoutMs = watch.Elapsed.TotalMilliseconds - actionMs;
+            Pump();
+            double renderMs = watch.Elapsed.TotalMilliseconds - actionMs - layoutMs;
+            return new FrameSample(actionMs, layoutMs, renderMs,
+                layoutUpdates - beforeLayout, GC.GetAllocatedBytesForCurrentThread() - beforeAllocated);
+        }
         try
         {
             shell.Model.SelectInstance(instance);
@@ -138,14 +158,8 @@ internal static class TaskEditorLoadChecks
                 foreach (var (task, _) in Targets)
                 {
                     backend.ResetCounters();
-                    Pump();
-                    long allocated = GC.GetAllocatedBytesForCurrentThread();
-                    var watch = Stopwatch.StartNew();
-                    shell.Model.SelectTaskCommand.Execute(entries[task]);
-                    window.UpdateLayout();
-                    Pump();
-                    watch.Stop();
-                    long switchAllocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+                    var frame = MeasureFrame(() => shell.Model.SelectTaskCommand.Execute(entries[task]));
+                    switchFrames.Add(frame);
                     if (!ReferenceEquals(ActiveTaskPage(shell), pages[task]))
                         throw new InvalidOperationException($"稳态切换 {task} 重建了任务页，缓存断言失败。");
                     var reads = backend.Reads;
@@ -153,8 +167,8 @@ internal static class TaskEditorLoadChecks
                         throw new InvalidOperationException(
                             $"稳态切换 {task} 仍向后端读了 schema={reads.Schema}/config={reads.Config} 次；"
                             + "计数口径不成立，稳态结论无效。");
-                    steady[task].Add(watch.Elapsed.TotalMilliseconds);
-                    steadyAllocated[task].Add(switchAllocated);
+                    steady[task].Add(frame.TotalMs);
+                    steadyAllocated[task].Add(frame.AllocatedBytes);
                 }
 
             shell.Model.SelectTaskCommand.Execute(entries["Main"]);
@@ -166,16 +180,26 @@ internal static class TaskEditorLoadChecks
                 field.Kind is TaskFieldKind.Text or TaskFieldKind.Number);
             for (var index = 0; index < 20; index++)
             {
-                Pump();
-                long allocated = GC.GetAllocatedBytesForCurrentThread();
-                var watch = Stopwatch.StartNew();
-                inputField.SetText(index % 2 == 0 ? "7" : "8");
-                window.UpdateLayout();
-                Pump();
-                watch.Stop();
-                inputChange.Add(watch.Elapsed.TotalMilliseconds);
-                inputAllocated.Add(GC.GetAllocatedBytesForCurrentThread() - allocated);
+                var value = index % 2 == 0 ? "7" : "8";
+                var frame = MeasureFrame(() => inputField.SetText(value));
+                editFrames.Add(frame);
+                inputChange.Add(frame.TotalMs);
+                inputAllocated.Add(frame.AllocatedBytes);
             }
+            var mainScroll = shell.GetVisualDescendants().OfType<ScrollViewer>()
+                .First(control => control.Name == "MainScroll");
+            double scrollRange = Math.Max(0, mainScroll.Extent.Height - mainScroll.Viewport.Height);
+            if (scrollRange <= 0) throw new InvalidOperationException("任务字段没有可滚动范围，滚动性能测量无效。");
+            for (var index = 0; index < 20; index++)
+            {
+                double offset = index % 3 * scrollRange / 2;
+                scrollFrames.Add(MeasureFrame(() => mainScroll.Offset = new Vector(0, offset)));
+                if (Math.Abs(mainScroll.Offset.Y - offset) > 1)
+                    throw new InvalidOperationException("任务表单未滚动到测量目标位置。");
+            }
+            mainScroll.Offset = default;
+            window.UpdateLayout();
+            Pump();
             if (ActiveTaskPage(shell).GetVisualDescendants().OfType<Control>()
                     .Count(control => control.Name?.StartsWith("Field_", StringComparison.Ordinal) == true)
                 != inputEditor.Fields.Count())
@@ -295,6 +319,12 @@ internal static class TaskEditorLoadChecks
             },
             ["realised_controls"] = controls,
             ["field_counts"] = fields,
+            ["interaction_frames"] = new Dictionary<string, object?>
+            {
+                ["steady_switch"] = FrameStats(switchFrames),
+                ["input_edit"] = FrameStats(editFrames),
+                ["scroll"] = FrameStats(scrollFrames),
+            },
         };
         Write(output, report, "task-load", Describe(report));
         Console.WriteLine(Describe(report));
@@ -623,6 +653,14 @@ internal static class TaskEditorLoadChecks
             var row = controls?.Parent as Grid;
             if (controls is null || row is null)
                 throw new InvalidOperationException($"任务字段 {field.Path} 缺少字段布局容器。");
+            if (field.Help.Length > 0)
+            {
+                if (row.Children[0] is not StackPanel labels || labels.Children.Count != 2 ||
+                    labels.Children[1] is not TextBlock help || help.Text != field.Help)
+                    throw new InvalidOperationException($"任务字段 {field.Path} 丢失上游帮助文本。");
+            }
+            else if (row.Children[0] is not TextBlock)
+                throw new InvalidOperationException($"任务字段 {field.Path} 仍创建了空帮助占位控件。");
             if (row.ColumnDefinitions.Count != (narrow || field.IsMultiline ? 1 : 2) ||
                 Grid.GetRow(controls) != (narrow || field.IsMultiline ? 1 : 0) ||
                 Grid.GetColumn(controls) != (narrow || field.IsMultiline ? 0 : 1))
@@ -655,6 +693,27 @@ internal static class TaskEditorLoadChecks
                 },
                 StringComparer.Ordinal),
         };
+
+    private readonly record struct FrameSample(double ActionMs, double LayoutMs, double RenderMs,
+        int LayoutUpdates, long AllocatedBytes)
+    {
+        public double TotalMs => ActionMs + LayoutMs + RenderMs;
+    }
+
+    private static Dictionary<string, object?> FrameStats(List<FrameSample> samples) => new()
+    {
+        ["samples"] = samples.Count,
+        ["median_total_ms"] = Median(samples.Select(sample => sample.TotalMs).ToList()),
+        ["p95_total_ms"] = Percentile(samples.Select(sample => sample.TotalMs).ToList(), 0.95),
+        ["max_total_ms"] = Round(samples.Max(sample => sample.TotalMs)),
+        ["median_action_ms"] = Median(samples.Select(sample => sample.ActionMs).ToList()),
+        ["median_layout_ms"] = Median(samples.Select(sample => sample.LayoutMs).ToList()),
+        ["median_render_ms"] = Median(samples.Select(sample => sample.RenderMs).ToList()),
+        ["median_layout_updates"] = Median(samples.Select(sample => (double)sample.LayoutUpdates).ToList()),
+        ["max_layout_updates"] = samples.Max(sample => sample.LayoutUpdates),
+        ["forced_render_ticks_per_sample"] = 1,
+        ["median_allocated_bytes"] = Median(samples.Select(sample => (double)sample.AllocatedBytes).ToList()),
+    };
 
     private static double Median(List<double> samples) => Percentile(samples, 0.5);
 
@@ -728,6 +787,15 @@ internal static class TaskEditorLoadChecks
         var counts = (Dictionary<string, int>)comparison["field_counts"]!;
         text.AppendLine("scale: " + string.Join(", ",
             controls.Select(pair => $"{pair.Key}: {counts[pair.Key]} 字段 / {pair.Value} 可视控件")));
+        var frames = (Dictionary<string, object?>)comparison["interaction_frames"]!;
+        foreach (var (name, value) in frames)
+        {
+            var stats = (Dictionary<string, object?>)value!;
+            text.AppendLine($"{name}: median={stats["median_total_ms"]} ms, p95={stats["p95_total_ms"]} ms, "
+                + $"action/layout/render={stats["median_action_ms"]}/{stats["median_layout_ms"]}/{stats["median_render_ms"]} ms, "
+                + $"layout updates median/max={stats["median_layout_updates"]}/{stats["max_layout_updates"]}, "
+                + $"render ticks={stats["forced_render_ticks_per_sample"]}, allocated={stats["median_allocated_bytes"]} B");
+        }
         return text.ToString();
     }
 

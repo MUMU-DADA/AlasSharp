@@ -171,9 +171,13 @@ public sealed class TaskEditorView : UserControl, IDisposable
     private Control CreateField(TaskFieldViewModel field)
     {
         var label = Text(field.Label + (field.ReadOnly ? " · 只读" : ""), 13, FontWeight.Medium);
-        var help = Text(field.Help, 12);
-        Resource(help, TextBlock.ForegroundProperty, "AlasMutedBrush");
-        var labels = new StackPanel { Spacing = 6, Children = { label, help } };
+        Control labels = label;
+        if (field.Help.Length > 0)
+        {
+            var help = Text(field.Help, 12);
+            Resource(help, TextBlock.ForegroundProperty, "AlasMutedBrush");
+            labels = new StackPanel { Spacing = 6, Children = { label, help } };
+        }
         var controls = new StackPanel { Spacing = 6 };
         var editor = CreateInput(field);
         controls.Children.Add(editor);
