@@ -410,6 +410,31 @@ public static class DiagnosticCommands
                 }
                 return CampaignLoopCheck.Run(dataDir, loopFixture);
             }
+            if (command == "r5-state")
+            {
+                // 识别结果 → 引擎状态（离线）：声明地图 + 可选识别叠加 + 按上游顺序算成本场。
+                string? stateChapter = null, stateLevel = null, stateModule = null;
+                string? stateFleet1 = null, stateFleet2 = null, stateDetection = null;
+                bool stateAmbush = args.Contains("--map-has-ambush");
+                bool stateJson = args.Contains("--json");
+                int stateCurrentFleet = 1;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--chapter") stateChapter = args[i + 1];
+                    if (args[i] == "--level") stateLevel = args[i + 1];
+                    if (args[i] == "--chapter-module") stateModule = args[i + 1];
+                    if (args[i] == "--fleet-1") stateFleet1 = args[i + 1];
+                    if (args[i] == "--fleet-2") stateFleet2 = args[i + 1];
+                    if (args[i] == "--detection") stateDetection = args[i + 1];
+                    if (args[i] == "--current-fleet" && int.TryParse(args[i + 1], out int parsedFleet))
+                    {
+                        stateCurrentFleet = parsedFleet;
+                    }
+                }
+                return CampaignStateCheck.Run(dataDir, stateChapter, stateLevel, stateModule,
+                                              stateFleet1, stateFleet2, stateAmbush, stateCurrentFleet,
+                                              stateDetection, stateJson);
+            }
             if (command == "r5-actions")
             {
                 // 原语级动作轨迹：把上游运行日志的动作行映射回原语名，并对照 C# 已实现集合（只读）。
@@ -549,7 +574,7 @@ public static class DiagnosticCommands
                 _ => Fail($"未知命令: {command}"
                            + "（可用: verify / list / show / imaging / matching / vision / campaign / "
                            + "map / map-ir / capture / device / queue / plan-queue / report / runs / run / goto / "
-                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions）"),
+                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state）"),
             };
         }
         catch (Exception ex)

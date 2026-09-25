@@ -733,6 +733,28 @@ Alas.Server queue --file .runtime/device-probe/campaign-1-1-queue.json --run --a
 已登记进 `verify_all.py`。噪声修复：`[Emotion fleet_2]`、`Hard satisfied: Fleet_1` 这类属性行
 一度被误当成动作，已用收窄后的"像动作"特征排除。
 
+#### P2-19 已完成：识别结果 → 引擎状态适配器（最终引擎的边界）（2026-09-26）
+
+`src/Alas.Core/Campaign/CampaignMapState.cs` + 命令 `Alas.Server r5-state`：
+
+| 组成 | 做什么 |
+| --- | --- |
+| `FromPlan` | 关卡**声明的静态地图**（`map.map_data` 令牌）→ 引擎格子；标记两支舰队所在格；再按上游 `find_path_initial_multi_fleet` 的顺序算成本场——**非当前舰队先算、当前舰队最后算**，因此 `cost` 最终是当前舰队的成本，`cost_1` / `cost_2` 各留一份 |
+| `OverlayDetection` | 叠加地图识别的运行期标志（`MapDetectResult.GridFlags` 的 `"x,y"` → 标志名形态）：`is_enemy`/`is_boss`/`is_siren`/`is_fortress`/`is_mystery`/`is_ammo`/`is_fleet`/`is_cleared`/`is_caught_by_siren`/`may_bouncing_enemy`/`is_mechanism_block`；**认不出的标志名收进 `unknownFlags` 报出**，不静默丢弃也不猜语义 |
+| 边界 | 识别只覆盖它认得的格子；**没认到的格子保持声明状态**（不猜成"没有敌人"）。真机识别结果由 `map` 等命令落盘后传进来，本命令**不连设备** |
+| 管道 | `--json` 输出的字段与执行夹具的 `grids` 同形 → 可以拼成"帧 → 状态 → `r5-exec` 干跑"这条链 |
+
+用法：
+```powershell
+Alas.Server r5-state --chapter campaign_main --level campaign_1_1 --fleet-1 A1
+Alas.Server r5-state --chapter <章> --level <关> --detection <识别.json> --json   # 可喂给 r5-exec
+```
+
+**对拍**：新增 `tools/diagnostics/verify_r5_state.py`（1-1 的声明侧七格 / `ME` 格 `may_enemy` /
+`MB` 格 `may_boss` / 舰队格 cost=0 / 全图可达 / 舰队格 `is_fleet`；叠加识别后 F1 变敌人、G1 变 boss、
+夹具里故意放的 `is_teleporter` 必须出现在 `unknown_flags`、未被识别的格子保持声明状态），已登记进
+`verify_all.py`。实测 1-1 确实是 `G1` 一行七格（`SP -- -- -- -- ME MB`），与上游源码一致。
+
 ### P4 收口
 
 `IVisionEngine` 只保留识图相关方法；上游目录只剩规则文件与识图组件；文档同步（`docs/architecture-roadmap.md`、本文件、[架构梳理](ARCHITECTURE-NOTES.md)）。

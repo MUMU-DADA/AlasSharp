@@ -1,0 +1,7 @@
+{
+  "note": "R5 识别结果夹具（grid_flags 形态，与地图识别落盘一致）：只有被识别到的格子才出现；坐标是 [x, y]。",
+  "grid_flags": {
+    "5,0": ["is_enemy"],
+    "6,0": ["is_boss", "is_enemy", "is_teleporter"]
+  }
+}
