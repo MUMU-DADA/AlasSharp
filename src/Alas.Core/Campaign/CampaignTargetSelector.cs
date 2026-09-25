@@ -13,7 +13,11 @@ public sealed record CampaignTargetOptions(
     string[]? Sort = null,
     CampaignGridSet? Ignore = null);
 
-/// <summary>一次目标选择的结论：选中的格子（无则 null）、走的分支、以及未移植分支的说明。</summary>
+/// <summary>
+/// 一次目标选择的结论：选中的格子（无则 null）、走的分支、以及"未接线分支"的说明。
+/// <see cref="Unsupported"/> **当前没有生产者**（各分支都已移植）；字段保留给决策层新增分支时显式报出，
+/// 免得悄悄返回一个错的目标。
+/// </summary>
 public sealed record CampaignTargetDecision(CampaignGrid? Target, string Branch, string? Unsupported = null)
 {
     public bool Selected => Target is not null;
@@ -31,9 +35,10 @@ public sealed record CampaignTargetDecision(CampaignGrid? Target, string Branch,
 ///         <c>is_enemy/is_accessible</c> 过滤、<c>sort('weight','cost')</c>、文本过滤器按优先级取、
 ///         <c>preserve</c> 截断 → 取第一个。</item>
 /// </list>
-/// **未移植**（明确报错/标注，不静默用错语义）：<c>MAP_HAS_MOVABLE_NORMAL_ENEMY</c> 分支调用的
-/// <c>clear_any_enemy(sort=('cost_2',))</c>（依赖 <c>cost_2</c> 排序键），以及动作本身
-/// （<c>clear_chosen_enemy</c> 的点击/移动，属设备动作，不在本层）。
+/// **边界说明**：`MAP_HAS_MOVABLE_NORMAL_ENEMY` 分支**不是**本层的事——上游在
+/// `clear_filter_enemy` 里就忽略过滤串、直接委托 `clear_any_enemy(sort=('cost_2',))`，
+/// C# 侧同样在 `CampaignPrimitives.ClearFilterEnemy` 里委托（见那里的注释）。
+/// 本层只负责"选哪一格"；点击/移动属设备动作，在宿主层。
 /// </summary>
 public static class CampaignTargetSelector
 {
@@ -143,9 +148,9 @@ public static class CampaignTargetSelector
     }
 
     /// <summary>
-    /// 上游 <c>clear_filter_enemy(string, preserve)</c> 的决策部分。
-    /// <paramref name="hasMovableNormalEnemy"/> 为真时走上游的 <c>clear_any_enemy(sort=('cost_2',))</c> 分支——未移植，
-    /// 以 <see cref="CampaignTargetDecision.Unsupported"/> 明确报出，不静默返回错误结果。
+    /// 上游 <c>clear_filter_enemy(string, preserve)</c> 的决策部分（**不含** movable 分支：
+    /// 那条分支在 <c>CampaignPrimitives.ClearFilterEnemy</c> 里就委托给 `clear_any_enemy(sort=('cost_2',))` 了）。
+    /// <paramref name="hasMovableNormalEnemy"/> 只用于"误传时有明确结果"：为真时返回空目标并说明原因。
     /// </summary>
     public static CampaignTargetDecision SelectFilterEnemyTarget(
         CampaignGridSet grids,

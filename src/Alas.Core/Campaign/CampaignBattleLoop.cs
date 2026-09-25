@@ -46,12 +46,15 @@ public sealed record CampaignLevelRun(
 ///   <item><c>battle_function()</c>：按配置三选一（见 <see cref="BattleFunction"/>）。</item>
 /// </list>
 ///
-/// **未移植/待真机确认的部分（如实标注）**：
+/// **已知近似与待真机确认的部分（如实标注）**：
 /// ① 标准流程里 <c>CampaignEnd</c> 由 <c>MapOperation.withdraw()</c> 在检测到已回到章节页时抛出
 /// （`module/map/map_operation.py:410`）；干跑宿主把 <c>Withdraw()</c> 视作"本关结束请求"，
 /// 这是**近似**，真机上要确认结束时机；
-/// ② `fleet_2_break_siren_caught` / `brute_clear_boss` / `clear_bouncing_enemy` 等原语尚未实现——
-/// 走到它们时按 <c>Blocked</c> 停下，不猜。
+/// ② 依赖设备状态变化的循环（`fleet_2_protect` 最多 20 轮、`clear_all_mystery` 的 `while 1`）在干跑里
+/// 只做一轮——干跑不改变状态，假装不了；
+/// ③ 原语层面没有"未实现"的分支了：29 个原语全部注册且有实现（`verify_r5_coverage.py` 逐个执行过），
+/// 之前列在这里的 `fleet_2_break_siren_caught` / `brute_clear_boss` / `clear_bouncing_enemy` 都已补上；
+/// 若真遇到没见过的分支，仍按 <c>Blocked</c> 停下报原因，不猜。
 /// </summary>
 public static class CampaignBattleLoop
 {

@@ -287,7 +287,9 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
 ///   <item><c>clear_all_mystery(**kwargs)</c>：<c>sort=('cost',)</c> 循环捡完所有神秘格子，**恒返回假**；</item>
 ///   <item><c>clear_filter_enemy(string, preserve)</c>：按过滤串选目标 → <c>clear_chosen_enemy</c>。</item>
 /// </list>
-/// 未移植分支一律抛 <see cref="NotSupportedException"/> 或经 <c>Unsupported</c> 报出，不猜语义。
+/// 失败与边界一律**显式**报出（<see cref="NotSupportedException"/> 或 <c>Blocked</c>），不猜语义。
+/// 说明：<c>CampaignTargetDecision.Unsupported</c> 现在**没有生产者**——各原语的可选分支都已移植，
+/// 下面那两处 "走到未移植分支" 的抛出是**防御性**的（真出现就说明决策层新增了未接线分支）。
 /// </summary>
 public static class CampaignPrimitives
 {
@@ -391,7 +393,9 @@ public static class CampaignPrimitives
 
     /// <summary>
     /// 上游 <c>Map.clear_potential_boss()</c>：依次踩可达的 may_boss 格子，用 <c>battle_count</c> 判断
-    /// 是否猜中。**未移植**：不可达 may_boss 分支需要 <c>brute_find_roadblocks</c>（寻路），遇到即报错。
+    /// 是否猜中；都猜不中时走**不可达 may_boss 的兜底**——找挡路敌人（`brute_find_roadblocks`）
+    /// 按 weight/cost 排序后交给 **1 队**清掉第一个（两条分支都已移植）。
+    /// 唯一的前置要求：要有舰队起点（真机由 `map_init` 填）；没有时如实停下报原因，不猜。
     /// </summary>
     public static bool ClearPotentialBoss(ICampaignPrimitiveHost host)
     {

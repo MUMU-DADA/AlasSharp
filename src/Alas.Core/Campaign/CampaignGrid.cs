@@ -5,12 +5,15 @@ namespace Alas.Campaign;
 /// `module/map_detection/grid_info.py` 的 <c>GridInfo</c>：
 /// <list type="bullet">
 ///   <item><c>is_accessible = cost &lt; 9999</c>、<c>is_nearby = cost &lt; 20</c>（原样移植）；</item>
-///   <item><c>str</c>：上游 <c>encode()</c> 的敌人分支 <c>"{enemy_scale}{enemy_genre 首字母大写或 E}"</c>
-///         （如 <c>3L</c>/<c>2M</c>/<c>1E</c>）——敌方格子的编码是文本过滤器唯一匹配的属性；</item>
+///   <item><c>str</c>：上游 <c>encode()</c> —— **全部分支已移植**（见 <see cref="Encode"/>）：
+///         陆地 <c>++</c>、boss <c>BO</c>、塞壬（按 <c>enemy_genre</c> 解析）、敌人
+///         <c>"{enemy_scale}{enemy_genre 首字母大写或 E}"</c>（如 <c>3L</c>/<c>2M</c>/<c>1E</c>）、
+///         以及 <c>FL</c>/<c>Fc</c>/<c>Fl</c>/<c>ss</c>/<c>MY</c>/<c>AM</c>/<c>FR</c>/<c>MI</c>/<c>BE</c>/<c>==</c>/<c>--</c>；</item>
 ///   <item><c>enemy_scale</c>（0–3）、<c>enemy_genre</c>（Light/Main/Carrier/Treasure/Enemy 或空）。</item>
 /// </list>
-/// 非敌方格子的 <c>encode()</c>（<c>SP</c>/<c>ME</c>/<c>++</c>/<c>MY</c> 等）未移植：选择链路只对
-/// <c>is_enemy=True</c> 的格子做文本过滤，移植面按实际需要收窄，不做多余猜测。
+/// 编码已由全库逐格对拍验证（1370 张声明地图 / 275,934 格，见 <c>r5_path_sweep.py</c> 的
+/// "逐格编码不一致 0"）。识别来源的标志（<c>FL</c>/<c>Fc</c>/<c>ss</c>/<c>MI</c> 等）只在识别叠加后命中，
+/// 离线对拍覆盖不到，如实标注。
 /// </summary>
 public sealed record CampaignGrid(
     string Location,
@@ -173,7 +176,9 @@ public static class CampaignLocations
 {
     public static string ToNode(int x, int y)
     {
-        if (x is < 0 or > 25) throw new NotSupportedException($"列 {x} 超出 A–Z（未移植多字母列名）");
+        if (x is < 0 or > 25) throw new NotSupportedException(
+            $"列 {x} 超出 A–Z：上游 `location2node` 是 Excel 式的（AA/AB…，也支持负数列），" +
+            "这里只移植到单字母。战役地图宽度远小于 26（全库逐格对拍里没有一例越界）；真要支持时在这里显式加。");
         return $"{(char)('A' + x)}{y + 1}";
     }
 
@@ -311,7 +316,12 @@ public sealed class CampaignGridSet
         foreach (string attribute in attributes)
         {
             if (attribute is not ("weight" or "cost" or "cost_1" or "cost_2"))
-                throw new NotSupportedException($"排序键 {attribute} 尚未移植（当前支持 weight/cost/cost_1/cost_2）");
+                throw new NotSupportedException(
+                    $"排序键 {attribute} 不在已移植的白名单里（weight/cost/cost_1/cost_2）。" +
+                    "上游用 attrgetter 支持任意属性；已核对全库用法，战役只用到这四个" +
+                    "（默认 ('weight','cost')、FLEET_2 下 ('weight','cost_2')、" +
+                    "fleet_2_protect 的 ('cost_2','cost_1')、clear_all_mystery 的 ('cost',)、" +
+                    "movable 分支的 ('cost_2',)）。真要新增键时在这里显式加，不猜语义。");
         }
         IOrderedEnumerable<CampaignGrid>? ordered = null;
         foreach (string attribute in attributes)

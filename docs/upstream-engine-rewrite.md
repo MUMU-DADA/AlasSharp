@@ -247,7 +247,7 @@ EVENT_20200312CN_SP3`，而这三个常量在上游快照里根本不存在—�
 | 代码 | `src/Alas.Core/Campaign/CampaignGrid.cs`（格子模型 + 格子集合 + 类型化过滤）、`CampaignTextFilter.cs`（敌人优先级过滤器）、`CampaignTargetSelector.cs`（选择链路） |
 | 移植范围 | 逐条对应上游 `module/map/map.py`：`Map.select_grids`（nearby / is_accessible / ignore / scale / genre / strongest / weakest / sort 的处理顺序照抄）、`clear_enemy(**kwargs)`、`clear_filter_enemy(string, preserve)` 的**决策部分**；`ENEMY_FILTER` 对应上游 `module/base/filter.py` 的 `Filter` |
 | 语义细节（照抄上游） | `is_accessible = cost < 9999`、`is_nearby = cost < 20`、敌人编码 `str = scale + genre 首字母`、`sort('weight','cost')` 升序、元组 scale/genre 是并集而列表是"取到即止"、`preserve` 截断、`S3/S1_enemy_first` 覆盖过滤串（S3 同时强制 `preserve=0`） |
-| 未移植（显式报出） | `MAP_HAS_MOVABLE_NORMAL_ENEMY` 分支的 `clear_any_enemy(sort=('cost_2',))`（依赖 `cost_2` 排序键）：返回 `unsupported` 说明而不是静默给错结果；动作本身（点击/移动）属设备动作，不在本层 |
+| 未移植（显式报出） | **当前没有未接线的分支**：`MAP_HAS_MOVABLE_NORMAL_ENEMY` 那条已在 `CampaignPrimitives.ClearFilterEnemy` 里按上游语义委托 `clear_any_enemy(sort=('cost_2',))`；`CampaignTargetDecision.Unsupported` 保留为"决策层新增分支时显式报出"的防御字段，现有代码没有生产者。动作本身（点击/移动）属设备动作，不在本层 |
 | 对拍证据 | `tools/diagnostics/verify_r5_selection.py`：15 个夹具用例全部通过，其中 **4 个直接调用上游 `module.base.filter.Filter`** 逐例比对选中结果；已登记进 `tools/diagnostics/verify_all.py` |
 | 命令 | `Alas.Server r5-select --fixture tools/diagnostics/r5-selection-fixture.json`（输出每个用例的分支、选中格子与未移植说明，JSON） |
 | 边界 | 只做"选哪个格子"的决策：不连设备、不执行游戏动作；原语注册表仍未登记实现（要等动手/移动侧接通后才算真正可执行） |
@@ -312,12 +312,13 @@ EVENT_20200312CN_SP3`，而这三个常量在上游快照里根本不存在—�
   宿主新增 `FleetCurrentIndex` 与 `EnsureFleet(index)`（与上游一致：索引相同则不记录切换）——
   没有按关卡、按编号写任何特例。
 - **规模**：`fleet_boss.clear_boss` 671 步、`fleet_1.clear_boss` 13 步、`fleet_boss.clear_potential_boss` 1 步
-  直接转为可执行；`fleet_boss.brute_clear_boss`(9) 与 `fleet_boss.capture_clear_boss`(12) 仍待实现。
+  直接转为可执行；当时列为"待实现"的 `fleet_boss.brute_clear_boss`(9) 与 `fleet_boss.capture_clear_boss`(12)
+  **后来都已实现**（见下方"复合原语"与验证表）。
 - **对拍**：`verify_r5_execution.py` 扩到 **16 个用例**（新增：`fleet_boss.clear_boss` 正常执行、
   `FLEET_BOSS+FLEET_2` 时先记录 `fleet_ensure(2)`、已在目标舰队时不重复切换），全部通过。
-- **新增进度指标**：`r5-plan` 现在输出**按步骤计的覆盖率**——全库
-  **步覆盖 5456/5694（95.8%）**（步骤指向已实现原语；仍可能被未求值实参或未移植分支挡住，
-  详见下一节的诚实边界）。
+- **新增进度指标**：`r5-plan` 现在输出**按步骤计的覆盖率**——**该段是阶段性记录**：
+  当时步覆盖 5456/5694（95.8%）；最新数字与未完成项统一看
+  [迁移路线](architecture-roadmap.md)与本文 §1.4，不在历史段落里维护。
 
 **当前状态一览**（全库 3019 个钩子 / 5694 步）：
 
@@ -616,7 +617,7 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 | `clear_any_enemy` | `Map.clear_any_enemy(**kwargs)` | 敌人 + （`MAP_HAS_SIREN`）塞壬 + （`MAP_HAS_FORTRESS`）要塞；`expected` 取 fortress/siren/空；支持 `sort` 关键字（如 `cost_2`） |
 | `clear_siren` | `Map.clear_siren(**kwargs)` | 无塞壬且无要塞配置时**直接返回假**；`FLEET_2` 时 `sort=('weight','cost_2')`；`expected` 取 fortress/siren |
 | `clear_boss` | `Map.clear_boss()` | `is_boss+is_accessible` ＋「被塞壬抓住的 may_boss」；都没有时退回 `clear_potential_boss`；上游注释已标 deprecated 但关卡里仍有 575 处调用，按原样移植 |
-| `clear_potential_boss` | `Map.clear_potential_boss()` | 依次踩可达 may_boss（`fleet_boss.clear_chosen_enemy`），用 `battle_count` 判断猜中；**不可达 may_boss 分支需要 `brute_find_roadblocks`（寻路）——未移植，遇到即报错** |
+| `clear_potential_boss` | `Map.clear_potential_boss()` | 依次踩可达 may_boss（`fleet_boss.clear_chosen_enemy`），用 `battle_count` 判断猜中；不可达 may_boss 走兜底：找路障（`brute_find_roadblocks`）后交 1 队清第一个——**两条分支都已移植**，只要求有舰队起点（没有时如实报原因） |
 
 配套扩展：格子模型增加 `may_boss` / `is_caught_by_siren` / `cost_2`（含 `is_accessible_2`），
 `Sort` 支持 `weight`/`cost`/`cost_2`；宿主接口增加 `BattleCount`、`SubmarineMoveNearBoss`，

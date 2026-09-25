@@ -13,8 +13,16 @@ namespace Alas.Campaign;
 ///   <item>每组 token 小写化后作为匹配值（上游 <c>parse_filter</c> 用 <c>^(.*?)$</c> 取整段）；</item>
 ///   <item><c>apply</c>：**按组顺序**输出（优先级从高到低），组内保持输入顺序，跨组去重。</item>
 /// </list>
-/// 未移植：上游的 preset 机制与"非法 filter 记 warning"分支——敌人过滤串由上游关卡配置提供，
-/// 这里遇到无法解析的组直接抛错，避免静默丢过滤条件。
+/// **两处与上游的差异（都有依据，如实写明）**：
+/// <list type="bullet">
+///   <item>**preset 机制不移植**：上游 <c>Filter(preset=(...))</c> 允许过滤串里出现"内置串"，
+///         命中时 <c>apply</c> 会把**字符串本身**放进结果（而不是格子）。已核对本仓库全库用法：
+///         `clear_filter_enemy` 共 5 个过滤器串 / 15 个不同 token，**全部**是 <c>{档位}{类型}</c> 形状
+///         （如 <c>3L</c>/<c>2M</c>），没有 preset、也没有非法 token，所以这条路径在战役里不会被走到；</item>
+///   <item>**非法 token 不记 warning**：上游遇到既不匹配正则也不是 preset 的 token 会
+///         <c>logger.warning</c> 并当成"永远匹配不上"的值；这里保留小写 token 去比对，
+///         同样匹配不上任何格子的编码，行为等价，只是少了那条日志。</item>
+/// </list>
 /// </summary>
 public sealed class CampaignTextFilter
 {
