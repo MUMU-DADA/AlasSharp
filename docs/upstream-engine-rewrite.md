@@ -793,30 +793,41 @@ Alas.Server r5-state --chapter <章> --level <关> --detection <识别.json> --j
 #### P2-21 原语动作层对照 `r5-diff`（"打的是不是同一格"）
 
 `Alas.Server r5-diff --log <上游日志> (--chapter --level | --chapter-module) [--frame | --detection]`：
+**一次运行看一个命令**——同时给出两层对照：
+
+| 层 | 比什么 | 实现 |
+| --- | --- | --- |
+| **决策层** | 上游日志的 `Using function:` vs C# 在同一 `battle_count` 下会选的钩子（含变体声明） | 复用 `CampaignShadow.Compare`（与 `r5-shadow` 同一套，避免两处口径漂移；`r5-shadow` 保留给"只有日志、没有关卡状态"的场景） |
+| **动作层** | 上游实际动作 vs C# 干跑动作的**原语集合**与**目标格子** | `CampaignActionComparator`（纯函数，无 I/O） |
+
 一边是**上游实际动作**（日志解析），一边是 **C# 干跑动作**（同一关卡跑关卡循环，动作只被记录），
-逐原语比对**集合**与**目标格子**。`CampaignActionComparator` 是纯函数（无 I/O），单独可测。
+逐原语比对**集合**与**目标格子**。
 
 **实测（帧驱动 + 上游格式夹具日志）**：
 
 ```
 [状态来源] 上游=现场识别（来自日志）；C#=inmap_3-1.png（识别到 28 格）
+== 决策层（钩子，声明变体 default_hooks）==
+  第 1 轮 battle_count=0：C# 会选 battle_0，上游实际 battle_0 → 一致
+  第 2 轮 battle_count=1：C# 会选 battle_0，上游实际 battle_0 → 一致
+== 动作层（原语与目标格子）==
 原语                     上游  C#   上游目标  C# 目标  目标一致
 clear_chosen_enemy       2     3    D2       D2       是
 clear_enemy              2     0    —        —        —
 withdraw                 0     1    —        —        —
-[结论] 原语集合不同；目标格子至少一个原语打到同一格（正面证据）
+[结论] 决策层全部一致；动作层原语集合不同，目标格子至少一个原语打到同一格（正面证据）
 ```
 
-**这就是"原语动作层"的正面证据**：C# 引擎在被喂进**真机帧识别结果**后，选了**上游实际打的那一格 D2**。
-两处差异也如实列出并说明来源：① 上游会多打一层包装表头（`clear_enemy`），C# 轨迹记录的是叶子动作；
-② C# 侧出现 `withdraw`（打不成 → 按 `Error_HandleError` 撤退），夹具日志里没有这一段。
+**真机日志上同样跑通**（`campaign_1_1` 的模拟器运行日志 + 识别夹具）：决策层 `battle_0`/`battle_1`
+**2/2 一致**；动作层 `clear_chosen_enemy` 两边都打 **F1/G1**（上游先 F1 后 G1）。
+差异照旧如实列出：上游多一层包装表头（`clear_enemy` / `clear_boss`），C# 侧多出
+`submarine_move_near_boss` 与 `withdraw`（干跑跑到 20 轮上限并撤退）。
 
 **口径（命令里也打印）**：**不比重复次数**——干跑状态在一次运行内不刷新，同一目标会被反复选中；
 差异也可能来自**状态来源不同**（现场识别 vs 声明地图/某张帧），所以结论必须带状态来源。
 
-**对拍**：新增 `tools/diagnostics/verify_r5_diff.py`（识别夹具 `detection-3-1.json` 把 D2 标成敌人 +
-夹具日志 `actions-3-1.log`，断言"两边都打 D2、目标交集为真、无目标不一致、只有上游用的包装层原语被列出"；
-帧可用时追加一次帧驱动对照，缺帧跳过）。已登记进 `verify_all.py`（R5 检查现共 **9** 个）。
+**对拍**：`tools/diagnostics/verify_r5_diff.py` 断言决策层无漂移 + 动作层两边都打 D2 + 目标交集为真 +
+无目标不一致 + 包装层原语被如实列出；帧可用时追加帧驱动对照，缺帧跳过。已登记进 `verify_all.py`。
 
 #### P2-22 域级开关骨架（回退能力落到代码）
 

@@ -35,32 +35,68 @@ internal static class CampaignDiffCheck
         var csharp = CampaignDryRunHelper.ToTrace(dryRun!);
         var diff = CampaignActionComparator.Compare(upstream, csharp);
 
+        // 决策层：同一 battle_count 下 C# 会选哪个钩子 vs 上游日志里的 Using function（与 r5-shadow 同一套实现）。
+        var observation = UpstreamLogParser.Parse(File.ReadAllText(logPath));
+        string variant = options.ClearAll ? "clear_all"
+            : options.PoorMapData ? "battle_with_poor_map_data"
+            : CampaignShadow.DefaultVariant;
+        var hooks = CampaignShadow.Compare(dryRun!.Plan, observation, variant);
+
         if (asJson)
         {
             Console.WriteLine(new JsonObject
             {
-                ["level"] = $"{dryRun!.Plan.Chapter}/{dryRun.Plan.Level}",
+                ["level"] = $"{dryRun.Plan.Chapter}/{dryRun.Plan.Level}",
                 ["detection"] = dryRun.DetectionSource,
-                ["same_primitives"] = diff.SamePrimitives,
-                ["any_target_matched"] = diff.AnyTargetMatched,
-                ["only_upstream"] = new JsonArray(diff.OnlyUpstream.Select(name => (JsonNode)name!).ToArray()),
-                ["only_csharp"] = new JsonArray(diff.OnlyCSharp.Select(name => (JsonNode)name!).ToArray()),
-                ["target_mismatches"] = new JsonArray(diff.TargetMismatches.Select(text => (JsonNode)text!).ToArray()),
-                ["entries"] = new JsonArray(diff.Entries.Select(entry => (JsonNode)new JsonObject
+                ["hooks"] = new JsonObject
                 {
-                    ["primitive"] = entry.Primitive,
-                    ["upstream_count"] = entry.UpstreamCount,
-                    ["csharp_count"] = entry.CSharpCount,
-                    ["upstream_targets"] = new JsonArray(entry.UpstreamTargets.Select(t => (JsonNode)t!).ToArray()),
-                    ["csharp_targets"] = new JsonArray(entry.CSharpTargets.Select(t => (JsonNode)t!).ToArray()),
-                    ["targets_intersect"] = entry.TargetsIntersect,
-                }).ToArray()),
+                    ["variant"] = variant,
+                    ["matched"] = hooks.Matched,
+                    ["mismatched"] = hooks.Mismatched,
+                    ["skipped"] = hooks.Skipped,
+                    ["rows"] = new JsonArray(hooks.Rows.Select(row => (JsonNode)new JsonObject
+                    {
+                        ["battle_count"] = row.BattleCount,
+                        ["shadow"] = row.Expected,
+                        ["upstream"] = row.Actual,
+                        ["verdict"] = row.Verdict,
+                        ["note"] = row.Note,
+                    }).ToArray()),
+                },
+                ["actions"] = new JsonObject
+                {
+                    ["same_primitives"] = diff.SamePrimitives,
+                    ["any_target_matched"] = diff.AnyTargetMatched,
+                    ["only_upstream"] = new JsonArray(diff.OnlyUpstream.Select(name => (JsonNode)name!).ToArray()),
+                    ["only_csharp"] = new JsonArray(diff.OnlyCSharp.Select(name => (JsonNode)name!).ToArray()),
+                    ["target_mismatches"] = new JsonArray(diff.TargetMismatches.Select(text => (JsonNode)text!).ToArray()),
+                    ["entries"] = new JsonArray(diff.Entries.Select(entry => (JsonNode)new JsonObject
+                    {
+                        ["primitive"] = entry.Primitive,
+                        ["upstream_count"] = entry.UpstreamCount,
+                        ["csharp_count"] = entry.CSharpCount,
+                        ["upstream_targets"] = new JsonArray(entry.UpstreamTargets.Select(t => (JsonNode)t!).ToArray()),
+                        ["csharp_targets"] = new JsonArray(entry.CSharpTargets.Select(t => (JsonNode)t!).ToArray()),
+                        ["targets_intersect"] = entry.TargetsIntersect,
+                    }).ToArray()),
+                },
             }.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-            return diff.TargetMismatches.Count == 0 ? 0 : 1;
+            return hooks.Mismatched == 0 && diff.TargetMismatches.Count == 0 ? 0 : 1;
         }
 
-        Console.WriteLine($"[动作对照] {dryRun!.Plan.Chapter}/{dryRun.Plan.Level}");
+        Console.WriteLine($"[对照对象] {dryRun.Plan.Chapter}/{dryRun.Plan.Level}");
         Console.WriteLine($"[状态来源] 上游=现场识别（来自日志）；C#={dryRun.DetectionSource ?? "声明地图（未叠加识别）"}");
+        Console.WriteLine();
+        Console.WriteLine($"== 决策层（钩子，声明变体 {variant}）==");
+        foreach (var row in hooks.Rows)
+        {
+            Console.WriteLine($"  第 {row.BattleCount + 1} 轮 battle_count={row.BattleCount}：" +
+                              $"C# 会选 {row.Expected}，上游实际 {row.Actual ?? "—"} → {row.Verdict}" +
+                              (row.Note is null ? "" : $"（{row.Note}）"));
+        }
+        Console.WriteLine($"  小计：一致 {hooks.Matched} / 不一致 {hooks.Mismatched} / 跳过 {hooks.Skipped}");
+        Console.WriteLine();
+        Console.WriteLine("== 动作层（原语与目标格子）==");
         Console.WriteLine($"{"原语",-32}{"上游",-6}{"C#",-6}{"上游目标",-18}{"C# 目标",-18}目标一致");
         foreach (var entry in diff.Entries)
         {
@@ -73,11 +109,12 @@ internal static class CampaignDiffCheck
         if (diff.OnlyUpstream.Count > 0) Console.WriteLine($"[只有上游用到] {string.Join(", ", diff.OnlyUpstream)}");
         if (diff.OnlyCSharp.Count > 0) Console.WriteLine($"[只有 C# 用到] {string.Join(", ", diff.OnlyCSharp)}");
         foreach (string mismatch in diff.TargetMismatches) Console.WriteLine($"[目标不一致] {mismatch}");
-        Console.WriteLine($"[结论   ] 原语集合{(diff.SamePrimitives ? "相同" : "不同")}；" +
+        Console.WriteLine($"[结论   ] 决策层{(hooks.Clean ? "全部一致" : "存在漂移")}；" +
+                          $"动作层原语集合{(diff.SamePrimitives ? "相同" : "不同")}，" +
                           $"目标格子{(diff.AnyTargetMatched ? "至少一个原语打到同一格（正面证据）" : "没有交集")}");
         Console.WriteLine("[口径   ] 不比重复次数（干跑状态不刷新，同一目标会被反复选中）；" +
                           "差异也可能是状态来源不同造成的。");
-        return diff.TargetMismatches.Count == 0 ? 0 : 1;
+        return hooks.Mismatched == 0 && diff.TargetMismatches.Count == 0 ? 0 : 1;
     }
 
     private static string Join(IReadOnlyList<string> values) =>

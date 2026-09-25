@@ -9,7 +9,8 @@
   与识别夹具 `fixtures/detection-3-1.json`（把 D2 标成敌人）跑
   `Alas.Server r5-diff --log <日志> --chapter campaign_main --level campaign_3_1 --detection <识别> --json`，
   核对：
-  - 两边都用到 `clear_chosen_enemy`，且**目标交集是 D2**（"打的是同一格"的正面证据）；
+  - **决策层**：上游日志里的 `Using function:` 与 C# 在同一 battle_count 下会选的钩子逐轮一致（无漂移）；
+  - **动作层**：两边都用到 `clear_chosen_enemy`，且**目标交集是 D2**（"打的是同一格"的正面证据）；
   - 只有上游用到的原语（`clear_enemy`，上游会额外打包装层表头）与只有 C# 用到的原语（`withdraw`）
     被如实列出——这类差异是**轨迹粒度/状态来源**造成的，不是引擎错误；
   - 没有"目标不一致"（本夹具两边打同一格）；
@@ -46,7 +47,12 @@ def check(payload: dict | None, text: str, label: str) -> list[str]:
     problems: list[str] = []
     if payload is None:
         return [f"{label}: 没有解析到 JSON 输出：{text.strip().splitlines()[-3:]}"]
-    entries = {entry["primitive"]: entry for entry in payload["entries"]}
+    hooks = payload["hooks"]
+    if hooks["mismatched"] or hooks["matched"] < 2:
+        problems.append(f"{label}: 决策层应至少 2 轮一致且无漂移，实际 {hooks['matched']} 一致 / "
+                        f"{hooks['mismatched']} 不一致")
+    actions = payload["actions"]
+    entries = {entry["primitive"]: entry for entry in actions["entries"]}
     common = entries.get("clear_chosen_enemy")
     if common is None:
         problems.append(f"{label}: 两边都应有 clear_chosen_enemy，实际原语 {sorted(entries)}")
@@ -57,12 +63,13 @@ def check(payload: dict | None, text: str, label: str) -> list[str]:
             problems.append(f"{label}: C# 目标应含 D2，实际 {common['csharp_targets']}")
         if not common["targets_intersect"]:
             problems.append(f"{label}: 目标交集应为真（两边打同一格）")
-    if not payload["any_target_matched"]:
+    if not actions["any_target_matched"]:
         problems.append(f"{label}: 应报告『至少一个原语打到同一格』")
-    if payload["target_mismatches"]:
-        problems.append(f"{label}: 本夹具不应有目标不一致，实际 {payload['target_mismatches']}")
-    if "clear_enemy" not in payload["only_upstream"]:
-        problems.append(f"{label}: 上游的包装层原语 clear_enemy 应列在 only_upstream，实际 {payload['only_upstream']}")
+    if actions["target_mismatches"]:
+        problems.append(f"{label}: 本夹具不应有目标不一致，实际 {actions['target_mismatches']}")
+    if "clear_enemy" not in actions["only_upstream"]:
+        problems.append(f"{label}: 上游的包装层原语 clear_enemy 应列在 only_upstream，"
+                        f"实际 {actions['only_upstream']}")
     return problems
 
 
@@ -87,7 +94,7 @@ def main() -> int:
         skipped.append(f"缺 {FRAME.relative_to(ROOT)}（忽略目录），跳过帧用例")
         frame_note = "帧用例：跳过"
 
-    print(f"[r5-diff] 识别夹具用例：两边都打 D2、目标交集为真、无目标不一致；{frame_note}")
+    print(f"[r5-diff] 识别夹具用例：决策层无漂移、动作层两边都打 D2、目标交集为真；{frame_note}")
     for note in skipped:
         print(f"  跳过：{note}")
     if problems:
@@ -95,7 +102,7 @@ def main() -> int:
         for item in problems:
             print(f"  - {item}")
         return 1
-    print("PASS: 原语动作层对照能给出『打同一格』的正面证据并如实列出差异")
+    print("PASS: 统一对照同时覆盖决策层（钩子）与动作层（原语/目标），并如实列出差异")
     return 0
 
 
