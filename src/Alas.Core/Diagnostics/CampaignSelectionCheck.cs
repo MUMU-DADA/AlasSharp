@@ -105,7 +105,9 @@ internal static class CampaignSelectionCheck
         EnemyScale: grid.EnemyScale,
         EnemyGenre: grid.EnemyGenre,
         Weight: grid.Weight,
-        Cost: grid.Cost);
+        Cost: grid.Cost,
+        Cost1: grid.Cost1 ?? 9999,
+        Cost2: grid.Cost2 ?? 9999);
 
     private static int Fail(string message)
     {
@@ -157,5 +159,8 @@ internal static class CampaignSelectionCheck
         [JsonPropertyName("enemy_genre")] public string? EnemyGenre { get; init; }
         [JsonPropertyName("weight")] public int Weight { get; init; }
         [JsonPropertyName("cost")] public int Cost { get; init; }
+        /// <summary>`cost_<舰队>`：多舰队成本场（`sort` 支持按它们排序；缺省 9999 = 不可达）。</summary>
+        [JsonPropertyName("cost_1")] public int? Cost1 { get; init; }
+        [JsonPropertyName("cost_2")] public int? Cost2 { get; init; }
     }
 }
