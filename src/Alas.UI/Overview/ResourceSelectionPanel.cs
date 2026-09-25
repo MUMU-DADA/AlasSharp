@@ -1,15 +1,20 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 namespace Alas.UI.Overview;
 
 /// <summary>Edits the overview's per-instance resource selection directly.</summary>
 public sealed class ResourceSelectionPanel : UserControl
 {
+    private const double DragThreshold = 4;
+
     private readonly StackPanel _selected = new() { Name = "CardSettingsSelected", Spacing = 4 };
     private readonly StackPanel _available = new() { Name = "CardSettingsAvailable", Spacing = 4 };
     private readonly TextBlock _empty = new() { Name = "CardSettingsEmpty", Text = "尚未选择资源卡片。" };
@@ -19,6 +24,11 @@ public sealed class ResourceSelectionPanel : UserControl
     private ResourceSelection? _selection;
     private bool _attached;
     private bool _refreshQueued;
+    private IPointer? _dragPointer;
+    private ResourceSelection? _dragSelection;
+    private string? _dragSource;
+    private Point _dragOrigin;
+    private bool _dragging;
 
     public ResourceSelectionPanel()
     {
@@ -42,9 +52,16 @@ public sealed class ResourceSelectionPanel : UserControl
         };
         DetachedFromVisualTree += (_, _) =>
         {
+            CancelDrag();
             Unsubscribe();
             _attached = false;
             _refreshQueued = false;
+        };
+        AddHandler(PointerMovedEvent, OnPointerMoved, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(PointerReleasedEvent, OnPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
+        PointerCaptureLost += (_, args) =>
+        {
+            if (ReferenceEquals(args.Pointer, _dragPointer)) CancelDrag();
         };
         Refresh();
     }
@@ -55,6 +72,7 @@ public sealed class ResourceSelectionPanel : UserControl
         set
         {
             if (ReferenceEquals(_selection, value)) return;
+            CancelDrag();
             Unsubscribe();
             _selection = value;
             Subscribe();
@@ -65,14 +83,22 @@ public sealed class ResourceSelectionPanel : UserControl
     private void Subscribe()
     {
         if (_attached && _selection is not null)
+        {
             _selection.PropertyChanged += OnSelectionChanged;
+            _selection.SelectionChanged += OnSelectionCommitted;
+        }
     }
 
     private void Unsubscribe()
     {
         if (_attached && _selection is not null)
+        {
             _selection.PropertyChanged -= OnSelectionChanged;
+            _selection.SelectionChanged -= OnSelectionCommitted;
+        }
     }
+
+    private void OnSelectionCommitted(object? sender, EventArgs args) => CancelDrag();
 
     private void OnSelectionChanged(object? sender, PropertyChangedEventArgs args)
     {
@@ -96,6 +122,7 @@ public sealed class ResourceSelectionPanel : UserControl
 
     private void Refresh()
     {
+        CancelDrag();
         var selection = _selection;
         _selected.Children.Clear();
         _available.Children.Clear();
@@ -115,7 +142,12 @@ public sealed class ResourceSelectionPanel : UserControl
 
     private Control SelectedRow(ResourceSelection selection, ResourceChoice choice)
     {
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"), Margin = new Thickness(0, 2) };
+        var row = new Grid
+        {
+            Name = "CardSettingsSelectedRow", Tag = choice.Key,
+            Background = Brushes.Transparent,
+            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"), Margin = new Thickness(0, 2),
+        };
         row.Children.Add(new TextBlock { Text = choice.Label, VerticalAlignment = VerticalAlignment.Center });
         var index = selection.Keys.ToList().IndexOf(choice.Key);
         var up = ActionButton("CardSettingsMoveUp", "↑", "上移" + choice.Label,
@@ -132,7 +164,63 @@ public sealed class ResourceSelectionPanel : UserControl
             () => { if (ReferenceEquals(_selection, selection)) selection.Remove(choice.Key); });
         Grid.SetColumn(remove, 3);
         row.Children.Add(remove);
+        row.AddHandler(PointerPressedEvent, (_, args) => BeginDrag(selection, choice.Key, row, args),
+            RoutingStrategies.Bubble, handledEventsToo: true);
         return row;
+    }
+
+    private void BeginDrag(ResourceSelection selection, string key, Control row, PointerPressedEventArgs args)
+    {
+        if (!ReferenceEquals(selection, _selection) || !args.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            return;
+        for (var source = args.Source as Visual; source is not null && !ReferenceEquals(source, row);
+             source = source.GetVisualParent())
+            if (source is Button) return;
+        CancelDrag();
+        _dragPointer = args.Pointer;
+        _dragSelection = selection;
+        _dragSource = key;
+        _dragOrigin = args.GetPosition(this);
+    }
+
+    private void OnPointerMoved(object? sender, PointerEventArgs args)
+    {
+        if (_dragPointer is null || !ReferenceEquals(args.Pointer, _dragPointer) ||
+            !ReferenceEquals(_dragSelection, _selection) || _dragging) return;
+        var distance = args.GetPosition(this) - _dragOrigin;
+        if (distance.X * distance.X + distance.Y * distance.Y < DragThreshold * DragThreshold) return;
+        _dragging = true;
+        args.Pointer.Capture(this);
+    }
+
+    private void OnPointerReleased(object? sender, PointerReleasedEventArgs args)
+    {
+        if (_dragPointer is null || !ReferenceEquals(args.Pointer, _dragPointer)) return;
+        var selection = _dragSelection;
+        var source = _dragSource;
+        var target = _dragging ? TargetKeyAt(args.GetPosition(_selected)) : null;
+        CancelDrag();
+        if (selection is null || !ReferenceEquals(selection, _selection) || source is null || target is null ||
+            source == target || !selection.Keys.Contains(source, StringComparer.Ordinal) ||
+            !selection.Keys.Contains(target, StringComparer.Ordinal)) return;
+        selection.Move(source, target);
+    }
+
+    private string? TargetKeyAt(Point point)
+    {
+        foreach (var child in _selected.Children)
+            if (child is Control { Tag: string key } row && row.Bounds.Contains(point)) return key;
+        return null;
+    }
+
+    private void CancelDrag()
+    {
+        var pointer = _dragging ? _dragPointer : null;
+        _dragPointer = null;
+        _dragSelection = null;
+        _dragSource = null;
+        _dragging = false;
+        pointer?.Capture(null);
     }
 
     private Control AvailableRow(ResourceSelection selection, ResourceChoice choice)

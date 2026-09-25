@@ -33,6 +33,7 @@ internal static class ResourceCardSettingsChecks
         ListsOptions();
         SavesSelection();
         ConnectedOverview();
+        PointerDrag();
     }
 
     private static void Disconnected()
@@ -274,6 +275,96 @@ internal static class ResourceCardSettingsChecks
         finally { window.Close(); }
     }
 
+    private static void PointerDrag()
+    {
+        var store = new TestStore();
+        var selection = new ResourceSelection(store);
+        selection.SetInstance("one");
+        var panel = new ResourceSelectionPanel { Selection = selection };
+        var window = new Window { Width = 500, Height = 500, Content = panel };
+        window.Show(); Pump();
+        try
+        {
+            int changes = 0;
+            selection.SelectionChanged += (_, _) => changes++;
+            Drag(panel, window, "Oil", "Cube");
+            Check(selection.Keys.SequenceEqual(new[] { "Coin", "Gem", "Cube", "Oil" }) && changes == 1,
+                $"pointer drag moves first card to last and commits once (got {string.Join(",", selection.Keys)}, {changes} changes)");
+            Drag(panel, window, "Oil", "Coin");
+            Check(selection.Keys.SequenceEqual(ResourceCardSettingsPanel.DefaultKeys) && changes == 2,
+                "pointer drag moves last card to first and commits once");
+            var beforeNoOp = selection.Keys.ToArray();
+            Drag(panel, window, "Oil", "Oil");
+            Drag(panel, window, "Oil", null);
+            Drag(panel, window, "Oil", "Oil", distance: 2);
+            Check(selection.Keys.SequenceEqual(beforeNoOp) && changes == 2,
+                "same row, invalid target and sub-threshold motion do not save preferences");
+            var button = panel.GetVisualDescendants().OfType<Button>().Single(control =>
+                control.Name == "CardSettingsMoveDown" &&
+                Avalonia.Automation.AutomationProperties.GetName(control) == "下移石油");
+            var buttonPoint = button.TranslatePoint(new Point(button.Bounds.Width / 2,
+                button.Bounds.Height / 2), window)!.Value;
+            window.MouseMove(buttonPoint); window.MouseDown(buttonPoint, MouseButton.Left);
+            window.MouseMove(new Point(buttonPoint.X - 25, buttonPoint.Y + 25));
+            window.MouseUp(new Point(buttonPoint.X - 25, buttonPoint.Y + 25), MouseButton.Left); Pump();
+            Check(selection.Keys.SequenceEqual(beforeNoOp) && changes == 2,
+                "pointer events bubbling from button template children do not start a row drag");
+
+            var start = Center(Row(panel, "Oil"), window);
+            window.MouseMove(start); window.MouseDown(start, MouseButton.Left);
+            window.MouseMove(new Point(start.X, start.Y - 30));
+            selection.SetInstance("two"); Pump();
+            window.MouseUp(Center(Row(panel, "Coin"), window), MouseButton.Left); Pump();
+            Check(selection.Keys.SequenceEqual(ResourceCardSettingsPanel.DefaultKeys)
+                && store.Read("one") == "[\"Oil\",\"Coin\",\"Gem\",\"Cube\"]"
+                && store.Read("two") is null,
+                "a gesture in progress is canceled across instances and never writes to the new instance");
+
+            start = Center(Row(panel, "Oil"), window);
+            window.MouseMove(start); window.MouseDown(start, MouseButton.Left);
+            window.MouseMove(new Point(start.X, start.Y + 30));
+            window.Content = new TextBlock { Text = "detached" }; Pump();
+            window.MouseUp(new Point(start.X, start.Y + 60), MouseButton.Left); Pump();
+            Check(store.Read("two") is null && selection.Keys.SequenceEqual(ResourceCardSettingsPanel.DefaultKeys),
+                "detaching the panel cancels pointer capture without persisting a move");
+        }
+        finally { window.Close(); }
+    }
+
+    private static Point Center(Control control, TopLevel surface) => control.TranslatePoint(
+        new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), surface)!.Value;
+
+    private static void Drag(ResourceSelectionPanel panel, Window window, string sourceKey, string? targetKey,
+        double distance = 20)
+    {
+        DragPointer(panel, window, sourceKey, targetKey, distance);
+        Pump();
+    }
+
+    private static void DragPointer(ResourceSelectionPanel panel, Window window, string sourceKey, string? targetKey,
+        double distance = 20)
+    {
+        var surface = TopLevel.GetTopLevel(panel) ?? window;
+        var source = Row(panel, sourceKey);
+        var start = Center(source, surface);
+        surface.MouseMove(start);
+        surface.MouseDown(start, MouseButton.Left);
+        var moved = new Point(start.X + distance, start.Y + distance);
+        surface.MouseMove(moved);
+        if (targetKey is not null)
+        {
+            var target = Row(panel, targetKey);
+            var end = Center(target, surface);
+            surface.MouseMove(end);
+        }
+        else surface.MouseMove(new Point(2, 2));
+        surface.MouseUp(targetKey is null ? new Point(2, 2) : Center(Row(panel, targetKey), surface), MouseButton.Left);
+    }
+
+    private static Control Row(ResourceSelectionPanel panel, string key) =>
+        panel.GetVisualDescendants().OfType<Control>().Single(control =>
+            control.Name == "CardSettingsSelectedRow" && Equals(control.Tag, key));
+
     internal static void RunPerformance(string output)
     {
         var store = new MemoryResourceSelectionStore();
@@ -336,6 +427,51 @@ internal static class ResourceCardSettingsChecks
                 + $"live open={report.open.MedianMs} ms/{report.open.MedianBytes} B "
                 + $"sort={report.sort.MedianMs} ms/{report.sort.MedianBytes} B");
             flyout.Hide();
+        }
+        finally { window.Close(); }
+        RunPointerPerformance(output);
+    }
+
+    private static void RunPointerPerformance(string output)
+    {
+        var selection = new ResourceSelection(new MemoryResourceSelectionStore());
+        selection.SetInstance("perf");
+        var observation = JsonNode.Parse("""
+            {"resources":[{"name":"Oil","value":12},{"name":"Coin","value":34},
+                          {"name":"Gem","value":5},{"name":"Cube","value":6}]}
+            """)!.AsObject();
+        selection.Observe(observation);
+        var panel = new ResourceSelectionPanel { Selection = selection };
+        var window = new Window { Width = 500, Height = 500, Content = panel };
+        window.Show(); Pump();
+        try
+        {
+            var drags = new List<Sample>();
+            int commits = 0;
+            selection.SelectionChanged += (_, _) => commits++;
+            for (int i = 0; i < 20; i++)
+            {
+                drags.Add(Measure(() => DragPointer(panel, window, "Oil", "Coin"), window));
+            }
+            Check(selection.Keys.SequenceEqual(ResourceCardSettingsPanel.DefaultKeys)
+                && commits == 20
+                && panel.GetVisualDescendants().OfType<Control>()
+                    .Count(control => control.Name == "CardSettingsSelectedRow") == 4,
+                $"pointer performance preserves all four visible default cards (commits={commits}, keys={string.Join(",", selection.Keys)})");
+            var snapshots = new List<Sample>();
+            for (int i = 0; i < 20; i++)
+                snapshots.Add(Measure(() => selection.Observe((JsonObject)observation.DeepClone()), window));
+            var report = new
+            {
+                schema = "ui-resource-drag-perf/1",
+                cards = selection.Keys.Count,
+                pointer_drag = Summary(drags), steady_snapshot = Summary(snapshots),
+                environment = "Release Avalonia Headless, offscreen Skia; real pointer events on attached four-card panel",
+            };
+            File.WriteAllText(Path.Combine(output, "resource-drag-perf.json"),
+                JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+            Console.WriteLine($"resource drag: pointer={report.pointer_drag.MedianMs} ms/{report.pointer_drag.MedianBytes} B "
+                + $"snapshot={report.steady_snapshot.MedianMs} ms/{report.steady_snapshot.MedianBytes} B");
         }
         finally { window.Close(); }
     }
