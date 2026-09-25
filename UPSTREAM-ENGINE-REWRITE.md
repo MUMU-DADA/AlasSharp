@@ -185,6 +185,18 @@
 | 命令输出 | `r5-plan` 概览给出执行面与契约符合数；`r5-plan <章> --level <关>` 逐钩子给出角色划分、契约形状与每步"已实现/未实现"标记 |
 | 含义 | P2 的待办面被量化：实现 **31 个原语**（2873 步为无条件/兜底调用，2814 步为条件尝试），原语实现后干跑状态会从"未实现"变为"可执行" |
 
+#### P2-2 已完成：第一批原语（目标选择）与上游直接对拍（2026-09-25）
+
+| 项 | 内容 |
+| --- | --- |
+| 代码 | `src/Alas.Core/Campaign/CampaignGrid.cs`（格子模型 + 格子集合 + 类型化过滤）、`CampaignTextFilter.cs`（敌人优先级过滤器）、`CampaignTargetSelector.cs`（选择链路） |
+| 移植范围 | 逐条对应上游 `module/map/map.py`：`Map.select_grids`（nearby / is_accessible / ignore / scale / genre / strongest / weakest / sort 的处理顺序照抄）、`clear_enemy(**kwargs)`、`clear_filter_enemy(string, preserve)` 的**决策部分**；`ENEMY_FILTER` 对应上游 `module/base/filter.py` 的 `Filter` |
+| 语义细节（照抄上游） | `is_accessible = cost < 9999`、`is_nearby = cost < 20`、敌人编码 `str = scale + genre 首字母`、`sort('weight','cost')` 升序、元组 scale/genre 是并集而列表是"取到即止"、`preserve` 截断、`S3/S1_enemy_first` 覆盖过滤串（S3 同时强制 `preserve=0`） |
+| 未移植（显式报出） | `MAP_HAS_MOVABLE_NORMAL_ENEMY` 分支的 `clear_any_enemy(sort=('cost_2',))`（依赖 `cost_2` 排序键）：返回 `unsupported` 说明而不是静默给错结果；动作本身（点击/移动）属设备动作，不在本层 |
+| 对拍证据 | `tools/diagnostics/verify_r5_selection.py`：15 个夹具用例全部通过，其中 **4 个直接调用上游 `module.base.filter.Filter`** 逐例比对选中结果；已登记进 `tools/diagnostics/verify_all.py` |
+| 命令 | `Alas.Server r5-select --fixture tools/diagnostics/r5-selection-fixture.json`（输出每个用例的分支、选中格子与未移植说明，JSON） |
+| 边界 | 只做"选哪个格子"的决策：不连设备、不执行游戏动作；原语注册表仍未登记实现（要等动手/移动侧接通后才算真正可执行） |
+
 每个切片必须齐四样，缺一不算完成：
 
 1. **对拍夹具**：上游行为录制、脱敏、可复跑；

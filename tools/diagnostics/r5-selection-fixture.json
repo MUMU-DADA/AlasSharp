@@ -1,0 +1,158 @@
+{
+  "note": "R5 目标选择对拍夹具：供 `Alas.Server r5-select --fixture <本文件>` 与 tools/diagnostics/verify_r5_selection.py 使用。网格语义对应上游 module/map/map.py 的 select_grids / clear_enemy / clear_filter_enemy。",
+  "cases": [
+    {
+      "name": "clear_enemy 默认：无优先级配置时按 weight/cost 排序取第一个",
+      "kind": "clear_enemy",
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 90, "cost": 8 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 50, "cost": 12 },
+        { "location": "C1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 50, "cost": 5 }
+      ],
+      "expect": { "selected": "C1", "branch_contains": "default" }
+    },
+    {
+      "name": "clear_enemy + S3_enemy_first：strongest 优先 scale 3",
+      "kind": "clear_enemy",
+      "enemy_priority": "S3_enemy_first",
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 8 },
+        { "location": "C1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 90, "cost": 5 }
+      ],
+      "expect": { "selected": "C1", "branch_contains": "strongest" }
+    },
+    {
+      "name": "clear_enemy + S1_enemy_first：weakest 优先 scale 1",
+      "kind": "clear_enemy",
+      "enemy_priority": "S1_enemy_first",
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 10, "cost": 8 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 90, "cost": 5 }
+      ],
+      "expect": { "selected": "B1", "branch_contains": "weakest" }
+    },
+    {
+      "name": "clear_enemy + MAP_CLEAR_ALL_THIS_TIME：strongest",
+      "kind": "clear_enemy",
+      "map_clear_all_this_time": true,
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 8 },
+        { "location": "C1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 90, "cost": 5 }
+      ],
+      "expect": { "selected": "C1", "branch_contains": "MAP_CLEAR_ALL_THIS_TIME" }
+    },
+    {
+      "name": "clear_enemy + scale=[2,3]（列表语义：按顺序，取到即止）",
+      "kind": "clear_enemy",
+      "options": { "scale": [2, 3], "scale_in_order": true },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 10, "cost": 8 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 90, "cost": 5 }
+      ],
+      "expect": { "selected": "B1", "selected_str": "2M" }
+    },
+    {
+      "name": "clear_enemy + scale=(2,3)（元组语义：并集后再排序）",
+      "kind": "clear_enemy",
+      "options": { "scale": [2, 3], "scale_in_order": false },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 10, "cost": 8 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 90, "cost": 5 },
+        { "location": "C1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 1, "cost": 1 }
+      ],
+      "expect": { "selected": "A1", "selected_str": "3M" }
+    },
+    {
+      "name": "clear_enemy 排除 boss",
+      "kind": "clear_enemy",
+      "grids": [
+        { "location": "A1", "is_enemy": true, "is_boss": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 1, "cost": 1 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 90, "cost": 9 }
+      ],
+      "expect": { "selected": "B1" }
+    },
+    {
+      "name": "clear_filter_enemy：过滤串优先级高于 weight/cost",
+      "kind": "clear_filter_enemy",
+      "filter": "3L > 3M > 2M",
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 1, "cost": 1 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 99, "cost": 9 }
+      ],
+      "expect": { "selected": "B1", "selected_str": "3L" }
+    },
+    {
+      "name": "clear_filter_enemy：preserve=1 跳过最简单的一个",
+      "kind": "clear_filter_enemy",
+      "filter": "3L > 3M",
+      "preserve": 1,
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 10, "cost": 1 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 20, "cost": 2 }
+      ],
+      "expect": { "selected": "B1", "selected_str": "3M" }
+    },
+    {
+      "name": "clear_filter_enemy + S3_enemy_first：覆盖过滤串并强制 preserve=0",
+      "kind": "clear_filter_enemy",
+      "filter": "1L > 1M",
+      "preserve": 2,
+      "enemy_priority": "S3_enemy_first",
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Light", "weight": 1, "cost": 1 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 50, "cost": 5 }
+      ],
+      "expect": { "selected": "B1", "branch_contains": "S3_enemy_first" }
+    },
+    {
+      "name": "clear_filter_enemy：不可达敌人被 is_accessible 过滤掉",
+      "kind": "clear_filter_enemy",
+      "filter": "3L",
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 1, "cost": 9999 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 50, "cost": 5 }
+      ],
+      "expect": { "selected": null }
+    },
+    {
+      "name": "clear_filter_enemy + MAP_HAS_MOVABLE_NORMAL_ENEMY：走未移植分支，必须显式报出",
+      "kind": "clear_filter_enemy",
+      "filter": "3L",
+      "has_movable_normal_enemy": true,
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 1, "cost": 1 }
+      ],
+      "expect": { "selected": null, "unsupported_contains": "cost_2" }
+    },
+    {
+      "name": "select_grids：is_accessible=false 时包含不可达格子",
+      "kind": "select_grids",
+      "options": { "is_accessible": false },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 9999 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 20, "cost": 5 }
+      ],
+      "expect": { "selected": "A1" }
+    },
+    {
+      "name": "select_grids：nearby 只保留 cost<20",
+      "kind": "select_grids",
+      "options": { "nearby": true },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 1, "cost": 25 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 30, "cost": 19 }
+      ],
+      "expect": { "selected": "B1" }
+    },
+    {
+      "name": "select_grids：genre=['Carrier','Main']（列表语义）",
+      "kind": "select_grids",
+      "options": { "genre": ["carrier", "main"], "genre_in_order": true },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 1, "cost": 1 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Carrier", "weight": 90, "cost": 9 }
+      ],
+      "expect": { "selected": "B1", "selected_str": "1C" }
+    }
+  ]
+}

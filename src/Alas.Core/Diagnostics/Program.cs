@@ -400,6 +400,16 @@ public static class DiagnosticCommands
                 return MapCheck.Run(fixture, repoDir, toolsDir4, mapAdb, mapSerial,
                     mapChapter, dataDir, mapMode);
             }
+            if (command == "r5-select")
+            {
+                // 只读目标选择对拍：读夹具、跑 C# 移植的选择器、输出选中结果（不连设备）。
+                string selectionFixture = Path.Combine(dataDir, "fixtures", "r5-selection.json");
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--fixture") selectionFixture = args[i + 1];
+                }
+                return CampaignSelectionCheck.Run(selectionFixture);
+            }
             if (command == "r5-plan")
             {
                 // 只读导出规则：不执行关卡、不导入游戏代码、不连设备（见 CampaignPlanCheck）。
