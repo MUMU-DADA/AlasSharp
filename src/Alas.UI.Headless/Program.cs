@@ -94,6 +94,7 @@ internal static class Program
         LogReadingAnchorChecks.Run(output);
         UiOnlyChecks.VerifyControls(output);
         TaskEditorChecks.VerifyControls();
+        TaskEditorCacheChecks.Run();
         ConfigManagerChecks.Run(output);
         DevToolsChecks.Run();
         DevToolsShellChecks.Run(output);
