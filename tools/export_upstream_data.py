@@ -663,6 +663,10 @@ def _state_expression(node, resolve):
     if isinstance(node, ast.Constant) and (node.value is True or node.value is False
                                            or node.value is None or isinstance(node.value, int)):
         return {'literal': node.value}
+    if is_self_call(node):
+        # 调用作为值：真假/数值由执行器调原语得到（实参仍要能静态表达）。
+        # 条件里的 `self.fleet_at(A3, fleet=2) and A2.is_mystery` 就靠这一支。
+        return {'call': {'op': call_name(node), 'args': call_args(node, resolve)}}
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
         # `A1.enemy_scale` 这类**格子属性**读取（裸格名是模块级 `= MAP.flatten()` 的绑定）
         resolved = resolve(node.value)
@@ -766,6 +770,11 @@ def derive_plan(body: list, where: str, resolve=None):
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) \
                 and node.value.id == 'self':
             # `if self.<属性>:` —— 实例属性/运行期标志的真假（值表达式统一走 `expr`）
+            expression = _state_expression(node, resolve)
+            if expression is not None:
+                return {'expr': expression, 'negate': negate}
+        if isinstance(node, ast.BoolOp) and len(node.values) >= 2:
+            # `A and B` / `A or B`（含括号）：整句编码成值表达式，短路语义由执行器照 Python 处理
             expression = _state_expression(node, resolve)
             if expression is not None:
                 return {'expr': expression, 'negate': negate}

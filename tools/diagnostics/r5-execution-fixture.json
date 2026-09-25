@@ -2,6 +2,41 @@
   "note": "R5 原语执行对拍夹具：供 `Alas.Server r5-exec --fixture <本文件>` 与 tools/diagnostics/verify_r5_execution.py 使用。关卡/钩子取自静态导出（data/campaign/**），地图状态与运行时配置由本夹具给出，动作只被干跑宿主记录。",
   "cases": [
     {
+      "name": "campaign_15_1 battle_0：复合条件 `not self.map_is_clear_mode and self.map_has_mob_move`——第一操作数为真、短路求值到第二操作数；第二项没有初值（默认值在别的钩子里设置）→ 阻塞报原因",
+      "chapter": "campaign_main",
+      "level": "campaign_15_1",
+      "hook": "battle_0",
+      "config": {
+        "fleet_boss": true,
+        "fleet_2": true,
+        "fleet_1_location": "A1",
+        "fleet_2_location": "B1"
+      },
+      "grids": [
+        {
+          "location": "B1",
+          "is_enemy": true,
+          "is_accessible": true,
+          "weight": 20,
+          "cost": 1
+        },
+        {
+          "location": "B3",
+          "weight": 5,
+          "cost": 2
+        },
+        {
+          "location": "C3",
+          "weight": 5,
+          "cost": 3
+        }
+      ],
+      "expect": {
+        "completed": false,
+        "blocked_contains": "self.map_has_mob_move 没有初值"
+      }
+    },
+    {
       "name": "campaign_6_4 battle_5：`if self.config.FLEET_BOSS == 1:` 整数配置比较（FLEET_BOSS=1 → 走 pick_up_ammo）",
       "chapter": "campaign_main",
       "level": "campaign_6_4",

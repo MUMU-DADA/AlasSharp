@@ -1558,6 +1558,47 @@ public static class CampaignHookRunner
             if (resolved is null) return (null, $"值表达式里的 config 键 {key} 还没有映射");
             return (resolved, $"config.{key} = {resolved}");
         }
+        if (node["call"] is JsonObject callNode && callNode["op"] is JsonValue callOp
+            && callOp.TryGetValue<string>(out string? callName))
+        {
+            // 调用作为值：调一次原语，拿它的真假继续求值（条件里 `self.fleet_at(A3, fleet=2) and …`）
+            if (!CampaignPrimitiveRegistry.TryGet(callName, out var callPrimitive))
+            {
+                return (null, $"值表达式里的原语 {callName} 未实现");
+            }
+            var callStep = new CampaignPlanStep { Kind = "call", Op = callName, Args = null };
+            if (callNode["args"] is { } callArgs)
+            {
+                callStep = new CampaignPlanStep
+                {
+                    Kind = "call",
+                    Op = callName,
+                    Args = System.Text.Json.JsonSerializer.Deserialize<CampaignPlanStepArgs>(callArgs.ToJsonString()),
+                };
+            }
+            CampaignPlanStep resolvedStep;
+            try
+            {
+                resolvedStep = SubstituteLocals(callStep, env);
+            }
+            catch (NotSupportedException error)
+            {
+                return (null, error.Message);
+            }
+            try
+            {
+                bool callResult = callPrimitive.Execute(host, resolvedStep);
+                return (callResult, $"{callName} → {callResult}");
+            }
+            catch (NotSupportedException error)
+            {
+                return (null, error.Message);
+            }
+            catch (CampaignControlFlowSignal signal)
+            {
+                return (null, signal.Message);
+            }
+        }
         if (node["host_value"] is JsonValue hostNode && hostNode.TryGetValue<string>(out string? hostName))
         {
             if (hostName != "battle_count") return (null, $"未知的宿主值 {hostName}");

@@ -5,8 +5,8 @@
 > 所以是「少做」而不是「做错」。本报告只说清还差什么。
 
 - 导出里的钩子条目：**3019**
-- `plan_complete=false` 且上游**有 ≥2 条语句**的：**61**（其中 `battle_*` **17**、变体/其它 **44**）
-- 棘轮基线：**17**（只允许下降）
+- `plan_complete=false` 且上游**有 ≥2 条语句**的：**53**（其中 `battle_*` **9**、变体/其它 **44**）
+- 棘轮基线：**9**（只允许下降）
 
 ## `if` 的形态分布（条件 / 语句体）
 
@@ -16,31 +16,31 @@
 
 | 条件形态 | 语句体形态 | 次数 |
 | --- | --- | --- |
-| self_call | return | 22 |
-| other | expr | 11 |
-| other | expr+return | 7 |
+| self_call | return | 13 |
+| other | expr | 10 |
 | other | assign+expr+return | 6 |
 | self_call | assign | 6 |
-| other | expr+if | 5 |
 | compare | assign | 5 |
 | compare | return | 4 |
-| other | return | 3 |
 | other | assign | 2 |
+| other | return | 2 |
+| other | expr+return | 2 |
 | local_name | assign+expr+raise | 1 |
 | other | for | 1 |
+| local_name | assign+if | 1 |
 
 ## 例子
 
 - `campaign_hard/campaign_hard` clear_boss：`if grids` → 体内有 assign+expr+raise
-- `campaign_main/campaign_14_2` battle_0：`if not self.picked_flare and H7.is_accessible and A` → 体内有 expr
-- `campaign_main/campaign_14_2` battle_0：`if self.clear_roadblocks([road_A5, road_H7], weakes` → 体内有 return
-- `campaign_main/campaign_14_2` battle_0：`if self.clear_filter_enemy(self.ENEMY_FILTER, prese` → 体内有 return
 - `campaign_main/campaign_14_4` map_data_init：`if not self.map_is_clear_mode` → 体内有 for
 - `campaign_main/campaign_15_1` battle_function：`if self.config.MAP_CLEAR_ALL_THIS_TIME and self.bat` → 体内有 assign+expr+return
-- `campaign_main/campaign_15_1` battle_0：`if not self.map_is_clear_mode and self.map_has_mob_` → 体内有 expr+if
-- `campaign_main/campaign_15_1` battle_0：`if self.clear_filter_enemy(self.ENEMY_FILTER, prese` → 体内有 return
-- `campaign_main/campaign_15_1` battle_0：`if B1.is_accessible` → 体内有 expr+return
 - `campaign_main/campaign_15_2` battle_function：`if self.config.MAP_CLEAR_ALL_THIS_TIME and self.bat` → 体内有 assign+expr+return
+- `campaign_main/campaign_7_2` battle_0：`if self.fleet_2_step_on(FLEET_2_STEP_ON, roadblocks` → 体内有 return
+- `campaign_main/campaign_7_2` battle_0：`if self.fleet_at(A3, fleet=2) and A1.enemy_scale !=` → 体内有 assign
+- `campaign_main/campaign_7_2` battle_0：`if self.fleet_at(G3, fleet=2)` → 体内有 assign
+- `campaign_main/campaign_7_2` battle_0：`if self.clear_roadblocks([ROAD_MAIN], strongest=Tru` → 体内有 return
+- `campaign_main/campaign_7_2` battle_0：`if self.clear_enemy(scale=(3,))` → 体内有 return
+- `campaign_main/campaign_7_2` battle_0：`if self.clear_potential_roadblocks([ROAD_MAIN], str` → 体内有 return
 
 ## 先决条件（按出现频次）
 
