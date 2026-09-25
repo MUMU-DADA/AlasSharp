@@ -197,6 +197,30 @@
 | 命令 | `Alas.Server r5-select --fixture tools/diagnostics/r5-selection-fixture.json`（输出每个用例的分支、选中格子与未移植说明，JSON） |
 | 边界 | 只做"选哪个格子"的决策：不连设备、不执行游戏动作；原语注册表仍未登记实现（要等动手/移动侧接通后才算真正可执行） |
 
+#### P2-3 已完成：动作侧闭环与首批原语登记（2026-09-25）
+
+| 项 | 内容 |
+| --- | --- |
+| 代码 | `src/Alas.Core/Campaign/CampaignPrimitives.cs`（执行上下文 + 干跑宿主 + 原语实现 + 注册表 + 钩子执行循环）、`src/Alas.Core/Diagnostics/CampaignExecutionCheck.cs`（只读命令） |
+| 执行上下文 | `ICampaignPrimitiveHost`：地图状态（真机来自识别、干跑来自夹具）+ 运行时配置 + **动作接口**（`ClearChosenEnemy` / `ClearChosenMystery`）；原语本身**不含坐标、点击顺序或设备细节** |
+| 已登记原语（4 个） | `clear_enemy`、`battle_default`、`clear_all_mystery`、`clear_filter_enemy` —— `r5-plan` 概览已显示"已实现 4 个" |
+| 执行循环 | 按契约驱动：`call` 前置 → `conditional` 尝试并短路 → `terminal` 兜底 → `super_delegate` 委托；无 terminal 且全部失败时按上游"落到方法末尾（None→假）"处理 |
+| 诚实边界 | 实参含 `<expr>`、原语未实现、走到未移植分支时**停止执行并给出原因**（不跳过、不猜测），避免发出错误设备动作 |
+| 对拍证据 | `tools/diagnostics/verify_r5_execution.py`：5 个用例通过，其中 4 个用上游选敌规则独立算出应打格子并与实际记录的动作比对；已登记进 `verify_all.py` |
+| 命令 | `Alas.Server r5-exec --fixture tools/diagnostics/r5-execution-fixture.json`（输出每步结果、干跑动作、日志、阻塞原因，JSON） |
+
+**P1 新缺口（本轮量化）——步骤实参未求值**：
+
+| 实参形态 | 步骤数 | 占比 |
+| --- | --- | --- |
+| 无参 | 4172 | 73.3% |
+| 字面量 | 419 | 7.4% |
+| **含未求值表达式（`"<expr>"`）** | **1103** | **19.4%** |
+
+最大一块是 `clear_filter_enemy`（970 个步骤的过滤串是表达式），其次 `clear_roadblocks`（48）、
+`clear_potential_roadblocks`（35）。**这些步骤当前无法直接执行**——需要导出器对常见表达式求值
+（多数是 `self.config.*` 常量或同文件常量），列入 P1 待办。
+
 每个切片必须齐四样，缺一不算完成：
 
 1. **对拍夹具**：上游行为录制、脱敏、可复跑；

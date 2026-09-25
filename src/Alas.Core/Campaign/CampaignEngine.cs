@@ -55,25 +55,9 @@ public sealed record CampaignPlanShape(
     IReadOnlyList<string> Violations);
 
 /// <summary>
-/// 原语注册表：C# 引擎已实现的原语集合。
-///
-/// 目前**为空**——P2 的逐域迁移按域往这里加实现，每个原语都要带对拍夹具与真实路径证据。
-/// 这里刻意不做按关卡/按原语名的特例分支：注册表只回答"这个原语实现了没有"。
-/// </summary>
-public static class CampaignPrimitiveRegistry
-{
-    private static readonly HashSet<string> Implemented = new(StringComparer.Ordinal);
-
-    /// <summary>已实现的原语名（排序返回，便于输出与对拍）。</summary>
-    public static IReadOnlyList<string> ImplementedOps =>
-        Implemented.OrderBy(name => name, StringComparer.Ordinal).ToArray();
-
-    public static bool IsImplemented(string op) => Implemented.Contains(op);
-}
-
-/// <summary>
 /// 关卡计划的**干跑执行器**：按计划契约判定每一步的角色与可执行性，但**不执行任何东西**——
-/// 不调用上游、不连设备、不碰游戏。
+/// 不调用上游、不连设备、不碰游戏。（原语实现与注册表见 <see cref="CampaignPrimitiveRegistry"/>、
+/// 真正的执行循环见 <see cref="CampaignHookRunner"/>。）
 ///
 /// 执行语义（实测契约，见 <see cref="CampaignStepRole"/>）：
 /// <list type="number">

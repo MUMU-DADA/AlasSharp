@@ -375,6 +375,31 @@ def audit_plan_dsl() -> dict:
             "trace_match": trace_match, "trace_diff": trace_diff, "exceptions": exceptions}
 
 
+def audit_step_arguments() -> dict:
+    """步骤实参的完整度：无参 / 字面量 / 含未求值表达式（决定哪些步骤能被 C# 直接执行）。"""
+    data_root = ROOT / "data" / "campaign"
+    counts: collections.Counter = collections.Counter()
+    by_op: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    for path in data_root.rglob("*.json") if data_root.is_dir() else []:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        for entry in ((payload.get("campaign") or {}).get("battles")) or []:
+            for step in entry.get("steps") or []:
+                args = step.get("args") or {}
+                values = list(args.get("positional") or []) + list((args.get("keyword") or {}).values())
+                if not values:
+                    kind = "无参"
+                elif any(value == "<expr>" for value in values):
+                    kind = "含未求值表达式"
+                else:
+                    kind = "字面量"
+                counts[kind] += 1
+                by_op[step.get("op")][kind] += 1
+    return {"counts": counts, "by_op": by_op}
+
+
 def render(engine: pathlib.Path) -> str:
     campaign = audit_campaign(engine)
     primitives = audit_primitives(engine, set(campaign["helper_calls"]))
@@ -382,6 +407,7 @@ def render(engine: pathlib.Path) -> str:
     lib_totals, lib_subs = audit_libraries(engine)
     exported = audit_export_coverage(engine)
     dsl = audit_plan_dsl()
+    arguments = audit_step_arguments()
 
     out: list[str] = []
     add = out.append
@@ -602,6 +628,23 @@ def render(engine: pathlib.Path) -> str:
         "`Alas.Server r5-plan`（统计口径与本报告一致，可跨语言对拍）。")
     add("> 执行侧骨架（角色划分、形状契约校验、原语注册表、干跑）见 `src/Alas.Core/Campaign/CampaignEngine.cs`：")
     add("> 全库 `r5-plan` 概览输出 3019 个钩子（形状符合契约 3006）、5694 步 / 31 个原语 / 已实现 0。")
+    add("")
+    add("### 步骤实参完整度（决定哪些步骤能被 C# 直接执行）")
+    add("")
+    total_steps = sum(arguments["counts"].values()) or 1
+    add("| 实参形态 | 步骤数 | 占比 |")
+    add("| --- | --- | --- |")
+    for kind in ("无参", "字面量", "含未求值表达式"):
+        count = arguments["counts"][kind]
+        add(f"| {kind} | {count} | {count / total_steps:.1%} |")
+    add("")
+    add("| 原语 | 无参 | 字面量 | 含未求值表达式 |")
+    add("| --- | --- | --- | --- |")
+    for op, counter in sorted(arguments["by_op"].items(), key=lambda kv: -sum(kv[1].values()))[:12]:
+        add(f"| `{op}` | {counter['无参']} | {counter['字面量']} | {counter['含未求值表达式']} |")
+    add("")
+    add("> 含未求值表达式（`\"<expr>\"`）的步骤无法直接执行——这是 P1 要补的导出侧缺口"
+        "（最大一块是 `clear_filter_enemy` 的过滤串）。")
     add("")
     add("### 轨迹对拍（计划 vs 原始调用列表）")
     add("")

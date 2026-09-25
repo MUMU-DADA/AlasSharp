@@ -400,6 +400,17 @@ public static class DiagnosticCommands
                 return MapCheck.Run(fixture, repoDir, toolsDir4, mapAdb, mapSerial,
                     mapChapter, dataDir, mapMode);
             }
+            if (command == "r5-exec")
+            {
+                // 原语执行闭环（干跑）：读夹具、驱动已登记原语、记录动作，不连设备。
+                string executionFixture = Path.Combine(paths.ToolsDirectory, "diagnostics",
+                                                       "r5-execution-fixture.json");
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--fixture") executionFixture = args[i + 1];
+                }
+                return CampaignExecutionCheck.Run(dataDir, executionFixture);
+            }
             if (command == "r5-select")
             {
                 // 只读目标选择对拍：读夹具、跑 C# 移植的选择器、输出选中结果（不连设备）。
@@ -485,7 +496,7 @@ public static class DiagnosticCommands
                 _ => Fail($"未知命令: {command}"
                            + "（可用: verify / list / show / imaging / matching / vision / campaign / "
                            + "map / map-ir / capture / device / queue / plan-queue / report / runs / run / goto / "
-                           + "contract / selftest-runtime / r5-plan）"),
+                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec）"),
             };
         }
         catch (Exception ex)

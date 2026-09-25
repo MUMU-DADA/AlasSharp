@@ -361,6 +361,31 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 > 执行侧骨架（角色划分、形状契约校验、原语注册表、干跑）见 `src/Alas.Core/Campaign/CampaignEngine.cs`：
 > 全库 `r5-plan` 概览输出 3019 个钩子（形状符合契约 3006）、5694 步 / 31 个原语 / 已实现 0。
 
+### 步骤实参完整度（决定哪些步骤能被 C# 直接执行）
+
+| 实参形态 | 步骤数 | 占比 |
+| --- | --- | --- |
+| 无参 | 4172 | 73.3% |
+| 字面量 | 419 | 7.4% |
+| 含未求值表达式 | 1103 | 19.4% |
+
+| 原语 | 无参 | 字面量 | 含未求值表达式 |
+| --- | --- | --- | --- |
+| `battle_default` | 1489 | 0 | 0 |
+| `clear_siren` | 1283 | 1 | 0 |
+| `clear_filter_enemy` | 0 | 8 | 970 |
+| `fleet_boss.clear_boss` | 671 | 0 | 0 |
+| `clear_boss` | 575 | 0 | 0 |
+| `clear_enemy` | 0 | 402 | 0 |
+| `clear_roadblocks` | 0 | 0 | 48 |
+| `clear_all_mystery` | 36 | 0 | 0 |
+| `clear_potential_roadblocks` | 0 | 0 | 35 |
+| `fleet_2_protect` | 26 | 0 | 0 |
+| `fleet_2_push_forward` | 22 | 0 | 0 |
+| `fleet_1.clear_boss` | 13 | 0 | 0 |
+
+> 含未求值表达式（`"<expr>"`）的步骤无法直接执行——这是 P1 要补的导出侧缺口（最大一块是 `clear_filter_enemy` 的过滤串）。
+
 ### 轨迹对拍（计划 vs 原始调用列表）
 
 不变量：除 `super_delegate` 外，`steps.op` 序列应等于导出器给出的 `calls`。
