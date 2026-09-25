@@ -883,6 +883,23 @@ public static class CampaignPrimitives
         return true;
     }
 
+    /// <summary>
+    /// 上游 <c>Fleet.check_accessibility(grid, fleet=None)</c>：格子对**指定舰队**是否可达。
+    /// `fleet` 为空 → 直接看当前成本场；`'boss'` → 用 `fleet_boss_index`；数字串/数字 → 该舰队。
+    /// 上游实现里"切舰队 → `find_path_initial()` → 看 `is_accessible` → 切回 → 再 `find_path_initial()`"
+    /// 全是状态操作、没有设备动作；C# 用无状态的 `LiveCostFor`（按舰队取现成的场，缺了就按上游口径现算）
+    /// 得到同一结果，因此**不需要**切回的模拟。
+    /// </summary>
+    public static bool CheckAccessibility(ICampaignPrimitiveHost host, CampaignGrid grid, string? fleet = null)
+    {
+        if (string.IsNullOrEmpty(fleet)) return grid.IsAccessible;
+        int index = fleet == "boss"
+            ? host.Config.FleetBossIndex
+            : int.TryParse(fleet, out int parsed) ? parsed : host.FleetCurrentIndex;
+        if (index == host.FleetCurrentIndex) return grid.IsAccessible;
+        return LiveCostFor(host, grid, index) < CampaignPathfinder.Unreachable;
+    }
+
     /// <summary>按舰队索引取该舰队所在格（上游 <c>find_path_initial()</c> 用 <c>fleet_current</c> 作起点）。</summary>
     private static string FleetStart(ICampaignPrimitiveHost host, int fleetIndex) =>
         fleetIndex == 2 ? host.Fleet2Location : host.Fleet1Location;
@@ -1514,6 +1531,11 @@ public static class CampaignPrimitiveRegistry
         ["clear_potential_boss"] = new CampaignPrimitive(
             "clear_potential_boss", "依次踩可达 may_boss 格子（上游 Map.clear_potential_boss）", false,
             (host, _) => CampaignPrimitives.ClearPotentialBoss(host)),
+        ["check_accessibility"] = new CampaignPrimitive(
+            "check_accessibility", "格子对指定舰队是否可达（上游 Fleet.check_accessibility）",
+            NeedsArguments: true,
+            (host, step) => CampaignPrimitives.CheckAccessibility(
+                host, RequireGrid(host, step), OptionalFleet(step))),
         ["clear_chosen_enemy"] = new CampaignPrimitive(
             "clear_chosen_enemy", "打指定格子（上游 Map.clear_chosen_enemy 的动作入口）", NeedsArguments: true,
             (host, step) => CampaignPrimitives.ClearChosenEnemy(host, RequireGrid(host, step))),
@@ -1680,6 +1702,18 @@ public static class CampaignPrimitiveRegistry
     /// 否则会把不可达格子当成可达（实测踩过：fixture 里 cost=9999 的 A9 被判成可拾取）。
     /// 地图状态里没有这个格子时如实报错，不用默认值糊过去。
     /// </summary>
+    /// <summary>取步骤里声明的 `fleet` 关键字实参（`check_accessibility(grid, fleet=…)` 用）。</summary>
+    private static string? OptionalFleet(CampaignPlanStep step)
+    {
+        if (step.Args?.Keyword.TryGetValue("fleet", out var node) != true || node is null) return null;
+        return node switch
+        {
+            JsonValue value when value.TryGetValue<string>(out string? text) => text,
+            JsonValue value when value.TryGetValue<int>(out int number) => number.ToString(),
+            _ => node.ToJsonString().Trim('"'),
+        };
+    }
+
     private static CampaignGrid? DecodeGrid(ICampaignPrimitiveHost host, CampaignPlanStep step)
     {
         foreach (var value in step.Args?.Positional ?? [])

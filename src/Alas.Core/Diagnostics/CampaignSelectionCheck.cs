@@ -92,6 +92,7 @@ internal static class CampaignSelectionCheck
                 case "primitive_clear_filter_enemy":
                 case "primitive_pick_up_flare":
                 case "primitive_fleet_2_rescue":
+                case "primitive_check_accessibility":
                     var config = new CampaignRuntimeConfig(
                         EnemyPriority: testCase.EnemyPriority,
                         MapClearAllThisTime: testCase.MapClearAllThisTime,
@@ -115,6 +116,9 @@ internal static class CampaignSelectionCheck
                         "primitive_pick_up_ammo" => CampaignPrimitives.PickUpAmmo(host),
                         "primitive_fleet_2_push_forward" => CampaignPrimitives.Fleet2PushForward(host),
                         "primitive_fleet_2_protect" => CampaignPrimitives.Fleet2Protect(host),
+                        "primitive_check_accessibility" =>
+                            CampaignPrimitives.CheckAccessibility(host, TargetGrid(grids, testCase),
+                                                                  testCase.Fleet),
                         "primitive_pick_up_flare" =>
                             CampaignPrimitives.PickUpFlare(host, TargetGrid(grids, testCase)),
                         "primitive_fleet_2_rescue" =>
@@ -276,6 +280,9 @@ internal static class CampaignSelectionCheck
 
         /// <summary>目标格（节点名，如 <c>C1</c>）：给 `pick_up_flare` / `fleet_2_rescue` 这类收格子参数的原语用。</summary>
         [JsonPropertyName("target")] public string? Target { get; init; }
+
+        /// <summary>`check_accessibility(grid, fleet=…)` 的 fleet（空 / "1" / "2" / "boss"）。</summary>
+        [JsonPropertyName("fleet")] public string? Fleet { get; init; }
 
         /// <summary>路段：`roads[road][block] = [节点名…]`（与上游 `RoadGrids` 同构）。</summary>
         [JsonPropertyName("roads")] public List<List<List<string>>>? Roads { get; init; }

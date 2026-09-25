@@ -30,7 +30,12 @@ EXEC_FIXTURE = ROOT / "tools" / "diagnostics" / "r5-execution-fixture.json"
 LOOP_FIXTURE = ROOT / "tools" / "diagnostics" / "r5-loop-fixture.json"
 
 # 允许的覆盖缺口：**必须写清原因**，且不能用来掩盖"其实能测但没测"的情况。
-ALLOWED_GAPS: dict[str, str] = {}
+ALLOWED_GAPS: dict[str, str] = {
+    # 已实现、也有上游真实方法对拍（复合原语扫描的 `check_accessibility`），但**暂时没有夹具钩子路径**：
+    # 它只出现在目前 `plan_complete=false` 的钩子体里（需要导出器支持"局部变量 + 条件"后才会进计划），
+    # 所以这里的"夹具覆盖"统计到不了它。写明原因，而不是悄悄漏掉。
+    "check_accessibility": "只在 plan_complete=false 的钩子体里出现；已由复合原语扫描对拍，等结构建模后进计划",
+}
 
 # 日志标记 → 原语：有些原语是**被别的原语内部调用**的（`battle_boss` 由 clear_all 变体在无剩余敌人时调、
 # `fleet_2_break_siren_caught` 由变体与 fleet_2_* 调用），它们不发设备动作、只留日志，

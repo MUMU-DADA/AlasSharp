@@ -43,7 +43,7 @@ PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss",
               "clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks",
               "pick_up_ammo", "fleet_2_push_forward", "fleet_2_protect", "brute_clear_boss",
               "brute_fleet_meet", "clear_potential_boss", "clear_filter_enemy",
-              "pick_up_flare"]
+              "pick_up_flare", "check_accessibility"]
 
 # 曾经把 `brute_clear_boss` 当成"已知差异"排除在外，理由是"路障子集选择不同"。**那是误判**：
 # 真正的原因是诊断命令缺 `primitive_brute_clear_boss` 分派，静默落进了"选一个敌人"的默认分支。
@@ -51,7 +51,7 @@ PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss",
 KNOWN_DIVERGENCE: list[str] = []      # 13 种原语现已全部纳入；曾误登记的 `brute_clear_boss` 见重写文档的说明
 ROADBLOCK_PRIMITIVES = {"clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks"}
 # 收**一个格子参数**的原语（`pick_up_flare(grid)` / `fleet_2_rescue(grid)`）：对拍时两侧用同一个目标格
-GRID_ARGUMENT_PRIMITIVES = {"pick_up_flare", "fleet_2_rescue"}
+GRID_ARGUMENT_PRIMITIVES = {"pick_up_flare", "fleet_2_rescue", "check_accessibility"}
 
 # **默认不跑的原语**：`fleet_2_rescue` 会走 `brute_find_roadblocks`，而上游那套枚举**没有上限**
 # （`itertools.product` 按敌人数指数增长），在敌人多的随机状态上能把扫描拖到分钟级甚至更久。
@@ -121,6 +121,9 @@ def build_cases(states: int, seed: int, primitives: list[str] | None = None) -> 
                     "fleet_current_index": 1,
                     **config,
                 }
+                if kind == "check_accessibility":
+                    case["target"] = max(grids, key=lambda item: (item["weight"], item["location"]))["location"]
+                    case["fleet"] = ["", "1", "2", "boss"][config_index % 4]
                 if kind in GRID_ARGUMENT_PRIMITIVES:
                     # 目标格取"该状态里 weight 最大的格子"：够具体、又随状态变化，避免每次都打同一格
                     target = max(grids, key=lambda item: (item["weight"], item["location"]))
@@ -386,7 +389,11 @@ def upstream_target(case: dict) -> tuple[str | None, bool | None]:
     elif case["kind"].replace("primitive_", "") in GRID_ARGUMENT_PRIMITIVES:
         location = case["target"]
         grid = campaign_map[tuple((ord(location[0]) - 65, int(location[1:]) - 1))]
-        result = method(stub, grid)
+        # `check_accessibility(grid, fleet=…)`：fleet 由用例给出（"" / "1" / "2" / "boss"）
+        if case["kind"] == "primitive_check_accessibility":
+            result = method(stub, grid, case.get("fleet") or None)
+        else:
+            result = method(stub, grid)
     elif case["kind"] == "primitive_clear_filter_enemy":
         # 上游 `clear_filter_enemy(string, preserve=0)`：过滤器串用库里的真实用法（最常见那条），
         # preserve 由用例给出（0/1 各半），把"保留最弱若干个"这条路径也覆盖到。
