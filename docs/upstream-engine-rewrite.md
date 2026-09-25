@@ -638,6 +638,30 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 
 **（b）的待办就是上面那张表的 26 行**；(a) 是本轮之后可以立刻做、并且能拿到真机动作层证据的路线。
 
+#### 路线 (a) 的宿主侧：外驱驱动器（`tools/s3_campaign_driver.py`）
+
+`CampaignStepDriver` 把"一个已构造好的上游关卡对象"变成可逐步驱动的对象：
+
+| 方法 | 做什么 | 纪律 |
+| --- | --- | --- |
+| `prepare()` | 照上游 `CampaignBase.run()` **前半段**做准备：`emotion.check_reduce` → `ENTRANCE.area` → `enter_map` →（auto search 分支或）`handle_map_fleet_lock` + `map_init` | **同一批上游方法、同一顺序**，不另写一套准备逻辑 |
+| `call(op, …)` | `getattr(instance, op)` 调上游自己的方法；舰队前缀（`fleet_2.` 等）只**记账**（切队是 C# 的 `ensure_fleet` 原语，上游 `switch_to` 本身是 `pass`） | 未 `prepare()` 就调用**直接报错**（与上游"未进图不调原语"一致）；上游的 `CampaignEnd` 等信号**照常抛出**，驱动器不吞 |
+| `state()` | 只读读回 `battle_count` / `map_clear_percentage` / `in_stage` / `fleet_current_index` 供 C# 决策 | 不做任何设备动作 |
+| `steps` | 调用轨迹（原语名 + 参数摘要 + 返回值/异常名），进工件 | 断言"调用的是上游方法"的证据 |
+
+**离线核对**（`tools/diagnostics/verify_r5_driver.py`，假 I/O + 真上游方法）：
+
+1. **准备阶段等价**：驱动器在替身上产生的事件序列（`emotion → enter_map → fleet_lock → map_init`）
+   与上游 `CampaignBase.run()` 在同一替身上的前缀序列**完全一致**；
+2. **调的是上游方法对象**：实例上的 `execute_a_battle` 底层函数 `is CampaignBase.execute_a_battle`——
+   任何"手工复刻"都会在这里失败（实例属性访问得到绑定方法，所以比对 `__func__`）；
+3. `CampaignEnd` 是上游的正常结束信号：**照常抛出**且如实记进轨迹；
+4. 舰队前缀只记账；`state()` 与实例一致；未准备就调用报错。
+
+**这还不能证明什么**：驱动器只做到"能逐步调用上游方法"这一层。真正接设备还要有 C# 侧的**真机宿主**
+（实现 `ICampaignPrimitiveHost` 并把调用转给这个驱动器），以及"进图/结算"这类关卡级流程的对接——
+那些都要真机证据。
+
 #### `loop` 域切成 csharp 需要什么（前置清单）
 
 | 项 | 要求 | 现状 |

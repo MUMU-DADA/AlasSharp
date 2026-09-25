@@ -107,6 +107,7 @@ STEPS = [
     ('verify_r5_diff.py', 'R5 原语动作层对照（上游日志动作 vs C# 干跑动作，含目标一致判定）', False, 600),
     ('verify_r5_switch.py', 'R5 域级开关（默认不改行为 / csharp 需二次闸门 / 非法值退回）', False, 180),
     ('verify_r5_seam.py', 'R5 接缝表（C# 原语 ↔ 上游执行方法，含关卡层归属）', False, 180),
+    ('verify_r5_driver.py', 'R5 外驱驱动器（C# 决定原语、上游方法执行；准备顺序与上游 run() 一致）', False, 180),
     ('verify_os_state.py', 'R2 大世界/海域只读探针（存盘帧；capture 前置条件口径）', False, 600),
     ('verify_os_action.py', 'R2 大世界动作入口（真实 CLI dry-run 拒绝动作并留工件）', False, 300),
     ('verify_os_combat_reentry.py', 'R2 大世界自动寻敌跳过准备画面后重新接管战斗', False, 120),
