@@ -210,6 +210,57 @@
       "expect": { "completed": true, "actions_exclude": "fleet_ensure" }
     },
     {
+      "name": "campaign_12_2 battle_0：路段实参已解析，单格 block 全是敌人 → clear_roadblocks 命中",
+      "chapter": "campaign_main",
+      "level": "campaign_12_2",
+      "hook": "battle_0",
+      "grids": [
+        { "location": "B3", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 50, "cost": 8 },
+        { "location": "C4", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 10, "cost": 2 },
+        { "location": "D5", "weight": 99, "cost": 99 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(B3",
+        "steps_contains": "clear_roadblocks: 真（尝试）",
+        "log_contains": "clear_roadblocks：选中 B3"
+      }
+    },
+    {
+      "name": "campaign_12_2 battle_0：多格 block 只剩一格非敌人 → clear_potential_roadblocks 命中",
+      "chapter": "campaign_main",
+      "level": "campaign_12_2",
+      "hook": "battle_0",
+      "grids": [
+        { "location": "C4", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 50, "cost": 8 },
+        { "location": "D5", "weight": 99, "cost": 99 },
+        { "location": "B3", "weight": 99, "cost": 99 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(C4",
+        "steps_contains": "clear_roadblocks: 假（尝试）",
+        "log_contains": "clear_potential_roadblocks：选中 C4"
+      }
+    },
+    {
+      "name": "campaign_12_2 battle_0：block 里有舰队 → potential 跳过，交给 battle_default",
+      "chapter": "campaign_main",
+      "level": "campaign_12_2",
+      "hook": "battle_0",
+      "grids": [
+        { "location": "C4", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 50, "cost": 8 },
+        { "location": "D5", "is_fleet": true, "weight": 1, "cost": 1 },
+        { "location": "B3", "weight": 99, "cost": 99 },
+        { "location": "A1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 5, "cost": 1 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(A1",
+        "log_contains": "clear_potential_roadblocks：无目标"
+      }
+    },
+    {
       "name": "campaign_1_1 handle_boss_appear_refocus：super_delegate → 委托父类，不执行也不阻塞",
       "chapter": "campaign_main",
       "level": "campaign_1_1",

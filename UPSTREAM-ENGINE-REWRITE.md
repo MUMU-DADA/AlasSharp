@@ -268,10 +268,44 @@
 
 | 指标 | 数值 |
 | --- | --- |
-| 步骤指向已实现原语 | 5456 / 5694（95.8%） |
-| 涉及原语 | 31 个（含舰队前缀组合其中 9 个已实现） |
+| 步骤指向已实现原语 | 5541 / 5694（**97.3%**） |
+| 涉及原语 | 31 个（其中 12 个已实现，含舰队前缀组合） |
 | 计划形状符合契约 | 3006 / 3019 |
-| 实参完整（无 `<expr>`） | 5555 / 5694（97.6%） |
+| 实参完整（无 `<expr>`） | 5633 / 5694（**98.9%**） |
+
+#### P1-2 已完成：路段（`RoadGrids`）实参导出（`<expr>` 139 → 61）（2026-09-25）
+
+- **根因**：`clear_roadblocks([road_main])` 的实参是模块级**路段对象**
+  （`road_main = RoadGrids([[H3, B6, C5]])`），标量字面量表达不了；格子符号本身由
+  `A1, B1, … = MAP.flatten()` 元组解包绑定。
+- **改动**：导出器新增 `campaign_map_shape()` / `campaign_road_table()` / `road_argument_resolver()`
+  （版本 2.3.0 → 2.4.0）：把路段解析成坐标数组
+  `{"__roads__": [路段, …]}`（路段 = block 列表，block = `[x, y]` 数组）。
+  **形状自校验**：符号数必须等于 `列数 × 行数`，否则整表作废、实参照旧记 `<expr>`，不猜。
+- **结果**：`<expr>` 139 → **61**；**78 个步骤**拿到结构化路段实参；
+  `verify_export.py` 的 `plan_issues = 0`（结构化实参没有破坏计划校验），
+  仅剩**既有的 3 模块 Campaign 声明问题**（与本次无关，见 P1-1）。
+- **剩余 61 个 `<expr>`**：`fleet_2_step_on` 11、`pick_up_light_house` 10、
+  `super().handle_boss_appear_refocus` 7（委托父类，本就不执行）、`clear_filter_enemy` 6、
+  `clear_map_items` 5、`pick_up_flare` 4、`fleet_boss.pick_up_flare` 4、`fleet_2_rescue` 4 等
+  （多为"具体格子/对象"实参，需按类型逐个补导出表达）。
+
+#### P2-6 已完成：路段原语三件套（步覆盖 95.8% → 97.3%）（2026-09-25）
+
+| 新增原语 | 对应上游 | 关键语义 |
+| --- | --- | --- |
+| `clear_roadblocks` | `Map.clear_roadblocks(roads, **kwargs)` | 整块都是敌人时整块算路障；按 `EnemyPriority_*` / `MAP_CLEAR_ALL_THIS_TIME` 决定 strongest/weakest |
+| `clear_potential_roadblocks` | `Map.clear_potential_roadblocks` | 跳过含舰队或已清格子的块；只剩一格非敌人时取该块敌人 |
+| `clear_first_roadblocks` | `Map.clear_first_roadblocks` | 跳过含舰队/已清格子的块；块里有敌人就取敌人；**不做优先级覆盖**（照抄上游） |
+
+配套：`CampaignRoad`（`RoadGrids` 模型，三个判定方法逐条对应上游）、
+`CampaignLocations.ToNode()`（上游 `location2node` 约定：列字母 + 行号）、
+格子模型增加 `is_fleet` / `is_cleared` 与对应过滤条件、
+注册表增加 `DecodeRoads()`（解析 `__roads__`，非该结构时明确报错）。
+
+**对拍**：`verify_r5_execution.py` 扩到 **19 个用例**（新增：单格 block 全敌人 → `clear_roadblocks` 命中；
+多格 block 只剩一格非敌人 → `clear_potential_roadblocks` 命中；block 含舰队 → potential 跳过并交给
+`battle_default`），全部通过；注册原语 **10 个**（含舰队前缀组合共 12 个已实现）。
 
 #### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
 

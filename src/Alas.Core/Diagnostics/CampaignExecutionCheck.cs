@@ -110,6 +110,8 @@ internal static class CampaignExecutionCheck
         IsFortress: grid.IsFortress,
         MayBoss: grid.MayBoss,
         IsCaughtBySiren: grid.IsCaughtBySiren,
+        IsFleet: grid.IsFleet,
+        IsCleared: grid.IsCleared,
         EnemyScale: grid.EnemyScale,
         EnemyGenre: grid.EnemyGenre,
         Weight: grid.Weight,
@@ -161,6 +163,8 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("is_fortress")] public bool IsFortress { get; init; }
         [JsonPropertyName("may_boss")] public bool MayBoss { get; init; }
         [JsonPropertyName("is_caught_by_siren")] public bool IsCaughtBySiren { get; init; }
+        [JsonPropertyName("is_fleet")] public bool IsFleet { get; init; }
+        [JsonPropertyName("is_cleared")] public bool IsCleared { get; init; }
         [JsonPropertyName("enemy_scale")] public int EnemyScale { get; init; }
         [JsonPropertyName("enemy_genre")] public string? EnemyGenre { get; init; }
         [JsonPropertyName("weight")] public int Weight { get; init; }

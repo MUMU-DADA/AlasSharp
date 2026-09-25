@@ -253,6 +253,59 @@ public static class CampaignPrimitives
         return false;
     }
 
+    /// <summary>上游 <c>Map.clear_roadblocks(roads, **kwargs)</c>：把所有路段的路障拼起来选一个打掉。</summary>
+    public static bool ClearRoadblocks(ICampaignPrimitiveHost host, IReadOnlyList<CampaignRoad> roads,
+                                       CampaignTargetOptions? options = null)
+    {
+        var all = new CampaignGridSet(host.Grids);
+        var grids = CampaignGridSet.Empty;
+        foreach (var road in roads) grids = grids.Add(road.Roadblocks(all));
+        return ClearRoadblockTargets(host, grids, options, "clear_roadblocks");
+    }
+
+    /// <summary>上游 <c>Map.clear_potential_roadblocks(roads, **kwargs)</c>：避免"只剩一格空"的路障。</summary>
+    public static bool ClearPotentialRoadblocks(ICampaignPrimitiveHost host, IReadOnlyList<CampaignRoad> roads,
+                                                CampaignTargetOptions? options = null)
+    {
+        var all = new CampaignGridSet(host.Grids);
+        var grids = CampaignGridSet.Empty;
+        foreach (var road in roads) grids = grids.Add(road.PotentialRoadblocks(all));
+        return ClearRoadblockTargets(host, grids, options, "clear_potential_roadblocks");
+    }
+
+    /// <summary>上游 <c>Map.clear_first_roadblocks(roads, **kwargs)</c>：保证每个路障块都有一个已清格子。</summary>
+    public static bool ClearFirstRoadblocks(ICampaignPrimitiveHost host, IReadOnlyList<CampaignRoad> roads,
+                                            CampaignTargetOptions? options = null)
+    {
+        var all = new CampaignGridSet(host.Grids);
+        var grids = CampaignGridSet.Empty;
+        foreach (var road in roads) grids = grids.Add(road.FirstRoadblocks(all));
+        // 上游 clear_first_roadblocks 不做优先级覆盖，直接 select_grids
+        return ClearRoadblockTargets(host, grids, options, "clear_first_roadblocks", applyPriority: false);
+    }
+
+    /// <summary>三个路段原语共用的收尾：按优先级配置（或调用参数）选择 → 清掉第一个。</summary>
+    private static bool ClearRoadblockTargets(ICampaignPrimitiveHost host, CampaignGridSet grids,
+                                              CampaignTargetOptions? options, string label,
+                                              bool applyPriority = true)
+    {
+        options ??= new CampaignTargetOptions();
+        if (applyPriority)
+        {
+            if (host.Config.EnemyPriority == "S3_enemy_first") options = options with { Strongest = true };
+            else if (host.Config.EnemyPriority == "S1_enemy_first") options = options with { Weakest = true };
+            else if (host.Config.MapClearAllThisTime) options = options with { Strongest = true };
+        }
+        var selected = CampaignTargetSelector.SelectGrids(grids, options);
+        if (selected.IsEmpty)
+        {
+            host.Log($"{label}：无目标");
+            return false;
+        }
+        host.Log($"{label}：选中 {selected[0].Location}");
+        return host.ClearChosenEnemy(selected[0], "");
+    }
+
     /// <summary>上游 <c>CampaignBase.battle_default()</c>。</summary>
     public static bool BattleDefault(ICampaignPrimitiveHost host)
     {
@@ -457,6 +510,17 @@ public static class CampaignPrimitiveRegistry
         ["clear_boss"] = new CampaignPrimitive(
             "clear_boss", "找 boss 并清掉，找不到踩 may_boss（上游 Map.clear_boss）", false,
             (host, _) => CampaignPrimitives.ClearBoss(host)),
+        ["clear_roadblocks"] = new CampaignPrimitive(
+            "clear_roadblocks", "打掉路段里的路障（上游 Map.clear_roadblocks）", NeedsArguments: true,
+            (host, step) => CampaignPrimitives.ClearRoadblocks(host, DecodeRoads(step), DecodeOptions(step))),
+        ["clear_potential_roadblocks"] = new CampaignPrimitive(
+            "clear_potential_roadblocks", "避免只剩一格空的路障（上游 Map.clear_potential_roadblocks）",
+            NeedsArguments: true,
+            (host, step) => CampaignPrimitives.ClearPotentialRoadblocks(host, DecodeRoads(step), DecodeOptions(step))),
+        ["clear_first_roadblocks"] = new CampaignPrimitive(
+            "clear_first_roadblocks", "保证每个路障块有一个已清格子（上游 Map.clear_first_roadblocks）",
+            NeedsArguments: true,
+            (host, step) => CampaignPrimitives.ClearFirstRoadblocks(host, DecodeRoads(step), DecodeOptions(step))),
     };
 
     /// <summary>已实现的原语名（排序返回，便于输出与对拍）。不含舰队前缀组合。</summary>
@@ -579,8 +643,38 @@ public static class CampaignPrimitiveRegistry
         return options;
     }
 
-    private static string DecodeFilter(CampaignPlanStep step)
+    /// <summary>
+    /// 解码路段实参：导出器把 `road_main = RoadGrids([[H3, B6, C5]])` 这类模块级路段解析成
+    /// `{"__roads__": [路段, ...]}`，每个路段是若干 block，每个 block 是 `[x, y]` 坐标数组。
+    /// </summary>
+    private static IReadOnlyList<CampaignRoad> DecodeRoads(CampaignPlanStep step)
     {
+        foreach (var value in step.Args?.Positional ?? [])
+        {
+            if (value is not JsonObject payload || !payload.ContainsKey("__roads__")) continue;
+            if (payload["__roads__"] is not JsonArray roads) continue;
+            var parsed = new List<CampaignRoad>();
+            foreach (var road in roads)
+            {
+                if (road is not JsonArray blocks) continue;
+                var parsedBlocks = new List<IReadOnlyList<string>>();
+                foreach (var block in blocks)
+                {
+                    if (block is not JsonArray cells) continue;
+                    parsedBlocks.Add(cells.OfType<JsonArray>()
+                        .Select(cell => CampaignLocations.ToNode(cell[0]!.GetValue<int>(), cell[1]!.GetValue<int>()))
+                        .ToArray());
+                }
+                parsed.Add(new CampaignRoad(parsedBlocks));
+            }
+            if (parsed.Count > 0) return parsed;
+            throw new NotSupportedException($"路段实参为空（{step.Op}）");
+        }
+        throw new NotSupportedException(
+            $"路段实参在导出里不是 __roads__ 结构（{step.Op}）——需要导出器解析 RoadGrids 后才能执行");
+    }
+
+    private static string DecodeFilter(CampaignPlanStep step)    {
         var positional = step.Args?.Positional ?? [];
         foreach (var value in positional)
         {

@@ -22,6 +22,8 @@ public sealed record CampaignGrid(
     bool IsFortress = false,
     bool MayBoss = false,
     bool IsCaughtBySiren = false,
+    bool IsFleet = false,
+    bool IsCleared = false,
     int EnemyScale = 0,
     string? EnemyGenre = null,
     int Weight = 0,
@@ -44,6 +46,76 @@ public sealed record CampaignGrid(
 }
 
 /// <summary>
+/// 上游 <c>RoadGrids</c> 的 C# 侧模型：一条路段由若干 <b>block</b> 组成，每个 block 是一组格子
+/// （`RoadGrids([B8])` 是单格 block，`RoadGrids([[H8, I8, J9]])` 是三格 block）。
+/// 三个判定方法逐条对应上游 <c>module/map/map_grids.py</c> 的同名方法。
+/// </summary>
+public sealed class CampaignRoad
+{
+    public CampaignRoad(IEnumerable<IEnumerable<string>> blocks) =>
+        Blocks = blocks.Select(block => (IReadOnlyList<string>)block.ToArray()).ToArray();
+
+    /// <summary>每个 block 的格子位置（节点名，如 <c>B8</c>）。</summary>
+    public IReadOnlyList<IReadOnlyList<string>> Blocks { get; }
+
+    private IReadOnlyList<CampaignGrid> Block(IReadOnlyList<string> block, CampaignGridSet all) =>
+        all.Grids.Where(grid => block.Contains(grid.Location, StringComparer.Ordinal)).ToArray();
+
+    /// <summary>上游 <c>roadblocks()</c>：整块都是敌人时，整块算路障。</summary>
+    public CampaignGridSet Roadblocks(CampaignGridSet all)
+    {
+        var grids = new List<CampaignGrid>();
+        foreach (var block in Blocks)
+        {
+            var cells = Block(block, all);
+            if (cells.Count > 0 && cells.Count == cells.Count(grid => grid.IsEnemy)) grids.AddRange(cells);
+        }
+        return new CampaignGridSet(grids);
+    }
+
+    /// <summary>上游 <c>potential_roadblocks()</c>：跳过含舰队或已清格子的块；只剩一个非敌人时，取该块的敌人。</summary>
+    public CampaignGridSet PotentialRoadblocks(CampaignGridSet all)
+    {
+        var grids = new List<CampaignGrid>();
+        foreach (var block in Blocks)
+        {
+            var cells = Block(block, all);
+            if (cells.Count == 0) continue;
+            if (cells.Any(grid => grid.IsFleet) || cells.Any(grid => grid.IsCleared)) continue;
+            if (cells.Count - cells.Count(grid => grid.IsEnemy) == 1)
+            {
+                grids.AddRange(cells.Where(grid => grid.IsEnemy));
+            }
+        }
+        return new CampaignGridSet(grids);
+    }
+
+    /// <summary>上游 <c>first_roadblocks()</c>：跳过含舰队或已清格子的块；块里有敌人就取敌人。</summary>
+    public CampaignGridSet FirstRoadblocks(CampaignGridSet all)
+    {
+        var grids = new List<CampaignGrid>();
+        foreach (var block in Blocks)
+        {
+            var cells = Block(block, all);
+            if (cells.Count == 0) continue;
+            if (cells.Any(grid => grid.IsFleet) || cells.Any(grid => grid.IsCleared)) continue;
+            if (cells.Count(grid => grid.IsEnemy) >= 1) grids.AddRange(cells.Where(grid => grid.IsEnemy));
+        }
+        return new CampaignGridSet(grids);
+    }
+}
+
+/// <summary>上游 <c>location2node()</c> 的命名约定：列字母（A=0）+ 行号（从 1 起）。</summary>
+public static class CampaignLocations
+{
+    public static string ToNode(int x, int y)
+    {
+        if (x is < 0 or > 25) throw new NotSupportedException($"列 {x} 超出 A–Z（未移植多字母列名）");
+        return $"{(char)('A' + x)}{y + 1}";
+    }
+}
+
+/// <summary>
 /// 上游 <c>SelectedGrids.select(**kwargs)</c> 的等价过滤条件：**字段相等即匹配**（含类型）。
 /// 只登记选择链路会用到的属性，避免把整张 GridInfo 表搬过来。
 /// </summary>
@@ -55,6 +127,8 @@ public sealed record CampaignGridFilter(
     bool? IsMystery = null,
     bool? MayBoss = null,
     bool? IsCaughtBySiren = null,
+    bool? IsFleet = null,
+    bool? IsCleared = null,
     bool? IsAccessible = null,
     bool? IsNearby = null,
     int? EnemyScale = null,
@@ -68,6 +142,8 @@ public sealed record CampaignGridFilter(
         (IsMystery is null || grid.IsMystery == IsMystery) &&
         (MayBoss is null || grid.MayBoss == MayBoss) &&
         (IsCaughtBySiren is null || grid.IsCaughtBySiren == IsCaughtBySiren) &&
+        (IsFleet is null || grid.IsFleet == IsFleet) &&
+        (IsCleared is null || grid.IsCleared == IsCleared) &&
         (IsAccessible is null || grid.IsAccessible == IsAccessible) &&
         (IsNearby is null || grid.IsNearby == IsNearby) &&
         (EnemyScale is null || grid.EnemyScale == EnemyScale) &&

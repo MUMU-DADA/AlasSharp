@@ -45,7 +45,7 @@ except ImportError:
     from upstream_map_export import MapResolver
     from upstream_campaign_export import CampaignResolver
 
-EXPORTER_VERSION = '2.3.0'
+EXPORTER_VERSION = '2.4.0'
 SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
@@ -241,6 +241,91 @@ def attribute_literal_resolver(literals: dict):
             return literals[node.attr]
         if isinstance(node, ast.Name) and node.id in literals:
             return literals[node.id]
+        return _UNRESOLVED
+    return resolve
+
+
+def campaign_map_shape(tree) -> str:
+    """模块级 `MAP.shape = 'K9'` 的字面量形状。"""
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Constant) \
+                or not isinstance(node.value.value, str):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Attribute) and target.attr == 'shape':
+                return node.value.value
+    return ''
+
+
+def campaign_road_table(tree) -> dict:
+    """模块级 `road_x = RoadGrids([...])` → `{road_x: [[[x, y], ...], ...]}`。
+
+    上游关卡用 `A1, B1, … = MAP.flatten()` 绑定格子符号，再用
+    `road_main = RoadGrids([[H3, B6, C5]])` 声明路段（每个元素是一个 block：单格或格组）。
+    `clear_roadblocks([road_main])` 这类调用的实参就是这些路段对象——标量字面量表达不了，
+    于是原先只能记 `<expr>`（全库 83 个 `clear_roadblocks` / `clear_potential_roadblocks` 步骤被阻塞）。
+
+    这里把路段解析成坐标数组。**只做形状自校验通过的解析**：符号数必须等于
+    `列数 × 行数`（形状如 `K9` → A..K 共 11 列、9 行），否则整表作废、实参照旧记 `<expr>`，不猜。
+    """
+    symbols = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) \
+                and isinstance(node.value.func, ast.Attribute) and node.value.func.attr == 'flatten':
+            for target in node.targets:
+                if isinstance(target, ast.Tuple):
+                    symbols = [e.id for e in target.elts if isinstance(e, ast.Name)]
+    shape = campaign_map_shape(tree)
+    letters = ''.join(ch for ch in shape if ch.isalpha())
+    digits = ''.join(ch for ch in shape if ch.isdigit())
+    if not symbols or len(letters) != 1 or not digits:
+        return {}
+    columns, rows = ord(letters.upper()) - ord('A') + 1, int(digits)
+    if columns * rows != len(symbols):
+        return {}
+
+    index_of = {name: index for index, name in enumerate(symbols)}
+
+    def location(name):
+        index = index_of[name]
+        return [index % columns, index // columns]
+
+    roads = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        call = node.value
+        if not (isinstance(call.func, ast.Name) and call.func.id == 'RoadGrids' and len(call.args) == 1
+                and isinstance(call.args[0], ast.List)):
+            continue
+        blocks, valid = [], True
+        for element in call.args[0].elts:
+            if isinstance(element, ast.Name) and element.id in index_of:
+                blocks.append([location(element.id)])
+            elif isinstance(element, ast.List) and element.elts and all(
+                    isinstance(item, ast.Name) and item.id in index_of for item in element.elts):
+                blocks.append([location(item.id) for item in element.elts])
+            else:
+                valid = False
+                break
+        if not valid or not blocks:
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                roads[target.id] = blocks
+    return roads
+
+
+def road_argument_resolver(roads: dict):
+    """把 `[road_a, road_b]` / `road_a` 实参解成 `{'__roads__': [路段, ...]}`；否则返回哨兵。"""
+    def resolve(node):
+        if not roads:
+            return _UNRESOLVED
+        if isinstance(node, ast.Name) and node.id in roads:
+            return {'__roads__': [roads[node.id]]}
+        if isinstance(node, ast.List) and node.elts and all(
+                isinstance(item, ast.Name) and item.id in roads for item in node.elts):
+            return {'__roads__': [roads[item.id] for item in node.elts]}
         return _UNRESOLVED
     return resolve
 
@@ -486,9 +571,14 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
             continue
 
         module = rel[len('campaign/'):-3].replace('/', '.')
-        # 类属性链上的字面量（如基类的 ENEMY_FILTER），用于解析 self.<NAME> 实参；
-        # 解析不出的实参仍记 '<expr>'，不猜值。
-        resolve_literal = attribute_literal_resolver(campaign_literal_attributes(tree, module, root))
+        # 类属性链上的字面量（如基类的 ENEMY_FILTER）与模块级路段（road_main = RoadGrids([...])），
+        # 用于解析 self.<NAME> / [road_*] 实参；解析不出的实参仍记 '<expr>'，不猜值。
+        literal_resolver = attribute_literal_resolver(campaign_literal_attributes(tree, module, root))
+        road_resolver = road_argument_resolver(campaign_road_table(tree))
+
+        def resolve_argument(node, _literal=literal_resolver, _road=road_resolver):
+            value = _literal(node)
+            return value if value is not _UNRESOLVED else _road(node)
         ir = {'source': rel, 'name': None, '_name_source': None, 'map': {}, 'config': {},
               'config_meta': {}, 'campaign': {'battles': [], 'attributes': {}},
               'unresolved': []}
@@ -500,7 +590,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
                             and node.name == 'Campaign':
                         body = [x for x in sub.body if not (isinstance(x, ast.Expr)
                                 and isinstance(x.value, ast.Constant))]
-                        steps, plan_complete, unparsed, dead = derive_plan(body, sub.name, resolve_literal)
+                        steps, plan_complete, unparsed, dead = derive_plan(body, sub.name, resolve_argument)
                         calls = []
                         for x in ast.walk(sub):
                             if is_self_call(x):
