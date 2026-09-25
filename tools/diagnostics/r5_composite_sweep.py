@@ -5,7 +5,8 @@
     python tools/diagnostics/r5_composite_sweep.py [--states 60] [--seed 13]
 
 覆盖 `clear_enemy` / `clear_any_enemy` / `clear_siren` / `clear_boss` /
-`clear_roadblocks` / `clear_potential_roadblocks` 六个**复合原语**的判定：
+`clear_roadblocks` / `clear_potential_roadblocks` / `clear_first_roadblocks` / `pick_up_ammo`
+八个**复合原语**的判定：
 它们不只是选择器，还带配置分支（`EnemyPriority_EnemyScaleBalanceWeight`、`MAP_CLEAR_ALL_THIS_TIME`、
 `MAP_HAS_SIREN`/`MAP_HAS_FORTRESS`、`FLEET_2` 改排序键）、可能的 boss 兜底路径等。
 
@@ -36,8 +37,9 @@ UPSTREAM = ROOT / ".runtime" / "engine"
 
 GENRES = ["Light", "Main", "Carrier", "Treasure"]
 PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss",
-              "clear_roadblocks", "clear_potential_roadblocks"]
-ROADBLOCK_PRIMITIVES = {"clear_roadblocks", "clear_potential_roadblocks"}
+              "clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks",
+              "pick_up_ammo"]
+ROADBLOCK_PRIMITIVES = {"clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks"}
 CONFIGS = [
     {"enemy_priority": None},
     {"enemy_priority": "S3_enemy_first"},
@@ -67,6 +69,7 @@ def build_cases(states: int, seed: int) -> list[dict]:
                     "is_siren": rng.random() < 0.15,
                     "is_fortress": rng.random() < 0.1,
                     "is_caught_by_siren": rng.random() < 0.1,
+                    "may_ammo": rng.random() < 0.25,
                     "enemy_scale": rng.choice([1, 2, 3]),
                     "enemy_genre": rng.choice(GENRES),
                     "weight": rng.choice([0, 10, 20, 30, 40, 50, 60, 70, 80, 90]),
@@ -114,6 +117,9 @@ class RecordingStub:
         self.battle_count = 0
         # `brute_find_roadblocks`（兜底分支）会读这些舰队状态；给"1 队在第一格、没有 2 队"的最小前提
         self.fleet_current_index = 1
+        self.ammo_count = 3
+        self.fleet_ammo = 5
+        self.ensure_no_info_bar_calls = 0
         from module.base.utils import node2location  # noqa: PLC0415
         self.fleet_1_location = node2location(first_location)
         self.fleet_2_location = tuple()
@@ -158,6 +164,9 @@ class RecordingStub:
 
     def show_select_grids(self, *args, **kwargs):
         return None
+
+    def ensure_no_info_bar(self, *args, **kwargs):
+        self.ensure_no_info_bar_calls += 1
 
     def brute_find_roadblocks(self, grid, fleet=None):
         from module.map.map import Map  # noqa: PLC0415
@@ -211,6 +220,7 @@ def upstream_target(case: dict) -> tuple[str | None, bool | None]:
         info.is_siren = bool(grid["is_siren"])
         info.is_fortress = bool(grid["is_fortress"])
         info.is_caught_by_siren = bool(grid["is_caught_by_siren"])
+        info.may_ammo = bool(grid.get("may_ammo"))
         info.enemy_scale = int(grid["enemy_scale"])
         info.enemy_genre = grid["enemy_genre"]
         info.weight = int(grid["weight"])
@@ -355,7 +365,8 @@ def main() -> int:
     lines = ["# R5 复合原语扫描（C# 原语 vs 上游真实方法）", "",
              "> 本报告由 `tools/diagnostics/r5_composite_sweep.py` 重建，不手写。",
              "> 覆盖：`clear_enemy` / `clear_any_enemy` / `clear_siren` / `clear_boss` /", 
-             "> `clear_roadblocks` / `clear_potential_roadblocks` 的判定（含路段语义），",
+             "> `clear_roadblocks` / `clear_potential_roadblocks` / `clear_first_roadblocks` / `pick_up_ammo`", 
+             "> 的判定（含路段与弹药语义），",
              "> 含配置分支（优先级、全清、塞壬/要塞、FLEET_2 改排序键）；上游侧跑的是**它自己的方法**。", "",
              f"- 状态数：**{options.states}**（seed={options.seed}，每种状态 × {len(PRIMITIVES)} 原语 × {len(CONFIGS)} 配置）",
              f"- 用例数：**{len(cases)}**；实际比较 **{compared}**",

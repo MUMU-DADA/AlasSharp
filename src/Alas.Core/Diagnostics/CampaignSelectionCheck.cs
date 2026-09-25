@@ -82,6 +82,8 @@ internal static class CampaignSelectionCheck
                 case "primitive_clear_boss":
                 case "primitive_clear_roadblocks":
                 case "primitive_clear_potential_roadblocks":
+                case "primitive_clear_first_roadblocks":
+                case "primitive_pick_up_ammo":
                     var config = new CampaignRuntimeConfig(
                         EnemyPriority: testCase.EnemyPriority,
                         MapClearAllThisTime: testCase.MapClearAllThisTime,
@@ -94,11 +96,15 @@ internal static class CampaignSelectionCheck
                         FleetCurrentIndex = testCase.FleetCurrentIndex ?? 1,
                         Fleet1Location = testCase.Fleet1Location ?? "",
                         Fleet2Location = testCase.Fleet2Location ?? "",
+                        AmmoCount = testCase.AmmoCount ?? 3,
                     };
                     var roads = (testCase.Roads ?? [])
                         .Select(road => new CampaignRoad(road)).ToArray();
                     bool result = testCase.Kind switch
                     {
+                        "primitive_pick_up_ammo" => CampaignPrimitives.PickUpAmmo(host),
+                        "primitive_clear_first_roadblocks" =>
+                            CampaignPrimitives.ClearFirstRoadblocks(host, roads, options),
                         "primitive_clear_roadblocks" => CampaignPrimitives.ClearRoadblocks(host, roads, options),
                         "primitive_clear_potential_roadblocks" =>
                             CampaignPrimitives.ClearPotentialRoadblocks(host, roads, options),
@@ -161,6 +167,7 @@ internal static class CampaignSelectionCheck
         IsSiren: grid.IsSiren,
         IsMystery: grid.IsMystery,
         IsAmmo: grid.IsAmmo,
+        MayAmmo: grid.MayAmmo,
         IsFortress: grid.IsFortress,
         MayEnemy: grid.MayEnemy,
         MayBoss: grid.MayBoss,
@@ -231,6 +238,7 @@ internal static class CampaignSelectionCheck
         [JsonPropertyName("map_has_fortress")] public bool? MapHasFortress { get; init; }
         [JsonPropertyName("fleet_2")] public bool? Fleet2 { get; init; }
         [JsonPropertyName("fleet_boss")] public bool? FleetBoss { get; init; }
+        [JsonPropertyName("ammo_count")] public int? AmmoCount { get; init; }
         [JsonPropertyName("fleet_current_index")] public int? FleetCurrentIndex { get; init; }
         [JsonPropertyName("fleet_1_location")] public string? Fleet1Location { get; init; }
         [JsonPropertyName("fleet_2_location")] public string? Fleet2Location { get; init; }
@@ -257,6 +265,7 @@ internal static class CampaignSelectionCheck
         [JsonPropertyName("is_siren")] public bool IsSiren { get; init; }
         [JsonPropertyName("is_mystery")] public bool IsMystery { get; init; }
         [JsonPropertyName("is_ammo")] public bool IsAmmo { get; init; }
+        [JsonPropertyName("may_ammo")] public bool MayAmmo { get; init; }
         [JsonPropertyName("is_fortress")] public bool IsFortress { get; init; }
         [JsonPropertyName("may_enemy")] public bool MayEnemy { get; init; }
         [JsonPropertyName("may_boss")] public bool MayBoss { get; init; }
