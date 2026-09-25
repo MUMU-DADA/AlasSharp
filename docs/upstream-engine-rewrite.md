@@ -616,6 +616,28 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 **结论（对 P3 的影响）**：真正要做的不是"逐个域接线"，而是**让 `loop` 域可由 C# 执行**——
 即新增一条由 C# 驱动设备的执行路径（原语 → 设备动作、寻路 → 走位），`path`/`primitives` 随之自然生效。
 
+#### 接缝表：每个 C# 原语的设备动作由谁做（`verify_r5_seam.py`，introspection 核对）
+
+问题：设备宿主里的 `goto` / `clear_chosen_enemy` / `update_map` / `focus_to` 这些动作，**谁来实现**？
+自建实现＝复刻上游的地图点击几何与相机机制，正是"逐地图/逐界面适配"被禁止的形态。
+
+核对结论（29 个原语，逐条用 introspection 验证"方法存在、且定义在该类里"）：
+
+| 分类 | 数量 | 含义 |
+| --- | --- | --- |
+| 委托上游**通用层**方法 | 26 | `Map.*` / `Fleet.*` / `MapOperation.withdraw` / `CampaignBase.battle_default|battle_boss` / `Camera.ensure_edge_insight` 等；实测 `fleet_2_*`、`brute_fleet_meet`、`capture_clear_boss` 都在 **`Map`** 而不是 `Fleet` |
+| 委托上游**关卡层**方法 | 3 | `pick_up_flare`、`pick_up_light_house`（`campaign/campaign_main/campaign_14_base.py`）、`clear_map_items`（`campaign/event_20221124_cn/campaign_base.py`）——**它们不是通用引擎原语**，C# 侧复刻就等于把上游关卡层代码搬进引擎；必须委托给**上游 campaign 对象**（它才带这些覆写） |
+| 需 C# 侧自行实现设备动作 | **0** | 也就是说：设备宿主可以完全走"委托上游执行"，不需要在 C# 里重写任何地图/相机机制 |
+
+**由此得到设备宿主的两种实现路线**（同一张接缝表下）：
+
+| 路线 | 做法 | 代价 / 收益 |
+| --- | --- | --- |
+| (a) **委托上游执行**（推荐先做） | C# 决定"做哪个原语、对哪个格子"；宿主把这些调用转给上游 `Map`/`Fleet`/campaign 对象 | 快、不重复上游机制、证据链短；缺点是上游 `module/map/**` 仍在（与"只留静态规则"的最终形态有距离） |
+| (b) C# 自实现设备机制 | 按接缝表逐个把 26 个通用层方法在 C# 里实现（点击几何、相机、进战…） | 是最终形态；工作量大得多，且每个机制都要单独真机验收——**必须先有 (a) 的真机证据再谈** |
+
+**（b）的待办就是上面那张表的 26 行**；(a) 是本轮之后可以立刻做、并且能拿到真机动作层证据的路线。
+
 #### `loop` 域切成 csharp 需要什么（前置清单）
 
 | 项 | 要求 | 现状 |
