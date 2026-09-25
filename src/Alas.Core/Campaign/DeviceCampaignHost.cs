@@ -161,15 +161,19 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
         return true;
     }
 
-    public void MarkFlare(CampaignGrid grid)
+    public void SetGridFlag(CampaignGrid grid, string flag, bool value)
     {
-        // 改自己的模型 + **同步到上游地图对象**：`pick_up_flare` 设的这个标记会被
-        // `Map.find_path` 的航点绕行读到（`way_node.is_flare`），不同步就会少绕一格。
+        // 改自己的模型 + **同步到上游地图对象**：这些标志会被上游自己的代码读到
+        // （`is_flare` → `Map.find_path` 的航点绕行；`may_bouncing_enemy` → 巡逻敌人路线筛选），
+        // 不同步就会与上游状态分叉。标志名白名单在 `CampaignPrimitives.ApplyFlag` 里。
         for (int i = 0; i < _grids.Count; i++)
         {
-            if (_grids[i].Location == grid.Location) _grids[i] = _grids[i] with { IsFlare = true };
+            if (_grids[i].Location == grid.Location)
+            {
+                _grids[i] = CampaignPrimitives.ApplyFlag(_grids[i], flag, value);
+            }
         }
-        _channel.Set($"map.{grid.Location}.is_flare", JsonValue.Create(true));
+        _channel.Set($"map.{grid.Location}.{flag}", JsonValue.Create(value));
     }
 
     public void ClearCaughtBySirenFlags()

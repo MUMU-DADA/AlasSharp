@@ -70,12 +70,12 @@ internal static class CampaignDeviceCheck
         var flareChannel = new RecordingCampaignCallChannel();
         var flareHost = new DeviceCampaignHost(flareChannel, stateGrids);
         var flareGrid = flareHost.Grids[0];
-        flareHost.MarkFlare(flareGrid);
+        flareHost.SetGridFlag(flareGrid, "is_flare", true);
         bool flareInModel = flareHost.Grids.Any(grid => grid.Location == flareGrid.Location && grid.IsFlare);
         bool flareSynced = flareChannel.Calls.Any(call => call.Name == $"set:map.{flareGrid.Location}.is_flare");
         if (!flareInModel || !flareSynced)
         {
-            return Fail($"MarkFlare 语义不符：模型置位 {flareInModel}，上游同步 {flareSynced}" +
+            return Fail($"SetGridFlag(is_flare) 语义不符：模型置位 {flareInModel}，上游同步 {flareSynced}" +
                         $"（调用 {string.Join(", ", flareChannel.Calls.Select(c => c.Name))}）");
         }
 

@@ -104,10 +104,12 @@ public interface ICampaignPrimitiveHost
     void ClearCaughtBySirenFlags();
 
     /// <summary>
-    /// 把格子标成"信号弹已放置"（上游 `pick_up_flare` 的第一行 `grid.is_flare = True`）。
-    /// 这个标记影响上游 `Map.find_path` 的**航点绕行**（`way_node.is_flare`），所以必须同步到上游地图对象。
+    /// 改一个格子的布尔标志（同步到**上游地图对象**）。上游有些被 C# 替换掉的方法会顺手写状态，
+    /// 例如 `pick_up_flare` 的 `grid.is_flare = True`（影响 `Map.find_path` 的航点绕行）、
+    /// `clear_bouncing_enemy` 成功后的 `may_bouncing_enemy = False`；不写回去就会与上游状态分叉。
+    /// 白名单只允许模型里有的标志名，拼错直接报错，不静默当作没发生。
     /// </summary>
-    void MarkFlare(CampaignGrid grid);
+    void SetGridFlag(CampaignGrid grid, string flag, bool value);
 
     /// <summary>撤退（上游 <c>MapOperation.withdraw()</c>，如 <c>capture_clear_boss</c> 结尾会撤退）。</summary>
     void Withdraw();
@@ -263,16 +265,18 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
         }
     }
 
-    public void MarkFlare(CampaignGrid grid)
+    public void SetGridFlag(CampaignGrid grid, string flag, bool value)
     {
-        // 上游 `pick_up_flare` 的第一行 `grid.is_flare = True`：只改模型，不产生设备动作。
-        // 这个标记影响上游 `Map.find_path` 的航点绕行，所以设备宿主还要把它同步到上游地图对象（见那边）。
-        Actions.Add($"mark_flare({grid.Location})");
+        // 只改模型，不产生设备动作（上游那几个 helper 也是直接改 `GridInfo`）。
+        // 设备宿主额外把它同步到上游地图对象（见那边）。
+        Actions.Add($"set_flag({grid.Location},{flag}={value})");
         for (int i = 0; i < _grids.Count; i++)
         {
-            if (_grids[i].Location == grid.Location) _grids[i] = _grids[i] with { IsFlare = true };
+            if (_grids[i].Location == grid.Location) _grids[i] = CampaignPrimitives.ApplyFlag(_grids[i], flag, value);
         }
     }
+
+
 
     public void Withdraw()
     {
@@ -310,6 +314,17 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
 /// </summary>
 public static class CampaignPrimitives
 {
+    /// <summary>按标志名写格子；名字不在模型里就报错（拼错不许静默）。</summary>
+    internal static CampaignGrid ApplyFlag(CampaignGrid grid, string flag, bool value) => flag switch
+    {
+        "is_flare" => grid with { IsFlare = value },
+        "may_bouncing_enemy" => grid with { MayBouncingEnemy = value },
+        "is_caught_by_siren" => grid with { IsCaughtBySiren = value },
+        "is_cleared" => grid with { IsCleared = value },
+        "is_enemy" => grid with { IsEnemy = value },
+        _ => throw new NotSupportedException($"未知的格子标志 {flag}（不在模型里；要同步新标志时在 ApplyFlag 里显式加）"),
+    };
+
     /// <summary>干跑时的循环上限，避免"清不完的神秘格子"把进程拖死。</summary>
     private const int MaxMysteryRounds = 100;
 
@@ -583,7 +598,7 @@ public static class CampaignPrimitives
     public static bool PickUpFlare(ICampaignPrimitiveHost host, CampaignGrid grid)
     {
         // 上游第一行就是 `grid.is_flare = True`（在"已拾取/可达"判断**之前**），照抄顺序
-        host.MarkFlare(grid);
+        host.SetGridFlag(grid, "is_flare", true);
         if (host.PickedFlare.Contains(grid.Location))
         {
             host.Log($"pick_up_flare：Flares {grid.Location} already picked up");
