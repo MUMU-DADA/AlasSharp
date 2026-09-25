@@ -4,7 +4,7 @@
 > 用途：C# 逐条替换了上游原语，而上游有些方法**顺手写状态**；替换掉就丢了那些写入。
 > 只做静态扫描（`inspect.getsource` + 写入模式匹配），不执行游戏动作。
 
-- 注册表原语：**29** 个
+- 注册表原语：**30** 个
 - 检测到**状态写入**的条目：**3**（已核对 **3**）
 - **待确认**：**0**
 
@@ -15,6 +15,7 @@
 | `brute_clear_boss` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `brute_fleet_meet` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `capture_clear_boss` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
+| `check_accessibility` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `clear_all_mystery` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `clear_any_enemy` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `clear_boss` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
