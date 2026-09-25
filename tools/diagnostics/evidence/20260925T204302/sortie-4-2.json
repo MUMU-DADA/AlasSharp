@@ -1,0 +1,170 @@
+{
+  "chapter": "campaign.campaign_main.campaign_4_2",
+  "stage": "4-2",
+  "cleared": true,
+  "failed": false,
+  "skipped": false,
+  "elapsed_s": 255.4,
+  "error_kind": "none",
+  "error": null,
+  "contract_violations": [],
+  "result": {
+    "requested_mode": "normal",
+    "campaign_mode": "normal",
+    "tier": "C",
+    "plan_steps": [
+      "battle_0",
+      "battle_3"
+    ],
+    "semantic_trace": [
+      "clear_all_mystery",
+      "battle_default",
+      "clear_all_mystery",
+      "map.select",
+      "fleet_boss.clear_boss",
+      "check_accessibility",
+      "battle_default"
+    ],
+    "config_present": true,
+    "config_complete": true,
+    "config_count": 6,
+    "config_origins": {
+      "EDGE_LINES_FIND_PEAKS_PARAMETERS": {
+        "module": "campaign.campaign_main.campaign_4_1",
+        "class": "Config",
+        "line": 51,
+        "expression": "{'height': (255 - 33, 255), 'prominence': 10, 'distance': 50, 'wlen': 1000}"
+      },
+      "FLEET_BOSS": {
+        "module": "campaign.campaign_main.campaign_4_1",
+        "class": "Config",
+        "line": 42,
+        "expression": "1"
+      },
+      "HOMO_EDGE_COLOR_RANGE": {
+        "module": "campaign.campaign_main.campaign_4_1",
+        "class": "Config",
+        "line": 57,
+        "expression": "(0, 33)"
+      },
+      "HOMO_EDGE_HOUGHLINES_THRESHOLD": {
+        "module": "campaign.campaign_main.campaign_4_1",
+        "class": "Config",
+        "line": 58,
+        "expression": "210"
+      },
+      "INTERNAL_LINES_FIND_PEAKS_PARAMETERS": {
+        "module": "campaign.campaign_main.campaign_4_1",
+        "class": "Config",
+        "line": 45,
+        "expression": "{'height': (120, 255 - 33), 'width': (1.5, 10), 'prominence': 10, 'distance': 35}"
+      },
+      "MAP_MYSTERY_HAS_CARRIER": {
+        "module": "campaign.campaign_main.campaign_4_1",
+        "class": "Config",
+        "line": 44,
+        "expression": "True"
+      }
+    },
+    "config_sources": [
+      "campaign.campaign_main.campaign_4_1.Config"
+    ],
+    "runtime_config_source": "campaign.campaign_main.campaign_4_2.Config",
+    "execution": "upstream_run",
+    "upstream_returned": true,
+    "contract": "sortie-result/1",
+    "chapter": "campaign.campaign_main.campaign_4_2",
+    "stage": "4-2",
+    "dry_run": false,
+    "outcome": "cleared",
+    "cleared": true,
+    "campaign_end": true,
+    "end_reason": "In stage.",
+    "stop_reason": "cleared",
+    "reason": null,
+    "error": null,
+    "refused": null,
+    "stopped_early": false,
+    "elapsed_s": 252,
+    "end_evidence": {
+      "battle_rank": "S",
+      "rank_source": "BATTLE_STATUS_",
+      "combat_status": true,
+      "stage_observed": true,
+      "expected_end": "in_stage",
+      "withdrawn": false,
+      "call_path": [
+        "s3_campaign_execution.observed",
+        "module.campaign.campaign_base.execute_a_battle",
+        "module.base.decorator.wrapper",
+        "module.campaign.campaign_base.battle_function",
+        "campaign.campaign_main.campaign_4_2.battle_3",
+        "module.map.map.clear_boss",
+        "module.map.map.clear_chosen_enemy",
+        "module.map.fleet.goto",
+        "module.map.fleet._goto",
+        "module.combat.combat.combat",
+        "module.combat.combat.combat_status",
+        "module.handler.enemy_searching.handle_in_stage"
+      ]
+    },
+    "failure": null,
+    "failure_frames": null,
+    "contract_violations": null,
+    "steps": [
+      {
+        "step": "prepare_campaign_navigation",
+        "withdrew_previous_sortie": false
+      },
+      {
+        "step": "ensure_campaign_ui",
+        "ms": 169.4,
+        "error": null
+      },
+      {
+        "step": "prepare_campaign_run"
+      },
+      {
+        "step": "enter_map",
+        "ms": 7483.8
+      },
+      {
+        "step": "handle_map_fleet_lock",
+        "ms": 4.6
+      },
+      {
+        "step": "map_init",
+        "ms": 1602.9
+      },
+      {
+        "step": "execute_a_battle",
+        "round": 1,
+        "ms": 47171.4,
+        "battle_count": 1
+      },
+      {
+        "step": "execute_a_battle",
+        "round": 2,
+        "ms": 60156.3,
+        "battle_count": 2
+      },
+      {
+        "step": "execute_a_battle",
+        "round": 3,
+        "ms": 64846.2,
+        "battle_count": 3
+      },
+      {
+        "step": "execute_a_battle",
+        "round": 4,
+        "campaign_end": true,
+        "completed": true,
+        "cleared": true,
+        "outcome": "cleared",
+        "reason": "In stage.",
+        "ms": 70548.9,
+        "battle_count": 3
+      }
+    ]
+  }
+}
