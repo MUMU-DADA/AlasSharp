@@ -274,3 +274,44 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 > 识别用途与逻辑用途需按文件逐一区分：识别用途按目标不要求 C# 重写；
 > 逻辑用途（设备输入、截图处理、字符串相似度等）在允许使用 C# 第三方库的前提下可逐个替代。
 
+## D. 静态导出对引擎实际读取字段的覆盖（P1 依据）
+
+- 导出文件 **1437**；`campaign.battles` 条目 **3019**，
+  其中 `plan_complete` **2795（92.6%）**、未完成 **224**；
+- 导出 `config` 段出现的键共 **80** 个；
+- 关卡覆写实际读取的配置字段 **15** 个，其中未出现在导出里的 **6** 个：
+
+| 配置字段 | 关卡内读取次数 | 导出状态 |
+| --- | --- | --- |
+| `MAP_HAS_MOVABLE_ENEMY` | 16 | 已导出 |
+| `MAP_CLEAR_ALL_THIS_TIME` | 8 | 缺失 |
+| `override` | 7 | 缺失 |
+| `FLEET_BOSS` | 4 | 已导出 |
+| `SERVER` | 4 | 缺失 |
+| `MAP_HAS_MISSILE_ATTACK` | 3 | 已导出 |
+| `Fleet_FleetOrder` | 2 | 缺失 |
+| `MAP_SIREN_TEMPLATE` | 2 | 已导出 |
+| `MAP_HAS_SIREN` | 2 | 已导出 |
+| `FLEET_2` | 2 | 已导出 |
+| `MAP_CHAPTER_SWITCH_20241219` | 2 | 已导出 |
+| `STAGE_ENTRANCE` | 2 | 已导出 |
+| `Campaign_Event` | 1 | 缺失 |
+| `MAP_HAS_FORTRESS` | 1 | 已导出 |
+| `Campaign_Name` | 1 | 缺失 |
+
+`unparsed` 原因分布（未完整静态表达的覆写）：
+
+| 原因 | 次数 |
+| --- | --- |
+| `If(nested)` | 212 |
+| `Assign` | 80 |
+| `Expr` | 47 |
+| `Return(expr)` | 28 |
+| `Raise` | 4 |
+| `For` | 1 |
+
+`MAP` 声明读取面（关卡覆写内）：
+
+| MAP 字段 | 读取次数 |
+| --- | --- |
+

@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import ast
 import collections
+import json
 import os
 import pathlib
 import re
@@ -287,11 +288,58 @@ def audit_libraries(engine: pathlib.Path) -> tuple[dict[str, int], dict[str, dic
     return totals, per_lib
 
 
+def audit_export_coverage(engine: pathlib.Path) -> dict:
+    """静态导出（data/campaign/**）对"引擎实际读取"的覆盖情况。"""
+    data_root = ROOT / "data" / "campaign"
+    exported_keys: set[str] = set()
+    files = battles = complete = 0
+    unparsed: collections.Counter = collections.Counter()
+    exported_methods: collections.Counter = collections.Counter()
+    for path in data_root.rglob("*.json") if data_root.is_dir() else []:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        files += 1
+        exported_keys.update((payload.get("config") or {}).keys())
+        for entry in ((payload.get("campaign") or {}).get("battles")) or []:
+            battles += 1
+            if entry.get("plan_complete"):
+                complete += 1
+            for reason in entry.get("unparsed") or []:
+                unparsed[reason] += 1
+            if entry.get("method"):
+                exported_methods[entry["method"]] += 1
+
+    # 引擎在关卡覆写里实际读取的配置字段（AST，不导入游戏代码）
+    config_fields: collections.Counter = collections.Counter()
+    map_fields: collections.Counter = collections.Counter()
+    for path in (engine / "campaign").rglob("*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute):
+                owner = node.value
+                if isinstance(owner.value, ast.Name) and owner.value.id == "self" and owner.attr == "config":
+                    config_fields[node.attr] += 1
+                if isinstance(owner.value, ast.Name) and owner.value.id == "MAP":
+                    map_fields[node.attr] += 1
+    missing = {name: count for name, count in config_fields.items() if name not in exported_keys}
+    return {
+        "files": files, "battles": battles, "complete": complete, "unparsed": unparsed,
+        "exported_keys": exported_keys, "config_fields": config_fields, "map_fields": map_fields,
+        "missing": missing, "exported_methods": exported_methods,
+    }
+
+
 def render(engine: pathlib.Path) -> str:
     campaign = audit_campaign(engine)
     primitives = audit_primitives(engine, set(campaign["helper_calls"]))
     methods, calls = audit_vision()
     lib_totals, lib_subs = audit_libraries(engine)
+    exported = audit_export_coverage(engine)
 
     out: list[str] = []
     add = out.append
@@ -446,6 +494,39 @@ def render(engine: pathlib.Path) -> str:
     add("")
     add("> 识别用途与逻辑用途需按文件逐一区分：识别用途按目标不要求 C# 重写；")
     add("> 逻辑用途（设备输入、截图处理、字符串相似度等）在允许使用 C# 第三方库的前提下可逐个替代。")
+    add("")
+
+    add("## D. 静态导出对引擎实际读取字段的覆盖（P1 依据）")
+    add("")
+    if not exported["files"]:
+        add("未找到 `data/campaign/**` 导出；先在配置好的 Python 环境运行 `tools/export_upstream_data.py`。")
+        add("")
+        return "\n".join(out)
+    complete, battles = exported["complete"], exported["battles"] or 1
+    add(f"- 导出文件 **{exported['files']}**；`campaign.battles` 条目 **{battles}**，")
+    add(f"  其中 `plan_complete` **{complete}（{complete / battles:.1%}）**、未完成 **{battles - complete}**；")
+    add(f"- 导出 `config` 段出现的键共 **{len(exported['exported_keys'])}** 个；")
+    add(f"- 关卡覆写实际读取的配置字段 **{len(exported['config_fields'])}** 个，其中未出现在导出里的 **{len(exported['missing'])}** 个：")
+    add("")
+    add("| 配置字段 | 关卡内读取次数 | 导出状态 |")
+    add("| --- | --- | --- |")
+    for name, count in exported["config_fields"].most_common():
+        state = "缺失" if name in exported["missing"] else "已导出"
+        add(f"| `{name}` | {count} | {state} |")
+    add("")
+    add("`unparsed` 原因分布（未完整静态表达的覆写）：")
+    add("")
+    add("| 原因 | 次数 |")
+    add("| --- | --- |")
+    for reason, count in exported["unparsed"].most_common():
+        add(f"| `{reason}` | {count} |")
+    add("")
+    add("`MAP` 声明读取面（关卡覆写内）：")
+    add("")
+    add("| MAP 字段 | 读取次数 |")
+    add("| --- | --- |")
+    for name, count in exported["map_fields"].most_common(10):
+        add(f"| `{name}` | {count} |")
     add("")
     return "\n".join(out)
 

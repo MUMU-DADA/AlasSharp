@@ -123,6 +123,24 @@
 
 把引擎需要的规则与配置**全部**导出为数据，包括目前只在运行时才存在的字段；导出器沿用静态解析（不导入游戏代码），并纳入现有导出校验链（`tools/verify_export.py` / `alashub`/`Alas.Server verify`）。
 
+#### P1 覆盖盘点结果（2026-09-25，报告 D 节）
+
+现有导出**已经覆盖大部分需求**，缺口具体如下：
+
+| 项 | 现状 | 缺口 |
+| --- | --- | --- |
+| 关卡覆写（`campaign.battles`） | 3019 条，`plan_complete` **2795（92.6%）** | **224 条未完整表达**：`If(nested)` 212、`Assign` 80、`Expr` 47、`Return(expr)` 28、`Raise` 4、`For` 1 |
+| 关卡覆写读取的配置字段 | 15 个，已导出 9 个 | **6 个缺失**：`MAP_CLEAR_ALL_THIS_TIME`、`override`、`SERVER`、`Fleet_FleetOrder`、`Campaign_Event`、`Campaign_Name` |
+| `MAP` 声明 | 已导出 `map_data` / `shape` / `spawn_data` / `camera_data` / `camera_data_spawn_point` / `weight_data` / `spawn_data_loop` | 与覆写实际读取面一致，暂无需补 |
+| `config` 段键 | 共 80 个 | 覆盖识别与地图参数；与上表 6 个字段的差值即缺口 |
+| 非 `battles` 钩子 | 3192 − 3019 = **173 个方法**不在 `battles` 段 | 需确认导出是否有对应段（`native_overrides` / `super_delegates` 抽样为空） |
+
+**P1 待办**：
+1. 224 条未完整表达的覆写——需决定扩展导出器（把条件/赋值也数据化）还是在 C# 侧用"原语 + 条件表达式"实现；
+2. 6 个缺失配置字段——逐个确认来源：`SERVER`、`Campaign_Name` 属运行时/派生；`override` 需确认是否方法名误判；
+3. 173 个非 `battles` 钩子——确认覆盖或补导出；
+4. 上述三项完成后重跑 `tools/diagnostics/r5_upstream_audit.py` 复核。
+
 ### P2 逐域迁移（每个切片独立交付）
 
 每个切片必须齐四样，缺一不算完成：
