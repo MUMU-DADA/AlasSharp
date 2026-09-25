@@ -782,6 +782,34 @@ Alas.Server r5-state --chapter <章> --level <关> --detection <识别.json> --j
 动作含 `clear_chosen_enemy(`）；**帧在忽略目录里，缺帧时跳过并说明**，不把"没有帧"当失败。已登记进
 `verify_all.py`（R5 检查现共 **8** 个）。
 
+#### P2-21 已完成：原语动作层对照 `r5-diff`（"打的是不是同一格"）（2026-09-26）
+
+`Alas.Server r5-diff --log <上游日志> (--chapter --level | --chapter-module) [--frame | --detection]`：
+一边是**上游实际动作**（日志解析），一边是 **C# 干跑动作**（同一关卡跑关卡循环，动作只被记录），
+逐原语比对**集合**与**目标格子**。`CampaignActionComparator` 是纯函数（无 I/O），单独可测。
+
+**实测（帧驱动 + 上游格式夹具日志）**：
+
+```
+[状态来源] 上游=现场识别（来自日志）；C#=inmap_3-1.png（识别到 28 格）
+原语                     上游  C#   上游目标  C# 目标  目标一致
+clear_chosen_enemy       2     3    D2       D2       是
+clear_enemy              2     0    —        —        —
+withdraw                 0     1    —        —        —
+[结论] 原语集合不同；目标格子至少一个原语打到同一格（正面证据）
+```
+
+**这就是"原语动作层"的正面证据**：C# 引擎在被喂进**真机帧识别结果**后，选了**上游实际打的那一格 D2**。
+两处差异也如实列出并说明来源：① 上游会多打一层包装表头（`clear_enemy`），C# 轨迹记录的是叶子动作；
+② C# 侧出现 `withdraw`（打不成 → 按 `Error_HandleError` 撤退），夹具日志里没有这一段。
+
+**口径（命令里也打印）**：**不比重复次数**——干跑状态在一次运行内不刷新，同一目标会被反复选中；
+差异也可能来自**状态来源不同**（现场识别 vs 声明地图/某张帧），所以结论必须带状态来源。
+
+**对拍**：新增 `tools/diagnostics/verify_r5_diff.py`（识别夹具 `detection-3-1.json` 把 D2 标成敌人 +
+夹具日志 `actions-3-1.log`，断言"两边都打 D2、目标交集为真、无目标不一致、只有上游用的包装层原语被列出"；
+帧可用时追加一次帧驱动对照，缺帧跳过）。已登记进 `verify_all.py`（R5 检查现共 **9** 个）。
+
 ### P4 收口
 
 `IVisionEngine` 只保留识图相关方法；上游目录只剩规则文件与识图组件；文档同步（`docs/architecture-roadmap.md`、本文件、[架构梳理](ARCHITECTURE-NOTES.md)）。

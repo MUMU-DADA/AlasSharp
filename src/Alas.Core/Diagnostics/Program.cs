@@ -24,6 +24,10 @@ public static class DiagnosticCommands
             if (args[i] == "--adb" && !Path.IsPathRooted(args[i + 1]) && File.Exists(args[i + 1]))
                 args[i + 1] = Path.GetFullPath(args[i + 1]);
         }
+        // 识图宿主会把进程工作目录切到 engine 目录：凡是"要读的文件"在入口统一转绝对路径，
+        // 否则相对路径会在宿主启动后解析到错误的位置（--adb 的注释里记过同一类问题）。
+        static string AbsoluteIfExists(string value) =>
+            !Path.IsPathRooted(value) && File.Exists(value) ? Path.GetFullPath(value) : value;
         ProjectPaths paths = ProjectPaths.Resolve();
         string dataDir = paths.DataDirectory;
         string repoDir = paths.RepoDirectory;
@@ -435,7 +439,7 @@ public static class DiagnosticCommands
                         runFrame = !Path.IsPathRooted(args[i + 1]) && File.Exists(args[i + 1])
                             ? Path.GetFullPath(args[i + 1]) : args[i + 1];
                     }
-                    if (args[i] == "--detection") runDetection = args[i + 1];
+                    if (args[i] == "--detection") runDetection = AbsoluteIfExists(args[i + 1]);
                     if (args[i] == "--fleet-1") runFleet1 = args[i + 1];
                     if (args[i] == "--fleet-2") runFleet2 = args[i + 1];
                     if (args[i] == "--mode") runMode = args[i + 1];
@@ -444,11 +448,53 @@ public static class DiagnosticCommands
                         runCurrentFleet = runParsedFleet;
                     }
                 }
-                return CampaignRunCheck.Run(dataDir, repoDir, paths.ToolsDirectory,
-                                            runChapter, runLevel, runModule, runFrame, runDetection,
-                                            runFleet1, runFleet2, runCurrentFleet, runAmbush,
-                                            runClearAll, runPoorMap, runUseFleet2, runFleetBoss,
-                                            runSiren, runFortress, runMode, runJson);
+                var runOptions = new CampaignDryRunHelper.Options(
+                    runChapter, runLevel, runModule, runFrame, runDetection,
+                    runFleet1, runFleet2, runCurrentFleet, runAmbush,
+                    runClearAll, runPoorMap, runUseFleet2, runFleetBoss,
+                    runSiren, runFortress, runMode);
+                return CampaignRunCheck.Run(dataDir, repoDir, paths.ToolsDirectory, runOptions, runJson);
+            }
+            if (command == "r5-diff")
+            {
+                // 原语动作层对照：上游日志动作 vs C# 干跑动作（只读，不连设备）。
+                string? diffChapter = null, diffLevel = null, diffModule = null, diffFrame = null;
+                string? diffDetection = null, diffFleet1 = null, diffFleet2 = null, diffMode = "main", diffLog = null;
+                int diffCurrentFleet = 1;
+                bool diffAmbush = args.Contains("--map-has-ambush");
+                bool diffClearAll = args.Contains("--clear-all");
+                bool diffPoorMap = args.Contains("--poor-map-data");
+                bool diffUseFleet2 = args.Contains("--use-fleet-2");
+                bool diffFleetBoss = args.Contains("--fleet-boss-2");
+                bool diffSiren = args.Contains("--map-has-siren");
+                bool diffFortress = args.Contains("--map-has-fortress");
+                bool diffJson = args.Contains("--json");
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--chapter") diffChapter = args[i + 1];
+                    if (args[i] == "--level") diffLevel = args[i + 1];
+                    if (args[i] == "--chapter-module") diffModule = args[i + 1];
+                    if (args[i] == "--log") diffLog = AbsoluteIfExists(args[i + 1]);
+                    if (args[i] == "--detection") diffDetection = AbsoluteIfExists(args[i + 1]);
+                    if (args[i] == "--fleet-1") diffFleet1 = args[i + 1];
+                    if (args[i] == "--fleet-2") diffFleet2 = args[i + 1];
+                    if (args[i] == "--mode") diffMode = args[i + 1];
+                    if (args[i] == "--current-fleet" && int.TryParse(args[i + 1], out int diffParsedFleet))
+                    {
+                        diffCurrentFleet = diffParsedFleet;
+                    }
+                    if (args[i] == "--frame")
+                    {
+                        diffFrame = !Path.IsPathRooted(args[i + 1]) && File.Exists(args[i + 1])
+                            ? Path.GetFullPath(args[i + 1]) : args[i + 1];
+                    }
+                }
+                var diffOptions = new CampaignDryRunHelper.Options(
+                    diffChapter, diffLevel, diffModule, diffFrame, diffDetection,
+                    diffFleet1, diffFleet2, diffCurrentFleet, diffAmbush,
+                    diffClearAll, diffPoorMap, diffUseFleet2, diffFleetBoss,
+                    diffSiren, diffFortress, diffMode);
+                return CampaignDiffCheck.Run(dataDir, repoDir, paths.ToolsDirectory, diffLog, diffOptions, diffJson);
             }
             if (command == "r5-state")
             {
@@ -465,7 +511,7 @@ public static class DiagnosticCommands
                     if (args[i] == "--chapter-module") stateModule = args[i + 1];
                     if (args[i] == "--fleet-1") stateFleet1 = args[i + 1];
                     if (args[i] == "--fleet-2") stateFleet2 = args[i + 1];
-                    if (args[i] == "--detection") stateDetection = args[i + 1];
+                    if (args[i] == "--detection") stateDetection = AbsoluteIfExists(args[i + 1]);
                     if (args[i] == "--current-fleet" && int.TryParse(args[i + 1], out int parsedFleet))
                     {
                         stateCurrentFleet = parsedFleet;
@@ -484,7 +530,7 @@ public static class DiagnosticCommands
                 {
                     if (args[i] == "--chapter") actionChapter = args[i + 1];
                     if (args[i] == "--level") actionLevel = args[i + 1];
-                    if (args[i] == "--log") actionLog = args[i + 1];
+                    if (args[i] == "--log") actionLog = AbsoluteIfExists(args[i + 1]);
                 }
                 return CampaignActionCheck.Run(dataDir, actionChapter, actionLevel, actionLog, actionJson);
             }
@@ -497,7 +543,7 @@ public static class DiagnosticCommands
                 {
                     if (args[i] == "--chapter") shadowChapter = args[i + 1];
                     if (args[i] == "--level") shadowLevel = args[i + 1];
-                    if (args[i] == "--log") shadowLog = args[i + 1];
+                    if (args[i] == "--log") shadowLog = AbsoluteIfExists(args[i + 1]);
                     if (args[i] == "--variant") shadowVariant = args[i + 1];
                     if (args[i] == "--chapter-module") shadowModule = args[i + 1];
                 }
@@ -614,7 +660,7 @@ public static class DiagnosticCommands
                 _ => Fail($"未知命令: {command}"
                            + "（可用: verify / list / show / imaging / matching / vision / campaign / "
                            + "map / map-ir / capture / device / queue / plan-queue / report / runs / run / goto / "
-                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state / r5-run）"),
+                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state / r5-run / r5-diff）"),
             };
         }
         catch (Exception ex)

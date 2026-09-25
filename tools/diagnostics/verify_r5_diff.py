@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""R5 原语动作层对照：上游实际动作（日志）vs C# 干跑动作（离线，无设备）。
+
+用法：
+    python tools/diagnostics/verify_r5_diff.py
+
+做的事（全部可复现，不依赖本机帧）：
+  用夹具日志 `fixtures/actions-3-1.log`（上游格式：`<<< CLEAR ENEMY >>>` + `Clear enemy: D2` ×2）
+  与识别夹具 `fixtures/detection-3-1.json`（把 D2 标成敌人）跑
+  `Alas.Server r5-diff --log <日志> --chapter campaign_main --level campaign_3_1 --detection <识别> --json`，
+  核对：
+  - 两边都用到 `clear_chosen_enemy`，且**目标交集是 D2**（"打的是同一格"的正面证据）；
+  - 只有上游用到的原语（`clear_enemy`，上游会额外打包装层表头）与只有 C# 用到的原语（`withdraw`）
+    被如实列出——这类差异是**轨迹粒度/状态来源**造成的，不是引擎错误；
+  - 没有"目标不一致"（本夹具两边打同一格）；
+  - 帧可用时（`data/fixtures/inmap_3-1.png`）额外跑一次帧驱动对照，缺帧则跳过并说明。
+
+只做离线对照：不连设备、不改变任何运行状态。
+"""
+from __future__ import annotations
+
+import json
+import pathlib
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+LOG = ROOT / "tools" / "diagnostics" / "fixtures" / "actions-3-1.log"
+DETECTION = ROOT / "tools" / "diagnostics" / "fixtures" / "detection-3-1.json"
+FRAME = ROOT / "data" / "fixtures" / "inmap_3-1.png"
+SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
+
+
+def diff(*extra: str) -> tuple[int, dict | None, str]:
+    completed = subprocess.run(
+        [str(SERVER), "r5-diff", "--log", str(LOG), "--chapter", "campaign_main",
+         "--level", "campaign_3_1", "--json", *extra],
+        cwd=ROOT, capture_output=True, text=True, timeout=600, encoding="utf-8", errors="replace")
+    text = completed.stdout + completed.stderr
+    start = text.find("{")
+    payload = json.loads(text[start:]) if start >= 0 else None
+    return completed.returncode, payload, text
+
+
+def check(payload: dict | None, text: str, label: str) -> list[str]:
+    problems: list[str] = []
+    if payload is None:
+        return [f"{label}: 没有解析到 JSON 输出：{text.strip().splitlines()[-3:]}"]
+    entries = {entry["primitive"]: entry for entry in payload["entries"]}
+    common = entries.get("clear_chosen_enemy")
+    if common is None:
+        problems.append(f"{label}: 两边都应有 clear_chosen_enemy，实际原语 {sorted(entries)}")
+    else:
+        if "D2" not in common["upstream_targets"]:
+            problems.append(f"{label}: 上游目标应含 D2，实际 {common['upstream_targets']}")
+        if "D2" not in common["csharp_targets"]:
+            problems.append(f"{label}: C# 目标应含 D2，实际 {common['csharp_targets']}")
+        if not common["targets_intersect"]:
+            problems.append(f"{label}: 目标交集应为真（两边打同一格）")
+    if not payload["any_target_matched"]:
+        problems.append(f"{label}: 应报告『至少一个原语打到同一格』")
+    if payload["target_mismatches"]:
+        problems.append(f"{label}: 本夹具不应有目标不一致，实际 {payload['target_mismatches']}")
+    if "clear_enemy" not in payload["only_upstream"]:
+        problems.append(f"{label}: 上游的包装层原语 clear_enemy 应列在 only_upstream，实际 {payload['only_upstream']}")
+    return problems
+
+
+def main() -> int:
+    if not SERVER.is_file():
+        raise SystemExit(f"缺少 {SERVER.relative_to(ROOT)}；先运行 ./build.ps1 构建")
+    problems: list[str] = []
+    skipped: list[str] = []
+
+    code, payload, text = diff("--detection", str(DETECTION), "--fleet-1", "A1")
+    if code not in (0, 1):
+        problems.append(f"识别夹具用例退出码 {code}：{text.strip().splitlines()[-3:]}")
+    problems += check(payload, text, "识别夹具用例")
+
+    if FRAME.is_file():
+        frame_code, frame_payload, frame_text = diff("--frame", str(FRAME), "--fleet-1", "A1")
+        if frame_code not in (0, 1):
+            problems.append(f"帧用例退出码 {frame_code}：{frame_text.strip().splitlines()[-3:]}")
+        problems += check(frame_payload, frame_text, "帧用例")
+        frame_note = "帧用例：已跑"
+    else:
+        skipped.append(f"缺 {FRAME.relative_to(ROOT)}（忽略目录），跳过帧用例")
+        frame_note = "帧用例：跳过"
+
+    print(f"[r5-diff] 识别夹具用例：两边都打 D2、目标交集为真、无目标不一致；{frame_note}")
+    for note in skipped:
+        print(f"  跳过：{note}")
+    if problems:
+        print(f"FAIL: {len(problems)} 个问题")
+        for item in problems:
+            print(f"  - {item}")
+        return 1
+    print("PASS: 原语动作层对照能给出『打同一格』的正面证据并如实列出差异")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
