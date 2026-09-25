@@ -278,7 +278,7 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 ## D. 静态导出对引擎实际读取字段的覆盖（P1 依据）
 
 - 导出文件 **1437**；`campaign.battles` 条目 **3019**，
-  其中 `plan_complete` **2860（94.7%）**、未完成 **159**；
+  其中 `plan_complete` **2916（96.6%）**、未完成 **103**；
 - 导出 `config` 段出现的键共 **80** 个；
 - 关卡覆写实际读取的配置字段 **15** 个，其中未出现在导出里的 **6** 个：
 
@@ -304,29 +304,21 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 
 | 原因 | 次数 |
 | --- | --- |
-| `If(cond)@67: self.map_is_clear_mode` | 10 |
-| `If(cond)@68: self.map_is_clear_mode` | 10 |
-| `If(cond)@92: self.map_is_clear_mode` | 4 |
 | `Return(expr)@72: super().get_map_clear_percentage() * 1.4` | 4 |
-| `If(cond)@75: not self.map_is_clear_mode` | 4 |
-| `If(cond)@73: self.map_is_clear_mode` | 4 |
+| `If(nested)@75: not self.map_is_clear_mode` | 4 |
+| `For@76: for grid in self.map: grid.may_siren = True` | 4 |
 | `Return(expr)@75: super().get_map_clear_percentage() * 1.4` | 3 |
-| `If(cond)@78: not self.map_is_clear_mode` | 3 |
-| `If(cond)@88: self.map_is_clear_mode` | 2 |
+| `If(nested)@78: not self.map_is_clear_mode` | 3 |
+| `For@79: for grid in self.map: grid.may_siren = True` | 3 |
 | `Expr@103: super().map_data_init(map_)` | 2 |
 | `If(cond)@85: not self.map_is_clear_mode and self.battle_count >= 5` | 2 |
 | `Expr@89: super().combat_status(*args, **kwargs)` | 2 |
-| `If(cond)@85: self.map_is_clear_mode` | 2 |
-| `If(cond)@69: self.map_is_clear_mode` | 2 |
-| `If(cond)@81: self.map_is_clear_mode` | 2 |
 | `If(cond)@98: not self.map_is_clear_mode and self.battle_count >= 6` | 2 |
 | `Expr@102: super().combat_status(*args, **kwargs)` | 2 |
 | `If(cond)@82: not self.map_is_clear_mode and self.battle_count >= 4` | 2 |
 | `Expr@86: super().combat_status(*args, **kwargs)` | 2 |
-| `If(cond)@72: self.map_is_clear_mode` | 2 |
 | `If(cond)@83: not self.map_is_clear_mode and self.battle_count >= 5` | 2 |
 | `Expr@87: super().combat_status(*args, **kwargs)` | 2 |
-| `If(cond)@74: self.map_is_clear_mode` | 2 |
 | `Assign@93: self.fleet_1 = D5.location` | 2 |
 | `If(nested)@94: self.config.FLEET_2` | 2 |
 | `Assign@96: self.fleet_2 = F5.location` | 2 |
@@ -340,25 +332,23 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | `Expr@98: super().map_data_init(map_)` | 2 |
 | `Expr@81: super().handle_clear_mode_config_cover()` | 2 |
 | `Assign@82: self.config.MAP_HAS_MISSILE_ATTACK = False` | 2 |
-| `If(cond)@75: self.map_is_clear_mode` | 2 |
-| `If(cond)@77: self.map_is_clear_mode` | 2 |
 | `Return(expr)@39: 'in_stage'` | 1 |
 | `Assign@43: grids = grids.add(self.map.select(may_boss=True, is_enemy=True))` | 1 |
 | `If(nested)@48: grids` | 1 |
 | `Assign@50: grids = grids.sort('weight', 'cost')` | 1 |
 | `If(cond)@73: not self.picked_flare and H7.is_accessible and A5.is_accessible` | 1 |
 | `Expr@109: super().map_data_init(map_)` | 1 |
-| `If(cond)@110: not self.map_is_clear_mode` | 1 |
+| `If(nested)@110: not self.map_is_clear_mode` | 1 |
+| `For@111: for override_grid in OVERRIDE: self.map[override_grid.location].may_en` | 1 |
 | `If(cond)@69: self.config.MAP_CLEAR_ALL_THIS_TIME and self.battle_count == 0 and (no` | 1 |
 | `If(cond)@80: not self.map_is_clear_mode and self.map_has_mob_move` | 1 |
 | `If(cond)@70: self.config.MAP_CLEAR_ALL_THIS_TIME and self.battle_count == 0 and (no` | 1 |
 | `If(cond)@81: not self.map_is_clear_mode and self.map_has_mob_move` | 1 |
 | `If(cond)@85: not self.map_is_clear_mode and self.map_has_mob_move` | 1 |
 | `If(cond)@94: not self.map_is_clear_mode and self.map_has_mob_move` | 1 |
-| `If(cond)@106: not self.map_is_clear_mode` | 1 |
-| `If(cond)@123: not self.map_is_clear_mode` | 1 |
 | `If(cond)@25: not self.map_is_clear_mode and self.map_has_mob_move` | 1 |
-| `If(cond)@37: not self.map_is_clear_mode` | 1 |
+| `If(nested)@37: not self.map_is_clear_mode` | 1 |
+| `If(cond)@38: A1.is_accessible` | 1 |
 | `Expr@74: super().map_init(map_)` | 1 |
 | `Assign@75: self.map_has_mob_move = self.use_support_fleet and self.map_is_clear_m` | 1 |
 | `Assign@76: self.use_single_fleet = 'standby' in self.config.Fleet_FleetOrder` | 1 |
@@ -380,7 +370,6 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | `If(cond)@125: not self.map_has_mob_move` | 1 |
 | `If(cond)@128: not self.use_single_fleet` | 1 |
 | `If(cond)@133: self.F5_is_moved` | 1 |
-| `If(cond)@143: self.map_is_clear_mode` | 1 |
 | `If(cond)@74: self.config.FLEET_BOSS == 1` | 1 |
 | `Assign@54: ignore = None` | 1 |
 | `If(cond)@55: self.fleet_at(A3, fleet=2) and A1.enemy_scale != 3 and (not self.fleet` | 1 |
@@ -391,6 +380,8 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | `Assign@77: ignore = SelectedGrids([A2])` | 1 |
 | `If(nested)@78: self.fleet_at(G3, fleet=2)` | 1 |
 | `Assign@79: ignore = SelectedGrids([H3])` | 1 |
+| `If(cond)@85: self.fleet_at(A3, fleet=2) and A2.is_mystery` | 1 |
+| `If(cond)@87: self.fleet_at(G3, fleet=2) and H3.is_mystery` | 1 |
 | `If(nested)@78: boss` | 1 |
 | `Assign@79: boss = boss[0]` | 1 |
 | `If(cond)@80: boss == A1` | 1 |
@@ -403,8 +394,7 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | `If(nested)@84: self.fleet_at(F5, fleet=2)` | 1 |
 | `Assign@85: self.map.weight_data = '\n 10 10 30 10 10 10 10 10 10\n 10 10 20 30 10` | 1 |
 | `If(cond)@76: self.config.FLEET_BOSS == 1` | 1 |
-| `If(cond)@103: self.map_is_clear_mode` | 1 |
-| `If(cond)@84: not self.map_is_clear_mode` | 1 |
+| `If(cond)@89: self.appear(CAMPAIGN_GOTO_DAILY) and self.appear(ENTRANCE)` | 1 |
 | `If(cond)@91: super().catch_camera_repositioning(destination)` | 1 |
 | `If(cond)@93: not self.map_is_clear_mode and destination.is_fortress` | 1 |
 | `Assign@102: self.config.MAP_HAS_FORTRESS = True` | 1 |
@@ -421,7 +411,9 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | `Assign@85: F6.is_siren = True` | 1 |
 | `For@118: for action in self.action[step]: fleet_index, movement, step, battle =` | 1 |
 | `If(cond)@146: not self.patched` | 1 |
-| `If(cond)@151: self.map_is_clear_mode` | 1 |
+| `If(nested)@151: self.map_is_clear_mode` | 1 |
+| `If(cond)@152: self.siren_list` | 1 |
+| `If(cond)@159: not self.action` | 1 |
 | `If(nested)@82: self.fleet_at(A2)` | 1 |
 | `Assign@83: self._is_a2 = True` | 1 |
 | `If(cond)@90: self._is_a2` | 1 |
@@ -476,8 +468,6 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | `If(cond)@105: self._is_D9` | 1 |
 | `If(cond)@113: self._is_D9` | 1 |
 | `If(cond)@121: self._is_D9` | 1 |
-| `If(cond)@86: not self.map_is_clear_mode` | 1 |
-| `If(cond)@89: not self.map_is_clear_mode` | 1 |
 | `Assign@100: result = CampaignBase._campaign_ocr_result_process(result)` | 1 |
 | `If(cond)@101: result in ['ysp', 'usp', 'iisp', 'ijsp', 'jjsp']` | 1 |
 | `Return(expr)@103: result` | 1 |
@@ -509,13 +499,8 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | `Assign@100: node = location2node(location)` | 1 |
 | `If(cond)@101: node == 'E3'` | 1 |
 | `Return(expr)@77: super().get_map_clear_percentage() * 1.4` | 1 |
-| `If(cond)@80: not self.map_is_clear_mode` | 1 |
-| `If(cond)@91: self.map_is_clear_mode` | 1 |
-| `If(cond)@102: self.map_is_clear_mode` | 1 |
-| `If(cond)@90: self.map_is_clear_mode` | 1 |
-| `If(cond)@89: self.map_is_clear_mode` | 1 |
-| `If(cond)@86: self.map_is_clear_mode` | 1 |
-| `If(cond)@98: self.map_is_clear_mode` | 1 |
+| `If(nested)@80: not self.map_is_clear_mode` | 1 |
+| `For@81: for grid in self.map: grid.may_siren = True` | 1 |
 
 `MAP` 声明读取面（关卡覆写内）：
 
@@ -524,29 +509,29 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 
 ## E. 导出的可执行计划（DSL 面）
 
-- `campaign.battles[].steps` 非空的钩子 **2860/3019（94.7%）**，共 **5886 步**；
-- 步骤类型 **8 种**，原语 **36 个**（C# 引擎的执行面）：
+- `campaign.battles[].steps` 非空的钩子 **2916/3019（96.6%）**，共 **6006 步**；
+- 步骤类型 **8 种**，原语 **37 个**（C# 引擎的执行面）：
 
 | 步骤类型 | 次数 |
 | --- | --- |
-| `conditional` | 2836 |
-| `terminal` | 2801 |
+| `terminal` | 2853 |
+| `conditional` | 2842 |
 | `call` | 144 |
-| `branch` | 61 |
+| `branch` | 121 |
 | `assign` | 29 |
-| `super_delegate` | 7 |
+| `super_delegate` | 9 |
 | `return` | 4 |
 | `raise` | 4 |
 
 | 原语 | 出现次数 |
 | --- | --- |
-| `battle_default` | 1502 |
-| `clear_siren` | 1295 |
+| `battle_default` | 1553 |
+| `clear_siren` | 1301 |
 | `clear_filter_enemy` | 980 |
-| `fleet_boss.clear_boss` | 687 |
+| `fleet_boss.clear_boss` | 688 |
 | `clear_boss` | 575 |
 | `clear_enemy` | 403 |
-| `None` | 69 |
+| `None` | 129 |
 | `clear_roadblocks` | 54 |
 | `clear_all_mystery` | 51 |
 | `clear_potential_roadblocks` | 37 |
@@ -580,19 +565,19 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 
 | 实参形态 | 步骤数 | 占比 |
 | --- | --- | --- |
-| 无参 | 4304 | 73.1% |
-| 字面量 | 1580 | 26.8% |
+| 无参 | 4424 | 73.7% |
+| 字面量 | 1580 | 26.3% |
 | 含未求值表达式 | 2 | 0.0% |
 
 | 原语 | 无参 | 字面量 | 含未求值表达式 |
 | --- | --- | --- | --- |
-| `battle_default` | 1502 | 0 | 0 |
-| `clear_siren` | 1294 | 1 | 0 |
+| `battle_default` | 1553 | 0 | 0 |
+| `clear_siren` | 1300 | 1 | 0 |
 | `clear_filter_enemy` | 0 | 980 | 0 |
-| `fleet_boss.clear_boss` | 687 | 0 | 0 |
+| `fleet_boss.clear_boss` | 688 | 0 | 0 |
 | `clear_boss` | 575 | 0 | 0 |
 | `clear_enemy` | 0 | 403 | 0 |
-| `None` | 69 | 0 | 0 |
+| `None` | 129 | 0 | 0 |
 | `clear_roadblocks` | 0 | 54 | 0 |
 | `clear_all_mystery` | 51 | 0 | 0 |
 | `clear_potential_roadblocks` | 0 | 37 | 0 |
@@ -604,7 +589,7 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 ### 轨迹对拍（计划 vs 原始调用列表）
 
 不变量：除 `super_delegate` 外，`steps.op` 序列应等于导出器给出的 `calls`。
-实测 **一致 2793 / 不一致 67 / steps 为空 159**（合计 3019）。
+实测 **一致 2793 / 不一致 123 / steps 为空 103**（合计 3019）。
 
 例外（上游源码里的死代码：重复的 `return self.battle_default()`——`calls` 收了两次，
 `steps` 正确地只保留一次；导出器的 `dead_code` 字段未记录该处）：

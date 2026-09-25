@@ -5,8 +5,8 @@
 > 所以是「少做」而不是「做错」。本报告只说清还差什么。
 
 - 导出里的钩子条目：**3019**
-- `plan_complete=false` 且上游**有 ≥2 条语句**的：**146**（其中 `battle_*` **98**、变体/其它 **48**）
-- 棘轮基线：**98**（只允许下降）
+- `plan_complete=false` 且上游**有 ≥2 条语句**的：**90**（其中 `battle_*` **42**、变体/其它 **48**）
+- 棘轮基线：**42**（只允许下降）
 
 ## `if` 的形态分布（条件 / 语句体）
 
@@ -16,18 +16,18 @@
 
 | 条件形态 | 语句体形态 | 次数 |
 | --- | --- | --- |
-| self_call | return | 222 |
-| other | if | 57 |
-| other | expr | 22 |
-| other | expr+return | 9 |
+| self_call | return | 46 |
+| other | expr | 19 |
+| other | expr+return | 8 |
 | self_call | assign | 8 |
-| other | return | 7 |
 | other | assign+expr+return | 6 |
 | other | assign+if | 6 |
+| other | return | 6 |
 | other | for | 5 |
 | other | expr+if | 5 |
 | compare | assign | 5 |
-| local_name | if | 4 |
+| other | expr+for | 4 |
+| compare | return | 4 |
 
 ## 例子
 
@@ -47,7 +47,7 @@
 1. **局部变量 + `if <局部变量>:` + 分支体**：`boss = self.map.select(is_boss=True)` 这类「观察」，
    以及 `branch` 步骤（条件为局部变量或一次原语调用，体内是步骤序列）；
 2. **局部变量的实参引用**：`check_accessibility(boss[0], fleet='boss')` 里的 `boss[0]`；
-3. **缺证据的形态**：`self.map_is_clear_mode`（在不完整 `battle_*` 钩子的条件里出现 67 次）在上游快照里**只有使用、没有定义**（全库 grep 只命中用法），疑似运行时注入 —— 没找到定义就不猜语义，这些钩子继续按 `plan_complete=false` 拒绝执行并报原因；
+3. **运行期标志**：`self.map_is_clear_mode` 由上游 handler 层设置（`module/handler/fast_forward.py` 的 `handle_fast_forward`），语义是`map_has_clear_mode and config.Campaign_UseClearMode` —— **已实现**（默认没开快进 → 确定为假；开了但还没识别到 `map_has_clear_mode` → 阻塞报原因）。**更正**：本报告此前写成「上游快照里只有使用、没有定义」，那是本机 grep 用错参数（`-Include` 在递归下漏扫 `module/handler/`）造成的误判；快照里该文件与完整仓库哈希一致；
 4. 其它形态（`compare` 条件、`for` 循环、`raise` 体）另计，需要单独设计，不要硬塞进上面的结构。
 
 ## 已经量化过、结论是「先不做」的两条路

@@ -129,6 +129,9 @@ public sealed class CampaignPlanStepTest
     /// <summary>`self.battle_count in [0, 1]` 这类**集合包含**判断。</summary>
     [JsonPropertyName("battle_count_in")] public IReadOnlyList<int>? BattleCountIn { get; init; }
 
+    /// <summary>运行期标志（当前只有 `map_is_clear_mode`，语义见 `CampaignRuntimeConfig`）。</summary>
+    [JsonPropertyName("runtime")] public string? Runtime { get; init; }
+
     [JsonPropertyName("call")] public CampaignPlanStepTestCall? Call { get; init; }
     [JsonPropertyName("negate")] public bool Negate { get; init; }
 }

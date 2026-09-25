@@ -698,6 +698,11 @@ def derive_plan(body: list, where: str, resolve=None):
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
             negate = True
             node = node.operand
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) \
+                and node.value.id == 'self' and node.attr == 'map_is_clear_mode':
+            # 运行期标志（上游 FastForwardHandler.handle_fast_forward 设置），
+            # 见 C# `CampaignRuntimeConfig.MapIsClearMode` 的语义说明
+            return {'runtime': 'map_is_clear_mode', 'negate': negate}
         local = _local_reference(node, locals_)
         if local is not None:
             return {'local': local['__local__'], 'negate': negate}

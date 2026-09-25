@@ -18,10 +18,25 @@ public sealed record CampaignRuntimeConfig(
     bool PoorMapData = false,
     /// <summary>上游 `config.MAP_BOSS_APPEAR_REFOCUS_SWIPE`：boss 出现后重对焦用的滑动量；未配置为 null。</summary>
     (int X, int Y)? MapBossAppearRefocusSwipe = null,
-    bool ErrorHandleError = true)
+    bool ErrorHandleError = true,
+    /// <summary>上游任务级配置 `Campaign_UseClearMode`（用户是否开启"快进/清图模式"）。</summary>
+    bool CampaignUseClearMode = false,
+    /// <summary>
+    /// 上游 `map_has_clear_mode`：由 UI 识别得到（`AUTO_SEARCH.appear` / `CLEAR_MODE.appear`）。
+    /// **离线拿不到**，所以用可空表示"未知"；`CampaignUseClearMode` 为假时用不到它。
+    /// </summary>
+    bool? MapHasClearMode = null)
 {
     /// <summary>上游 <c>fleet_boss_index</c>：<c>FLEET_BOSS == 2 and FLEET_2</c> 时是 2，否则 1。</summary>
     public int FleetBossIndex => FleetBoss && Fleet2 ? 2 : 1;
+
+    /// <summary>
+    /// 上游 `self.map_is_clear_mode`（`module/handler/fast_forward.py:219-236`）：
+    /// `map_has_clear_mode and config.Campaign_UseClearMode`。
+    /// **只在没开快进时可用**：`Campaign_UseClearMode=True` 时上游还会把一批 `MAP_HAS_*` 关掉再跑，
+    /// 那套覆盖属于运行准备阶段（P3 接线时对齐），在它对齐前执行器会拒绝执行而不是给一个不对的值。
+    /// </summary>
+    public bool? MapIsClearMode => CampaignUseClearMode ? null : false;
 }
 
 /// <summary>
@@ -1321,10 +1336,28 @@ public static class CampaignHookRunner
             value = allowed.Contains(host.BattleCount);
             why = $"battle_count({host.BattleCount}) in {string.Join(",", allowed)}";
         }
+        else if (test.Runtime is { Length: > 0 } runtime)
+        {
+            // 运行期标志。语义见 `CampaignRuntimeConfig.MapIsClearMode`：默认（没开快进）**确定**为假；
+            // 开了快进但还没识别到 `map_has_clear_mode` 时**停下报原因**——猜一个真假会让分支走错。
+            if (runtime != "map_is_clear_mode")
+                return (null, $"未知的运行期标志 {runtime}");
+            if (host.Config.CampaignUseClearMode)
+            {
+                // 保真缺口如实挡住：上游开启快进时 `handle_fast_forward` 还会把一批 `MAP_HAS_*`
+                // （ambush / movable enemy / portal / fortress / bouncing …）改成 False 再跑，
+                // C# 侧尚未对齐这套覆盖 —— 给一个"忽略覆盖"的取值会让分支走错，所以拒绝执行。
+                return (null, "map_is_clear_mode：Campaign_UseClearMode 已开，但上游那批 "
+                              + "MAP_HAS_* 覆盖还没在 C# 侧对齐，拒绝执行");
+            }
+            value = false;   // 没开快进：上游 `handle_fast_forward` 直接置假
+            why = "runtime.map_is_clear_mode = False（Campaign_UseClearMode=False）";
+        }
         else if (test.Grid is { } gridNode && test.Attribute is { Length: > 0 } attribute)
         {
             // `<GRID>.is_xxx`：从**当前地图状态**取那个格子，再看属性（白名单外显式报错）
-            string location = CampaignCallTranslator.LocationOf(gridNode);
+            string location = GridLocationOf(gridNode);
+            if (location.Length == 0) return (null, "格子条件里的格子实参解不出位置");
             var grid = host.Grids.FirstOrDefault(item => item.Location == location);
             if (grid is null) return (null, $"条件里的格子 {location} 不在当前地图状态里");
             value = attribute switch
@@ -1400,6 +1433,27 @@ public static class CampaignHookRunner
             return (null, "branch 的 test 既不是局部变量也不是原语调用");
         }
         return (test.Negate ? !value : value, why);
+    }
+
+    /// <summary>
+    /// 条件里的格子实参 → 位置名。支持两种形状：`{"__grid__": [x, y]}`（数组，导出器给的原样）
+    /// 与 `{"location": "C1"}`。**别的形状一律返回空串**，由调用方报"解不出位置"，
+    /// 不猜格子（实测踩过：`__grid__` 是数组，用只认 `location` 的解码会解出空串）。
+    /// </summary>
+    private static string GridLocationOf(JsonNode? node)
+    {
+        if (node is not JsonObject payload) return "";
+        if (payload["__grid__"] is JsonArray cell && cell.Count >= 2
+            && cell[0] is JsonValue xNode && xNode.TryGetValue<int>(out int x)
+            && cell[1] is JsonValue yNode && yNode.TryGetValue<int>(out int y))
+        {
+            return CampaignLocations.TryToNode(x, y, out string location) ? location : "";
+        }
+        if (payload["location"] is JsonValue value && value.TryGetValue<string>(out string? text))
+        {
+            return text ?? "";
+        }
+        return "";
     }
 
     /// <summary>局部变量的真假：格子集合看"非空"，布尔直接看值。</summary>
