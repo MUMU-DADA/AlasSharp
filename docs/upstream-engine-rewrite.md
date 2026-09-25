@@ -740,6 +740,26 @@ C# 侧新增 `CampaignCallTranslator`（纯函数）：把计划步骤翻成"上
 口径与 `verify_r5_device` 相同（比"干跑序列去掉收尾撤退"这个前缀）；**只证明这些帧**，不代表整类地图；
 两帧识别失败的原因如实列在表里，没有当成"通过"。
 
+#### 真机渠道已就绪，但**故意不接线**（P3 的收尾判断）
+
+`src/Alas.Core/Campaign/VisionCampaignCallChannel.cs`：把渠道接到视觉/设备宿主（`s3_campaign_call`，
+显式 `allow_actions=true`；状态读取走同一个 op 的属性读取分支）。至此路线 (a) 的四块拼图齐了：
+**计划翻译 → 设备宿主 → 调用渠道 → 宿主 seam**。
+
+**为什么到此为止**：把 `loop=csharp` 接进 `CampaignBatchRunner` 是**改动稳定实现**，而它无法离线验证
+（一转上去就会真的驱动设备）。按项目纪律"没有真机证据不得改动稳定实现"，本轮**不接线**，只把接线面写清楚：
+
+| 接线步骤 | 具体动作 | 需要的证据 |
+| --- | --- | --- |
+| 1 | `CampaignBatchRunner` 在 `AllowActions && LoopMode()==CSharp` 时改调新的 `CampaignEngineRun`（`Alas.Core/Runtime`） | 无（代码改动本身） |
+| 2 | `CampaignEngineRun` 依次：`s3_campaign_init` → 准备（`enter_map`/`handle_map_fleet_lock`/`map_init`，与上游 `run()` 同序）→ `map_detect` + 属性读取造状态 → `CampaignBattleLoop.Run(plan, DeviceCampaignHost)` | 一次真机运行 |
+| 3 | 结束判定仍走**冻结合同的生产方**：`s3_campaign_call` 对 `CampaignEnd` 已经调用 `classify_campaign_end` 返回合同字段，C# 只做**消费**（`CampaignPlanResult`），不自己在 C# 里重新判定 | 真实成功结算样本 |
+| 4 | 打开 `ALAS_ENGINE_LOOP=csharp` 前跑三层对照（决策/动作/路线），并对 `capture_clear_boss` 撤退、`fleet_2_protect` 20 轮循环等做真机对照 | 同局真机日志 + 帧 |
+| 回退 | 开关置回 `shadow`（默认值）即可；`csharp` 需要两把钥匙，且 `verify_r5_switch.py` 有静态断言**禁止诊断入口引用真机渠道** | — |
+
+**现状小结**：离线侧能做的都做了（步覆盖 100%、原语覆盖 29/29、全库翻译 0 不支持、四类对照 + 帧扫描）；
+剩下的是"真机接线 + 同局对照"，需要设备空闲时的授权运行。
+
 #### `loop` 域切成 csharp 需要什么（前置清单）
 
 | 项 | 要求 | 现状 |

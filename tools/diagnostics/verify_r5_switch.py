@@ -94,9 +94,19 @@ def main() -> int:
     if "尚未接线" not in json.dumps(wired["domains"], ensure_ascii=False):
         problems.append("未接线域取值 csharp 时应注明没有调用点消费该取值")
 
+    # 静态断言：**真机渠道只能在"由 C# 执行关卡循环"的路径里被构造**。
+    # 诊断命令（`Alas.Server r5-*`）一律不得引用它——否则一次手滑的命令就可能真的驱动设备。
+    diagnostics = ROOT / "src" / "Alas.Core" / "Diagnostics"
+    offenders = [path.name for path in diagnostics.glob("*.cs")
+                 if "VisionCampaignCallChannel" in path.read_text(encoding="utf-8")]
+    if offenders:
+        problems.append(f"诊断入口不得引用真机渠道，实际出现在：{offenders}")
+    if not (ROOT / "src" / "Alas.Core" / "Campaign" / "VisionCampaignCallChannel.cs").is_file():
+        problems.append("真机渠道 VisionCampaignCallChannel 不存在（它应当只被 gated 的 loop=csharp 路径构造）")
+
     print(f"[r5-switch] 默认={modes(default)}；缺闸门 csharp → {modes(refused)['loop']}；"
           f"有闸门 → {modes(allowed)['loop']}；非法值 → {modes(invalid)['loop']}；"
-          f"依赖改写 path → {modes(dependency)['path']}")
+          f"依赖改写 path → {modes(dependency)['path']}；诊断入口引用真机渠道：{offenders or '无'}")
     if problems:
         print(f"FAIL: {len(problems)} 个问题")
         for item in problems:
