@@ -180,6 +180,15 @@ internal static class TaskEditorLoadChecks
                     .Count(control => control.Name?.StartsWith("Field_", StringComparison.Ordinal) == true)
                 != inputEditor.Fields.Count())
                 throw new InvalidOperationException("输入性能场景丢失了字段控件。");
+            AssertFieldLayout(ActiveTaskPage(shell), inputEditor.Fields);
+            window.Width = 390;
+            window.UpdateLayout();
+            Pump();
+            AssertFieldLayout(ActiveTaskPage(shell), inputEditor.Fields);
+            window.Width = WindowWidth;
+            window.UpdateLayout();
+            Pump();
+            AssertFieldLayout(ActiveTaskPage(shell), inputEditor.Fields);
 
             var mainPage = pages["Main"];
             var mainEditor = mainPage.Model;
@@ -352,6 +361,7 @@ internal static class TaskEditorLoadChecks
                 double layout = watch.Elapsed.TotalMilliseconds;
                 Pump();
                 double render = watch.Elapsed.TotalMilliseconds;
+                AssertFieldLayout(page, editor.Fields);
                 host.Content = null;
                 phases[task] = new Dictionary<string, object?>
                 {
@@ -580,6 +590,32 @@ internal static class TaskEditorLoadChecks
     private static TaskEditorView ActiveTaskPage(MainView shell)
     {
         return TaskPageHost(shell).Children.OfType<TaskEditorView>().Single(page => page.IsVisible);
+    }
+
+    private static void AssertFieldLayout(TaskEditorView page, IEnumerable<TaskFieldViewModel> fields)
+    {
+        if (page.Bounds.Width <= 0) throw new InvalidOperationException("任务页没有有效布局宽度。");
+        bool narrow = page.Bounds.Width < 720;
+        var inputs = page.GetVisualDescendants().OfType<Control>()
+            .Where(control => control.Name?.StartsWith("Field_", StringComparison.Ordinal) == true)
+            .ToDictionary(control => control.Name!, StringComparer.Ordinal);
+        foreach (var field in fields)
+        {
+            if (!inputs.TryGetValue("Field_" + field.Path, out var input))
+                throw new InvalidOperationException($"任务字段 {field.Path} 缺少输入控件。");
+            var controls = input.GetVisualAncestors().OfType<StackPanel>().FirstOrDefault();
+            var row = controls?.Parent as Grid;
+            if (controls is null || row is null)
+                throw new InvalidOperationException($"任务字段 {field.Path} 缺少字段布局容器。");
+            if (row.ColumnDefinitions.Count != (narrow || field.IsMultiline ? 1 : 2) ||
+                Grid.GetRow(controls) != (narrow || field.IsMultiline ? 1 : 0) ||
+                Grid.GetColumn(controls) != (narrow || field.IsMultiline ? 0 : 1))
+                throw new InvalidOperationException($"任务字段 {field.Path} 的{(narrow ? "窄" : "宽")}屏布局不完整："
+                    + $"columns={row.ColumnDefinitions.Count}, row={Grid.GetRow(controls)}, column={Grid.GetColumn(controls)}, "
+                    + $"width={page.Bounds.Width}, multiline={field.IsMultiline}。");
+        }
+        if (inputs.Count != fields.Count())
+            throw new InvalidOperationException("任务页布局切换后字段控件数量变化。");
     }
 
     private static Panel TaskPageHost(MainView shell) => shell.GetVisualDescendants().OfType<Panel>()

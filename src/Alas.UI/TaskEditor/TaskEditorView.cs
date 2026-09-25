@@ -58,6 +58,9 @@ public sealed class TaskEditorView : UserControl, IDisposable
         _cancel.Click += (_, _) => _model.CancelRun();
         var actions = new WrapPanel { Orientation = Orientation.Horizontal };
         foreach (var control in new Control[] { _save, _discard, _run }) { control.Margin = new Thickness(0, 0, 8, 8); actions.Children.Add(control); }
+        _layout.ColumnDefinitions = new ColumnDefinitions("180,*");
+        Grid.SetColumn(_navigation, 0);
+        Grid.SetColumn(_cards, 1);
         _layout.Children.Add(_navigation); _layout.Children.Add(_cards);
         _main = new StackPanel { Spacing = 14, Children = { _title, _search, actions, _status, _error, _message, _layout, _empty } };
         var warning = Text("运行任务会操作已连接的游戏设备。未保存的修改会先提交；保存失败时不会启动任务。", 14);
@@ -159,6 +162,12 @@ public sealed class TaskEditorView : UserControl, IDisposable
         _detach.Clear();
     }
 
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        if (double.IsFinite(availableSize.Width)) Reflow(availableSize.Width);
+        return base.MeasureOverride(availableSize);
+    }
+
     private Control CreateField(TaskFieldViewModel field)
     {
         var label = Text(field.Label + (field.ReadOnly ? " · 只读" : ""), 13, FontWeight.Medium);
@@ -221,7 +230,22 @@ public sealed class TaskEditorView : UserControl, IDisposable
         mine.Click += (_, _) => field.ResolveConflict(true);
         theirs.Click += (_, _) => field.ResolveConflict(false);
         controls.Children.Add(resolution);
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), Children = { labels, controls } };
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions(field.IsMultiline ? "*" : "*,*"),
+            RowDefinitions = new RowDefinitions(field.IsMultiline ? "Auto,Auto" : "Auto"),
+            Children = { labels, controls },
+        };
+        if (field.IsMultiline)
+        {
+            Grid.SetRow(controls, 1);
+            labels.Margin = new Thickness(0, 0, 0, 10);
+        }
+        else
+        {
+            Grid.SetColumn(controls, 1);
+            labels.Margin = new Thickness(0, 0, 24, 0);
+        }
         var row = new Border { Padding = new Thickness(0, 14), BorderThickness = new Thickness(0, 1, 0, 0), Child = grid };
         row.Name = "ConfigField_" + field.Path;
         Resource(row, Border.BorderBrushProperty, "AlasBorderBrush");
@@ -363,11 +387,22 @@ public sealed class TaskEditorView : UserControl, IDisposable
         if (_empty.IsVisible != emptyVisible) _empty.IsVisible = emptyVisible;
         _empty.Text = _model.Search.Length > 0 ? "未找到匹配配置，请尝试其他关键词" : "此任务暂无可显示的配置";
     }
-    private void Reflow()
+    private void Reflow() => Reflow(Bounds.Width);
+
+    private void Reflow(double width)
     {
-        if (Bounds.Width <= 0) return;
-        var narrow = Bounds.Width < 720;
+        if (width <= 0) return;
+        var narrow = width < 720;
         if (_appliedNarrow == narrow && _appliedLegacy == LegacyLayout) return;
+        // New fields start in the common wide layout. Avoid assigning a fresh definition
+        // object to every row during the first measure when no breakpoint or legacy mode
+        // change is needed; those assignments invalidate the complete task page repeatedly.
+        if (_appliedNarrow is null && !narrow && !LegacyLayout)
+        {
+            _appliedNarrow = false;
+            _appliedLegacy = false;
+            return;
+        }
         _appliedNarrow = narrow;
         _appliedLegacy = LegacyLayout;
         _navigation.IsVisible = !narrow;
