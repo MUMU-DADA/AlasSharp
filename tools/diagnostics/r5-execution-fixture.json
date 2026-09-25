@@ -323,6 +323,88 @@
       }
     },
     {
+      "name": "a1 battle_4：fleet_boss.capture_clear_boss（切 boss 舰队 → 打 boss → 撤退）",
+      "chapter": "event_20200716_en",
+      "level": "a1",
+      "hook": "battle_4",
+      "config": { "fleet_boss": true, "fleet_2": true, "fleet_current_index": 1 },
+      "grids": [
+        { "location": "C3", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 10, "cost": 5 }
+      ],
+      "expect": {
+        "completed": true,
+        "return": false,
+        "action_contains": "withdraw()",
+        "log_contains": "Grand Capture detected, Withdrawing."
+      }
+    },
+    {
+      "name": "campaign_10_1 battle_0：fleet_2_push_forward 把道中队推到 weight 更低的可达海域",
+      "chapter": "campaign_main",
+      "level": "campaign_10_1",
+      "hook": "battle_0",
+      "config": {
+        "fleet_boss": true, "fleet_2": true, "fleet_current_index": 1,
+        "fleet_1_location": "A1", "fleet_2_location": "B1"
+      },
+      "grids": [
+        { "location": "A1", "is_fleet": true, "weight": 50, "cost": 0, "cost_2": 0 },
+        { "location": "B1", "is_fleet": true, "weight": 50, "cost": 0, "cost_2": 0 },
+        { "location": "C1", "weight": 10, "cost": 5, "cost_2": 3 },
+        { "location": "E1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 60, "cost": 6 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "goto(C1)",
+        "log_contains": "Push forward: C1"
+      }
+    },
+    {
+      "name": "campaign_10_1 battle_0：fleet_boss_index 不是 2 时 fleet_2_push_forward 直接返回假",
+      "chapter": "campaign_main",
+      "level": "campaign_10_1",
+      "hook": "battle_0",
+      "config": { "fleet_2": false, "fleet_1_location": "A1", "fleet_2_location": "B1" },
+      "grids": [
+        { "location": "A1", "is_fleet": true, "weight": 50, "cost": 0 },
+        { "location": "B1", "is_fleet": true, "weight": 50, "cost": 0 },
+        { "location": "E1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 60, "cost": 6 }
+      ],
+      "expect": { "actions_exclude": "goto(C1)", "log_excludes": "Push forward" }
+    },
+    {
+      "name": "sp battle_0：fleet_2_protect 清掉靠近的塞壬（conditional 短路）",
+      "chapter": "event_20200820_cn",
+      "level": "sp",
+      "hook": "battle_0",
+      "config": { "fleet_2": true, "map_has_movable_enemy": true },
+      "grids": [
+        { "location": "S2", "is_siren": true, "weight": 10, "cost": 3, "cost_1": 2, "cost_2": 1 },
+        { "location": "S1", "is_siren": true, "weight": 20, "cost": 4, "cost_1": 5, "cost_2": 5 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(S2, expected=siren)",
+        "steps_contains": "fleet_2_protect: 真（尝试）"
+      }
+    },
+    {
+      "name": "sp battle_0：没有靠近的敌人 → fleet_2_protect 游走一轮后干跑停止，交给 clear_siren",
+      "chapter": "event_20200820_cn",
+      "level": "sp",
+      "hook": "battle_0",
+      "config": { "fleet_2": true, "map_has_movable_enemy": true, "map_has_siren": true },
+      "grids": [
+        { "location": "S1", "is_siren": true, "weight": 10, "cost": 3, "cost_1": 5, "cost_2": 5 },
+        { "location": "N1", "weight": 20, "cost": 5, "cost_1": 1, "cost_2": 1 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(S1, expected=siren)",
+        "log_contains": "干跑宿主不刷新地图状态"
+      }
+    },
+    {
       "name": "campaign_1_1 handle_boss_appear_refocus：super_delegate → 委托父类，不执行也不阻塞",
       "chapter": "campaign_main",
       "level": "campaign_1_1",

@@ -24,10 +24,10 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tools" / "diagnostics" / "r5-execution-fixture.json"
 SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
-EXPECTED_PRIMITIVES = ["battle_default", "clear_all_mystery", "clear_any_enemy", "clear_boss", "clear_enemy",
-                       "clear_filter_enemy", "clear_first_roadblocks", "clear_potential_roadblocks",
-                       "clear_roadblocks", "clear_siren", "pick_up_ammo", "pick_up_flare",
-                       "pick_up_light_house"]
+EXPECTED_PRIMITIVES = ["battle_default", "capture_clear_boss", "clear_all_mystery", "clear_any_enemy",
+                       "clear_boss", "clear_enemy", "clear_filter_enemy", "clear_first_roadblocks",
+                       "clear_potential_roadblocks", "clear_roadblocks", "clear_siren", "fleet_2_protect",
+                       "fleet_2_push_forward", "pick_up_ammo", "pick_up_flare", "pick_up_light_house"]
 
 
 def upstream_root() -> pathlib.Path:
@@ -140,6 +140,8 @@ def main() -> int:
             problems.append(f"{case['name']}: 动作 {result['actions']} 不该含 {expect['actions_exclude']!r}")
         if "log_contains" in expect and not any(expect["log_contains"] in line for line in result["logs"]):
             problems.append(f"{case['name']}: 日志 {result['logs']} 不含 {expect['log_contains']!r}")
+        if "log_excludes" in expect and any(expect["log_excludes"] in line for line in result["logs"]):
+            problems.append(f"{case['name']}: 日志 {result['logs']} 不该含 {expect['log_excludes']!r}")
         if "steps_contains" in expect and not any(expect["steps_contains"] in line for line in result["steps"]):
             problems.append(f"{case['name']}: 步骤 {result['steps']} 不含 {expect['steps_contains']!r}")
 

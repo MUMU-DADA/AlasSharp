@@ -10,7 +10,12 @@ public sealed record CampaignRuntimeConfig(
     bool MapHasFortress = false,
     bool Fleet2 = false,
     bool FleetBoss = false,
-    bool MapHasMovableNormalEnemy = false);
+    bool MapHasMovableEnemy = false,
+    bool MapHasMovableNormalEnemy = false)
+{
+    /// <summary>上游 <c>fleet_boss_index</c>：<c>FLEET_BOSS == 2 and FLEET_2</c> 时是 2，否则 1。</summary>
+    public int FleetBossIndex => FleetBoss && Fleet2 ? 2 : 1;
+}
 
 /// <summary>
 /// 原语执行上下文：地图状态 + 运行时配置 + 设备动作。
@@ -64,6 +69,17 @@ public interface ICampaignPrimitiveHost
 
     /// <summary>上游 <c>self.fleet_ammo</c>（当前舰队剩余弹药）。</summary>
     int FleetAmmo { get; set; }
+
+    /// <summary>上游 <c>self.fleet_1_location</c> / <c>fleet_2_location</c>（格子节点名）。</summary>
+    string Fleet1Location { get; }
+
+    string Fleet2Location { get; }
+
+    /// <summary>按位置取地图状态里的格子；取不到即抛错（不返回默认值糊过去）。</summary>
+    CampaignGrid GridAt(string location);
+
+    /// <summary>撤退（上游 <c>MapOperation.withdraw()</c>，如 <c>capture_clear_boss</c> 结尾会撤退）。</summary>
+    void Withdraw();
 
     /// <summary>上游关卡基类里的 <c>picked_light_house</c> / <c>picked_flare</c> 记账表。</summary>
     ISet<string> PickedLightHouse { get; }
@@ -144,6 +160,17 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
     public ISet<string> PickedLightHouse { get; } = new HashSet<string>(StringComparer.Ordinal);
 
     public ISet<string> PickedFlare { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>干跑时的两支舰队位置（真机由设备侧维护）。</summary>
+    public string Fleet1Location { get; set; } = "";
+
+    public string Fleet2Location { get; set; } = "";
+
+    public CampaignGrid GridAt(string location) =>
+        Grids.FirstOrDefault(grid => grid.Location == location)
+        ?? throw new NotSupportedException($"地图状态里没有格子 {location}（识别结果可能未覆盖）");
+
+    public void Withdraw() => Actions.Add("withdraw()");
 
     public void Log(string message) => Logs.Add(message);
 }
@@ -425,6 +452,123 @@ public static class CampaignPrimitives
         return false;
     }
 
+    /// <summary>
+    /// 上游 <c>Map.capture_clear_boss()</c>（deprecated 但仍有 12 处调用）：先打 boss / 被塞壬抓住的 may_boss，
+    /// 都没有则退回 may_boss+enemy+accessible；最后**无条件撤退**（`withdraw()`）。上游没有 return，
+    /// 落到方法末尾为 None（假）。
+    /// </summary>
+    public static bool CaptureClearBoss(ICampaignPrimitiveHost host)
+    {
+        var all = new CampaignGridSet(host.Grids);
+        var grids = all.Select(new CampaignGridFilter(IsBoss: true, IsAccessible: true));
+        grids = grids.Add(all.Select(new CampaignGridFilter(MayBoss: true, IsCaughtBySiren: true)));
+        host.Log($"capture_clear_boss：Is boss: {grids.Count} 个");
+        if (grids.IsEmpty)
+        {
+            grids = grids.Add(all.Select(new CampaignGridFilter(MayBoss: true, IsEnemy: true, IsAccessible: true)));
+            host.Log("capture_clear_boss：Boss not detected, using may_boss grids.");
+        }
+        if (!grids.IsEmpty)
+        {
+            var sorted = grids.Sort("weight", "cost");
+            host.Log($"capture_clear_boss：打 {sorted[0].Location}");
+            host.ClearChosenEnemy(sorted[0], "");
+        }
+        host.Log("capture_clear_boss：Grand Capture detected, Withdrawing.");
+        host.Withdraw();
+        return false;
+    }
+
+    /// <summary>
+    /// 上游 <c>Map.fleet_2_push_forward()</c>：让第二舰队往 weight 最低的可达海域推进
+    /// （9 章道中战最小化路线规划）。`fleet_boss_index != 2` 时直接返回假。
+    /// </summary>
+    public static bool Fleet2PushForward(ICampaignPrimitiveHost host)
+    {
+        if (host.Config.FleetBossIndex != 2) return false;
+        host.Log("fleet_2_push_forward：Fleet_2 push forward");
+
+        var all = new CampaignGridSet(host.Grids);
+        var grids = all.Select(new CampaignGridFilter(IsLand: false)).Sort("weight", "cost");
+        if (grids.IsEmpty)
+        {
+            throw new NotSupportedException("fleet_2_push_forward：地图上没有非陆地格子（上游此处会 IndexError）");
+        }
+        var fleet2 = host.GridAt(host.Fleet2Location);
+        if (fleet2.Weight <= grids[0].Weight)
+        {
+            host.Log("fleet_2_push_forward：Fleet_2 pushed to destination");
+            host.EnsureFleet(1);
+            return false;
+        }
+
+        var fleets = new CampaignGridSet([host.GridAt(host.Fleet1Location), fleet2]);
+        grids = grids.Select(new CampaignGridFilter(IsAccessible2: true, IsSea: true)).Delete(fleets);
+        if (grids.IsEmpty)
+        {
+            host.Log("fleet_2_push_forward：Fleet_2 has no where to push");
+            return false;
+        }
+        if (fleet2.Weight <= grids[0].Weight)
+        {
+            host.Log("fleet_2_push_forward：Fleet_2 pushed to closest grid");
+            return false;
+        }
+
+        host.Log($"fleet_2_push_forward：Push forward: {grids[0].Location}");
+        host.EnsureFleet(2);
+        host.Goto(grids[0]);
+        host.EnsureFleet(1);
+        return true;
+    }
+
+    /// <summary>
+    /// 上游 <c>Map.fleet_2_protect()</c>：道中队在 boss 队附近游走、清掉靠近的塞壬/敌人。
+    /// 上游最多循环 20 次（每次 goto 后重新扫描地图）；干跑宿主不改变地图状态，因此一轮后即停并记日志。
+    /// </summary>
+    public static bool Fleet2Protect(ICampaignPrimitiveHost host)
+    {
+        if (!host.Config.Fleet2 || !host.Config.MapHasMovableEnemy) return false;
+
+        var options = new CampaignTargetOptions { Sort = ["cost_2", "cost_1"] };
+        for (int round = 0; round < 20; round++)
+        {
+            var all = new CampaignGridSet(host.Grids);
+            if (all.Select(new CampaignGridFilter(IsSiren: true)).IsEmpty) return false;
+
+            var nearby = all.Select(new CampaignGridFilter(Cost2: 1))
+                            .Add(all.Select(new CampaignGridFilter(Cost2: 2)));
+            var approaching = CampaignGridSet.Empty;
+            if (host.Config.MapHasMovableEnemy)
+                approaching = approaching.Add(nearby.Select(new CampaignGridFilter(IsSiren: true)));
+            if (host.Config.MapHasMovableNormalEnemy)
+                approaching = approaching.Add(nearby.Select(new CampaignGridFilter(IsEnemy: true)));
+
+            if (!approaching.IsEmpty)
+            {
+                var targets = CampaignTargetSelector.SelectGrids(approaching, options);
+                host.Log($"fleet_2_protect：清靠近的 {targets[0].Location}");
+                host.ClearChosenEnemy(targets[0], "siren");
+                return true;
+            }
+
+            var move = nearby.Delete(all.Select(new CampaignGridFilter(IsFleet: true)));
+            var moveTargets = CampaignTargetSelector.SelectGrids(move, options);
+            if (moveTargets.IsEmpty)
+            {
+                throw new NotSupportedException("fleet_2_protect：附近没有可去的格子（上游此处会 IndexError）");
+            }
+            host.Log($"fleet_2_protect：游走到 {moveTargets[0].Location}（第 {round + 1} 轮）");
+            host.Goto(moveTargets[0]);
+            if (host is RecordingCampaignHost)
+            {
+                host.Log("fleet_2_protect：干跑宿主不刷新地图状态，一轮后停止（真机由识别刷新后继续）");
+                return false;
+            }
+        }
+        return false;
+    }
+
     /// <summary>上游 <c>CampaignBase.battle_default()</c>。</summary>
     public static bool BattleDefault(ICampaignPrimitiveHost host)
     {
@@ -649,6 +793,15 @@ public static class CampaignPrimitiveRegistry
         ["pick_up_flare"] = new CampaignPrimitive(
             "pick_up_flare", "捡信号弹（上游关卡基类 helper，恒返回假）", NeedsArguments: true,
             (host, step) => CampaignPrimitives.PickUpFlare(host, RequireGrid(host, step))),
+        ["capture_clear_boss"] = new CampaignPrimitive(
+            "capture_clear_boss", "打 boss 后退（上游 Map.capture_clear_boss，deprecated）", false,
+            (host, _) => CampaignPrimitives.CaptureClearBoss(host)),
+        ["fleet_2_push_forward"] = new CampaignPrimitive(
+            "fleet_2_push_forward", "道中队推进到 weight 最低的可达海域（上游 Map.fleet_2_push_forward）", false,
+            (host, _) => CampaignPrimitives.Fleet2PushForward(host)),
+        ["fleet_2_protect"] = new CampaignPrimitive(
+            "fleet_2_protect", "道中队游走清靠近的塞壬/敌人（上游 Map.fleet_2_protect）", false,
+            (host, _) => CampaignPrimitives.Fleet2Protect(host)),
     };
 
     /// <summary>已实现的原语名（排序返回，便于输出与对拍）。不含舰队前缀组合。</summary>

@@ -268,8 +268,8 @@
 
 | 指标 | 数值 |
 | --- | --- |
-| 步骤指向已实现原语 | 5565 / 5694（**97.7%**） |
-| 涉及原语 | 31 个（其中 16 个已实现，含舰队前缀组合） |
+| 步骤指向已实现原语 | 5625 / 5694（**98.8%**） |
+| 涉及原语 | 31 个（其中 19 个已实现，含舰队前缀组合） |
 | 计划形状符合契约 | 3006 / 3019 |
 | 实参完整（无 `<expr>`） | 5661 / 5694（**99.4%**） |
 
@@ -343,6 +343,33 @@
 > 注：`pick_up_light_house` / `pick_up_flare` 定义在**关卡树**（`campaign/**`）而不是 `module/**`——
 > 这是"关卡侧 helper"这一类需要迁移的代码，属 P2 逐域迁移范围；它们的语义务必与上游逐字对齐，
 > 不能因为"看起来只是 goto"就简化。
+
+#### P2-8 已完成：舰队机动三件套（步覆盖 97.7% → 98.8%）（2026-09-25）
+
+| 新增原语 | 对应上游 | 关键语义 |
+| --- | --- | --- |
+| `capture_clear_boss` | `Map.capture_clear_boss()` | 打 boss（或"被塞壬抓住的 may_boss"），最后**无条件撤退**（`withdraw()`）；上游无 return（落到末尾为假） |
+| `fleet_2_push_forward` | `Map.fleet_2_push_forward()` | `fleet_boss_index != 2` 直接返回假；否则把道中队推向 weight 最低的**可达海域**（`is_accessible_2 + is_sea`，排除两支舰队所在格），推进后切回 1 队 |
+| `fleet_2_protect` | `Map.fleet_2_protect()` | 无 `FLEET_2`/`MAP_HAS_MOVABLE_ENEMY` 直接返回假；最多 20 轮：附近（`cost_2 ∈ {1,2}`）有塞壬/敌人就打（`expected='siren'`），否则游走到最近的可去格 |
+
+配套模型（都照抄上游属性语义）：格子增加 `is_land` / `is_sea`（`is_sea` 按上游公式推导）、
+`cost_1` / `is_accessible_1`，过滤条件支持 `cost_2`，排序键支持 `cost_1`；
+配置增加 `fleet_boss_index`（`FLEET_BOSS==2 and FLEET_2` → 2）与 `MAP_HAS_MOVABLE_ENEMY`；
+宿主增加 `Fleet1Location` / `Fleet2Location` / `GridAt()` / `Withdraw()`。
+
+**对拍**：`verify_r5_execution.py` 扩到 **28 个用例**（新增：`capture_clear_boss` 打到 boss 后撤退、
+`fleet_2_push_forward` 推进到 weight 更低的海域、`fleet_boss_index != 2` 时直接返回假（断言**没有**推进日志）、
+`fleet_2_protect` 清靠近的塞壬并短路、没有靠近敌人时游走一轮后交给 `clear_siren`），全部通过；
+注册原语 **16 个**（含舰队前缀组合 19 个已实现）。
+
+> 两条诚实说明：① `capture_clear_boss` 结尾是**撤退**，它不是"清完继续打"的步骤；
+> ② `fleet_2_protect` 上游会循环 20 轮（每轮 goto 后重新识别地图），干跑宿主不刷新状态，
+> 因此一轮后停止并记日志——真机路径需要用模拟器验证这一循环。
+
+**剩余未实现（69 步 / 12 个 op）**：`clear_bouncing_enemy` 12、`fleet_2_step_on` 11（实参是局部变量）、
+`brute_clear_boss` 11（依赖 `brute_find_roadblocks` 寻路）、`super().handle_boss_appear_refocus` 7（委托父类，本就不执行）、
+`clear_map_items` 5、`fleet_2_rescue` 4（寻路）、`clear_mechanism` 4、`battle_0` 2、
+`fleet_1.switch_to` / `fleet_2.switch_to` 各 1、`clear_chosen_enemy` 1、`fleet_boss.clear_potential_boss` 1。
 
 #### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
 

@@ -25,17 +25,25 @@ public sealed record CampaignGrid(
     bool IsCaughtBySiren = false,
     bool IsFleet = false,
     bool IsCleared = false,
+    bool IsLand = false,
     int EnemyScale = 0,
     string? EnemyGenre = null,
     int Weight = 0,
     int Cost = 0,
+    int Cost1 = 9999,
     int Cost2 = 9999)
 {
     /// <summary>上游 <c>is_accessible = cost &lt; 9999</c>。</summary>
     public bool IsAccessible => Cost < 9999;
 
+    /// <summary>上游 <c>is_accessible_1 = cost_1 &lt; 9999</c>。</summary>
+    public bool IsAccessible1 => Cost1 < 9999;
+
     /// <summary>上游 <c>is_accessible_2 = cost_2 &lt; 9999</c>（第二舰队的可达性）。</summary>
     public bool IsAccessible2 => Cost2 < 9999;
+
+    /// <summary>上游 <c>is_sea</c>：不是陆地、敌人、塞壬、要塞、boss 就是海。</summary>
+    public bool IsSea => !(IsLand || IsEnemy || IsSiren || IsFortress || IsBoss);
 
     /// <summary>上游 <c>is_nearby = cost &lt; 20</c>。</summary>
     public bool IsNearby => Cost < 20;
@@ -131,9 +139,14 @@ public sealed record CampaignGridFilter(
     bool? IsCaughtBySiren = null,
     bool? IsFleet = null,
     bool? IsCleared = null,
+    bool? IsLand = null,
+    bool? IsSea = null,
     bool? IsAccessible = null,
+    bool? IsAccessible1 = null,
+    bool? IsAccessible2 = null,
     bool? IsNearby = null,
     int? EnemyScale = null,
+    int? Cost2 = null,
     string? EnemyGenre = null)
 {
     public bool Matches(CampaignGrid grid) =>
@@ -147,9 +160,14 @@ public sealed record CampaignGridFilter(
         (IsCaughtBySiren is null || grid.IsCaughtBySiren == IsCaughtBySiren) &&
         (IsFleet is null || grid.IsFleet == IsFleet) &&
         (IsCleared is null || grid.IsCleared == IsCleared) &&
+        (IsLand is null || grid.IsLand == IsLand) &&
+        (IsSea is null || grid.IsSea == IsSea) &&
         (IsAccessible is null || grid.IsAccessible == IsAccessible) &&
+        (IsAccessible1 is null || grid.IsAccessible1 == IsAccessible1) &&
+        (IsAccessible2 is null || grid.IsAccessible2 == IsAccessible2) &&
         (IsNearby is null || grid.IsNearby == IsNearby) &&
         (EnemyScale is null || grid.EnemyScale == EnemyScale) &&
+        (Cost2 is null || grid.Cost2 == Cost2) &&
         (EnemyGenre is null || string.Equals(grid.EnemyGenre, EnemyGenre, StringComparison.Ordinal));
 }
 
@@ -208,8 +226,8 @@ public sealed class CampaignGridSet
         if (attributes.Length == 0 || _grids.Count == 0) return this;
         foreach (string attribute in attributes)
         {
-            if (attribute is not ("weight" or "cost" or "cost_2"))
-                throw new NotSupportedException($"排序键 {attribute} 尚未移植（当前支持 weight/cost/cost_2）");
+            if (attribute is not ("weight" or "cost" or "cost_1" or "cost_2"))
+                throw new NotSupportedException($"排序键 {attribute} 尚未移植（当前支持 weight/cost/cost_1/cost_2）");
         }
         IOrderedEnumerable<CampaignGrid>? ordered = null;
         foreach (string attribute in attributes)
@@ -218,6 +236,7 @@ public sealed class CampaignGridSet
             {
                 "weight" => grid => grid.Weight,
                 "cost" => grid => grid.Cost,
+                "cost_1" => grid => grid.Cost1,
                 _ => grid => grid.Cost2,
             };
             ordered = ordered is null ? _grids.OrderBy(key) : ordered.ThenBy(key);

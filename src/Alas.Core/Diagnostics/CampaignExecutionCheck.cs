@@ -69,6 +69,7 @@ internal static class CampaignExecutionCheck
                 MapHasFortress: testCase.Config?.MapHasFortress ?? false,
                 Fleet2: testCase.Config?.Fleet2 ?? false,
                 FleetBoss: testCase.Config?.FleetBoss ?? false,
+                MapHasMovableEnemy: testCase.Config?.MapHasMovableEnemy ?? false,
                 MapHasMovableNormalEnemy: testCase.Config?.MapHasMovableNormalEnemy ?? false);
             var host = new RecordingCampaignHost(grids, config)
             {
@@ -76,6 +77,8 @@ internal static class CampaignExecutionCheck
                 BattleCount = testCase.Config?.BattleCount ?? 0,
                 AmmoCount = testCase.Config?.AmmoCount ?? 3,
                 FleetAmmo = testCase.Config?.FleetAmmo ?? 5,
+                Fleet1Location = testCase.Config?.Fleet1Location ?? "",
+                Fleet2Location = testCase.Config?.Fleet2Location ?? "",
             };
             var execution = CampaignHookRunner.Run(plan, battle, host);
 
@@ -112,6 +115,7 @@ internal static class CampaignExecutionCheck
         IsFortress: grid.IsFortress,
         MayBoss: grid.MayBoss,
         MayAmmo: grid.MayAmmo,
+        IsLand: grid.IsLand,
         IsCaughtBySiren: grid.IsCaughtBySiren,
         IsFleet: grid.IsFleet,
         IsCleared: grid.IsCleared,
@@ -119,6 +123,7 @@ internal static class CampaignExecutionCheck
         EnemyGenre: grid.EnemyGenre,
         Weight: grid.Weight,
         Cost: grid.Cost,
+        Cost1: grid.Cost1 ?? 9999,
         Cost2: grid.Cost2 ?? 9999);
 
     private static int Fail(string message)
@@ -151,6 +156,9 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("fleet_2")] public bool? Fleet2 { get; init; }
         [JsonPropertyName("fleet_boss")] public bool? FleetBoss { get; init; }
         [JsonPropertyName("fleet_current_index")] public int? FleetCurrentIndex { get; init; }
+        [JsonPropertyName("fleet_1_location")] public string? Fleet1Location { get; init; }
+        [JsonPropertyName("fleet_2_location")] public string? Fleet2Location { get; init; }
+        [JsonPropertyName("map_has_movable_enemy")] public bool? MapHasMovableEnemy { get; init; }
         [JsonPropertyName("battle_count")] public int? BattleCount { get; init; }
         [JsonPropertyName("ammo_count")] public int? AmmoCount { get; init; }
         [JsonPropertyName("fleet_ammo")] public int? FleetAmmo { get; init; }
@@ -168,6 +176,7 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("is_fortress")] public bool IsFortress { get; init; }
         [JsonPropertyName("may_boss")] public bool MayBoss { get; init; }
         [JsonPropertyName("may_ammo")] public bool MayAmmo { get; init; }
+        [JsonPropertyName("is_land")] public bool IsLand { get; init; }
         [JsonPropertyName("is_caught_by_siren")] public bool IsCaughtBySiren { get; init; }
         [JsonPropertyName("is_fleet")] public bool IsFleet { get; init; }
         [JsonPropertyName("is_cleared")] public bool IsCleared { get; init; }
@@ -175,6 +184,7 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("enemy_genre")] public string? EnemyGenre { get; init; }
         [JsonPropertyName("weight")] public int Weight { get; init; }
         [JsonPropertyName("cost")] public int Cost { get; init; }
+        [JsonPropertyName("cost_1")] public int? Cost1 { get; init; }
         [JsonPropertyName("cost_2")] public int? Cost2 { get; init; }
     }
 }
