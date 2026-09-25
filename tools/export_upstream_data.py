@@ -269,6 +269,26 @@ def campaign_map_shape(tree, resolved: str | None = None) -> str:
     return ''
 
 
+def campaign_class_state_defaults(tree) -> dict:
+    """`Campaign` 类体里的字面量布尔/None 属性 → 初值（上游用类属性做实例属性默认值）。
+
+    只收**本模块**类体里的字面量；继承来的默认值这里拿不到——执行器遇到没有初值的读会
+    **阻塞报原因**，不会悄悄当成假。
+    """
+    defaults = {}
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != 'Campaign':
+            continue
+        for item in node.body:
+            if isinstance(item, ast.Assign) and len(item.targets) == 1 \
+                    and isinstance(item.targets[0], ast.Name) \
+                    and isinstance(item.value, ast.Constant) \
+                    and (item.value.value is True or item.value.value is False
+                         or item.value.value is None):
+                defaults[item.targets[0].id] = item.value.value
+    return defaults
+
+
 def campaign_symbol_locations(tree, resolved_shape: str | None = None) -> dict:
     """`A1, B1, … = MAP.flatten()` 的符号 → `[x, y]` 表（带形状自校验，不通过就返回空表）。
 
@@ -638,6 +658,31 @@ def _is_bare_return_true(body) -> bool:
             and s.value.value is True)
 
 
+def _state_expression(node, resolve):
+    """把 `self.X = …` 右值归一成值表达式；表示不了返回 None（调用方记未解析）。"""
+    if isinstance(node, ast.Constant) and (node.value is True or node.value is False
+                                           or node.value is None):
+        return {'literal': node.value}
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        inner = _state_expression(node.operand, resolve)
+        return {'not': inner} if inner is not None else None
+    if isinstance(node, ast.BoolOp) and len(node.values) >= 2:
+        parts = [_state_expression(value, resolve) for value in node.values]
+        if any(part is None for part in parts):
+            return None
+        return {'and' if isinstance(node.op, ast.And) else 'or': parts}
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) \
+            and node.value.id == 'self':
+        if node.attr == 'map_is_clear_mode':
+            return {'runtime': 'map_is_clear_mode'}
+        return {'state': node.attr}
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) \
+            and isinstance(node.value.value, ast.Name) and node.value.value.id == 'self' \
+            and node.value.attr == 'config':
+        return {'config': node.attr}
+    return None
+
+
 def _brief(node, limit: int = 70) -> str:
     """未解析语句的**简短源码**（进 `unparsed`，便于按具体形态聚合与定位）。"""
     try:
@@ -709,6 +754,12 @@ def derive_plan(body: list, where: str, resolve=None):
         local = _local_reference(node, locals_)
         if local is not None:
             return {'local': local['__local__'], 'negate': negate}
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) \
+                and node.value.id == 'self':
+            # `if self.<属性>:` —— 实例属性/运行期标志的真假（值表达式统一走 `expr`）
+            expression = _state_expression(node, resolve)
+            if expression is not None:
+                return {'expr': expression, 'negate': negate}
         if isinstance(node, ast.Compare) and isinstance(node.left, ast.Attribute) \
                 and isinstance(node.left.value, ast.Name) and node.left.value.id == 'self' \
                 and node.left.attr == 'battle_count' and len(node.ops) == 1 and len(node.comparators) == 1:
@@ -816,6 +867,17 @@ def derive_plan(body: list, where: str, resolve=None):
                         steps.append({'kind': 'log', 'text': _brief(stmt.value, 120)})
                     else:
                         unparsed.append(f'Expr@{stmt.lineno}: {_brief(stmt.value)}')
+            elif isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 \
+                    and isinstance(stmt.targets[0], ast.Attribute) \
+                    and isinstance(stmt.targets[0].value, ast.Name) \
+                    and stmt.targets[0].value.id == 'self':
+                # `self.<属性> = <值表达式>` —— 关卡实例属性（跨钩子存在，属**状态**不是局部变量）
+                expression = _state_expression(stmt.value, resolve)
+                if expression is None:
+                    unparsed.append(f'Assign@{stmt.lineno}: {_brief(stmt)}')
+                else:
+                    steps.append({'kind': 'state_set', 'name': stmt.targets[0].attr,
+                                  'expr': expression})
             elif isinstance(stmt, ast.Assign):
                 v = stmt.value
                 if is_self_call(v) and len(stmt.targets) == 1 \

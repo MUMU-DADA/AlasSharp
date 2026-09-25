@@ -120,6 +120,58 @@ def main() -> int:
                 incomplete += 1
     print(f"[r5-coverage] battle_* 钩子 {hooks} 个：有可执行计划 {hooks - incomplete}"
           f"，**plan_complete=false（引擎拒绝执行并报原因）{incomplete}**")
+
+    # **计划完整 ≠ 原语齐全**：计划完整但步骤里引用了没登记的原语时，执行器会如实阻塞。
+    # 分开报出来，免得"有可执行计划"这个口径把未实现的调用也算成可执行。
+    registered = set(EXPECTED_PRIMITIVES)
+    structural = {"branch", "return", "raise", "log", "map_set", "state_set"}
+    # 特例：map.select 由执行器直接处理（不是注册原语）；舰队前缀 leet_boss.clear_boss
+    # 由执行器剥前缀后查注册表（SplitFleetPrefix）。不这样归一，统计会虚高（实测第一版报了 755 个）。
+    special_ops = {"map.select"}
+
+    def normalize_op(op: str) -> str:
+        """leet_boss.clear_boss → clear_boss（执行器会剥前缀）；super().x 同理。"""
+        if op.startswith("super()"):
+            return op.split(".", 1)[-1]
+        head, _, tail = op.partition(".")
+        return tail if head.startswith("fleet") and tail else op
+
+    def step_ops(steps) -> set:
+        found = set()
+        for step in steps or []:
+            kind = step.get("kind")
+            if kind not in structural and step.get("op"):
+                found.add(normalize_op(step["op"]))
+            if kind in ("call", "conditional", "conditional_negated", "terminal", "assign", "super_delegate") \
+                    and step.get("op") and step["op"] not in structural:
+                found.add(normalize_op(step["op"]))
+            if step.get("test", {}).get("call", {}).get("op"):
+                found.add(step["test"]["call"]["op"])
+            found |= step_ops(step.get("body"))
+            found |= step_ops(step.get("orelse"))
+        return found
+
+    blocked_by_missing = []
+    missing_ops: dict[str, int] = {}
+    for path in sorted((ROOT / "data" / "campaign").rglob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for battle in (payload.get("campaign") or {}).get("battles") or []:
+            if not battle.get("plan_complete") or not str(battle.get("method", "")).startswith("battle_"):
+                continue
+            # 同关卡内其它钩子的名字（self.battle_0() 这种跨钩子调用）由执行器递归执行，
+            # 不是"未登记原语"；名称别名（如 leet_ensure → nsure_fleet）这里不展开，如实列出原名。
+            hook_names = {b.get("method") for b in (payload.get("campaign") or {}).get("battles") or []}
+            missing = {op for op in step_ops(battle.get("steps"))
+                       if op not in registered and op not in special_ops and op not in hook_names}
+            if missing:
+                blocked_by_missing.append(f"{path.stem}:{battle['method']}")
+                for op in missing:
+                    missing_ops[op] = missing_ops.get(op, 0) + 1
+    if blocked_by_missing:
+        detail = "、".join(f"{op} × {count}" for op, count in sorted(missing_ops.items(),
+                                                                   key=lambda kv: -kv[1]))
+        print(f"[r5-coverage] 其中 **{len(blocked_by_missing)} 个钩子**计划完整但引用了未登记的原语"
+              f"（执行时会阻塞）：{detail}")
     if declared:
         print("[已声明缺口]")
         for name in declared:

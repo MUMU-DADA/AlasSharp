@@ -44,6 +44,11 @@ public sealed class CampaignPlanHeader
     [JsonPropertyName("template_only")] public bool TemplateOnly { get; init; }
     [JsonPropertyName("plan_complete")] public bool PlanComplete { get; init; }
     [JsonPropertyName("battles")] public IReadOnlyList<CampaignPlanBattle> Battles { get; init; } = [];
+
+    /// <summary>关卡实例属性的**初值**（类体里的字面量默认值，如 `_is_D9 = False`）。</summary>
+    [JsonPropertyName("initial_state")]
+    public IReadOnlyDictionary<string, JsonNode?> InitialState { get; init; }
+        = new Dictionary<string, JsonNode?>();
 }
 
 /// <summary>一个覆写钩子的计划：钩子名 + 原语调用序列 + 可执行步骤 + 静态可表达性。</summary>
@@ -104,6 +109,9 @@ public sealed class CampaignPlanStep
     /// <summary>`kind=return` 时返回的**字面量**（上游 `return True` / `return False`；缺省即 None）。</summary>
     [JsonPropertyName("value")] public JsonNode? Value { get; init; }
 
+    /// <summary>`kind=state_set` 的值表达式；属性名用 <see cref="Target"/>。</summary>
+    [JsonPropertyName("expr")] public JsonNode? Expr { get; init; }
+
     /// <summary>`kind=map_set` 时给**所有格子**设置的布尔标志名（上游 `grid.may_siren = True`）。</summary>
     [JsonPropertyName("flag")] public string? Flag { get; init; }
 
@@ -131,6 +139,9 @@ public sealed class CampaignPlanStepTest
 
     /// <summary>`self.battle_count in [0, 1]` 这类**集合包含**判断。</summary>
     [JsonPropertyName("battle_count_in")] public IReadOnlyList<int>? BattleCountIn { get; init; }
+
+    /// <summary>`if self.<属性>:` 这类条件：取一个**值表达式**的真假。</summary>
+    [JsonPropertyName("expr")] public JsonNode? Expr { get; init; }
 
     /// <summary>运行期标志（当前只有 `map_is_clear_mode`，语义见 `CampaignRuntimeConfig`）。</summary>
     [JsonPropertyName("runtime")] public string? Runtime { get; init; }

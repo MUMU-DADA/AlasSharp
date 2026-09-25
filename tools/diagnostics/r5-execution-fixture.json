@@ -2,6 +2,24 @@
   "note": "R5 原语执行对拍夹具：供 `Alas.Server r5-exec --fixture <本文件>` 与 tools/diagnostics/verify_r5_execution.py 使用。关卡/钩子取自静态导出（data/campaign/**），地图状态与运行时配置由本夹具给出，动作只被干跑宿主记录。",
   "cases": [
     {
+      "name": "campaign_16_4 battle_1：`if not self.map_has_mob_move:` 而该属性**没有初值**（默认值在基类，本模块拿不到）→ 必须阻塞报原因，不许当成假",
+      "chapter": "campaign_main",
+      "level": "campaign_16_4",
+      "hook": "battle_1",
+      "grids": [
+        {
+          "location": "F4",
+          "is_enemy": true,
+          "weight": 20,
+          "cost": 1
+        }
+      ],
+      "expect": {
+        "completed": false,
+        "blocked_contains": "没有初值"
+      }
+    },
+    {
       "name": "event_20210121_cn a2 battle_0：`for grid in self.map: grid.may_siren = True`（整图标识别提示）+ 推 2 队 + 打塞壬",
       "chapter": "event_20210121_cn",
       "level": "a2",

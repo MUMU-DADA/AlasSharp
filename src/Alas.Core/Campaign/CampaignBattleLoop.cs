@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+
 namespace Alas.Campaign;
 
 /// <summary>
@@ -70,10 +72,17 @@ public static class CampaignBattleLoop
     public static CampaignLevelRun Run(CampaignPlan plan, ICampaignPrimitiveHost host)
     {
         var rounds = new List<CampaignBattleRound>();
+        // **关卡实例状态**：初值来自计划里的 initial_state（类体字面量默认值），
+        // 钩子里 self.X = … 的写入在整关内共享（上游实例属性就是这个生命周期）。
+        var levelState = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var (name, value) in plan.Header.InitialState)
+        {
+            if (value is JsonValue json && json.TryGetValue<bool>(out bool flag)) levelState[name] = flag;
+        }
         for (int round = 0; round < MaxRounds; round++)
         {
             int battleCountBefore = host.BattleCount;
-            var attempt = ExecuteABattle(plan, host, round);
+            var attempt = ExecuteABattle(plan, host, round, levelState);
             rounds.Add(attempt);
 
             if (attempt.BlockedReason is not null)
@@ -122,7 +131,8 @@ public static class CampaignBattleLoop
     }
 
     /// <summary>上游 <c>execute_a_battle()</c>：最多 10 次尝试，<c>MapEnemyMoved</c> 时按 battle_count 判定。</summary>
-    private static CampaignBattleRound ExecuteABattle(CampaignPlan plan, ICampaignPrimitiveHost host, int round)
+    private static CampaignBattleRound ExecuteABattle(CampaignPlan plan, ICampaignPrimitiveHost host, int round,
+                                                      Dictionary<string, object?> levelState)
     {
         int battleCountBefore = host.BattleCount;
         string variant = BattleFunctionVariant(host.Config);
@@ -135,7 +145,7 @@ public static class CampaignBattleLoop
             string? blocked;
             if (variant == "default_hooks")
             {
-                (result, blocked) = RunHook(plan, label, host);
+                (result, blocked) = RunHook(plan, label, host, levelState);
             }
             else
             {
@@ -164,7 +174,8 @@ public static class CampaignBattleLoop
     }
 
     /// <summary>默认变体：按 battle_count 选钩子执行；<c>battle_default</c>/<c>battle_boss</c> 落到基类实现。</summary>
-    private static (bool? Result, string? Blocked) RunHook(CampaignPlan plan, string hook, ICampaignPrimitiveHost host)
+    private static (bool? Result, string? Blocked) RunHook(CampaignPlan plan, string hook, ICampaignPrimitiveHost host,
+                                                                Dictionary<string, object?> levelState)
     {
         var battle = plan.Header.Battles.FirstOrDefault(item => item.Method == hook);
         if (battle is null)
@@ -182,7 +193,7 @@ public static class CampaignBattleLoop
             return (false, $"关卡导出与基类都没有钩子 {hook}");
         }
 
-        var execution = CampaignHookRunner.Run(plan, battle, host);
+        var execution = CampaignHookRunner.Run(plan, battle, host, levelState);
         return execution.BlockedReason is null
             ? (execution.ReturnValue, null)
             : (null, execution.BlockedReason);

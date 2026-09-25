@@ -1307,10 +1307,20 @@ public static class CampaignHookRunner
     /// </summary>
     private static (bool? Value, string Why) EvaluateBranch(CampaignPlanStep step,
                                                             ICampaignPrimitiveHost host,
-                                                            Dictionary<string, object?> env)
+                                                            Dictionary<string, object?> env,
+                                                            Dictionary<string, object?> state)
     {
         var test = step.Test;
         if (test is null) return (null, "branch 没有 test 字段");
+        return EvaluateTest(test, host, env, state);
+    }
+
+    /// <summary>求一个条件（`and`/`or` 复合在此递归；`negate` 在叶子最后取反）。</summary>
+    private static (bool? Value, string Why) EvaluateTest(CampaignPlanStepTest test,
+                                                         ICampaignPrimitiveHost host,
+                                                         Dictionary<string, object?> env,
+                                                         Dictionary<string, object?> state)
+    {
         bool value;
         string why;
         if (test.Local is { Length: > 0 } name)
@@ -1342,6 +1352,14 @@ public static class CampaignHookRunner
         {
             value = allowed.Contains(host.BattleCount);
             why = $"battle_count({host.BattleCount}) in {string.Join(",", allowed)}";
+        }
+        else if (test.Expr is { } expression)
+        {
+            // `if self.<属性>:` —— 取一个值表达式的真假（见 EvaluateExpr 的白名单）
+            var (resolved, resolvedWhy) = EvaluateExpr(expression, host, state, env);
+            if (resolved is null) return (null, resolvedWhy);
+            value = Truthy(resolved);
+            why = $"{resolvedWhy} → {value}";
         }
         else if (test.Runtime is { Length: > 0 } runtime)
         {
@@ -1463,6 +1481,89 @@ public static class CampaignHookRunner
         return "";
     }
 
+    /// <summary>
+    /// 求一个**值表达式**（导出器 `_state_expression` 的对应实现）。白名单：
+    /// `{"literal": …}` / `{"state": 名字}` / `{"config": 键}` / `{"runtime": "map_is_clear_mode"}` /
+    /// `{"not": …}` / `{"and": […]}` / `{"or": […]}`。
+    /// **缺初值的属性、没映射的配置键一律返回 null + 原因**（调用方阻塞报出），不猜值。
+    /// </summary>
+    private static (object? Value, string Why) EvaluateExpr(JsonNode? expr,
+                                                            ICampaignPrimitiveHost host,
+                                                            Dictionary<string, object?> state,
+                                                            Dictionary<string, object?> env)
+    {
+        if (expr is not JsonObject node) return (null, "值表达式不是对象");
+
+        if (node["literal"] is { } literal)
+        {
+            if (literal is JsonValue value)
+            {
+                if (value.TryGetValue<bool>(out bool flag)) return (flag, $"literal {flag}");
+                if (value.TryGetValue<string>(out string? text)) return (text, $"literal '{text}'");
+            }
+            return (null, "literal 不是布尔/字符串");   // null 字面量在 Python 里是 None（假）
+        }
+        if (node["state"] is JsonValue stateNode && stateNode.TryGetValue<string>(out string? name))
+        {
+            if (!state.TryGetValue(name!, out var bound))
+            {
+                return (null, $"实例属性 self.{name} 没有初值也没有被赋值过（不猜，按阻塞处理）");
+            }
+            return (bound, $"self.{name} = {Describe(bound)}");
+        }
+        if (node["config"] is JsonValue configNode && configNode.TryGetValue<string>(out string? key))
+        {
+            bool? resolved = key switch
+            {
+                "MAP_HAS_MOVABLE_ENEMY" => host.Config.MapHasMovableEnemy,
+                "MAP_HAS_MOVABLE_NORMAL_ENEMY" => host.Config.MapHasMovableNormalEnemy,
+                "MAP_CLEAR_ALL_THIS_TIME" => host.Config.MapClearAllThisTime,
+                "FLEET_BOSS" => host.Config.FleetBoss,
+                "FLEET_2" => host.Config.Fleet2,
+                "MAP_HAS_SIREN" => host.Config.MapHasSiren,
+                "MAP_HAS_FORTRESS" => host.Config.MapHasFortress,
+                "MAP_HAS_AMBUSH" => host.Config.MapHasAmbush,
+                "MAP_HAS_BOUNCING_ENEMY" => host.Config.MapHasBouncingEnemy,
+                _ => null,
+            };
+            if (resolved is null) return (null, $"值表达式里的 config 键 {key} 还没有映射");
+            return (resolved, $"config.{key} = {resolved}");
+        }
+        if (node["runtime"] is JsonValue runtimeNode && runtimeNode.TryGetValue<string>(out string? flag2))
+        {
+            if (flag2 != "map_is_clear_mode") return (null, $"未知的运行期标志 {flag2}");
+            if (host.Config.MapIsClearMode is not { } clearMode)
+            {
+                return (null, "map_is_clear_mode 未知：Campaign_UseClearMode 已开，"
+                              + "但上游那批 MAP_HAS_* 覆盖还没在 C# 侧对齐");
+            }
+            return (clearMode, $"runtime.map_is_clear_mode = {clearMode}");
+        }
+        if (node["not"] is { } inner)
+        {
+            var (value, why) = EvaluateExpr(inner, host, state, env);
+            if (value is null) return (null, why);
+            return (!Truthy(value), $"not({why})");
+        }
+        foreach (var (operatorName, isAnd) in new[] { ("and", true), ("or", false) })
+        {
+            if (node[operatorName] is not JsonArray items || items.Count == 0) continue;
+            var parts = new List<string>();
+            foreach (var item in items)
+            {
+                var (value, why) = EvaluateExpr(item, host, state, env);
+                if (value is null) return (null, why);
+                bool truth = Truthy(value);
+                parts.Add($"{why}={truth}");
+                // 短路：与 Python 的 `and`/`or` 一致
+                if (isAnd && !truth) return (false, $"{operatorName}({string.Join(", ", parts)})");
+                if (!isAnd && truth) return (true, $"{operatorName}({string.Join(", ", parts)})");
+            }
+            return (isAnd, $"{operatorName}({string.Join(", ", parts)})");
+        }
+        return (null, "值表达式的形态不在白名单里");
+    }
+
     /// <summary>局部变量的真假：格子集合看"非空"，布尔直接看值。</summary>
     private static bool Truthy(object? value) => value switch
     {
@@ -1539,13 +1640,26 @@ public static class CampaignHookRunner
                                             ICampaignPrimitiveHost host) =>
         Run(plan, battle, host, depth: 0);
 
+    /// <summary>
+    /// 带**关卡实例状态**执行钩子（跨钩子共享同一份：`self._is_D9 = True` 之后别的钩子读得到）。
+    /// 关卡循环用这个重载，状态初值来自计划里的 `initial_state`。
+    /// </summary>
+    public static CampaignHookExecution Run(CampaignPlan plan, CampaignPlanBattle battle,
+                                            ICampaignPrimitiveHost host,
+                                            Dictionary<string, object?> state) =>
+        Run(plan, battle, host, depth: 0, env: null, state: state);
+
     private static CampaignHookExecution Run(CampaignPlan plan, CampaignPlanBattle battle,
                                              ICampaignPrimitiveHost host, int depth,
-                                             Dictionary<string, object?>? env = null)
+                                             Dictionary<string, object?>? env = null,
+                                             Dictionary<string, object?>? state = null)
     {
         // **局部变量环境**：上游 `boss = self.map.select(is_boss=True)` 这类"观察"的绑定，
         // 后续 `if boss:` / `check_accessibility(boss[0], …)` 都从它取值。分支体共享同一份（Python 作用域）。
         env ??= new Dictionary<string, object?>(StringComparer.Ordinal);
+        // **关卡实例属性**（跨钩子存在，如 `self._is_D9`）：由关卡循环创建、初值来自计划的
+        // `initial_state`；这里兜底建一份空的（诊断命令直接跑单个钩子时用）。
+        state ??= new Dictionary<string, object?>(StringComparer.Ordinal);
         var stepLog = new List<string>();
         var actions = new List<string>();
         int actionsBefore = host is RecordingCampaignHost recording ? recording.Actions.Count : 0;
@@ -1568,7 +1682,7 @@ public static class CampaignHookRunner
             // （`if not self.check_accessibility(boss[0], fleet='boss')`）。分支体是步骤序列，可再嵌套。
             if (step.Kind == "branch")
             {
-                var (taken, why) = EvaluateBranch(step, host, env);
+                var (taken, why) = EvaluateBranch(step, host, env, state);
                 if (taken is null)
                 {
                     stepLog.Add($"{step.Op}: {why}");
@@ -1586,7 +1700,7 @@ public static class CampaignHookRunner
                     Parameters = battle.Parameters,
                     Steps = branchSteps,
                 };
-                var branchRun = Run(plan, innerBattle, host, depth, env);
+                var branchRun = Run(plan, innerBattle, host, depth, env, state);
                 stepLog.AddRange(branchRun.StepLog);
                 if (branchRun.Actions.Count > 0) actions.AddRange(branchRun.Actions);
                 if (branchRun.BlockedReason is not null)
@@ -1597,6 +1711,23 @@ public static class CampaignHookRunner
                 {
                     return Result(plan, battle, branchRun.ReturnValue, null, stepLog, host, actionsBefore, actions);
                 }
+                continue;
+            }
+
+            // `state_set`：上游 `self.<属性> = …` —— 关卡实例属性（跨钩子存在，与局部变量不同）。
+            if (step.Kind == "state_set")
+            {
+                if (step.Target is not { Length: > 0 } stateName)
+                {
+                    return Result(plan, battle, null, "state_set 缺少属性名", stepLog, host, actionsBefore, actions);
+                }
+                var (stateValue, stateWhy) = EvaluateExpr(step.Expr, host, state, env);
+                if (stateValue is null)
+                {
+                    return Result(plan, battle, null, stateWhy, stepLog, host, actionsBefore, actions);
+                }
+                state[stateName] = stateValue;
+                stepLog.Add($"state_set：self.{stateName} = {Describe(stateValue)}（{stateWhy}）");
                 continue;
             }
 
@@ -1748,7 +1879,7 @@ public static class CampaignHookRunner
                     return Result(plan, battle, null, $"跨钩子调用超过 {MaxCallDepth} 层",
                                   stepLog, host, actionsBefore, actions);
                 }
-                var inner = Run(plan, nested, host, depth + 1);
+                var inner = Run(plan, nested, host, depth + 1, state: state);
                 stepLog.Add($"{step.Op}: 跨钩子调用 → {(inner.ReturnValue is null ? "未完成" : inner.ReturnValue.Value ? "真" : "假")}");
                 if (inner.BlockedReason is not null)
                 {
