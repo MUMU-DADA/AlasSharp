@@ -125,7 +125,7 @@
       }
     },
     {
-      "name": "campaign_1_1 battle_1：不可达的 may_boss → 明确报未移植（brute_find_roadblocks）",
+      "name": "campaign_1_1 battle_1：不可达 may_boss 且没有舰队起点 → 如实报阻塞（不猜）",
       "chapter": "campaign_main",
       "level": "campaign_1_1",
       "hook": "battle_1",
@@ -139,7 +139,38 @@
       ],
       "expect": {
         "completed": false,
-        "blocked_contains": "brute_find_roadblocks"
+        "blocked_contains": "需要找路障"
+      }
+    },
+    {
+      "name": "campaign_1_1 battle_1：不可达 may_boss 被敌人挡住 → 找路障并清掉（brute_find_roadblocks，本轮移植）",
+      "chapter": "campaign_main",
+      "level": "campaign_1_1",
+      "hook": "battle_1",
+      "config": {
+        "fleet_1_location": "A1"
+      },
+      "grids": [
+        {
+          "location": "A1",
+          "weight": 0,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "is_enemy": true,
+          "weight": 10,
+          "cost": 1
+        },
+        {
+          "location": "C1",
+          "may_boss": true,
+          "weight": 20,
+          "cost": 9999
+        }
+      ],
+      "expect": {
+        "completed": true
       }
     },
     {

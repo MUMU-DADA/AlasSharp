@@ -397,11 +397,32 @@ public static class CampaignPrimitives
             host.Log("Boss guessing incorrect.");
         }
 
-        var unreachable = all.Select(new CampaignGridFilter(MayBoss: true, IsAccessible: false));
+        // 兜底：不可达的 may_boss 格子——先找挡在路上的敌人（`brute_find_roadblocks`），
+        // 按 weight/cost 排序后由 **1 队**清掉第一个，然后返回真（上游就这么写）。
+        var unreachable = all.Select(new CampaignGridFilter(MayBoss: true, IsAccessible: false))
+                             .Sort("weight", "cost");
         if (!unreachable.IsEmpty)
         {
-            throw new NotSupportedException(
-                $"clear_potential_boss：{unreachable.Count} 个不可达 may_boss 格子需要 brute_find_roadblocks（未移植）");
+            // 没有舰队起点就没法算路障：如实停下并报明原因，不猜也不静默跳过。
+            // （真机跑起来舰队位置由 `map_init` 填；只有诊断夹具才可能为空。）
+            string start = FleetStart(host, host.Config.FleetBossIndex);
+            if (string.IsNullOrEmpty(start) || !host.Grids.Any(grid => grid.Location == start))
+            {
+                throw new NotSupportedException(
+                    $"clear_potential_boss：{unreachable.Count} 个不可达 may_boss 格子需要找路障，" +
+                    $"但舰队起点为空或不在图上（start={start}）");
+            }
+        }
+        foreach (var grid in unreachable.Grids)
+        {
+            host.Log($"clear_potential_boss：{grid.Location} 不可达，找路障");
+            var search = CampaignBruteFinder.FindRoadblocks(host.Grids, grid.Location,
+                FleetStart(host, host.Config.FleetBossIndex), host.Config.MapHasAmbush);
+            if (!search.Found) continue;
+            var roadblocks = new CampaignGridSet(search.Roadblocks).Sort("weight", "cost");
+            host.Log($"clear_potential_boss：清路障 {roadblocks[0].Location}（fleet_1）");
+            host.ClearChosenEnemy(roadblocks[0], expected, fleet: "fleet_1");
+            return true;
         }
         return false;
     }

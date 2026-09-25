@@ -44,6 +44,8 @@ internal static class CampaignSelectionCheck
         var results = new JsonArray();
         foreach (var testCase in fixture.Cases)
         {
+            try
+            {
             var grids = new CampaignGridSet((testCase.Grids ?? []).Select(Grid));
             var options = new CampaignTargetOptions(
                 Nearby: testCase.Options?.Nearby ?? false,
@@ -58,6 +60,8 @@ internal static class CampaignSelectionCheck
                 Ignore: null);
 
             CampaignTargetDecision decision;
+            JsonArray? actions = null;
+            JsonArray? logs = null;
             switch (testCase.Kind)
             {
                 case "select_grids":
@@ -69,6 +73,38 @@ internal static class CampaignSelectionCheck
                     decision = CampaignTargetSelector.SelectFilterEnemyTarget(
                         grids, testCase.Filter ?? "", testCase.Preserve,
                         testCase.EnemyPriority, testCase.HasMovableNormalEnemy);
+                    break;
+                // 复合原语：直接把 C# 原语跑在**记录宿主**上，从记录到的动作里取"打了哪一格"。
+                // 这样对拍的是原语的真实判定（含配置分支），而不只是选择器。
+                case "primitive_clear_enemy":
+                case "primitive_clear_any_enemy":
+                case "primitive_clear_siren":
+                case "primitive_clear_boss":
+                    var config = new CampaignRuntimeConfig(
+                        EnemyPriority: testCase.EnemyPriority,
+                        MapClearAllThisTime: testCase.MapClearAllThisTime,
+                        MapHasSiren: testCase.MapHasSiren ?? false,
+                        MapHasFortress: testCase.MapHasFortress ?? false,
+                        Fleet2: testCase.Fleet2 ?? false,
+                        FleetBoss: testCase.FleetBoss ?? false);
+                    var host = new RecordingCampaignHost(grids.Grids, config)
+                    {
+                        FleetCurrentIndex = testCase.FleetCurrentIndex ?? 1,
+                        Fleet1Location = testCase.Fleet1Location ?? "",
+                        Fleet2Location = testCase.Fleet2Location ?? "",
+                    };
+                    bool result = testCase.Kind switch
+                    {
+                        "primitive_clear_any_enemy" => CampaignPrimitives.ClearAnyEnemy(host, options),
+                        "primitive_clear_siren" => CampaignPrimitives.ClearSiren(host, options),
+                        "primitive_clear_boss" => CampaignPrimitives.ClearBoss(host),
+                        _ => CampaignPrimitives.ClearEnemy(host, options),
+                    };
+                    actions = new JsonArray(host.Actions.Select(text => (JsonNode)text!).ToArray());
+                    logs = new JsonArray(host.Logs.Select(text => (JsonNode)text!).ToArray());
+                    decision = new CampaignTargetDecision(TargetFromActions(host.Actions, grids),
+                                                          $"{testCase.Kind} → {result}" +
+                                                          $"（动作 {host.Actions.Count} 条）");
                     break;
                 default:
                     decision = CampaignTargetSelector.SelectEnemyTarget(
@@ -82,8 +118,25 @@ internal static class CampaignSelectionCheck
                 ["branch"] = decision.Branch,
                 ["selected"] = decision.Target?.Location,
                 ["selected_str"] = decision.Target?.FilterKey,
+                ["actions"] = actions,
+                ["logs"] = logs,
                 ["unsupported"] = decision.Unsupported,
             });
+            }
+            catch (Exception error)
+            {
+                // **逐例捕获**：某个用例撞到未移植分支/异常时，只让这一例失败并如实报出原因，
+                // 不能让整份夹具崩掉（实测踩过：一条 NotSupportedException 让扫描整体退出）。
+                results.Add(new JsonObject
+                {
+                    ["name"] = testCase.Name,
+                    ["branch"] = "异常",
+                    ["selected"] = null,
+                    ["selected_str"] = null,
+                    ["actions"] = null,
+                    ["unsupported"] = $"{error.GetType().Name}: {error.Message}",
+                });
+            }
         }
 
         Console.WriteLine(new JsonObject
@@ -102,12 +155,44 @@ internal static class CampaignSelectionCheck
         IsMystery: grid.IsMystery,
         IsAmmo: grid.IsAmmo,
         IsFortress: grid.IsFortress,
+        MayEnemy: grid.MayEnemy,
+        MayBoss: grid.MayBoss,
+        MayMystery: grid.MayMystery,
+        MaySiren: grid.MaySiren,
+        MayAmbush: grid.MayAmbush,
+        MayBouncingEnemy: grid.MayBouncingEnemy,
+        IsCaughtBySiren: grid.IsCaughtBySiren,
+        IsLand: grid.IsLand,
+        IsMechanismBlock: grid.IsMechanismBlock,
+        IsCleared: grid.IsCleared,
         EnemyScale: grid.EnemyScale,
         EnemyGenre: grid.EnemyGenre,
         Weight: grid.Weight,
         Cost: grid.Cost,
         Cost1: grid.Cost1 ?? 9999,
         Cost2: grid.Cost2 ?? 9999);
+
+    /// <summary>
+    /// 从记录到的动作里取"打了哪一格"：优先 `clear_chosen_enemy(X …)`，其次 `goto(X …)`。
+    /// 找不到就返回 null（不猜）。只用于诊断对拍，不参与引擎判定。
+    /// </summary>
+    private static CampaignGrid? TargetFromActions(IReadOnlyList<string> actions, CampaignGridSet grids)
+    {
+        foreach (string action in actions)
+        {
+            foreach (string prefix in new[] { "clear_chosen_enemy(", "goto(" })
+            {
+                if (!action.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                int end = action.IndexOfAny([',', ')'], prefix.Length);
+                string location = end > prefix.Length
+                    ? action[prefix.Length..end].Trim()
+                    : action[prefix.Length..].TrimEnd(')').Trim();
+                var match = grids.Grids.FirstOrDefault(grid => grid.Location == location);
+                if (match is not null) return match;
+            }
+        }
+        return null;
+    }
 
     private static int Fail(string message)
     {
@@ -131,6 +216,13 @@ internal static class CampaignSelectionCheck
         [JsonPropertyName("filter")] public string? Filter { get; init; }
         [JsonPropertyName("preserve")] public int Preserve { get; init; }
         [JsonPropertyName("has_movable_normal_enemy")] public bool HasMovableNormalEnemy { get; init; }
+        [JsonPropertyName("map_has_siren")] public bool? MapHasSiren { get; init; }
+        [JsonPropertyName("map_has_fortress")] public bool? MapHasFortress { get; init; }
+        [JsonPropertyName("fleet_2")] public bool? Fleet2 { get; init; }
+        [JsonPropertyName("fleet_boss")] public bool? FleetBoss { get; init; }
+        [JsonPropertyName("fleet_current_index")] public int? FleetCurrentIndex { get; init; }
+        [JsonPropertyName("fleet_1_location")] public string? Fleet1Location { get; init; }
+        [JsonPropertyName("fleet_2_location")] public string? Fleet2Location { get; init; }
     }
 
     private sealed class SelectionOptions
@@ -155,6 +247,16 @@ internal static class CampaignSelectionCheck
         [JsonPropertyName("is_mystery")] public bool IsMystery { get; init; }
         [JsonPropertyName("is_ammo")] public bool IsAmmo { get; init; }
         [JsonPropertyName("is_fortress")] public bool IsFortress { get; init; }
+        [JsonPropertyName("may_enemy")] public bool MayEnemy { get; init; }
+        [JsonPropertyName("may_boss")] public bool MayBoss { get; init; }
+        [JsonPropertyName("may_mystery")] public bool MayMystery { get; init; }
+        [JsonPropertyName("may_siren")] public bool MaySiren { get; init; }
+        [JsonPropertyName("may_ambush")] public bool MayAmbush { get; init; }
+        [JsonPropertyName("may_bouncing_enemy")] public bool MayBouncingEnemy { get; init; }
+        [JsonPropertyName("is_caught_by_siren")] public bool IsCaughtBySiren { get; init; }
+        [JsonPropertyName("is_land")] public bool IsLand { get; init; }
+        [JsonPropertyName("is_mechanism_block")] public bool IsMechanismBlock { get; init; }
+        [JsonPropertyName("is_cleared")] public bool IsCleared { get; init; }
         [JsonPropertyName("enemy_scale")] public int EnemyScale { get; init; }
         [JsonPropertyName("enemy_genre")] public string? EnemyGenre { get; init; }
         [JsonPropertyName("weight")] public int Weight { get; init; }
