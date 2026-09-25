@@ -792,6 +792,14 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
         declarations = campaign_resolver.export('campaign.' + module)
         ir['campaign']['attributes'] = declarations['values']
         ir['campaign']['attributes_meta'] = {k: v for k, v in declarations.items() if k != 'values'}
+        # **上游自身无法导入**这种情况要把事实记下来（不能靠白名单，也不能只在检查脚本里猜）：
+        # 关卡文件引用了 `module.campaign.assets` 里不存在的常量时（上游死代码），
+        # `CampaignResolver` 的 unresolved 原因就是 `cannot import X from module.campaign.assets`。
+        # 记在 attributes_meta 里供 Python 与 C# 两侧的验收命令共用同一份判据。
+        import_failures = [issue.get('reason', '') for issue in declarations['unresolved']
+                           if 'cannot import' in str(issue.get('reason', ''))]
+        if import_failures:
+            ir['campaign']['attributes_meta']['upstream_import_error'] = import_failures[0]
         for issue in declarations['unresolved']:
             prefix = 'Campaign.' + issue['field'] if 'field' in issue else 'Campaign'
             ir['unresolved'].append(f"{prefix}: {issue.get('reason', issue)}")

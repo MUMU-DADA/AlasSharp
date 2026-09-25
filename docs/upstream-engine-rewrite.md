@@ -52,6 +52,22 @@
 
 各自的口径与"不覆盖什么"写在报告里，不在这里重复。
 
+#### 导出验收全绿：3 个"上游自身无法导入"的模块被归类（不是白名单）
+
+`verify_export` 长期有 3 个模块报 Campaign 声明不完整（`event_20200227_cn/{c2,d3}`、
+`event_20200312_cn/sp3`）。查清后是**上游死代码**：它们 `from module.campaign.assets import C2 / D3 /
+EVENT_20200312CN_SP3`，而这三个常量在上游快照里根本不存在——**上游自己 import 都失败**（实测确认）。
+
+处理方式（两侧共用同一份**记录下来的判据**，不做白名单）：
+
+| 环节 | 做法 |
+| --- | --- |
+| 导出器 | 把参考解析器的 unresolved 原因里含 `cannot import` 的记进 `campaign.attributes_meta.upstream_import_error`（事实随数据落盘） |
+| Python `verify_export.py` | 对每个 Campaign 问题**动态 import 该模块**：ImportError → 记为 `campaign_attribute_upstream_broken`；否则仍当问题 |
+| C# `Alas.Server verify` | 读 `attributes_meta.unresolved[].reason` 里的 `cannot import` → 记为"上游自身无法导入（缺 assets 常量），不计问题" |
+
+结果：两侧都 **0 问题**（3 个已归类、单独计数、逐条打印模块名），且**新增的、无法归因的问题仍会让验收失败**。
+
 ## 2. 范围界定
 
 ### 2.0 实施约束（已确认）
@@ -305,8 +321,8 @@
   `{"__roads__": [路段, …]}`（路段 = block 列表，block = `[x, y]` 数组）。
   **形状自校验**：符号数必须等于 `列数 × 行数`，否则整表作废、实参照旧记 `<expr>`，不猜。
 - **结果**：`<expr>` 139 → **61**；**78 个步骤**拿到结构化路段实参；
-  `verify_export.py` 的 `plan_issues = 0`（结构化实参没有破坏计划校验），
-  仅剩**既有的 3 模块 Campaign 声明问题**（与本次无关，见 P1-1）。
+  `verify_export.py` 的 `plan_issues = 0`（结构化实参没有破坏计划校验）；
+  当时遗留的 3 个模块 Campaign 声明问题**后来查清并归类**（见"导出验收全绿"一节）。
 - **剩余 61 个 `<expr>`**：`fleet_2_step_on` 11、`pick_up_light_house` 10、
   `super().handle_boss_appear_refocus` 7（委托父类，本就不执行）、`clear_filter_enemy` 6、
   `clear_map_items` 5、`pick_up_flare` 4、`fleet_boss.pick_up_flare` 4、`fleet_2_rescue` 4 等

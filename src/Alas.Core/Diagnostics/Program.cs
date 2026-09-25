@@ -932,6 +932,7 @@ public static class DiagnosticCommands
         int configModules = 0, configComplete = 0, configFields = 0, configIncomplete = 0;
         int mapModules = 0, mapComplete = 0, mapFields = 0, mapBad = 0;
         int campaignModules = 0, campaignComplete = 0, campaignFields = 0, campaignAliases = 0, campaignBad = 0;
+        int campaignUpstreamBroken = 0;
         int chaptersWithOverrides = 0, superDelegateCount = 0;
         var overrideMethods = new SortedSet<string>(StringComparer.Ordinal);
         var badSample = new List<string>();
@@ -957,8 +958,26 @@ public static class DiagnosticCommands
             mapFields += ir.Map.Count;
             if (!CampaignExportValidation.Check(ir, entry, repoDir))
             {
-                campaignBad++;
-                if (badSample.Count < 5) badSample.Add($"{entry.Source}: Campaign 声明/类型/来源/完整性不一致");
+                // 分两类（判据来自导出器写下的 unresolved.reason，不是白名单）：
+                //   * **上游自身无法导入**：关卡引用了 `module.campaign.assets` 里不存在的常量
+                //     （如 `event_20200227_cn/c2.py` 的 `from module.campaign.assets import C2`）——
+                //     上游死代码，不是我们的导出缺陷；
+                //   * 其余：无法归因，仍当问题。
+                bool upstreamBroken = ir.Campaign.AttributesMeta?.Unresolved?.Any(item =>
+                    item.ValueKind == System.Text.Json.JsonValueKind.Object
+                    && item.TryGetProperty("reason", out var reason)
+                    && reason.ValueKind == System.Text.Json.JsonValueKind.String
+                    && reason.GetString()!.Contains("cannot import", StringComparison.Ordinal)) == true;
+                if (upstreamBroken)
+                {
+                    campaignUpstreamBroken++;
+                    if (badSample.Count < 5) badSample.Add($"{entry.Source}: 上游自身无法导入（缺 assets 常量），不计问题");
+                }
+                else
+                {
+                    campaignBad++;
+                    if (badSample.Count < 5) badSample.Add($"{entry.Source}: Campaign 声明/类型/来源/完整性不一致");
+                }
             }
             if (ir.Campaign.AttributesMeta is { } declarations)
             {
@@ -1030,7 +1049,8 @@ public static class DiagnosticCommands
                           + $"字段 {configFields}，不完整 {configIncomplete}");
         Console.WriteLine($"[MAP] 声明模块 {mapModules}，完整 {mapComplete}，字段 {mapFields}，问题 {mapBad}");
         Console.WriteLine($"[Campaign] 声明模块 {campaignModules}，完整 {campaignComplete}，"
-                          + $"属性 {campaignFields}，方法别名 {campaignAliases}，问题 {campaignBad}");
+                          + $"属性 {campaignFields}，方法别名 {campaignAliases}，问题 {campaignBad}" +
+                          (campaignUpstreamBroken > 0 ? $"（另有 {campaignUpstreamBroken} 个上游自身无法导入，不计问题）" : ""));
         if (campaignBad > 0) problems.Add($"{campaignBad} 个模块的 Campaign 声明导出不完整或不一致");
         if (catalog.Manifest is { } mapManifest
             && mapManifest.RootElement.TryGetProperty("campaign", out var mapSummary))

@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import hashlib
+import importlib
 import json
 import os
 import re
@@ -277,7 +278,26 @@ def check(repo: str, data: str) -> dict:
         if manifest.get('campaign', {}).get(key) != expected:
             problems.append(f'campaign manifest {key} 不一致')
     stats['campaign_attribute_checked'] = len(index['chapters'])
+    # Campaign 声明"导出不完整"分两类，必须分开报告（不能简单白名单）：
+    #   * **上游自身无法导入**：关卡文件引用的 assets 常量在上游快照里不存在（如
+    #     `event_20200227_cn/c2.py` 的 `from module.campaign.assets import C2`）→ 上游死代码，
+    #     不是我们的导出缺陷。这里**动态验证**：真的去 import 那个模块，ImportError 才算这一类。
+    #   * **其余**：无法归因，继续当问题。
+    upstream_broken, unexplained = [], []
+    for entry in campaign_bad:
+        module = entry['file'][:-3].replace('/', '.').replace('\\', '.')
+        try:
+            importlib.import_module(module)
+            unexplained.append(entry)
+        except ImportError as error:
+            upstream_broken.append(dict(entry, upstream_import_error=f'{type(error).__name__}: {error}'))
+        except Exception:                      # noqa: BLE001 —— 别的异常不算"上游缺常量"，仍当问题
+            unexplained.append(entry)
+    campaign_bad = unexplained
     stats['campaign_attribute_issues'] = len(campaign_bad)
+    stats['campaign_attribute_upstream_broken'] = len(upstream_broken)
+    if upstream_broken:
+        stats['campaign_attribute_upstream_broken_modules'] = [item['file'] for item in upstream_broken]
     if campaign_bad:
         problems.append(f'{len(campaign_bad)} 个模块的 Campaign 声明导出不完整或不一致')
     stats['map_checked'] = len(index['chapters'])
