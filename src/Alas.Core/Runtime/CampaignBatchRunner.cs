@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Alas.Campaign;
 using Alas.Vision;
@@ -146,6 +147,7 @@ public sealed class CampaignBatchRunner
             }
 
             var stageWatch = System.Diagnostics.Stopwatch.StartNew();
+            var stageStarted = DateTimeOffset.Now;
             try
             {
                 stage.Result = _session.Vision.RunCampaignPlan(
@@ -183,6 +185,7 @@ public sealed class CampaignBatchRunner
             Judge(stage);
             stage.ArtifactPath = WriteStageArtifact(stage);
             LogStage(stage);
+            CompareShadow(stage, run, stageStarted);
 
             if (stage.Failed && StopOnFailure)
             {
@@ -311,6 +314,84 @@ public sealed class CampaignBatchRunner
         _session.Log.Add(stage.Failed ? "ERROR" : "INFO", "stage",
                          SortieContract.Describe(stage.Result ?? new SortieResult(),
                                                  _session.RunDirectory), fields);
+    }
+
+    /// <summary>
+    /// 影子比对（**只算不执行**）：读本次关卡运行期间上游写的日志，用 C# 引擎在同一 <c>battle_count</c>
+    /// 下应选的钩子，与上游实际打的 <c>Using function: …</c> 逐步比对；结果写进本次运行目录并记一条会话日志。
+    ///
+    /// 边界（重要）：这是**观测项**——漂移只记 WARN，**不影响关卡结论**，也不改变任何设备动作；
+    /// 关卡计划读不出来（导出里没有这一关）或找不到本次日志时静默跳过，不猜。
+    /// </summary>
+    private void CompareShadow(StageRun stage, CampaignRunSettings run, DateTimeOffset stageStarted)
+    {
+        if (_session.RunDirectory is null || stage.Result is null) return;
+        if (!TryReadPlan(stage.Chapter, out var plan)) return;
+        string? logPath = FindUpstreamLog(stageStarted);
+        if (logPath is null) return;
+
+        var observation = Alas.Campaign.UpstreamLogParser.Parse(File.ReadAllText(logPath));
+        if (observation.Rounds.Count == 0) return;
+
+        string variant = run.ClearAll ? "clear_all" : CampaignShadow.DefaultVariant;
+        var comparison = Alas.Campaign.CampaignShadow.Compare(plan!, observation, variant);
+        var document = new JsonObject
+        {
+            ["chapter"] = stage.Chapter,
+            ["variant"] = variant,
+            ["upstream_log"] = Path.GetFileName(logPath),
+            ["campaign_end"] = observation.CampaignEnd,
+            ["exhausted"] = observation.BattleFunctionExhausted,
+            ["matched"] = comparison.Matched,
+            ["mismatched"] = comparison.Mismatched,
+            ["skipped"] = comparison.Skipped,
+            ["rows"] = new JsonArray(comparison.Rows.Select(row => (JsonNode)new JsonObject
+            {
+                ["battle_count"] = row.BattleCount,
+                ["shadow"] = row.Expected,
+                ["upstream"] = row.Actual,
+                ["verdict"] = row.Verdict,
+                ["note"] = row.Note,
+            }).ToArray()),
+        };
+        string name = "shadow-" + stage.Chapter.Replace('.', '-') + ".json";
+        string path = Path.Combine(_session.RunDirectory, name);
+        File.WriteAllText(path, document.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+
+        var fields = new Dictionary<string, object?>
+        {
+            ["chapter"] = stage.Chapter,
+            ["variant"] = variant,
+            ["matched"] = comparison.Matched,
+            ["mismatched"] = comparison.Mismatched,
+            ["skipped"] = comparison.Skipped,
+            ["artifact"] = name,
+        };
+        if (comparison.Mismatched == 0)
+        {
+            _session.Log.Info("shadow", "影子比对一致（C# 决策与上游实际出击相同）", fields);
+        }
+        else
+        {
+            _session.Log.Warn("shadow", "影子比对发现漂移（不影响本关结论，供排查）", fields);
+        }
+    }
+
+    /// <summary>把模块名映射到导出里的关卡计划（映射逻辑在 `CampaignPlanReader.TryReadModule`，运行外可单独测）。</summary>
+    private bool TryReadPlan(string chapterModule, out Alas.Campaign.CampaignPlan? plan) =>
+        CampaignPlanReader.TryReadModule(_session.Options.DataDirectory, chapterModule, out plan);
+
+    /// <summary>本次关卡运行期间上游写的日志（ALAS 把日志写在引擎仓库的 `log/` 下）。</summary>
+    private string? FindUpstreamLog(DateTimeOffset since)
+    {
+        string directory = Path.Combine(_session.Options.RepoDirectory, "log");
+        if (!Directory.Exists(directory)) return null;
+        return Directory.GetFiles(directory, "*.txt")
+            .Select(path => new FileInfo(path))
+            .Where(info => info.LastWriteTime >= since.LocalDateTime.AddSeconds(-5))
+            .OrderByDescending(info => info.LastWriteTime)
+            .Select(info => info.FullName)
+            .FirstOrDefault();
     }
 
     private string? WriteStageArtifact(StageRun stage)

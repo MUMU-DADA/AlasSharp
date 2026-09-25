@@ -689,6 +689,26 @@ Alas.Server queue --file .runtime/device-probe/campaign-1-1-queue.json --run --a
 **下一步（真机口径）**：把影子模式接进真实运行（同一次运行里既跑上游又记录 C# 决策），
 并对 `fleet_2_protect` 这类有内部循环的原语做真机对照；在拿到这些证据前，域级开关保持关闭。
 
+#### P2-17 已完成：影子模式接进运行时（运行内比对，只加观测）（2026-09-26）
+
+`Alas.Core/Runtime/CampaignBatchRunner` 在每关结束后调用 `CompareShadow`：
+
+| 步骤 | 做法 |
+| --- | --- |
+| 找上游日志 | 读引擎仓库 `log/` 下**本次关卡运行期间**写的 `.txt`（按修改时间取最新），找不到就跳过 |
+| 解析关卡 | `CampaignPlanReader.TryReadModule(dataDir, "campaign.campaign_main.campaign_1_1")` → 目录 `campaign_main` + 关卡 `campaign_1_1`；**读不出来就跳过，不兜底到别的关卡** |
+| 比对 | `UpstreamLogParser` + `CampaignShadow.Compare(plan, observation, variant)`；变体由运行设置决定（`clear_all` 开关 → `clear_all`，否则默认变体） |
+| 落盘 | 本次运行目录写 `shadow-<模块名>.json`（逐轮 一致/不一致/跳过 + 上游日志文件名），并记一条会话日志：一致记 INFO，漂移记 **WARN** |
+
+**边界（写在代码注释里）**：这是**观测项**——漂移不改关卡结论、不改任何设备动作、不影响队列 outcome；
+日志或计划缺失时静默跳过，不猜。
+
+**同一映射也开放给离线命令**：`r5-shadow --chapter-module <上游模块名>`（与运行内用的是同一个
+`CampaignPlanReader.TryReadModule`），`verify_r5_shadow.py` 增加该形式的用例 → 4 例全 PASS。
+
+> 说明：运行内这条路径的**端到端**要等下一次授权的真机运行才会首次产出 `shadow-*.json`
+> （本轮只做了离线可验证的部分：映射、解析、比对、落盘与日志；设备动作没有重复执行）。
+
 ### P4 收口
 
 `IVisionEngine` 只保留识图相关方法；上游目录只剩规则文件与识图组件；文档同步（`docs/architecture-roadmap.md`、本文件、[架构梳理](ARCHITECTURE-NOTES.md)）。

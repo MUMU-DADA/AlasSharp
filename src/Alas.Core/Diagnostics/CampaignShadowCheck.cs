@@ -20,27 +20,38 @@ namespace Alas.Core.Diagnostics;
 internal static class CampaignShadowCheck
 {
     public static int Run(string dataDir, string? chapter, string? level, string? logPath, bool asJson,
-                          string declaredVariant = CampaignShadow.DefaultVariant)
+                          string declaredVariant = CampaignShadow.DefaultVariant, string? chapterModule = null)
     {
-        if (string.IsNullOrEmpty(chapter) || string.IsNullOrEmpty(level))
+        if (string.IsNullOrEmpty(chapterModule) && (string.IsNullOrEmpty(chapter) || string.IsNullOrEmpty(level)))
         {
-            return Fail("用法：r5-shadow --chapter <章> --level <关> --log <上游运行日志>");
+            return Fail("用法：r5-shadow (--chapter <章> --level <关> | --chapter-module <上游模块名>) --log <上游运行日志>");
         }
         if (string.IsNullOrEmpty(logPath) || !File.Exists(logPath))
         {
             return Fail($"找不到日志：{logPath}");
         }
 
-        RulePlan plan;
-        try
+        RulePlan? plan;
+        if (!string.IsNullOrEmpty(chapterModule))
         {
-            plan = CampaignPlanReader.Read(dataDir, chapter, level);
+            if (!CampaignPlanReader.TryReadModule(dataDir, chapterModule, out plan))
+            {
+                return Fail($"按模块名读不出关卡计划：{chapterModule}");
+            }
         }
-        catch (Exception error) when (error is JsonException or IOException)
+        else
         {
-            return Fail($"读不出关卡计划 {chapter}/{level}：{error.Message}");
+            try
+            {
+                plan = CampaignPlanReader.Read(dataDir, chapter!, level!);
+            }
+            catch (Exception error) when (error is JsonException or IOException)
+            {
+                return Fail($"读不出关卡计划 {chapter}/{level}：{error.Message}");
+            }
         }
 
+        if (plan is null) return Fail("读不出关卡计划（导出里没有这一关）");
         var observation = UpstreamLogParser.Parse(File.ReadAllText(logPath));
         var comparison = CampaignShadow.Compare(plan, observation, declaredVariant);
 

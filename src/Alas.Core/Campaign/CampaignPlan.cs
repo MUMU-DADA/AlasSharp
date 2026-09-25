@@ -220,6 +220,32 @@ public static class CampaignPlanReader
     }
 
     /// <summary>
+    /// 按**上游模块名**读关卡计划：`campaign.campaign_main.campaign_1_1` → 目录 `campaign_main` + 关卡 `campaign_1_1`。
+    /// 运行时要按"这次跑的是哪个模块"去找计划（影子比对、后续引擎执行都走这个映射），
+    /// 读不到就返回 false——不猜、不兜底到别的关卡。
+    /// </summary>
+    public static bool TryReadModule(string dataDirectory, string chapterModule, out CampaignPlan? plan)
+    {
+        plan = null;
+        string[] parts = chapterModule.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        int offset = parts.Length > 0 && parts[0] == "campaign" ? 1 : 0;
+        if (parts.Length - offset < 2) return false;
+        if (string.IsNullOrEmpty(dataDirectory) || !Directory.Exists(Path.Combine(dataDirectory, "campaign")))
+        {
+            return false;
+        }
+        try
+        {
+            plan = Read(dataDirectory, parts[offset], parts[offset + 1]);
+            return true;
+        }
+        catch (Exception error) when (error is JsonException or IOException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// 汇总一章的关卡计划：关卡数、钩子数、静态可表达率、未表达原因分布、调用序列 Top。
     /// 统计口径与 `tools/diagnostics/r5_upstream_audit.py` 的 A/D 节一致（同一份导出数据）。
     /// </summary>

@@ -38,6 +38,12 @@ CASES = [
                    "verdicts": ["一致", "一致", "一致", "一致"]},
     },
     {
+        "name": "按上游模块名解析关卡（--chapter-module）",
+        "log": "shadow-consistent.log",
+        "chapter_module": "campaign.campaign_main.campaign_1_4",
+        "expect": {"matched": 4, "mismatched": 0, "skipped": 0, "verdicts": ["一致", "一致", "一致", "一致"]},
+    },
+    {
         "name": "漂移：第 1 轮不一致、第 2 轮变体跳过、第 3 轮没打成",
         "log": "shadow-drift.log",
         "chapter": "campaign_main",
@@ -66,8 +72,12 @@ def main() -> int:
         if not log.is_file():
             problems.append(f"{case['name']}: 缺少夹具日志 {log.name}")
             continue
-        command = [str(SERVER), "r5-shadow", "--chapter", case["chapter"], "--level", case["level"],
-                   "--log", str(log), "--json"]
+        command = [str(SERVER), "r5-shadow"]
+        if case.get("chapter_module"):
+            command += ["--chapter-module", case["chapter_module"]]
+        else:
+            command += ["--chapter", case["chapter"], "--level", case["level"]]
+        command += ["--log", str(log), "--json"]
         if case.get("variant"):
             command += ["--variant", case["variant"]]
         completed = subprocess.run(

@@ -413,7 +413,7 @@ public static class DiagnosticCommands
             if (command == "r5-shadow")
             {
                 // 影子模式：读上游运行日志，比对 C# 引擎在同一 battle_count 下会选哪个钩子（只算不执行）。
-                string? shadowChapter = null, shadowLevel = null, shadowLog = null, shadowVariant = null;
+                string? shadowChapter = null, shadowLevel = null, shadowLog = null, shadowVariant = null, shadowModule = null;
                 bool shadowJson = args.Contains("--json");
                 for (int i = 1; i < args.Length - 1; i++)
                 {
@@ -421,9 +421,11 @@ public static class DiagnosticCommands
                     if (args[i] == "--level") shadowLevel = args[i + 1];
                     if (args[i] == "--log") shadowLog = args[i + 1];
                     if (args[i] == "--variant") shadowVariant = args[i + 1];
+                    if (args[i] == "--chapter-module") shadowModule = args[i + 1];
                 }
                 return CampaignShadowCheck.Run(dataDir, shadowChapter, shadowLevel, shadowLog, shadowJson,
-                                               shadowVariant ?? Alas.Campaign.CampaignShadow.DefaultVariant);
+                                               shadowVariant ?? Alas.Campaign.CampaignShadow.DefaultVariant,
+                                               shadowModule);
             }
             if (command == "r5-path")
             {
