@@ -84,13 +84,17 @@ internal static class CampaignSelectionCheck
                 case "primitive_clear_potential_roadblocks":
                 case "primitive_clear_first_roadblocks":
                 case "primitive_pick_up_ammo":
+                case "primitive_fleet_2_push_forward":
+                case "primitive_fleet_2_protect":
                     var config = new CampaignRuntimeConfig(
                         EnemyPriority: testCase.EnemyPriority,
                         MapClearAllThisTime: testCase.MapClearAllThisTime,
                         MapHasSiren: testCase.MapHasSiren ?? false,
                         MapHasFortress: testCase.MapHasFortress ?? false,
                         Fleet2: testCase.Fleet2 ?? false,
-                        FleetBoss: testCase.FleetBoss ?? false);
+                        FleetBoss: testCase.FleetBoss ?? false,
+                        MapHasMovableEnemy: testCase.MapHasMovableEnemy ?? false,
+                        MapHasMovableNormalEnemy: testCase.MapHasMovableNormalEnemy ?? false);
                     var host = new RecordingCampaignHost(grids.Grids, config)
                     {
                         FleetCurrentIndex = testCase.FleetCurrentIndex ?? 1,
@@ -103,6 +107,8 @@ internal static class CampaignSelectionCheck
                     bool result = testCase.Kind switch
                     {
                         "primitive_pick_up_ammo" => CampaignPrimitives.PickUpAmmo(host),
+                        "primitive_fleet_2_push_forward" => CampaignPrimitives.Fleet2PushForward(host),
+                        "primitive_fleet_2_protect" => CampaignPrimitives.Fleet2Protect(host),
                         "primitive_clear_first_roadblocks" =>
                             CampaignPrimitives.ClearFirstRoadblocks(host, roads, options),
                         "primitive_clear_roadblocks" => CampaignPrimitives.ClearRoadblocks(host, roads, options),
@@ -239,6 +245,8 @@ internal static class CampaignSelectionCheck
         [JsonPropertyName("fleet_2")] public bool? Fleet2 { get; init; }
         [JsonPropertyName("fleet_boss")] public bool? FleetBoss { get; init; }
         [JsonPropertyName("ammo_count")] public int? AmmoCount { get; init; }
+        [JsonPropertyName("map_has_movable_enemy")] public bool? MapHasMovableEnemy { get; init; }
+        [JsonPropertyName("map_has_movable_normal_enemy")] public bool? MapHasMovableNormalEnemy { get; init; }
         [JsonPropertyName("fleet_current_index")] public int? FleetCurrentIndex { get; init; }
         [JsonPropertyName("fleet_1_location")] public string? Fleet1Location { get; init; }
         [JsonPropertyName("fleet_2_location")] public string? Fleet2Location { get; init; }

@@ -5,8 +5,9 @@
     python tools/diagnostics/r5_composite_sweep.py [--states 60] [--seed 13]
 
 覆盖 `clear_enemy` / `clear_any_enemy` / `clear_siren` / `clear_boss` /
-`clear_roadblocks` / `clear_potential_roadblocks` / `clear_first_roadblocks` / `pick_up_ammo`
-八个**复合原语**的判定：
+`clear_roadblocks` / `clear_potential_roadblocks` / `clear_first_roadblocks` / `pick_up_ammo` /
+`fleet_2_push_forward` / `fleet_2_protect`
+十个**复合原语**的判定：
 它们不只是选择器，还带配置分支（`EnemyPriority_EnemyScaleBalanceWeight`、`MAP_CLEAR_ALL_THIS_TIME`、
 `MAP_HAS_SIREN`/`MAP_HAS_FORTRESS`、`FLEET_2` 改排序键）、可能的 boss 兜底路径等。
 
@@ -38,7 +39,7 @@ UPSTREAM = ROOT / ".runtime" / "engine"
 GENRES = ["Light", "Main", "Carrier", "Treasure"]
 PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss",
               "clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks",
-              "pick_up_ammo"]
+              "pick_up_ammo", "fleet_2_push_forward", "fleet_2_protect"]
 ROADBLOCK_PRIMITIVES = {"clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks"}
 CONFIGS = [
     {"enemy_priority": None},
@@ -49,6 +50,10 @@ CONFIGS = [
     {"map_has_siren": True, "fleet_2": True},
     {"map_has_fortress": True},
     {"map_has_siren": True, "map_has_fortress": True, "fleet_2": True},
+    # 这两条给 `fleet_2_*`：上游要求 2 队 + 可移动敌人（`fleet_boss_index == 2` 还需要 fleet_boss=2）
+    {"fleet_2": True, "fleet_boss": True, "map_has_movable_enemy": True},
+    {"fleet_2": True, "fleet_boss": True, "map_has_movable_enemy": True,
+     "map_has_movable_normal_enemy": True, "map_has_siren": True},
 ]
 
 
@@ -78,16 +83,21 @@ def build_cases(states: int, seed: int) -> list[dict]:
                     "cost_2": 9999 if rng.random() < 0.3 else rng.randint(1, 28),
                 })
         # 上游 `find_path_initial` 会把舰队格标 `is_fleet`（`Fleet.find_path_initial` 里做的），
-        # 而 `potential_roadblocks` 会跳过含舰队的块 —— 夹具必须带上这个标志，否则两边状态不同
+        # 而 `potential_roadblocks`/`fleet_2_*` 都会看这个标志 —— 夹具必须带上，否则两边状态不同
         fleet_cell = grids[0]["location"]
+        second_cell = grids[1]["location"] if len(grids) > 1 else ""
         for kind in PRIMITIVES:
             for config_index, config in enumerate(CONFIGS):
+                has_fleet_2 = bool(config.get("fleet_2"))
                 case = {
                     "name": f"state{index}-{kind}-c{config_index}",
                     "kind": f"primitive_{kind}",
-                    "grids": [dict(grid, is_fleet=grid["location"] == fleet_cell) for grid in grids],
-                    # 舰队位置要与上游替身一致：1 队在第一格、没有 2 队（兜底分支的搜索起点靠它）
+                    "grids": [dict(grid, is_fleet=grid["location"] == fleet_cell
+                                   or (has_fleet_2 and grid["location"] == second_cell))
+                              for grid in grids],
+                    # 舰队位置要与上游替身一致：1 队在第一格；有 2 队时它在第二格
                     "fleet_1_location": fleet_cell,
+                    "fleet_2_location": second_cell if has_fleet_2 else "",
                     "fleet_current_index": 1,
                     **config,
                 }
@@ -111,7 +121,7 @@ class RecordingStub:
     分支两边会走成不同路径（那是替身差异，不是引擎差异）。
     """
 
-    def __init__(self, campaign_map, config, first_location="A1"):
+    def __init__(self, campaign_map, config, first_location="A1", second_location=""):
         self.map = campaign_map
         self.config = config
         self.battle_count = 0
@@ -122,7 +132,7 @@ class RecordingStub:
         self.ensure_no_info_bar_calls = 0
         from module.base.utils import node2location  # noqa: PLC0415
         self.fleet_1_location = node2location(first_location)
-        self.fleet_2_location = tuple()
+        self.fleet_2_location = node2location(second_location) if second_location else tuple()
         self.calls: list[tuple[str, str]] = []
         self.select_grids = self._select_grids
 
@@ -167,6 +177,9 @@ class RecordingStub:
 
     def ensure_no_info_bar(self, *args, **kwargs):
         self.ensure_no_info_bar_calls += 1
+
+    def switch_to(self, *args, **kwargs):
+        self.calls.append(("switch_to", "self"))
 
     def brute_find_roadblocks(self, grid, fleet=None):
         from module.map.map import Map  # noqa: PLC0415
@@ -249,9 +262,16 @@ def upstream_target(case: dict) -> tuple[str | None, bool | None]:
         "MAP_CLEAR_ALL_THIS_TIME": bool(case.get("map_clear_all_this_time")),
         "MAP_HAS_SIREN": bool(case.get("map_has_siren")),
         "MAP_HAS_FORTRESS": bool(case.get("map_has_fortress")),
+        "MAP_HAS_MOVABLE_ENEMY": bool(case.get("map_has_movable_enemy")),
+        "MAP_HAS_MOVABLE_NORMAL_ENEMY": bool(case.get("map_has_movable_normal_enemy")),
         "FLEET_2": bool(case.get("fleet_2")),
+        # **上游的 `FLEET_BOSS` 是"boss 舰队编号"（1 或 2）**，不是布尔：
+        # C# 侧 `FleetBoss` 是布尔并由 `FleetBossIndex => FleetBoss && Fleet2 ? 2 : 1` 派生。
+        # 映射错了的话上游会一直走"不是 2 队"的早退（实测：fleet_2_* 假不一致）。
+        "FLEET_BOSS": 2 if case.get("fleet_boss") else 1,
     })
-    stub = RecordingStub(campaign_map, config, case["grids"][0]["location"])
+    stub = RecordingStub(campaign_map, config, case["grids"][0]["location"],
+                         case.get("fleet_2_location") or "")
     # **先跑一次寻路**再调原语：真实运行里 cost 场是 `map_init` / `full_scan` 之后就已算好的，
     # 上游原语读的就是这份 cost。少了这一步，上游看到的是夹具里那些**随便填的 cost**，
     # 而 C# 内部会自己算成本场 → 两边状态根本不同（实测：8 处 clear_potential_boss 假不一致）。
@@ -314,12 +334,16 @@ def main() -> int:
     # 这样 C# 侧读到的 cost/cost_1/cost_2 与上游看到的完全一致（否则是两套状态）。
     expected_by_name: dict[str, str | None] = {}
     skipped: dict[str, int] = {}
+    skip_examples: dict[str, list[str]] = {}
     for case in cases:
         try:
             target, _, costs = upstream_target(case)
         except Exception as error:                     # noqa: BLE001 —— 上游跑不动就如实记，不算通过
             key = f"上游执行失败：{type(error).__name__}: {error}"[:110]
             skipped[key] = skipped.get(key, 0) + 1
+            bucket = skip_examples.setdefault(key, [])
+            if len(bucket) < 3:
+                bucket.append(case["name"])
             continue
         expected_by_name[case["name"]] = target
         for grid in case["grids"]:
@@ -366,7 +390,7 @@ def main() -> int:
              "> 本报告由 `tools/diagnostics/r5_composite_sweep.py` 重建，不手写。",
              "> 覆盖：`clear_enemy` / `clear_any_enemy` / `clear_siren` / `clear_boss` /", 
              "> `clear_roadblocks` / `clear_potential_roadblocks` / `clear_first_roadblocks` / `pick_up_ammo`", 
-             "> 的判定（含路段与弹药语义），",
+             "> 的判定（含路段、弹药与 2 队推进/护航语义），",
              "> 含配置分支（优先级、全清、塞壬/要塞、FLEET_2 改排序键）；上游侧跑的是**它自己的方法**。", "",
              f"- 状态数：**{options.states}**（seed={options.seed}，每种状态 × {len(PRIMITIVES)} 原语 × {len(CONFIGS)} 配置）",
              f"- 用例数：**{len(cases)}**；实际比较 **{compared}**",
@@ -384,6 +408,11 @@ def main() -> int:
     if skipped:
         lines += ["## 跳过（如实列出原因）", "", "| 原因 | 次数 |", "| --- | --- |"]
         lines += [f"| {reason} | {count} |" for reason, count in sorted(skipped.items())]
+        lines.append("")
+        lines += ["### 例子（每类最多 3 条）", ""]
+        for reason, items in skip_examples.items():
+            lines.append(f"- **{reason}**")
+            lines += [f"  - `{item}`" for item in items]
         lines.append("")
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text("\n".join(lines), encoding="utf-8", newline="\n")
