@@ -414,6 +414,11 @@ public static class DiagnosticCommands
                 }
                 return CampaignLoopCheck.Run(dataDir, loopFixture);
             }
+            if (command == "r5-switch")
+            {
+                // 域级开关自检：只看当前配置，不连设备、不改行为。
+                return CampaignSwitchCheck.Run(args.Contains("--json"));
+            }
             if (command == "r5-run")
             {
                 // 端到端干跑：真机帧 → 地图识别 → 引擎状态 → 关卡循环（动作只被记录，不连设备）。
@@ -660,7 +665,7 @@ public static class DiagnosticCommands
                 _ => Fail($"未知命令: {command}"
                            + "（可用: verify / list / show / imaging / matching / vision / campaign / "
                            + "map / map-ir / capture / device / queue / plan-queue / report / runs / run / goto / "
-                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state / r5-run / r5-diff）"),
+                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state / r5-run / r5-diff / r5-switch）"),
             };
         }
         catch (Exception ex)

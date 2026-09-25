@@ -325,6 +325,22 @@ public sealed class CampaignBatchRunner
     /// </summary>
     private void CompareShadow(StageRun stage, CampaignRunSettings run, DateTimeOffset stageStarted)
     {
+        // 域级开关（P2 回退能力的骨架）：upstream = 不记录影子；shadow = 记录（默认）；
+        // csharp 只可能在显式闸门放行后出现，而"由 C# 执行关卡循环"尚未接线 → 如实告警并退回影子。
+        var loopMode = CampaignEngineSwitch.LoopMode();
+        if (loopMode == CampaignEngineMode.Upstream)
+        {
+            _session.Log.Info("shadow", "影子比对已关闭（ALAS_ENGINE_LOOP=upstream）", new Dictionary<string, object?>
+            {
+                ["chapter"] = stage.Chapter,
+            });
+            return;
+        }
+        if (loopMode == CampaignEngineMode.CSharp)
+        {
+            _session.Log.Warn("shadow", "ALAS_ENGINE_LOOP=csharp 尚未接线（生产路径仍走上游），本次按影子模式处理",
+                new Dictionary<string, object?> { ["chapter"] = stage.Chapter });
+        }
         if (_session.RunDirectory is null || stage.Result is null) return;
         if (!TryReadPlan(stage.Chapter, out var plan)) return;
         string? logPath = FindUpstreamLog(stageStarted);

@@ -810,6 +810,21 @@ withdraw                 0     1    —        —        —
 夹具日志 `actions-3-1.log`，断言"两边都打 D2、目标交集为真、无目标不一致、只有上游用的包装层原语被列出"；
 帧可用时追加一次帧驱动对照，缺帧跳过）。已登记进 `verify_all.py`（R5 检查现共 **9** 个）。
 
+#### P2-22 已完成：域级开关骨架（回退能力落到代码）（2026-09-26）
+
+`src/Alas.Core/Runtime/CampaignEngineSwitch.cs` + 自检命令 `Alas.Server r5-switch`：
+
+| 约束 | 实现 |
+| --- | --- |
+| 默认**不改行为** | `loop` 域默认 `shadow`（仍跑上游，只多记一份 C# 决策）；`path` / `primitives` 默认 `upstream` 且明确标注**未接进生产路径**（C# 实现目前只用于离线对拍） |
+| `csharp` 是**双钥匙** | 既要 `ALAS_ENGINE_LOOP=csharp`，又要 `ALAS_ENGINE_ALLOW_CSHARP=1`（表示"真实路径证据已备齐、由人明确放行"）；缺第二把钥匙**拒绝**并退回影子模式，拒绝原因进日志 |
+| 非法取值**退回默认** | 取值只认 `upstream` / `shadow` / `csharp`（大小写不敏感）；其它值退回默认并把原因写进说明——不猜 |
+| 可核对 | `r5-switch` 打印每个域的当前后端、是否已接生产路径、闸门状态；`--json` 给机器读 |
+| 生产路径接线 | `CampaignBatchRunner.CompareShadow` 按 `loop` 域决定"要不要记录影子"；若被显式放行成 `csharp`，如实告警"**尚未接线**（仍走上游）"并按影子处理 |
+
+**对拍**：新增 `tools/diagnostics/verify_r5_switch.py`（默认模式 / 未接线域标注 / 缺闸门拒绝 / 有闸门放行 /
+非法值退回），已登记进 `verify_all.py`（R5 检查现共 **10** 个）。
+
 ### P4 收口
 
 `IVisionEngine` 只保留识图相关方法；上游目录只剩规则文件与识图组件；文档同步（`docs/architecture-roadmap.md`、本文件、[架构梳理](ARCHITECTURE-NOTES.md)）。
