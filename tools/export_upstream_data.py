@@ -45,7 +45,7 @@ except ImportError:
     from upstream_map_export import MapResolver
     from upstream_campaign_export import CampaignResolver
 
-EXPORTER_VERSION = '2.7.0'
+EXPORTER_VERSION = '2.8.0'
 SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
@@ -148,23 +148,31 @@ def _campaign_module_path(root: str, module: str) -> str:
 
 
 def _relative_import_origin(tree, current_module: str, name: str):
-    """`from .campaign_14_base import CampaignBase` → 'campaign_main.campaign_14_base'。
+    """把基类名解析成 `(模块名, 原始类名)`；相对导入与 `campaign.` 绝对导入都支持。
 
-    只处理相对导入（level >= 1）：绝对导入的基类可能在上游 `module/` 树里，本函数不追。
+    - `from .campaign_14_base import CampaignBase` → `('campaign_main.campaign_14_base', 'CampaignBase')`
+    - `from campaign.campaign_main.campaign_14_base import CampaignBase` → 同上（上游确有这种绝对写法）
+    - `from .campaign_15_4 import Campaign as Campaign_15_4` → `('campaign_main.campaign_15_4', 'Campaign')`
+      —— **必须回原始类名**，否则按别名在基类模块里找不到类（实测踩到的坑）。
     """
     package = current_module.rsplit('.', 1)[0] if '.' in current_module else ''
     for node in tree.body:
-        if not isinstance(node, ast.ImportFrom) or not node.level or not node.module:
+        if not isinstance(node, ast.ImportFrom) or not node.module:
             continue
         for alias in node.names:
-            if alias.name != name or (alias.asname or alias.name) != name:
+            if (alias.asname or alias.name) != name:
                 continue
-            parts = package.split('.') if package else []
-            up = node.level - 1
-            if up:
-                parts = parts[:-up] if up <= len(parts) else []
-            origin = '.'.join([p for p in parts if p] + [node.module])
-            return origin
+            if node.level:
+                parts = package.split('.') if package else []
+                up = node.level - 1
+                if up:
+                    parts = parts[:-up] if up <= len(parts) else []
+                origin = '.'.join([p for p in parts if p] + [node.module])
+            elif node.module.startswith('campaign.'):
+                origin = node.module[len('campaign.'):]
+            else:
+                continue
+            return origin, alias.name
     return None
 
 
@@ -229,7 +237,8 @@ def campaign_literal_attributes(tree, module: str, root: str, max_depth: int = 1
                     continue
                 origin = _relative_import_origin(current, current_module, base_name)
                 if origin:
-                    pending.append((origin, base_name))
+                    # origin 是 (模块名, 原始类名)：别名导入时原始类名与绑定名不同
+                    pending.append(origin)
     return values
 
 
@@ -339,16 +348,70 @@ def symbol_argument_resolver(locations: dict, variables: dict | None = None):
     return resolve
 
 
+def _parse_road_expr(node, locations: dict):
+    """`RoadGrids([...])` 与其 `.combine(...)` 链 → blocks（`[[[x, y], …], …]`）；解析不出返回 None。
+
+    上游 `RoadGrids.combine(road)` 的语义是**块的两两并集**（`SelectedGrids.add` 去重保序）：
+    `out.grids = [b1.add(b2) for b1 in self.grids for b2 in road.grids]`，这里照抄。
+    """
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'combine' \
+            and len(node.args) == 1:
+        left = _parse_road_expr(node.func.value, locations)
+        right = _parse_road_expr(node.args[0], locations)
+        if left is None or right is None:
+            return None
+        combined = []
+        for block_left in left:
+            for block_right in right:
+                merged, seen = [], set()
+                for cell in list(block_left) + list(block_right):
+                    key = tuple(cell)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    merged.append(cell)
+                combined.append(merged)
+        return combined or None
+
+    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'RoadGrids'
+            and len(node.args) == 1 and isinstance(node.args[0], ast.List)):
+        return None
+    blocks = []
+    for element in node.args[0].elts:
+        if isinstance(element, ast.Name) and element.id in locations:
+            blocks.append([locations[element.id]])
+        elif isinstance(element, ast.List) and element.elts and all(
+                isinstance(item, ast.Name) and item.id in locations for item in element.elts):
+            blocks.append([locations[item.id] for item in element.elts])
+        else:
+            return None
+    return blocks or None
+
+
+def campaign_road_list_variables(tree, roads: dict) -> dict:
+    """模块级 `roads = [road_a, road_b, …]` → `{roads: [road_a, road_b, …]}`（只收已知路段名）。"""
+    variables = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.List):
+            continue
+        elements = node.value.elts
+        if not elements or not all(isinstance(e, ast.Name) and e.id in roads for e in elements):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                variables[target.id] = [e.id for e in elements]
+    return variables
+
+
 def campaign_road_table(tree) -> dict:
-    """模块级 `road_x = RoadGrids([...])` → `{road_x: [[[x, y], ...], ...]}`。
+    """模块级 `road_x = RoadGrids([...])`（含 `.combine(...)` 链）→ `{road_x: [[[x, y], …], …]}`。
 
     上游关卡用 `A1, B1, … = MAP.flatten()` 绑定格子符号，再用
     `road_main = RoadGrids([[H3, B6, C5]])` 声明路段（每个元素是一个 block：单格或格组）。
-    `clear_roadblocks([road_main])` 这类调用的实参就是这些路段对象——标量字面量表达不了，
-    于是原先只能记 `<expr>`（全库 83 个 `clear_roadblocks` / `clear_potential_roadblocks` 步骤被阻塞）。
+    `clear_roadblocks([road_main])` 这类调用的实参就是这些路段对象——标量字面量表达不了。
 
-    这里把路段解析成坐标数组。**只做形状自校验通过的解析**：符号数必须等于
-    `列数 × 行数`（形状如 `K9` → A..K 共 11 列、9 行），否则整表作废、实参照旧记 `<expr>`，不猜。
+    **只做能静态解析的**：格子符号必须在形状自校验通过的符号表里，`combine` 两端都要能解析，
+    否则该条路段不进表、实参照旧记 `<expr>`（宁缺勿猜）。
     """
     locations = campaign_symbol_locations(tree)
     if not locations:
@@ -356,23 +419,10 @@ def campaign_road_table(tree) -> dict:
 
     roads = {}
     for node in tree.body:
-        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+        if not isinstance(node, ast.Assign):
             continue
-        call = node.value
-        if not (isinstance(call.func, ast.Name) and call.func.id == 'RoadGrids' and len(call.args) == 1
-                and isinstance(call.args[0], ast.List)):
-            continue
-        blocks, valid = [], True
-        for element in call.args[0].elts:
-            if isinstance(element, ast.Name) and element.id in locations:
-                blocks.append([locations[element.id]])
-            elif isinstance(element, ast.List) and element.elts and all(
-                    isinstance(item, ast.Name) and item.id in locations for item in element.elts):
-                blocks.append([locations[item.id] for item in element.elts])
-            else:
-                valid = False
-                break
-        if not valid or not blocks:
+        blocks = _parse_road_expr(node.value, locations)
+        if not blocks:
             continue
         for target in node.targets:
             if isinstance(target, ast.Name):
@@ -380,16 +430,34 @@ def campaign_road_table(tree) -> dict:
     return roads
 
 
-def road_argument_resolver(roads: dict):
-    """把 `[road_a, road_b]` / `road_a` 实参解成 `{'__roads__': [路段, ...]}`；否则返回哨兵。"""
+def road_argument_resolver(roads: dict, road_lists: dict | None = None):
+    """把 `road_a` / `[road_a, road_b]` / 路段列表变量解成 `{'__roads__': [路段, ...]}`；否则返回哨兵。"""
+    road_lists = road_lists or {}
+
     def resolve(node):
         if not roads:
             return _UNRESOLVED
-        if isinstance(node, ast.Name) and node.id in roads:
-            return {'__roads__': [roads[node.id]]}
-        if isinstance(node, ast.List) and node.elts and all(
-                isinstance(item, ast.Name) and item.id in roads for item in node.elts):
-            return {'__roads__': [roads[item.id] for item in node.elts]}
+        # 空列表也**有语义**（"没有路障"）：实测 `fleet_2_step_on(SelectedGrids([A1]), roadblocks=[])`
+        if isinstance(node, ast.List) and not node.elts:
+            return {'__roads__': []}
+        if isinstance(node, ast.Name):
+            if node.id in roads:
+                return {'__roads__': [roads[node.id]]}
+            if node.id in road_lists:
+                return {'__roads__': [roads[name] for name in road_lists[node.id]]}
+            return _UNRESOLVED
+        if isinstance(node, ast.List) and node.elts:
+            expanded = []
+            for item in node.elts:
+                if not isinstance(item, ast.Name):
+                    return _UNRESOLVED
+                if item.id in roads:
+                    expanded.append(roads[item.id])
+                elif item.id in road_lists:
+                    expanded.extend(roads[name] for name in road_lists[item.id])
+                else:
+                    return _UNRESOLVED
+            return {'__roads__': expanded}
         return _UNRESOLVED
     return resolve
 
@@ -638,7 +706,8 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
         # 类属性链上的字面量（如基类的 ENEMY_FILTER）与模块级路段（road_main = RoadGrids([...])），
         # 用于解析 self.<NAME> / [road_*] 实参；解析不出的实参仍记 '<expr>'，不猜值。
         literal_resolver = attribute_literal_resolver(campaign_literal_attributes(tree, module, root))
-        road_resolver = road_argument_resolver(campaign_road_table(tree))
+        road_table = campaign_road_table(tree)
+        road_resolver = road_argument_resolver(road_table, campaign_road_list_variables(tree, road_table))
         grid_locations = campaign_symbol_locations(tree)
         symbol_resolver = symbol_argument_resolver(
             grid_locations, campaign_grid_list_variables(tree, grid_locations))

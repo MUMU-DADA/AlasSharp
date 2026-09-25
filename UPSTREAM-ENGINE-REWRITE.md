@@ -526,6 +526,34 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 > ② 引用的符号（如 `G4`）必须存在于地图状态，否则如实报错；③ 可达性由**几何 + 成本场**决定，
 > 不能靠夹具里手写的 `cost` 值伪造。
 
+#### P1-5 已完成：`<expr>` 22 → 7，全库干跑 3019/3019 无阻塞（2026-09-26）
+
+三处导出器根因（导出器 2.7.0 → 2.8.0）：
+
+| 根因 | 例子 | 修法 |
+| --- | --- | --- |
+| **绝对导入的基类**没被追 | `from campaign.campaign_main.campaign_14_base import CampaignBase` | `_relative_import_origin` 同时支持相对导入与 `campaign.` 绝对导入 |
+| **别名导入回错类名** | `from .campaign_15_4 import Campaign as Campaign_15_4` → 在基类模块里按 `Campaign_15_4` 找不到类 | 返回 `(模块, 原始类名)`，按 `Campaign` 找 |
+| **路段表达式不全** | `road_a1 = RoadGrids([...]).combine(RoadGrids([...]))`（`combine` = 块的两两并集）、`roads = [road_a, …]`（模块级路段列表）、`roadblocks=[]`（空表也有语义） | 新增 `_parse_road_expr`（支持 `combine` 链）、`campaign_road_list_variables`、空列表解析；C# 侧 `DecodeRoads` 接受空数组 |
+
+**结果**：`<expr>` **22 → 7**（只剩 `super().handle_boss_appear_refocus` 这类委托父类的占位）；
+`verify_export` 的 `plan_issues = 0`、`map_issues = 0`。
+
+**新增更强的口径指标：全库干跑**（`Alas.Server r5-plan --dry-run-all`）——用**导出的真实地图**
+（`map.map_data` 令牌，按上游 `GridInfo.decode()` 推导 may_* 与 may_ambush）构造地图状态，
+逐个钩子跑一遍 `CampaignHookRunner`：
+
+```
+[干跑全库] 钩子 3019 个：跑完 3019（返回真 1281）/ 被阻塞 0
+[地图状态] 134 章中 67 个关卡导出没有可用 map_data
+```
+
+口径说明（写在命令注释里）：识别结果（哪个格子真有敌人/boss）不在导出里，因此这是**控制流与实参解码的
+干跑**——"跑完"不等于"真机能打通"，但"被阻塞"确实说明引擎缺东西（现在为 0）。
+
+> 一处夹具期望随之更新：`campaign_14_4 battle_3` 原来断言"filter 串是 `<expr>` → 诚实阻塞"，
+> 现在 filter 串已能解析，该钩子走完全程——**这正是本轮想要的结果**，期望改为断言完整执行。
+
 #### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
 
 | 新增原语 | 对应上游 | 关键语义 |

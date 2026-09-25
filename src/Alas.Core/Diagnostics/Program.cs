@@ -448,12 +448,13 @@ public static class DiagnosticCommands
                 // 只读导出规则：不执行关卡、不导入游戏代码、不连设备（见 CampaignPlanCheck）。
                 string? planChapter = target;
                 string? planLevel = null;
+                bool dryRunAll = args.Contains("--dry-run-all");
                 for (int i = 1; i < args.Length - 1; i++)
                 {
                     if (args[i] == "--chapter") planChapter = args[i + 1];
                     if (args[i] == "--level") planLevel = args[i + 1];
                 }
-                return CampaignPlanCheck.Run(dataDir, planChapter, planLevel);
+                return CampaignPlanCheck.Run(dataDir, planChapter, planLevel, dryRunAll);
             }
             if (command == "device")
             {

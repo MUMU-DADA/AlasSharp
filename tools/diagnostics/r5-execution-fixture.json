@@ -306,7 +306,7 @@
       }
     },
     {
-      "name": "campaign_14_4 battle_3：灯塔不可达 → 记日志继续；filter 串仍是 <expr> → 诚实阻塞",
+      "name": "campaign_14_4 battle_3：灯塔不可达 → 记日志继续；filter 串已由导出器解析 → 走完全程",
       "chapter": "campaign_hard",
       "level": "campaign_14_4",
       "hook": "battle_3",
@@ -317,9 +317,10 @@
         { "location": "E5", "may_ammo": true, "weight": 12, "cost": 4 }
       ],
       "expect": {
-        "completed": false,
-        "blocked_contains": "实参未求值",
-        "log_contains": "not accessible, will check in next battle"
+        "completed": true,
+        "return": false,
+        "log_contains": "not accessible, will check in next battle",
+        "steps_contains": "clear_filter_enemy: 假（尝试）"
       }
     },
     {

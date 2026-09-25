@@ -355,11 +355,11 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | 取值 | 次数 |
 | --- | --- |
 | `1L > 1M > 1E > 1C > 2L > 2M > 2E > 2C > 3L > 3M > 3E > 3C` | 915 |
-| `1T > 1L > 1E > 1M > 2T > 2L > 2E > 2M > 3T > 3L > 3E > 3M` | 27 |
-| `<expr>` | 20 |
+| `1T > 1L > 1E > 1M > 2T > 2L > 2E > 2M > 3T > 3L > 3E > 3M` | 30 |
+| `1L > 1M > 1E > 2L > 3L > 2M > 2E > 1C > 2C > 3M > 3E > 3C` | 13 |
 | `1L > 1M > 2L > 2M > 3L > 3M > 1E > 2E > 3E > 1C > 2C > 3C` | 12 |
-| `1L > 1M > 1E > 2L > 3L > 2M > 2E > 1C > 2C > 3M > 3E > 3C` | 10 |
 | `1L > 1M > 2L > 2M > 3L > 2E > 3E > 2C > 3C > 3M` | 8 |
+| `<expr>` | 7 |
 
 > C# 侧读取这一层的产品代码：`src/Alas.Core/Campaign/CampaignPlan.cs` + 只读命令 `Alas.Server r5-plan`（统计口径与本报告一致，可跨语言对拍）。
 > 执行侧骨架（角色划分、形状契约校验、原语注册表、干跑）见 `src/Alas.Core/Campaign/CampaignEngine.cs`：
@@ -370,20 +370,20 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | 实参形态 | 步骤数 | 占比 |
 | --- | --- | --- |
 | 无参 | 4172 | 73.3% |
-| 字面量 | 1500 | 26.3% |
-| 含未求值表达式 | 22 | 0.4% |
+| 字面量 | 1515 | 26.6% |
+| 含未求值表达式 | 7 | 0.1% |
 
 | 原语 | 无参 | 字面量 | 含未求值表达式 |
 | --- | --- | --- | --- |
 | `battle_default` | 1489 | 0 | 0 |
 | `clear_siren` | 1283 | 1 | 0 |
-| `clear_filter_enemy` | 0 | 972 | 6 |
+| `clear_filter_enemy` | 0 | 978 | 0 |
 | `fleet_boss.clear_boss` | 671 | 0 | 0 |
 | `clear_boss` | 575 | 0 | 0 |
 | `clear_enemy` | 0 | 402 | 0 |
-| `clear_roadblocks` | 0 | 45 | 3 |
+| `clear_roadblocks` | 0 | 48 | 0 |
 | `clear_all_mystery` | 36 | 0 | 0 |
-| `clear_potential_roadblocks` | 0 | 32 | 3 |
+| `clear_potential_roadblocks` | 0 | 35 | 0 |
 | `fleet_2_protect` | 26 | 0 | 0 |
 | `fleet_2_push_forward` | 22 | 0 | 0 |
 | `fleet_1.clear_boss` | 13 | 0 | 0 |

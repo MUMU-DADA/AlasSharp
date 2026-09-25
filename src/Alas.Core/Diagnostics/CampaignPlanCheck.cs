@@ -20,7 +20,7 @@ namespace Alas.Core.Diagnostics;
 /// </summary>
 internal static class CampaignPlanCheck
 {
-    public static int Run(string dataDir, string? chapter, string? level)
+    public static int Run(string dataDir, string? chapter, string? level, bool dryRunAll = false)
     {
         string campaignDir = Path.Combine(dataDir, "campaign");
         if (!Directory.Exists(campaignDir))
@@ -32,6 +32,11 @@ internal static class CampaignPlanCheck
         if (chapters.Count == 0)
         {
             return Fail($"{campaignDir} 下没有章节目录");
+        }
+
+        if (dryRunAll)
+        {
+            return DryRunAll(dataDir, chapters);
         }
 
         if (string.IsNullOrEmpty(chapter))
@@ -200,6 +205,70 @@ internal static class CampaignPlanCheck
     {
         Console.Error.WriteLine($"[错误   ] {message}");
         return 1;
+    }
+
+    /// <summary>
+    /// 全库干跑：用**导出的真实地图**（`map.map_data` 令牌）构造地图状态，逐个钩子跑一遍
+    /// <see cref="CampaignHookRunner"/>，统计"能跑完（有返回值）"与"被阻塞（按原因）"。
+    ///
+    /// 口径说明：这里的识别结果（哪个格子真有敌人/boss）不在导出里，因此**只做控制流与实参解码的
+    /// 干跑**——能跑完不等于真机能打通，被阻塞则说明引擎侧确实缺东西（列出来就是要补的）。
+    /// </summary>
+    private static int DryRunAll(string dataDir, IReadOnlyList<string> chapters)
+    {
+        int hooks = 0, completed = 0, blocked = 0, noMap = 0, returnedTrue = 0;
+        var reasons = new Dictionary<string, int>(StringComparer.Ordinal);
+        var samples = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (string name in chapters)
+        {
+            foreach (var plan in CampaignPlanReader.LoadChapter(dataDir, name))
+            {
+                var grids = CampaignGridTokens.FromText(plan.Map?.MapData?.GetValue<string>());
+                if (grids.Count == 0) noMap++;
+                foreach (var battle in plan.Header.Battles)
+                {
+                    hooks++;
+                    var host = new RecordingCampaignHost(grids, new CampaignRuntimeConfig())
+                    {
+                        BouncingRoutes = plan.Map?.BouncingEnemyData ?? [],
+                        Fleet1Location = grids.Count > 0 ? grids[0].Location : "",
+                        Fleet2Location = grids.Count > 0 ? grids[0].Location : "",
+                    };
+                    var execution = CampaignHookRunner.Run(plan, battle, host);
+                    if (execution.Completed)
+                    {
+                        completed++;
+                        if (execution.ReturnValue == true) returnedTrue++;
+                        continue;
+                    }
+                    blocked++;
+                    string reason = Normalize(execution.BlockedReason ?? "未注明");
+                    reasons[reason] = reasons.GetValueOrDefault(reason) + 1;
+                    samples.TryAdd(reason, $"{plan.Chapter}/{plan.Level}::{battle.Method}");
+                }
+            }
+        }
+
+        Console.WriteLine($"[干跑全库] 钩子 {hooks} 个：跑完 {completed}（返回真 {returnedTrue}）/ 被阻塞 {blocked}");
+        Console.WriteLine($"[地图状态] {chapters.Count} 章中 {noMap} 个关卡导出没有可用 map_data");
+        Console.WriteLine();
+        Console.WriteLine("[阻塞原因 Top 10]");
+        foreach (var (reason, count) in reasons.OrderByDescending(pair => pair.Value).Take(10))
+        {
+            Console.WriteLine($"  {count,-6}{reason}");
+            Console.WriteLine($"        {samples[reason]}");
+        }
+        return 0;
+    }
+
+    /// <summary>把阻塞原因里的具体名字抹掉，便于聚合（保留可判别的类别）。</summary>
+    private static string Normalize(string reason)
+    {
+        int index = reason.IndexOf('：');
+        string head = index > 0 ? reason[..index] : reason;
+        return head
+            .Replace("实参未求值", "实参未求值")
+            .Trim();
     }
 
     /// <summary>步骤的执行侧状态标记（干跑判定，不执行任何东西）。</summary>

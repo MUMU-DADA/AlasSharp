@@ -1344,6 +1344,8 @@ public static class CampaignPrimitiveRegistry
 
         foreach (var value in candidates)
         {
+            // 空数组：上游存在 `roadblocks=[]`（"这条路没有路障"），字面量导出就是 `[]`
+            if (value is JsonArray empty && empty.Count == 0) return [];
             if (value is not JsonObject payload || !payload.ContainsKey("__roads__")) continue;
             if (payload["__roads__"] is not JsonArray roads) continue;
             var parsed = new List<CampaignRoad>();
@@ -1361,7 +1363,8 @@ public static class CampaignPrimitiveRegistry
                 parsed.Add(new CampaignRoad(parsedBlocks));
             }
             if (parsed.Count > 0) return parsed;
-            throw new NotSupportedException($"路段实参为空（{step.Op}）");
+            // 空路段表也是合法输入（上游存在 `roadblocks=[]`），表示"这条路没有路障"
+            return parsed;
         }
         throw new NotSupportedException(
             $"路段实参在导出里不是 __roads__ 结构（{step.Op}）——需要导出器解析 RoadGrids 后才能执行");
