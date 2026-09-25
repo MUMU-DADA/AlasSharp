@@ -45,7 +45,7 @@ except ImportError:
     from upstream_map_export import MapResolver
     from upstream_campaign_export import CampaignResolver
 
-EXPORTER_VERSION = '2.8.0'
+EXPORTER_VERSION = '2.9.0'
 SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
@@ -462,6 +462,43 @@ def road_argument_resolver(roads: dict, road_lists: dict | None = None):
     return resolve
 
 
+def parameter_defaults(node) -> dict:
+    """方法签名 → `{参数名: 字面量默认值}`（没有默认值的参数记为 None）。
+
+    只认能静态取值的默认值（`literal()` 能解出来的），解不出的记 None——不猜。
+    `self` 与 `*args` / `**kwargs` 不进表。
+    """
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return {}
+    arguments = node.args
+    names = [a.arg for a in arguments.posonlyargs + arguments.args if a.arg != 'self']
+    defaults: list = [None] * (len(names) - len(arguments.defaults)) + list(arguments.defaults)
+    table = {}
+    for name, default in zip(names, defaults):
+        if default is None:
+            table[name] = None
+            continue
+        value = literal(default)
+        table[name] = None if value is _UNRESOLVED else value
+    for a, default in zip(arguments.kwonlyargs, arguments.kw_defaults):
+        value = None if default is None else literal(default)
+        table[a.arg] = None if value is _UNRESOLVED else value
+    return table
+
+
+def parameter_resolver(parameters: dict):
+    """方法内**参数引用**（`super().handle_boss_appear_refocus(preset)`）→ `{'__param__': 'preset'}`。
+
+    不把默认值直接内联进实参：默认值属于**钩子签名**（导出在 `parameters` 里），实参只记"传的是哪个参数"，
+    这样"调用方显式传值"和"用了默认值"两种情况在计划里仍然可区分。
+    """
+    def resolve(node):
+        if isinstance(node, ast.Name) and node.id in parameters:
+            return {'__param__': node.id}
+        return _UNRESOLVED
+    return resolve
+
+
 def call_args(node: ast.Call, resolve=None):
     """调用实参 → {位置参数: [...], 关键字参数: {...}}。
 
@@ -729,7 +766,15 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
                             and node.name == 'Campaign':
                         body = [x for x in sub.body if not (isinstance(x, ast.Expr)
                                 and isinstance(x.value, ast.Constant))]
-                        steps, plan_complete, unparsed, dead = derive_plan(body, sub.name, resolve_argument)
+                        # 方法签名：参数名 + 字面量默认值。用途：`super().X(preset)` 这类委托把**参数引用**
+                        # 解成 `{'__param__': 'preset'}`，再配上这里的默认值就能还原实参（见 campaign_1_1）。
+                        parameters = parameter_defaults(sub)
+                        parameter_ref = parameter_resolver(parameters)
+                        def resolve_with_params(value, _base=resolve_argument, _ref=parameter_ref):
+                            resolved = _ref(value)
+                            return resolved if resolved is not _UNRESOLVED else _base(value)
+
+                        steps, plan_complete, unparsed, dead = derive_plan(body, sub.name, resolve_with_params)
                         calls = []
                         for x in ast.walk(sub):
                             if is_self_call(x):
@@ -737,7 +782,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
                         ir['campaign']['battles'].append({
                             'method': sub.name, 'calls': calls, 'steps': steps,
                             'plan_complete': plan_complete, 'unparsed': unparsed,
-                            'dead_code': dead,
+                            'dead_code': dead, 'parameters': parameters,
                             'stmt_count': len(body),
                         })
                 if node.name == 'Campaign':

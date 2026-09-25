@@ -8,10 +8,27 @@
       "hook": "battle_0",
       "cross_check": "clear_enemy",
       "grids": [
-        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 90, "cost": 8 },
-        { "location": "B1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 50, "cost": 12 }
+        {
+          "location": "A1",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 90,
+          "cost": 8
+        },
+        {
+          "location": "B1",
+          "is_enemy": true,
+          "enemy_scale": 1,
+          "enemy_genre": "Main",
+          "weight": 50,
+          "cost": 12
+        }
       ],
-      "expect": { "return": true, "action_contains": "clear_chosen_enemy(B1" }
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(B1"
+      }
     },
     {
       "name": "campaign_1_1 battle_0：地图上没有敌人 → battle_default 返回假",
@@ -20,9 +37,17 @@
       "hook": "battle_0",
       "cross_check": "clear_enemy",
       "grids": [
-        { "location": "A1", "is_mystery": true, "weight": 90, "cost": 8 }
+        {
+          "location": "A1",
+          "is_mystery": true,
+          "weight": 90,
+          "cost": 8
+        }
       ],
-      "expect": { "return": false, "log_contains": "No battle executed." }
+      "expect": {
+        "return": false,
+        "log_contains": "No battle executed."
+      }
     },
     {
       "name": "campaign_1_1 battle_0 + S3_enemy_first：strongest 优先 scale 3",
@@ -30,12 +55,31 @@
       "level": "campaign_1_1",
       "hook": "battle_0",
       "cross_check": "clear_enemy",
-      "config": { "enemy_priority": "S3_enemy_first" },
+      "config": {
+        "enemy_priority": "S3_enemy_first"
+      },
       "grids": [
-        { "location": "A1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 1, "cost": 1 },
-        { "location": "C1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 99, "cost": 9 }
+        {
+          "location": "A1",
+          "is_enemy": true,
+          "enemy_scale": 1,
+          "enemy_genre": "Main",
+          "weight": 1,
+          "cost": 1
+        },
+        {
+          "location": "C1",
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Light",
+          "weight": 99,
+          "cost": 9
+        }
       ],
-      "expect": { "return": true, "action_contains": "clear_chosen_enemy(C1" }
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(C1"
+      }
     },
     {
       "name": "campaign_1_1 battle_1：terminal clear_boss，地图上有 boss → 潜艇机动 + 打 boss，再退回踩 may_boss（本轮已实现）",
@@ -43,7 +87,15 @@
       "level": "campaign_1_1",
       "hook": "battle_1",
       "grids": [
-        { "location": "A1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 1, "cost": 5 }
+        {
+          "location": "A1",
+          "is_boss": true,
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Main",
+          "weight": 1,
+          "cost": 5
+        }
       ],
       "expect": {
         "completed": true,
@@ -58,7 +110,13 @@
       "level": "campaign_1_1",
       "hook": "battle_1",
       "grids": [
-        { "location": "C3", "may_boss": true, "weight": 20, "cost": 7, "cost_2": 30 }
+        {
+          "location": "C3",
+          "may_boss": true,
+          "weight": 20,
+          "cost": 7,
+          "cost_2": 30
+        }
       ],
       "expect": {
         "completed": true,
@@ -72,19 +130,41 @@
       "level": "campaign_1_1",
       "hook": "battle_1",
       "grids": [
-        { "location": "D4", "may_boss": true, "weight": 20, "cost": 9999 }
+        {
+          "location": "D4",
+          "may_boss": true,
+          "weight": 20,
+          "cost": 9999
+        }
       ],
-      "expect": { "completed": false, "blocked_contains": "brute_find_roadblocks" }
+      "expect": {
+        "completed": false,
+        "blocked_contains": "brute_find_roadblocks"
+      }
     },
     {
       "name": "event_20200326_cn a1 battle_0：conditional clear_siren（有塞壬）→ 短路返回真",
       "chapter": "event_20200326_cn",
       "level": "a1",
       "hook": "battle_0",
-      "config": { "map_has_siren": true },
+      "config": {
+        "map_has_siren": true
+      },
       "grids": [
-        { "location": "B2", "is_siren": true, "weight": 50, "cost": 6 },
-        { "location": "C3", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 10, "cost": 4 }
+        {
+          "location": "B2",
+          "is_siren": true,
+          "weight": 50,
+          "cost": 6
+        },
+        {
+          "location": "C3",
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Light",
+          "weight": 10,
+          "cost": 4
+        }
       ],
       "expect": {
         "return": true,
@@ -97,10 +177,26 @@
       "chapter": "event_20200326_cn",
       "level": "a1",
       "hook": "battle_0",
-      "config": { "map_has_siren": true },
+      "config": {
+        "map_has_siren": true
+      },
       "grids": [
-        { "location": "C3", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 10, "cost": 4 },
-        { "location": "D4", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 1, "cost": 1 }
+        {
+          "location": "C3",
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Light",
+          "weight": 10,
+          "cost": 4
+        },
+        {
+          "location": "D4",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 1,
+          "cost": 1
+        }
       ],
       "expect": {
         "return": true,
@@ -113,10 +209,26 @@
       "chapter": "event_20230525_cn",
       "level": "hts2",
       "hook": "battle_5",
-      "config": { "map_has_fortress": true },
+      "config": {
+        "map_has_fortress": true
+      },
       "grids": [
-        { "location": "E5", "is_fortress": true, "weight": 80, "cost": 9, "cost_2": 40 },
-        { "location": "A1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 1, "cost": 1, "cost_2": 1 }
+        {
+          "location": "E5",
+          "is_fortress": true,
+          "weight": 80,
+          "cost": 9,
+          "cost_2": 40
+        },
+        {
+          "location": "A1",
+          "is_enemy": true,
+          "enemy_scale": 1,
+          "enemy_genre": "Main",
+          "weight": 1,
+          "cost": 1,
+          "cost_2": 1
+        }
       ],
       "expect": {
         "return": true,
@@ -129,9 +241,17 @@
       "chapter": "event_20230525_cn",
       "level": "hts2",
       "hook": "battle_5",
-      "config": { "map_has_fortress": true },
+      "config": {
+        "map_has_fortress": true
+      },
       "grids": [
-        { "location": "E5", "is_fortress": true, "weight": 80, "cost": 9, "cost_2": 5 }
+        {
+          "location": "E5",
+          "is_fortress": true,
+          "weight": 80,
+          "cost": 9,
+          "cost_2": 5
+        }
       ],
       "expect": {
         "return": true,
@@ -145,8 +265,22 @@
       "level": "campaign_15_1",
       "hook": "battle_1",
       "grids": [
-        { "location": "A1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Light", "weight": 10, "cost": 5 },
-        { "location": "B1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 20, "cost": 6 }
+        {
+          "location": "A1",
+          "is_enemy": true,
+          "enemy_scale": 1,
+          "enemy_genre": "Light",
+          "weight": 10,
+          "cost": 5
+        },
+        {
+          "location": "B1",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 20,
+          "cost": 6
+        }
       ],
       "expect": {
         "return": true,
@@ -160,8 +294,22 @@
       "level": "campaign_14_2",
       "hook": "battle_5",
       "grids": [
-        { "location": "A1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Treasure", "weight": 90, "cost": 9 },
-        { "location": "B1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Light", "weight": 1, "cost": 1 }
+        {
+          "location": "A1",
+          "is_enemy": true,
+          "enemy_scale": 1,
+          "enemy_genre": "Treasure",
+          "weight": 90,
+          "cost": 9
+        },
+        {
+          "location": "B1",
+          "is_enemy": true,
+          "enemy_scale": 1,
+          "enemy_genre": "Light",
+          "weight": 1,
+          "cost": 1
+        }
       ],
       "expect": {
         "return": true,
@@ -175,7 +323,15 @@
       "level": "campaign_13_1",
       "hook": "battle_6",
       "grids": [
-        { "location": "A1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 1, "cost": 5 }
+        {
+          "location": "A1",
+          "is_boss": true,
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Main",
+          "weight": 1,
+          "cost": 5
+        }
       ],
       "expect": {
         "completed": true,
@@ -188,9 +344,21 @@
       "chapter": "campaign_main",
       "level": "campaign_13_1",
       "hook": "battle_6",
-      "config": { "fleet_boss": true, "fleet_2": true, "fleet_current_index": 1 },
+      "config": {
+        "fleet_boss": true,
+        "fleet_2": true,
+        "fleet_current_index": 1
+      },
       "grids": [
-        { "location": "A1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 1, "cost": 5 }
+        {
+          "location": "A1",
+          "is_boss": true,
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Main",
+          "weight": 1,
+          "cost": 5
+        }
       ],
       "expect": {
         "completed": true,
@@ -203,11 +371,24 @@
       "chapter": "campaign_main",
       "level": "campaign_13_1",
       "hook": "battle_6",
-      "config": { "fleet_current_index": 1 },
+      "config": {
+        "fleet_current_index": 1
+      },
       "grids": [
-        { "location": "A1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 1, "cost": 5 }
+        {
+          "location": "A1",
+          "is_boss": true,
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Main",
+          "weight": 1,
+          "cost": 5
+        }
       ],
-      "expect": { "completed": true, "actions_exclude": "fleet_ensure" }
+      "expect": {
+        "completed": true,
+        "actions_exclude": "fleet_ensure"
+      }
     },
     {
       "name": "campaign_12_2 battle_0：路段实参已解析，单格 block 全是敌人 → clear_roadblocks 命中",
@@ -215,9 +396,27 @@
       "level": "campaign_12_2",
       "hook": "battle_0",
       "grids": [
-        { "location": "B3", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 50, "cost": 8 },
-        { "location": "C4", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Main", "weight": 10, "cost": 2 },
-        { "location": "D5", "weight": 99, "cost": 99 }
+        {
+          "location": "B3",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 50,
+          "cost": 8
+        },
+        {
+          "location": "C4",
+          "is_enemy": true,
+          "enemy_scale": 1,
+          "enemy_genre": "Main",
+          "weight": 10,
+          "cost": 2
+        },
+        {
+          "location": "D5",
+          "weight": 99,
+          "cost": 99
+        }
       ],
       "expect": {
         "return": true,
@@ -232,9 +431,24 @@
       "level": "campaign_12_2",
       "hook": "battle_0",
       "grids": [
-        { "location": "C4", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 50, "cost": 8 },
-        { "location": "D5", "weight": 99, "cost": 99 },
-        { "location": "B3", "weight": 99, "cost": 99 }
+        {
+          "location": "C4",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 50,
+          "cost": 8
+        },
+        {
+          "location": "D5",
+          "weight": 99,
+          "cost": 99
+        },
+        {
+          "location": "B3",
+          "weight": 99,
+          "cost": 99
+        }
       ],
       "expect": {
         "return": true,
@@ -249,10 +463,33 @@
       "level": "campaign_12_2",
       "hook": "battle_0",
       "grids": [
-        { "location": "C4", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 50, "cost": 8 },
-        { "location": "D5", "is_fleet": true, "weight": 1, "cost": 1 },
-        { "location": "B3", "weight": 99, "cost": 99 },
-        { "location": "A1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 5, "cost": 1 }
+        {
+          "location": "C4",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 50,
+          "cost": 8
+        },
+        {
+          "location": "D5",
+          "is_fleet": true,
+          "weight": 1,
+          "cost": 1
+        },
+        {
+          "location": "B3",
+          "weight": 99,
+          "cost": 99
+        },
+        {
+          "location": "A1",
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Light",
+          "weight": 5,
+          "cost": 1
+        }
       ],
       "expect": {
         "return": true,
@@ -265,10 +502,25 @@
       "chapter": "campaign_main",
       "level": "campaign_13_4",
       "hook": "battle_3",
-      "config": { "ammo_count": 3, "fleet_ammo": 2 },
+      "config": {
+        "ammo_count": 3,
+        "fleet_ammo": 2
+      },
       "grids": [
-        { "location": "A1", "may_ammo": true, "weight": 10, "cost": 5 },
-        { "location": "B1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Light", "weight": 20, "cost": 6 }
+        {
+          "location": "A1",
+          "may_ammo": true,
+          "weight": 10,
+          "cost": 5
+        },
+        {
+          "location": "B1",
+          "is_enemy": true,
+          "enemy_scale": 1,
+          "enemy_genre": "Light",
+          "weight": 20,
+          "cost": 6
+        }
       ],
       "expect": {
         "return": true,
@@ -283,20 +535,48 @@
       "level": "campaign_13_4",
       "hook": "battle_3",
       "grids": [
-        { "location": "B1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Light", "weight": 20, "cost": 6 }
+        {
+          "location": "B1",
+          "is_enemy": true,
+          "enemy_scale": 1,
+          "enemy_genre": "Light",
+          "weight": 20,
+          "cost": 6
+        }
       ],
-      "expect": { "return": true, "log_contains": "Map has no ammo." }
+      "expect": {
+        "return": true,
+        "log_contains": "Map has no ammo."
+      }
     },
     {
       "name": "campaign_14_4 battle_3：灯塔/弹药/信号弹三个拾取，随后路段原语短路返回真",
       "chapter": "campaign_hard",
       "level": "campaign_14_4",
       "hook": "battle_3",
-      "config": { "ammo_count": 3, "fleet_ammo": 5 },
+      "config": {
+        "ammo_count": 3,
+        "fleet_ammo": 5
+      },
       "grids": [
-        { "location": "A9", "weight": 10, "cost": 5 },
-        { "location": "H9", "weight": 11, "cost": 6 },
-        { "location": "B8", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 20, "cost": 7 }
+        {
+          "location": "A9",
+          "weight": 10,
+          "cost": 5
+        },
+        {
+          "location": "H9",
+          "weight": 11,
+          "cost": 6
+        },
+        {
+          "location": "B8",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 20,
+          "cost": 7
+        }
       ],
       "expect": {
         "return": true,
@@ -310,11 +590,27 @@
       "chapter": "campaign_hard",
       "level": "campaign_14_4",
       "hook": "battle_3",
-      "config": { "ammo_count": 3, "fleet_ammo": 5 },
+      "config": {
+        "ammo_count": 3,
+        "fleet_ammo": 5
+      },
       "grids": [
-        { "location": "A9", "weight": 10, "cost": 9999 },
-        { "location": "H9", "weight": 11, "cost": 6 },
-        { "location": "E5", "may_ammo": true, "weight": 12, "cost": 4 }
+        {
+          "location": "A9",
+          "weight": 10,
+          "cost": 9999
+        },
+        {
+          "location": "H9",
+          "weight": 11,
+          "cost": 6
+        },
+        {
+          "location": "E5",
+          "may_ammo": true,
+          "weight": 12,
+          "cost": 4
+        }
       ],
       "expect": {
         "completed": true,
@@ -328,9 +624,21 @@
       "chapter": "event_20200716_en",
       "level": "a1",
       "hook": "battle_4",
-      "config": { "fleet_boss": true, "fleet_2": true, "fleet_current_index": 1 },
+      "config": {
+        "fleet_boss": true,
+        "fleet_2": true,
+        "fleet_current_index": 1
+      },
       "grids": [
-        { "location": "C3", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 10, "cost": 5 }
+        {
+          "location": "C3",
+          "is_boss": true,
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Main",
+          "weight": 10,
+          "cost": 5
+        }
       ],
       "expect": {
         "completed": true,
@@ -345,14 +653,41 @@
       "level": "campaign_10_1",
       "hook": "battle_0",
       "config": {
-        "fleet_boss": true, "fleet_2": true, "fleet_current_index": 1,
-        "fleet_1_location": "A1", "fleet_2_location": "B1"
+        "fleet_boss": true,
+        "fleet_2": true,
+        "fleet_current_index": 1,
+        "fleet_1_location": "A1",
+        "fleet_2_location": "B1"
       },
       "grids": [
-        { "location": "A1", "is_fleet": true, "weight": 50, "cost": 0, "cost_2": 0 },
-        { "location": "B1", "is_fleet": true, "weight": 50, "cost": 0, "cost_2": 0 },
-        { "location": "C1", "weight": 10, "cost": 5, "cost_2": 3 },
-        { "location": "E1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 60, "cost": 6 }
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "weight": 50,
+          "cost": 0,
+          "cost_2": 0
+        },
+        {
+          "location": "B1",
+          "is_fleet": true,
+          "weight": 50,
+          "cost": 0,
+          "cost_2": 0
+        },
+        {
+          "location": "C1",
+          "weight": 10,
+          "cost": 5,
+          "cost_2": 3
+        },
+        {
+          "location": "E1",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 60,
+          "cost": 6
+        }
       ],
       "expect": {
         "return": true,
@@ -365,23 +700,64 @@
       "chapter": "campaign_main",
       "level": "campaign_10_1",
       "hook": "battle_0",
-      "config": { "fleet_2": false, "fleet_1_location": "A1", "fleet_2_location": "B1" },
+      "config": {
+        "fleet_2": false,
+        "fleet_1_location": "A1",
+        "fleet_2_location": "B1"
+      },
       "grids": [
-        { "location": "A1", "is_fleet": true, "weight": 50, "cost": 0 },
-        { "location": "B1", "is_fleet": true, "weight": 50, "cost": 0 },
-        { "location": "E1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 60, "cost": 6 }
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "weight": 50,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "is_fleet": true,
+          "weight": 50,
+          "cost": 0
+        },
+        {
+          "location": "E1",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 60,
+          "cost": 6
+        }
       ],
-      "expect": { "actions_exclude": "goto(C1)", "log_excludes": "Push forward" }
+      "expect": {
+        "actions_exclude": "goto(C1)",
+        "log_excludes": "Push forward"
+      }
     },
     {
       "name": "sp battle_0：fleet_2_protect 清掉靠近的塞壬（conditional 短路）",
       "chapter": "event_20200820_cn",
       "level": "sp",
       "hook": "battle_0",
-      "config": { "fleet_2": true, "map_has_movable_enemy": true },
+      "config": {
+        "fleet_2": true,
+        "map_has_movable_enemy": true
+      },
       "grids": [
-        { "location": "S2", "is_siren": true, "weight": 10, "cost": 3, "cost_1": 2, "cost_2": 1 },
-        { "location": "S1", "is_siren": true, "weight": 20, "cost": 4, "cost_1": 5, "cost_2": 5 }
+        {
+          "location": "S2",
+          "is_siren": true,
+          "weight": 10,
+          "cost": 3,
+          "cost_1": 2,
+          "cost_2": 1
+        },
+        {
+          "location": "S1",
+          "is_siren": true,
+          "weight": 20,
+          "cost": 4,
+          "cost_1": 5,
+          "cost_2": 5
+        }
       ],
       "expect": {
         "return": true,
@@ -394,10 +770,27 @@
       "chapter": "event_20200820_cn",
       "level": "sp",
       "hook": "battle_0",
-      "config": { "fleet_2": true, "map_has_movable_enemy": true, "map_has_siren": true },
+      "config": {
+        "fleet_2": true,
+        "map_has_movable_enemy": true,
+        "map_has_siren": true
+      },
       "grids": [
-        { "location": "S1", "is_siren": true, "weight": 10, "cost": 3, "cost_1": 5, "cost_2": 5 },
-        { "location": "N1", "weight": 20, "cost": 5, "cost_1": 1, "cost_2": 1 }
+        {
+          "location": "S1",
+          "is_siren": true,
+          "weight": 10,
+          "cost": 3,
+          "cost_1": 5,
+          "cost_2": 5
+        },
+        {
+          "location": "N1",
+          "weight": 20,
+          "cost": 5,
+          "cost_1": 1,
+          "cost_2": 1
+        }
       ],
       "expect": {
         "return": true,
@@ -410,9 +803,19 @@
       "chapter": "event_20200227_cn",
       "level": "c2",
       "hook": "battle_0",
-      "config": { "fleet_2": true, "fleet_current_index": 1 },
+      "config": {
+        "fleet_2": true,
+        "fleet_current_index": 1
+      },
       "grids": [
-        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 5 }
+        {
+          "location": "A1",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 10,
+          "cost": 5
+        }
       ],
       "expect": {
         "return": true,
@@ -426,11 +829,31 @@
       "chapter": "event_20221124_cn",
       "level": "th1",
       "hook": "battle_6",
-      "config": { "fleet_boss": true, "fleet_2": true, "fleet_current_index": 2 },
+      "config": {
+        "fleet_boss": true,
+        "fleet_2": true,
+        "fleet_current_index": 2
+      },
       "grids": [
-        { "location": "F1", "weight": 10, "cost": 8 },
-        { "location": "I1", "weight": 10, "cost": 3 },
-        { "location": "C3", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 20, "cost": 6 }
+        {
+          "location": "F1",
+          "weight": 10,
+          "cost": 8
+        },
+        {
+          "location": "I1",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "C3",
+          "is_boss": true,
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Main",
+          "weight": 20,
+          "cost": 6
+        }
       ],
       "expect": {
         "completed": true,
@@ -444,9 +867,16 @@
       "chapter": "event_20200903_en",
       "level": "sp1",
       "hook": "battle_0",
-      "config": { "map_has_land_based": true },
+      "config": {
+        "map_has_land_based": true
+      },
       "grids": [
-        { "location": "D4", "is_mechanism_trigger": true, "weight": 10, "cost": 5 }
+        {
+          "location": "D4",
+          "is_mechanism_trigger": true,
+          "weight": 10,
+          "cost": 5
+        }
       ],
       "expect": {
         "completed": false,
@@ -459,10 +889,23 @@
       "chapter": "war_archives_20190321_en",
       "level": "b2",
       "hook": "battle_3",
-      "config": { "fleet_2": false },
+      "config": {
+        "fleet_2": false
+      },
       "grids": [
-        { "location": "D6", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 5 },
-        { "location": "G4", "weight": 20, "cost": 7 }
+        {
+          "location": "D6",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 10,
+          "cost": 5
+        },
+        {
+          "location": "G4",
+          "weight": 20,
+          "cost": 7
+        }
       ],
       "expect": {
         "return": true,
@@ -475,12 +918,39 @@
       "chapter": "campaign_main",
       "level": "campaign_8_1",
       "hook": "battle_4",
-      "config": { "fleet_1_location": "A1", "map_has_ambush": false },
+      "config": {
+        "fleet_1_location": "A1",
+        "map_has_ambush": false
+      },
       "grids": [
-        { "location": "A1", "is_fleet": true, "weight": 5, "cost": 0 },
-        { "location": "B1", "weight": 10, "cost": 1 },
-        { "location": "C1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 20, "cost": 2 },
-        { "location": "D1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 30, "cost": 3 }
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "weight": 5,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "weight": 10,
+          "cost": 1
+        },
+        {
+          "location": "C1",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 20,
+          "cost": 2
+        },
+        {
+          "location": "D1",
+          "is_boss": true,
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Main",
+          "weight": 30,
+          "cost": 3
+        }
       ],
       "expect": {
         "completed": true,
@@ -495,13 +965,34 @@
       "level": "campaign_8_1",
       "hook": "battle_4",
       "config": {
-        "fleet_1_location": "A1", "fleet_2_location": "B1", "map_has_ambush": false,
-        "fleet_boss": true, "fleet_2": true
+        "fleet_1_location": "A1",
+        "fleet_2_location": "B1",
+        "map_has_ambush": false,
+        "fleet_boss": true,
+        "fleet_2": true
       },
       "grids": [
-        { "location": "A1", "is_fleet": true, "weight": 5, "cost": 0 },
-        { "location": "B1", "is_fleet": true, "weight": 10, "cost": 1 },
-        { "location": "C1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 15, "cost": 2 }
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "weight": 5,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "is_fleet": true,
+          "weight": 10,
+          "cost": 1
+        },
+        {
+          "location": "C1",
+          "is_boss": true,
+          "is_enemy": true,
+          "enemy_scale": 3,
+          "enemy_genre": "Main",
+          "weight": 15,
+          "cost": 2
+        }
       ],
       "expect": {
         "completed": true,
@@ -516,24 +1007,91 @@
       "level": "campaign_3_1",
       "hook": "battle_0",
       "config": {
-        "fleet_boss": true, "fleet_2": true, "map_has_ambush": false,
-        "fleet_1_location": "A1", "fleet_2_location": "C1"
+        "fleet_boss": true,
+        "fleet_2": true,
+        "map_has_ambush": false,
+        "fleet_1_location": "A1",
+        "fleet_2_location": "C1"
       },
       "grids": [
-        { "location": "A1", "is_fleet": true, "weight": 5, "cost": 0 },
-        { "location": "B1", "weight": 10, "cost": 1 },
-        { "location": "C1", "is_fleet": true, "weight": 5, "cost": 1 },
-        { "location": "D1", "weight": 10, "cost": 2 },
-        { "location": "E1", "is_land": true, "weight": 10, "cost": 9999 },
-        { "location": "F1", "is_land": true, "weight": 10, "cost": 9999 },
-        { "location": "G1", "is_land": true, "weight": 10, "cost": 9999 },
-        { "location": "A2", "weight": 10, "cost": 2 },
-        { "location": "B2", "weight": 10, "cost": 3 },
-        { "location": "C2", "weight": 10, "cost": 2 },
-        { "location": "D2", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 20, "cost": 4 },
-        { "location": "E2", "weight": 10, "cost": 6 },
-        { "location": "F2", "weight": 10, "cost": 7 },
-        { "location": "G2", "weight": 10, "cost": 8 }
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "weight": 5,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "weight": 10,
+          "cost": 1
+        },
+        {
+          "location": "C1",
+          "is_fleet": true,
+          "weight": 5,
+          "cost": 1
+        },
+        {
+          "location": "D1",
+          "weight": 10,
+          "cost": 2
+        },
+        {
+          "location": "E1",
+          "is_land": true,
+          "weight": 10,
+          "cost": 9999
+        },
+        {
+          "location": "F1",
+          "is_land": true,
+          "weight": 10,
+          "cost": 9999
+        },
+        {
+          "location": "G1",
+          "is_land": true,
+          "weight": 10,
+          "cost": 9999
+        },
+        {
+          "location": "A2",
+          "weight": 10,
+          "cost": 2
+        },
+        {
+          "location": "B2",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "C2",
+          "weight": 10,
+          "cost": 2
+        },
+        {
+          "location": "D2",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 20,
+          "cost": 4
+        },
+        {
+          "location": "E2",
+          "weight": 10,
+          "cost": 6
+        },
+        {
+          "location": "F2",
+          "weight": 10,
+          "cost": 7
+        },
+        {
+          "location": "G2",
+          "weight": 10,
+          "cost": 8
+        }
       ],
       "expect": {
         "return": true,
@@ -546,11 +1104,26 @@
       "chapter": "event_20220224_cn",
       "level": "a1",
       "hook": "battle_0",
-      "config": { "map_has_bouncing_enemy": true },
+      "config": {
+        "map_has_bouncing_enemy": true
+      },
       "grids": [
-        { "location": "C2", "may_bouncing_enemy": true, "weight": 10, "cost": 1 },
-        { "location": "C3", "weight": 10, "cost": 2 },
-        { "location": "C4", "weight": 10, "cost": 3 }
+        {
+          "location": "C2",
+          "may_bouncing_enemy": true,
+          "weight": 10,
+          "cost": 1
+        },
+        {
+          "location": "C3",
+          "weight": 10,
+          "cost": 2
+        },
+        {
+          "location": "C4",
+          "weight": 10,
+          "cost": 3
+        }
       ],
       "expect": {
         "return": false,
@@ -563,42 +1136,153 @@
       "chapter": "event_20220224_cn",
       "level": "a1",
       "hook": "battle_0",
-      "config": { "map_has_bouncing_enemy": true },
+      "config": {
+        "map_has_bouncing_enemy": true
+      },
       "grids": [
-        { "location": "C2", "may_bouncing_enemy": true, "weight": 10, "cost": 9999 },
-        { "location": "C3", "weight": 10, "cost": 2 },
-        { "location": "C4", "weight": 10, "cost": 3 }
+        {
+          "location": "C2",
+          "may_bouncing_enemy": true,
+          "weight": 10,
+          "cost": 9999
+        },
+        {
+          "location": "C3",
+          "weight": 10,
+          "cost": 2
+        },
+        {
+          "location": "C4",
+          "weight": 10,
+          "cost": 3
+        }
       ],
-      "expect": { "actions_exclude": "combat_nothing" }
+      "expect": {
+        "actions_exclude": "combat_nothing"
+      }
     },
     {
       "name": "campaign_10_4 battle_0：fleet_2_step_on 踩到可达格 → 切 2 队并返回假（上游就是返回假）",
       "chapter": "campaign_main",
       "level": "campaign_10_4",
       "hook": "battle_0",
-      "config": { "fleet_2": true, "fleet_1_location": "A1", "fleet_2_location": "B2", "map_has_ambush": false },
+      "config": {
+        "fleet_2": true,
+        "fleet_1_location": "A1",
+        "fleet_2_location": "B2",
+        "map_has_ambush": false
+      },
       "grids": [
-        { "location": "A1", "is_fleet": true, "weight": 50, "cost": 0 },
-        { "location": "B1", "weight": 50, "cost": 1 },
-        { "location": "C1", "weight": 50, "cost": 2 },
-        { "location": "D1", "weight": 50, "cost": 3 },
-        { "location": "E1", "weight": 50, "cost": 4 },
-        { "location": "A2", "weight": 50, "cost": 1 },
-        { "location": "B2", "is_fleet": true, "weight": 50, "cost": 2 },
-        { "location": "C2", "weight": 50, "cost": 3 },
-        { "location": "D2", "weight": 50, "cost": 4 },
-        { "location": "E2", "weight": 50, "cost": 5 },
-        { "location": "A3", "weight": 50, "cost": 2 },
-        { "location": "B3", "weight": 50, "cost": 3 },
-        { "location": "C3", "is_land": true, "weight": 50, "cost": 9999 },
-        { "location": "D3", "is_land": true, "weight": 50, "cost": 9999 },
-        { "location": "E3", "weight": 50, "cost": 6 },
-        { "location": "A4", "weight": 50, "cost": 3 },
-        { "location": "B4", "weight": 50, "cost": 4 },
-        { "location": "C4", "weight": 50, "cost": 5 },
-        { "location": "D4", "weight": 50, "cost": 6 },
-        { "location": "E4", "weight": 10, "cost": 7 },
-        { "location": "G4", "is_land": true, "weight": 50, "cost": 9999 }
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "weight": 50,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "weight": 50,
+          "cost": 1
+        },
+        {
+          "location": "C1",
+          "weight": 50,
+          "cost": 2
+        },
+        {
+          "location": "D1",
+          "weight": 50,
+          "cost": 3
+        },
+        {
+          "location": "E1",
+          "weight": 50,
+          "cost": 4
+        },
+        {
+          "location": "A2",
+          "weight": 50,
+          "cost": 1
+        },
+        {
+          "location": "B2",
+          "is_fleet": true,
+          "weight": 50,
+          "cost": 2
+        },
+        {
+          "location": "C2",
+          "weight": 50,
+          "cost": 3
+        },
+        {
+          "location": "D2",
+          "weight": 50,
+          "cost": 4
+        },
+        {
+          "location": "E2",
+          "weight": 50,
+          "cost": 5
+        },
+        {
+          "location": "A3",
+          "weight": 50,
+          "cost": 2
+        },
+        {
+          "location": "B3",
+          "weight": 50,
+          "cost": 3
+        },
+        {
+          "location": "C3",
+          "is_land": true,
+          "weight": 50,
+          "cost": 9999
+        },
+        {
+          "location": "D3",
+          "is_land": true,
+          "weight": 50,
+          "cost": 9999
+        },
+        {
+          "location": "E3",
+          "weight": 50,
+          "cost": 6
+        },
+        {
+          "location": "A4",
+          "weight": 50,
+          "cost": 3
+        },
+        {
+          "location": "B4",
+          "weight": 50,
+          "cost": 4
+        },
+        {
+          "location": "C4",
+          "weight": 50,
+          "cost": 5
+        },
+        {
+          "location": "D4",
+          "weight": 50,
+          "cost": 6
+        },
+        {
+          "location": "E4",
+          "weight": 10,
+          "cost": 7
+        },
+        {
+          "location": "G4",
+          "is_land": true,
+          "weight": 50,
+          "cost": 9999
+        }
       ],
       "expect": {
         "action_contains": "goto(E4)",
@@ -611,29 +1295,126 @@
       "chapter": "campaign_main",
       "level": "campaign_10_4",
       "hook": "battle_0",
-      "config": { "fleet_2": true, "fleet_1_location": "A1", "fleet_2_location": "B2", "map_has_ambush": false },
+      "config": {
+        "fleet_2": true,
+        "fleet_1_location": "A1",
+        "fleet_2_location": "B2",
+        "map_has_ambush": false
+      },
       "grids": [
-        { "location": "A1", "is_fleet": true, "weight": 50, "cost": 0 },
-        { "location": "B1", "weight": 50, "cost": 1 },
-        { "location": "C1", "weight": 50, "cost": 2 },
-        { "location": "D1", "weight": 50, "cost": 3 },
-        { "location": "E1", "weight": 50, "cost": 4 },
-        { "location": "A2", "weight": 50, "cost": 1 },
-        { "location": "B2", "is_fleet": true, "weight": 50, "cost": 2 },
-        { "location": "C2", "weight": 50, "cost": 3 },
-        { "location": "D2", "weight": 50, "cost": 4 },
-        { "location": "E2", "weight": 50, "cost": 5 },
-        { "location": "A3", "weight": 50, "cost": 2 },
-        { "location": "B3", "weight": 50, "cost": 3 },
-        { "location": "C3", "is_land": true, "weight": 50, "cost": 9999 },
-        { "location": "D3", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 20, "cost": 5 },
-        { "location": "E3", "weight": 50, "cost": 6 },
-        { "location": "A4", "weight": 50, "cost": 3 },
-        { "location": "B4", "weight": 50, "cost": 4 },
-        { "location": "C4", "weight": 50, "cost": 5 },
-        { "location": "D4", "weight": 50, "cost": 6 },
-        { "location": "E4", "is_land": true, "weight": 50, "cost": 9999 },
-        { "location": "G4", "is_land": true, "weight": 50, "cost": 9999 }
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "weight": 50,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "weight": 50,
+          "cost": 1
+        },
+        {
+          "location": "C1",
+          "weight": 50,
+          "cost": 2
+        },
+        {
+          "location": "D1",
+          "weight": 50,
+          "cost": 3
+        },
+        {
+          "location": "E1",
+          "weight": 50,
+          "cost": 4
+        },
+        {
+          "location": "A2",
+          "weight": 50,
+          "cost": 1
+        },
+        {
+          "location": "B2",
+          "is_fleet": true,
+          "weight": 50,
+          "cost": 2
+        },
+        {
+          "location": "C2",
+          "weight": 50,
+          "cost": 3
+        },
+        {
+          "location": "D2",
+          "weight": 50,
+          "cost": 4
+        },
+        {
+          "location": "E2",
+          "weight": 50,
+          "cost": 5
+        },
+        {
+          "location": "A3",
+          "weight": 50,
+          "cost": 2
+        },
+        {
+          "location": "B3",
+          "weight": 50,
+          "cost": 3
+        },
+        {
+          "location": "C3",
+          "is_land": true,
+          "weight": 50,
+          "cost": 9999
+        },
+        {
+          "location": "D3",
+          "is_enemy": true,
+          "enemy_scale": 2,
+          "enemy_genre": "Main",
+          "weight": 20,
+          "cost": 5
+        },
+        {
+          "location": "E3",
+          "weight": 50,
+          "cost": 6
+        },
+        {
+          "location": "A4",
+          "weight": 50,
+          "cost": 3
+        },
+        {
+          "location": "B4",
+          "weight": 50,
+          "cost": 4
+        },
+        {
+          "location": "C4",
+          "weight": 50,
+          "cost": 5
+        },
+        {
+          "location": "D4",
+          "weight": 50,
+          "cost": 6
+        },
+        {
+          "location": "E4",
+          "is_land": true,
+          "weight": 50,
+          "cost": 9999
+        },
+        {
+          "location": "G4",
+          "is_land": true,
+          "weight": 50,
+          "cost": 9999
+        }
       ],
       "expect": {
         "return": true,
@@ -642,12 +1423,52 @@
       }
     },
     {
-      "name": "campaign_1_1 handle_boss_appear_refocus：super_delegate → 委托父类，不执行也不阻塞",
+      "name": "campaign_1_1 handle_boss_appear_refocus：update 失败（上游 MapDetectionError）→ 按 preset 滑动再对齐",
       "chapter": "campaign_main",
       "level": "campaign_1_1",
       "hook": "handle_boss_appear_refocus",
-      "grids": [],
-      "expect": { "completed": true, "return": false, "steps_contains": "委托父类" }
+      "update_map_succeeds": false,
+      "camera_location": "D4",
+      "grids": [
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "cost": 1
+        }
+      ],
+      "expect": {
+        "return": false,
+        "log_contains": "MapDetectionError occurs after boss appear, trying swipe preset (-3, 0)",
+        "action_contains": "map_swipe(-3, 0)"
+      }
+    },
+    {
+      "name": "campaign_1_1 handle_boss_appear_refocus：非零 preset + update 成功 → 不滑动，只对齐边缘并回到机位",
+      "chapter": "campaign_main",
+      "level": "campaign_1_1",
+      "hook": "handle_boss_appear_refocus",
+      "update_map_succeeds": true,
+      "camera_location": "D4",
+      "grids": [
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "cost": 1
+        }
+      ],
+      "expect": {
+        "return": false,
+        "log_contains": "Refocus to previous camera position.",
+        "action_contains": "focus_to(D4)"
+      }
     }
   ]
 }

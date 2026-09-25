@@ -55,6 +55,15 @@ public sealed class CampaignPlanBattle
     [JsonPropertyName("stmt_count")] public int StatementCount { get; init; }
 
     /// <summary>
+    /// 钩子签名的参数默认值（`{参数名: 字面量}`，无默认值记 null）。
+    /// 用途：`super().X(preset)` 这类**委托实参**在计划里记的是参数引用 `{"__param__": "preset"}`，
+    /// 执行时用这里的默认值还原实参。
+    /// </summary>
+    [JsonPropertyName("parameters")]
+    public IReadOnlyDictionary<string, JsonNode?> Parameters { get; init; } =
+        new Dictionary<string, JsonNode?>();
+
+    /// <summary>
     /// 可执行步骤（`plan_complete=true` 时非空）：C# 引擎要执行的计划本体。
     /// `steps` 为空表示该钩子含静态无法表达的部分，原因见 <see cref="Unparsed"/>。
     /// </summary>

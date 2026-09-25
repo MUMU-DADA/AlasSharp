@@ -30,7 +30,8 @@ EXPECTED_PRIMITIVES = ["battle_boss", "battle_default", "brute_clear_boss", "bru
                        "clear_first_roadblocks", "clear_map_items", "clear_mechanism",
                        "clear_potential_boss", "clear_potential_roadblocks", "clear_roadblocks",
                        "clear_siren", "fleet_2_break_siren_caught", "fleet_2_protect",
-                       "fleet_2_push_forward", "fleet_2_rescue", "fleet_2_step_on", "pick_up_ammo",
+                       "fleet_2_push_forward", "fleet_2_rescue", "fleet_2_step_on",
+                       "handle_boss_appear_refocus", "pick_up_ammo",
                        "pick_up_flare", "pick_up_light_house", "switch_to"]
 
 

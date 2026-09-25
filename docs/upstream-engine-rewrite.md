@@ -829,6 +829,29 @@ withdraw                 0     1    —        —        —
 **对拍**：`tools/diagnostics/verify_r5_diff.py` 断言决策层无漂移 + 动作层两边都打 D2 + 目标交集为真 +
 无目标不一致 + 包装层原语被如实列出；帧可用时追加帧驱动对照，缺帧跳过。已登记进 `verify_all.py`。
 
+#### P2-24 `super` 委托执行与 `<expr>` 归零（步覆盖 100%）
+
+最后 7 处 `super().handle_boss_appear_refocus(preset)` 此前被当"本层未执行"跳过——那是**引擎的保真缺口**：
+上游这 7 个关卡覆写都只是 `return super().X(preset)`，真正的行为在基类
+`Fleet.handle_boss_appear_refocus`（`module/map/fleet.py:1072`）里。
+
+| 改动 | 内容 |
+| --- | --- |
+| 导出器 2.9.0 | `parameters`：钩子签名的**参数名 + 字面量默认值**；委托实参里的参数引用记成 `{"__param__": "preset"}`（不把默认值内联，保留"显式传值 vs 用默认值"的区别）→ **`<expr>` 归零**（1103 → 0） |
+| C# 执行 | `ResolveSuperDelegate`：把 `super().X(...)` 归一成基类方法名、用签名默认值还原实参、再按普通原语执行；基类方法没登记或参数没有字面量默认值时**如实报错**，不猜一个值去跑 |
+| 基类实现 | `handle_boss_appear_refocus`：记相机位置 → 有非零 preset 时先 `update_map()`，**失败**（上游 `MapDetectionError`）则 `map_swipe(preset)` 再 `ensure_edge_insight()`；无 preset 时只 update + 对齐边缘 → `focus_to(记录位置)` |
+| 覆盖口径对齐 | 静态覆盖不再把委托步骤一律算"未实现"：基类方法已登记且参数引用都能还原 → 算可执行（与执行器同一判据） |
+
+**结果**：步覆盖 **5694/5694（100.0%）**；全库干跑仍 3019/3019 无阻塞。
+
+**对拍**：`r5-exec` 夹具扩到 **40 例**，新增三例针对这条路径——① 委托执行（`update_map → ensure_edge_insight
+→ focus_to`，实参用签名默认值 `[-3, 0]`）；② 非零 preset + **update 失败** → `map_swipe(-3, 0)` 且日志含
+`MapDetectionError occurs after boss appear, trying swipe preset (-3, 0)`；③ 非零 preset + update 成功 →
+不滑动、`focus_to(D4)`（夹具可设 `camera_location`）。
+
+> 诚实边界：`focus_to` 的机位在干跑里是**占位**（默认 `<未记录>`），真机由识别提供；
+> `MAP_BOSS_APPEAR_REFOCUS_SWIPE` 是用户配置项、**没有随关卡导出**，只有关卡显式传 preset 时才走滑动分支。
+
 #### P2-23 运行目录入口（真机验证时不用手填路径）
 
 `Alas.Server r5-diff --run <运行目录>`：直接吃一次运行写出的工件目录，自己解析出对照所需的三件事，

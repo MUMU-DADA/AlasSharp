@@ -137,8 +137,11 @@ public static class CampaignPlanExecutor
                 _ => CampaignStepRole.Setup,
             };
             // 跨钩子调用（`self.battle_0()`）：op 与同关卡另一个钩子同名，执行器会递归执行它。
+            // `super().X(...)`：委托父类实现，执行器会用基类实现跑——只要**基类方法已登记**且
+            // 实参里的参数引用都能用签名默认值还原，这一步就是可执行的（否则如实记为未实现）。
             bool implemented = CampaignPrimitiveRegistry.IsImplemented(step.Op)
-                               || plan.Header.Battles.Any(item => item.Method == step.Op);
+                               || plan.Header.Battles.Any(item => item.Method == step.Op)
+                               || IsExecutableSuperDelegate(plan, battle, step);
             steps.Add(new CampaignExecutionStep(role, step.Op, implemented, Describe(step)));
         }
         return new CampaignExecutionTrace(plan.Chapter, plan.Level, battle.Method, steps);
@@ -182,6 +185,37 @@ public static class CampaignPlanExecutor
         }
         return new CampaignExecutionSurface(chapter, hooks, conforming, steps, implementedSteps, setup, attempts,
                                             fallbacks, delegates, ops);
+    }
+
+    /// <summary>
+    /// `super().X(...)` 这一步能不能执行：基类方法已登记，且实参里的每个参数引用都能用
+    /// **钩子签名的字面量默认值**还原（与执行器 <c>ResolveSuperDelegate</c> 同一判据）。
+    /// </summary>
+    private static bool IsExecutableSuperDelegate(CampaignPlan plan, CampaignPlanBattle battle,
+                                                  CampaignPlanStep step)
+    {
+        const string prefix = "super().";
+        if (!step.Op.StartsWith(prefix, StringComparison.Ordinal) || step.Op.Length == prefix.Length)
+        {
+            return false;
+        }
+        if (!CampaignPrimitiveRegistry.IsImplemented(step.Op[prefix.Length..])) return false;
+        if (step.Args is null) return true;
+        foreach (var value in step.Args.Positional.Concat(step.Args.Keyword.Values))
+        {
+            if (value is not System.Text.Json.Nodes.JsonObject payload
+                || !payload.TryGetPropertyValue("__param__", out var name))
+            {
+                continue;
+            }
+            string? parameter = name?.GetValue<string>();
+            if (parameter is null || !battle.Parameters.TryGetValue(parameter, out var fallback)
+                || fallback is null)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static string Describe(CampaignPlanStep step)

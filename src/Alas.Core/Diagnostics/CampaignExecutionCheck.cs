@@ -83,6 +83,8 @@ internal static class CampaignExecutionCheck
                 FleetAmmo = testCase.Config?.FleetAmmo ?? 5,
                 Fleet1Location = testCase.Config?.Fleet1Location ?? "",
                 Fleet2Location = testCase.Config?.Fleet2Location ?? "",
+                UpdateMapSucceeds = testCase.UpdateMapSucceeds ?? true,
+                CameraLocation = testCase.CameraLocation ?? "<未记录>",
             };
             var execution = CampaignHookRunner.Run(plan, battle, host);
 
@@ -153,6 +155,12 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("hook")] public string Hook { get; init; } = "";
         [JsonPropertyName("config")] public ExecutionConfig? Config { get; init; }
         [JsonPropertyName("grids")] public List<ExecutionGrid>? Grids { get; init; }
+
+        /// <summary>干跑时 `update()` 是否成功；置 false 用来验证"识别失败 → 按 preset 滑动"这条上游分支。</summary>
+        [JsonPropertyName("update_map_succeeds")] public bool? UpdateMapSucceeds { get; init; }
+
+        /// <summary>干跑的相机记录位置（重对焦要回到这里）；默认 `<未记录>` 占位。</summary>
+        [JsonPropertyName("camera_location")] public string? CameraLocation { get; init; }
     }
 
     private sealed class ExecutionConfig

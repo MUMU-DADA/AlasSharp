@@ -16,6 +16,8 @@ public sealed record CampaignRuntimeConfig(
     bool MapHasAmbush = false,
     bool MapHasBouncingEnemy = false,
     bool PoorMapData = false,
+    /// <summary>上游 `config.MAP_BOSS_APPEAR_REFOCUS_SWIPE`：boss 出现后重对焦用的滑动量；未配置为 null。</summary>
+    (int X, int Y)? MapBossAppearRefocusSwipe = null,
     bool ErrorHandleError = true)
 {
     /// <summary>上游 <c>fleet_boss_index</c>：<c>FLEET_BOSS == 2 and FLEET_2</c> 时是 2，否则 1。</summary>
@@ -83,6 +85,18 @@ public interface ICampaignPrimitiveHost
     /// <summary>按位置取地图状态里的格子；取不到即抛错（不返回默认值糊过去）。</summary>
     CampaignGrid GridAt(string location);
 
+    /// <summary>相机当前的记录位置（上游 <c>Fleet.camera</c>；重对焦要回到这里）。</summary>
+    string CameraLocation { get; }
+
+    /// <summary>地图更新（上游 <c>Fleet.update()</c> → 识别）；返回是否成功，失败即上游的 <c>MapDetectionError</c>。</summary>
+    bool UpdateMap();
+
+    /// <summary>按 preset 滑动地图（上游 <c>Fleet.map_swipe(preset)</c>）。</summary>
+    void MapSwipe((int X, int Y) preset);
+
+    /// <summary>把相机移回记录的格（上游 <c>Fleet.focus_to(camera)</c>）。</summary>
+    void FocusTo(string camera);
+
     /// <summary>相机对齐到双边缘（上游 <c>Camera.ensure_edge_insight()</c>，属设备侧手势）。</summary>
     void EnsureEdgeInsight();
 
@@ -136,6 +150,15 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
 
     /// <summary>干跑记录到的日志（原语的判断依据，便于人工核对）。</summary>
     public List<string> Logs { get; } = [];
+
+    /// <summary>
+    /// 干跑时 <see cref="UpdateMap"/> 是否成功。默认成功；置假用来验证"识别失败 → 按 preset 滑动"
+    /// 这条上游分支（<c>MapDetectionError</c>）。
+    /// </summary>
+    public bool UpdateMapSucceeds { get; set; } = true;
+
+    /// <summary>干跑记录到的地图滑动（重对焦分支用）。</summary>
+    public List<string> Swipes { get; } = [];
 
     /// <summary>与上游一致：只在当前舰队不同时才切换。</summary>
     public bool EnsureFleet(int index)
@@ -198,6 +221,23 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
     public CampaignGrid GridAt(string location) =>
         Grids.FirstOrDefault(grid => grid.Location == location)
         ?? throw new NotSupportedException($"地图状态里没有格子 {location}（识别结果可能未覆盖）");
+
+    /// <summary>干跑没有真实相机位置：用占位符而不是空串，避免看起来像"有一个空的机位"。</summary>
+    public string CameraLocation { get; set; } = "<未记录>";
+
+    public bool UpdateMap()
+    {
+        Actions.Add("update_map()");
+        return UpdateMapSucceeds;
+    }
+
+    public void MapSwipe((int X, int Y) preset)
+    {
+        Swipes.Add($"map_swipe({preset.X}, {preset.Y})");
+        Actions.Add($"map_swipe({preset.X}, {preset.Y})");
+    }
+
+    public void FocusTo(string camera) => Actions.Add($"focus_to({camera})");
 
     public void EnsureEdgeInsight() => Actions.Add("ensure_edge_insight()");
 
@@ -939,6 +979,36 @@ public static class CampaignPrimitives
         return BattleBoss(host);
     }
 
+    /// <summary>
+    /// 上游 <c>Fleet.handle_boss_appear_refocus(preset=None)</c>（关卡覆写只是 `return super().X(preset)`）：
+    /// 记下当前相机位置 → 有非零 preset 时先 <c>update()</c>，**识别失败**（上游 <c>MapDetectionError</c>）
+    /// 则按 preset 滑动再对齐边缘；没有 preset 时只 update + 对齐边缘 → 最后 <c>focus_to(记录的相机位置)</c>。
+    ///
+    /// 返回假：上游这个方法是语句级调用、返回 None，不是"打成了"的那种真。
+    /// </summary>
+    public static bool HandleBossAppearRefocus(ICampaignPrimitiveHost host, (int X, int Y)? preset)
+    {
+        string camera = host.CameraLocation;
+        var swipe = preset ?? host.Config.MapBossAppearRefocusSwipe;
+        if (swipe is not null && (swipe.Value.X != 0 || swipe.Value.Y != 0))
+        {
+            if (!host.UpdateMap())
+            {
+                host.Log($"MapDetectionError occurs after boss appear, trying swipe preset ({swipe.Value.X}, {swipe.Value.Y})");
+                host.MapSwipe(swipe.Value);
+            }
+            host.EnsureEdgeInsight();
+        }
+        else
+        {
+            host.UpdateMap();
+            host.EnsureEdgeInsight();
+        }
+        host.Log("Refocus to previous camera position.");
+        host.FocusTo(camera);
+        return false;
+    }
+
     /// <summary>上游 <c>CampaignBase.battle_default()</c>。</summary>
     public static bool BattleDefault(ICampaignPrimitiveHost host)
     {
@@ -1033,7 +1103,36 @@ public static class CampaignHookRunner
         {
             if (step.Kind == "super_delegate")
             {
-                stepLog.Add($"{step.Op}: 委托父类实现，本层未执行");
+                // 委托父类：`super().X(...)` 在上游会调用**基类实现**（这 7 处实测都是 Fleet 的实现）。
+                // 实参里的参数引用用钩子签名的默认值还原，然后按普通原语执行——不再当"本层未执行"跳过。
+                var delegated = CampaignPrimitiveRegistry.ResolveSuperDelegate(plan, battle, step);
+                if (delegated.Step is null)
+                {
+                    stepLog.Add($"{step.Op}: {delegated.Reason}");
+                    return Result(plan, battle, null, delegated.Reason, stepLog, host, actionsBefore, actions);
+                }
+                if (!CampaignPrimitiveRegistry.TryGet(delegated.Step.Op, out var basePrimitive))
+                {
+                    string reason = $"父类实现 {delegated.Step.Op} 尚未迁移（super 委托无法执行）";
+                    stepLog.Add($"{step.Op}: {reason}");
+                    return Result(plan, battle, null, reason, stepLog, host, actionsBefore, actions);
+                }
+                try
+                {
+                    basePrimitive.Execute(host, delegated.Step);
+                    stepLog.Add($"{step.Op} → 父类实现 {delegated.Step.Op}：已执行" +
+                                  (delegated.Note is null ? "" : $"（{delegated.Note}）"));
+                }
+                catch (CampaignControlFlowSignal signal)
+                {
+                    stepLog.Add($"{step.Op}: 控制流信号 {signal.Kind}");
+                    return Result(plan, battle, null, signal.Message, stepLog, host, actionsBefore, actions);
+                }
+                catch (NotSupportedException error)
+                {
+                    stepLog.Add($"{step.Op}: {error.Message}");
+                    return Result(plan, battle, null, error.Message, stepLog, host, actionsBefore, actions);
+                }
                 continue;
             }
 
@@ -1165,12 +1264,76 @@ public sealed record CampaignPrimitive(
     bool NeedsArguments,
     Func<ICampaignPrimitiveHost, CampaignPlanStep, bool> Execute);
 
+/// <summary>`super().X(...)` 的解析结果：可执行的基类步骤，或"为什么不能执行"。</summary>
+public sealed record CampaignSuperDelegate(CampaignPlanStep? Step, string Reason, string? Note = null);
+
 /// <summary>
 /// 原语注册表：C# 引擎已实现的原语。P2 按域往里加，每加一个都要带对拍夹具与真实路径证据。
 /// 这里刻意不做"按关卡/按编号"的特例分支——注册表只回答"这个原语实现了没有、怎么执行"。
 /// </summary>
 public static class CampaignPrimitiveRegistry
 {
+    /// <summary>
+    /// 解析 `super().X(...)`：把 op 归一成基类方法名，并把实参里的**参数引用**（`{"__param__": name}`）
+    /// 用钩子签名的默认值还原。还原不了（参数没有字面量默认值）就返回原因——不猜一个值去执行。
+    /// </summary>
+    public static CampaignSuperDelegate ResolveSuperDelegate(CampaignPlan plan, CampaignPlanBattle battle,
+                                                             CampaignPlanStep step)
+    {
+        const string prefix = "super().";
+        if (!step.Op.StartsWith(prefix, StringComparison.Ordinal) || step.Op.Length == prefix.Length)
+        {
+            return new CampaignSuperDelegate(null, $"无法识别的 super 委托写法：{step.Op}");
+        }
+        string target = step.Op[prefix.Length..];
+
+        string? note = null;
+        CampaignPlanStepArgs? args = step.Args;
+        if (args is not null && (args.Keyword.Count > 0 || args.Positional.Count > 0))
+        {
+            var positional = new List<JsonNode?>();
+            foreach (var value in args.Positional)
+            {
+                if (ParameterName(value) is { } name)
+                {
+                    if (!battle.Parameters.TryGetValue(name, out var fallback) || fallback is null)
+                    {
+                        return new CampaignSuperDelegate(null,
+                            $"super 委托实参 {name} 没有字面量默认值，无法还原（{step.Op}）");
+                    }
+                    positional.Add(fallback.DeepClone());
+                    note = $"实参 {name} 用签名默认值 {fallback.ToJsonString()}";
+                    continue;
+                }
+                positional.Add(value?.DeepClone());
+            }
+            var keyword = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
+            foreach (var (key, value) in args.Keyword)
+            {
+                if (ParameterName(value) is { } name)
+                {
+                    if (!battle.Parameters.TryGetValue(name, out var fallback) || fallback is null)
+                    {
+                        return new CampaignSuperDelegate(null,
+                            $"super 委托关键字实参 {name} 没有字面量默认值，无法还原（{step.Op}）");
+                    }
+                    keyword[key] = fallback.DeepClone();
+                    note = $"关键字实参 {name} 用签名默认值 {fallback.ToJsonString()}";
+                    continue;
+                }
+                keyword[key] = value?.DeepClone();
+            }
+            args = new CampaignPlanStepArgs { Positional = positional, Keyword = keyword };
+        }
+        return new CampaignSuperDelegate(new CampaignPlanStep { Kind = "call", Op = target, Args = args },
+                                         "ok", note);
+    }
+
+    private static string? ParameterName(JsonNode? value) =>
+        value is JsonObject payload && payload.TryGetPropertyValue("__param__", out var name)
+            ? name?.GetValue<string>()
+            : null;
+
     private static readonly Dictionary<string, CampaignPrimitive> Table = new(StringComparer.Ordinal)
     {
         ["clear_enemy"] = new CampaignPrimitive(
@@ -1258,6 +1421,9 @@ public static class CampaignPrimitiveRegistry
         ["fleet_2_break_siren_caught"] = new CampaignPrimitive(
             "fleet_2_break_siren_caught", "2 队被塞壬抓住时挣脱（上游 Map.fleet_2_break_siren_caught）", false,
             (host, _) => CampaignPrimitives.Fleet2BreakSirenCaught(host)),
+        ["handle_boss_appear_refocus"] = new CampaignPrimitive(
+            "handle_boss_appear_refocus", "boss 出现后重对焦（上游 Fleet.handle_boss_appear_refocus）", true,
+            (host, step) => CampaignPrimitives.HandleBossAppearRefocus(host, DecodeSwipe(step))),
         ["battle_boss"] = new CampaignPrimitive(
             "battle_boss", "打 boss：brute_clear_boss 打成就真（上游 CampaignBase.battle_boss）", false,
             (host, _) => CampaignPrimitives.BattleBoss(host)),
@@ -1412,6 +1578,22 @@ public static class CampaignPrimitiveRegistry
             $"{step.Op} 的格子实参在导出里不是 __grid__ 结构——需要导出器解析格子符号后才能执行");
 
     /// <summary>解码 `{"__grids__": [[x, y], …]}` 多格实参（`clear_map_items([F1, I1])`），并查回真实格子。</summary>
+    /// <summary>
+    /// 解 `handle_boss_appear_refocus` 的 preset：位置实参里的 `[x, y]` 对；没有实参 → null
+    /// （上游 `preset=None`，此时走"只 update + 对齐边缘"那条分支）。形状不对就抛，不猜。
+    /// </summary>
+    private static (int X, int Y)? DecodeSwipe(CampaignPlanStep step)
+    {
+        var positional = step.Args?.Positional;
+        if (positional is null || positional.Count == 0) return null;
+        if (positional[0] is not JsonArray pair || pair.Count != 2
+            || pair[0] is null || pair[1] is null)
+        {
+            throw new NotSupportedException($"preset 实参形状不支持（{step.Op}）：{positional[0]?.ToJsonString()}");
+        }
+        return (pair[0]!.GetValue<int>(), pair[1]!.GetValue<int>());
+    }
+
     private static IReadOnlyList<CampaignGrid>? DecodeGrids(ICampaignPrimitiveHost host, CampaignPlanStep step)
     {
         foreach (var value in step.Args?.Positional ?? [])
