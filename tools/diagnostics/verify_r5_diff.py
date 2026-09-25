@@ -34,17 +34,24 @@ DETECTION = ROOT / "tools" / "diagnostics" / "fixtures" / "detection-3-1.json"
 FRAME = ROOT / "data" / "fixtures" / "inmap_3-1.png"
 SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
 RUN_DIR = ROOT / ".runtime" / "r5-probe" / "run-dir-fixture"
+# 真机口径：硬模式 1-4 的一次真实运行日志 + 同关卡的现场帧（都在忽略目录；两者不是同一局）
+REAL_LOG = ROOT / "data" / "s3_native_1_4.log"
+REAL_FRAME = ROOT / "data" / "fixtures" / "map_hard_1_4.png"
 
 
-def diff(*extra: str) -> tuple[int, dict | None, str]:
-    completed = subprocess.run(
-        [str(SERVER), "r5-diff", "--log", str(LOG), "--chapter", "campaign_main",
-         "--level", "campaign_3_1", "--json", *extra],
-        cwd=ROOT, capture_output=True, text=True, timeout=600, encoding="utf-8", errors="replace")
+def run_diff(arguments: list[str]) -> tuple[int, dict | None, str]:
+    completed = subprocess.run([str(SERVER), "r5-diff", *arguments, "--json"],
+                               cwd=ROOT, capture_output=True, text=True, timeout=600,
+                               encoding="utf-8", errors="replace")
     text = completed.stdout + completed.stderr
     start = text.find("{")
     payload = json.loads(text[start:]) if start >= 0 else None
     return completed.returncode, payload, text
+
+
+def diff(*extra: str) -> tuple[int, dict | None, str]:
+    return run_diff(["--log", str(LOG), "--chapter", "campaign_main",
+                     "--level", "campaign_3_1", *extra])
 
 
 def check(payload: dict | None, text: str, label: str) -> list[str]:
@@ -125,8 +132,37 @@ def main() -> int:
     if "章节来自 queue.json" not in run_text:
         problems.append("运行目录用例应说明章节来源（解析来源必须打印，不能隐式猜）")
 
+    # 真机口径（可跳过）：真实运行日志 + 同关卡现场帧。两者不是同一局，所以只断言
+    # 决策层一致与"目标格子有交集"，不断言动作完全一致。
+    if REAL_LOG.is_file() and REAL_FRAME.is_file():
+        real_code, real_payload, real_text = run_diff(
+            ["--log", str(REAL_LOG), "--chapter", "campaign_main", "--level", "campaign_1_4",
+             "--frame", str(REAL_FRAME), "--fleet-1", "A1"])
+        if real_code not in (0, 1):
+            problems.append(f"真机口径用例退出码 {real_code}：{real_text.strip().splitlines()[-3:]}")
+        elif real_payload is None:
+            problems.append("真机口径用例没有解析到 JSON 输出")
+        else:
+            hooks = real_payload["hooks"]
+            if hooks["mismatched"] or hooks["matched"] < 4:
+                problems.append(f"真机口径用例：决策层应 4 轮一致且无漂移，实际 {hooks['matched']}/"
+                                f"{hooks['mismatched']}")
+            if not real_payload["actions"]["any_target_matched"]:
+                problems.append("真机口径用例：帧驱动后应至少有一个原语打到上游打过的格子")
+        # 不给帧时应当**打不到任何格子**——这条对照说明"是状态适配器在起作用"，不是巧合
+        plain_code, plain_payload, _ = run_diff(
+            ["--log", str(REAL_LOG), "--chapter", "campaign_main", "--level", "campaign_1_4",
+             "--fleet-1", "A1"])
+        if plain_code in (0, 1) and plain_payload is not None \
+                and plain_payload["actions"]["any_target_matched"]:
+            problems.append("不给识别结果时不应有目标交集（否则说明结论不是由识别驱动的）")
+        real_note = "真机口径用例：已跑（帧驱动有交集、无识别无交集）"
+    else:
+        skipped.append("缺 data/s3_native_1_4.log 或 data/fixtures/map_hard_1_4.png（忽略目录），跳过真机口径用例")
+        real_note = "真机口径用例：跳过"
+
     print(f"[r5-diff] 识别夹具用例：决策层无漂移、动作层两边都打 D2、目标交集为真；"
-          f"运行目录用例：已跑；{frame_note}")
+          f"运行目录用例：已跑；{real_note}；{frame_note}")
     for note in skipped:
         print(f"  跳过：{note}")
     if problems:
