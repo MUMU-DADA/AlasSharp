@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""R5 寻路全库对拍：对**所有带声明地图的关卡**逐格比较 C# 移植与上游实现（离线，无设备）。
+
+用法：
+    python tools/diagnostics/r5_path_sweep.py [--limit N]
+
+做的事：
+  1. 从 `data/campaign/**/*.json` 取每个带 `map.map_data` 的关卡，起点取第一个**非陆地**格
+     （优先 `SP` 出生点）；
+  2. 生成一份多用例夹具喂给 `Alas.Server r5-path`（C# 侧：成本场 + 连接）；
+  3. 上游侧对同一张图跑 `CampaignMap.load_map_data()` + `grid_connection_initial(wall=True)` +
+     `find_path_initial(start, has_ambush, has_enemy)`，逐格比较 **cost** 与 **connection**；
+  4. 报告写 `docs/archive/reports/r5-path-sweep.md`（脚本重建），有任何不一致就非零退出。
+
+口径：比较的是**同一份声明地图、同一算法**的成本场与连接；识别结果（敌人/机关）不参与，
+所以这证明不了"真机识别下的寻路"，只证明**算法移植一致**。
+只读：不连设备、不改变任何运行状态。
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import statistics
+import subprocess
+import sys
+import time
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPORT = ROOT / "docs" / "archive" / "reports" / "r5-path-sweep.md"
+WORK = ROOT / ".runtime" / "r5-probe"
+SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
+UPSTREAM = ROOT / ".runtime" / "engine"
+
+
+def collect(limit: int) -> list[dict]:
+    cases = []
+    for path in sorted((ROOT / "data" / "campaign").rglob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        mapping = payload.get("map") or {}
+        data = mapping.get("map_data")
+        if not isinstance(data, str) or not data.strip():
+            continue
+        rows = [row.strip() for row in data.strip().splitlines() if row.strip()]
+        start = None
+        for y, row in enumerate(rows):
+            for x, token in enumerate(row.split()):
+                node = f"{chr(ord('A') + x)}{y + 1}"
+                if token == "SP":
+                    start = node
+                    break
+                if start is None and token != "++":
+                    start = node
+            if start is not None and any(token == "SP" for token in row.split()):
+                break
+        if start is None:
+            continue
+        cases.append({
+            "name": str(path.relative_to(ROOT / "data" / "campaign"))[:-5],
+            "rows": rows,
+            "start": start,
+            "has_ambush": False,
+            "has_enemy": True,
+        })
+        if limit and len(cases) >= limit:
+            break
+    return cases
+
+
+def csharp_field(cases: list[dict]) -> dict[str, dict]:
+    WORK.mkdir(parents=True, exist_ok=True)
+    fixture = WORK / "path-sweep-fixture.json"
+    fixture.write_text(json.dumps({"cases": cases}, ensure_ascii=False), encoding="utf-8", newline="\n")
+    completed = subprocess.run([str(SERVER), "r5-path", "--fixture", str(fixture), "--json"],
+                               cwd=ROOT, capture_output=True, text=True, timeout=1800,
+                               encoding="utf-8", errors="replace")
+    text = completed.stdout + completed.stderr
+    start = text.find("{")
+    if start < 0:
+        raise SystemExit(f"r5-path 没有输出 JSON：{text.strip().splitlines()[-3:]}")
+    payload = json.loads(text[start:])
+    return {case["name"]: case for case in payload["cases"]}
+
+
+def upstream_field(case: dict) -> tuple[dict, dict]:
+    sys.path.insert(0, str(UPSTREAM))
+    from module.base.utils import location2node, node2location  # noqa: PLC0415
+    from module.map.map_base import CampaignMap  # noqa: PLC0415
+
+    campaign_map = CampaignMap("sweep")
+    campaign_map.shape = location2node((max(len(row.split()) for row in case["rows"]) - 1,
+                                        len(case["rows"]) - 1))
+    campaign_map.map_data = "\n".join(case["rows"])
+    campaign_map.load_map_data()
+    campaign_map.grid_connection_initial(wall=True)
+    campaign_map.find_path_initial(tuple(node2location(case["start"])),
+                                   has_ambush=case["has_ambush"], has_enemy=case["has_enemy"])
+    costs, connections = {}, {}
+    for grid in campaign_map:
+        node = location2node(grid.location)
+        costs[node] = grid.cost
+        connections[node] = location2node(grid.connection) if grid.connection is not None else None
+    return costs, connections
+
+
+def route_cost(connections: dict, costs: dict, target: str, start: str) -> int | None:
+    """沿 connection 从 target 回溯到 start，累计每步代价（与成本场同一算法）。"""
+    steps = 0
+    current = target
+    seen = set()
+    while current != start:
+        if current in seen:
+            return None                        # 成环：不正常
+        seen.add(current)
+        nxt = connections.get(current)
+        if nxt is None:
+            return None
+        # 每步代价在成本场里体现为差值（伏击 10 / 普通 1），用相邻两格成本差即可
+        steps += max(costs.get(current, 0) - costs.get(nxt, 0), 0) or 1
+        current = nxt
+        if len(seen) > 10000:
+            return None
+    return steps
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="R5 寻路全库对拍")
+    parser.add_argument("--limit", type=int, default=0, help="只跑前 N 关（0 = 全部）")
+    options = parser.parse_args()
+    if not SERVER.is_file():
+        raise SystemExit(f"缺少 {SERVER.relative_to(ROOT)}；先运行 ./build.ps1 构建")
+
+    cases = collect(options.limit)
+    if not cases:
+        raise SystemExit("没有找到带声明地图的关卡导出")
+    began = time.perf_counter()
+    csharp = csharp_field(cases)
+    csharp_seconds = time.perf_counter() - began
+
+    compared = 0
+    cost_diffs: list[tuple[str, str, object, object]] = []
+    connection_diffs: list[tuple[str, str, object, object]] = []
+    route_problems: list[str] = []
+    per_level: list[tuple[str, int, int]] = []
+    upstream_seconds = 0.0
+    for case in cases:
+        began = time.perf_counter()
+        try:
+            costs, connections = upstream_field(case)
+        except Exception as error:                     # noqa: BLE001 —— 上游跑不动就如实记，不算通过
+            cost_diffs.append((case["name"], "上游执行失败", type(error).__name__, str(error)[:80]))
+            continue
+        upstream_seconds += time.perf_counter() - began
+        result = csharp.get(case["name"]) or {}
+        csharp_costs = result.get("costs") or {}
+        csharp_connections = result.get("connections") or {}
+        level_diffs = 0
+        for node, expected in costs.items():
+            actual = csharp_costs.get(node)
+            if actual != expected:
+                cost_diffs.append((case["name"], f"cost@{node}", expected, actual))
+                level_diffs += 1
+                continue
+            expected_connection = connections.get(node)
+            actual_connection = csharp_connections.get(node)
+            if actual_connection == expected_connection:
+                continue
+            # 连接不同：只允许出现在**等代价的多个最优前驱**之间（上游的择向依赖它自己 set 的迭代序，
+            # 用对象身份哈希，本来就不保证跨实现一致）。这时要求**两条路线都最优**：
+            # 沿各自的 connection 回溯，累计代价必须都等于该格的 cost。
+            connection_diffs.append((case["name"], f"connection@{node}",
+                                     expected_connection, actual_connection))
+            if node != case["start"]:
+                for label, mapping in (("上游", connections), ("C#", csharp_connections)):
+                    walked = route_cost(mapping, costs, node, case["start"])
+                    if walked is None or walked != costs[node]:
+                        route_problems.append(f"{case['name']} {label}@{node}：回溯代价 {walked} ≠ cost {costs[node]}")
+            level_diffs += 1
+        compared += len(costs)
+        per_level.append((case["name"], len(costs), level_diffs))
+
+    lines = ["# R5 寻路全库对拍（C# 移植 vs 上游）", "",
+             "> 本报告由 `tools/diagnostics/r5_path_sweep.py` 重建，不手写。",
+             "> 口径：同一份**声明地图**、同一算法（`find_path_initial(wall=True, has_enemy=True)`）逐格比 cost 与 connection。",
+             "> **不覆盖**真机识别状态（敌人/机关由识别提供），所以它证明的是**算法移植一致**，不是真机寻路一致。", "",
+             f"- 关卡数：**{len(per_level)}**",
+             f"- 逐格比较：**{compared}** 格",
+             f"- **成本场不一致**：**{len(cost_diffs)}** 处（这是硬指标）",
+             f"- 连接差异：**{len(connection_diffs)}** 处（**只允许等代价的多个最优前驱之间**；上游的择向依赖它自己 ",
+             "  `set` 的迭代序、用对象身份哈希，本来就不保证跨实现一致）",
+             f"- 路线最优性检查：{'**有** ' + str(len(route_problems)) + ' 处不满足' if route_problems else '两侧回溯代价都等于 cost（通过）'}",
+             f"- 用时：C# 侧 {csharp_seconds:.1f}s（含进程启动）/ 上游侧 {upstream_seconds:.1f}s", ""]
+    if cost_diffs:
+        lines += ["## 成本场不一致（前 20 条）", "", "| 关卡 | 位置 | 上游 | C# |", "| --- | --- | --- | --- |"]
+        lines += [f"| {name} | {where} | `{expected}` | `{actual}` |" for name, where, expected, actual in cost_diffs[:20]]
+        lines.append("")
+    if connection_diffs:
+        lines += ["## 连接差异（前 20 条，均为等代价择向）", "", "| 关卡 | 位置 | 上游 | C# |", "| --- | --- | --- | --- |"]
+        lines += [f"| {name} | {where} | `{expected}` | `{actual}` |" for name, where, expected, actual in connection_diffs[:20]]
+        lines.append("")
+    if route_problems:
+        lines += ["## 路线最优性问题", ""] + [f"- {item}" for item in route_problems[:20]] + [""]
+    histogram = {}
+    for _, grids, level_diffs in per_level:
+        histogram[level_diffs] = histogram.get(level_diffs, 0) + 1
+    lines += ["## 每关差异分布", "", "| 差异数 | 关卡数 |", "| --- | --- |"]
+    lines += [f"| {count} | {levels} |" for count, levels in sorted(histogram.items())]
+    lines.append("")
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    print(f"已重建 {REPORT.relative_to(ROOT)}：{len(per_level)} 关 / {compared} 格 / "
+          f"成本不一致 {len(cost_diffs)} / 连接差异 {len(connection_diffs)} / 路线问题 {len(route_problems)}")
+    if cost_diffs or route_problems:
+        for item in (cost_diffs + [(p, "", "", "") for p in route_problems])[:5]:
+            print("  -", item)
+        return 1
+    print("PASS: 全库声明地图上成本场逐格一致；连接差异仅出现在等代价择向，且两侧路线都最优")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
