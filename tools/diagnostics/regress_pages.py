@@ -73,6 +73,22 @@ def shot():
     return op('page_current')['hit']
 
 
+def shot_until(expected=None, attempts=5, interval=0.4):
+    """确认导航后的稳定页面，不把一帧过渡画面误判成识别失败。
+
+    每次只抓取当前屏幕，不发送点击或返回键；目标页由上游导航结果提供，
+    这里仅给视觉宿主一个有限的渲染/动画完成窗口。
+    """
+    pages = []
+    for attempt in range(attempts):
+        pages = shot()
+        if expected is None or expected in pages:
+            return pages
+        if attempt + 1 < attempts:
+            time.sleep(interval)
+    return pages
+
+
 def goto(page):
     r = run_navigation(ALASHUB, page, SERIAL, adb=ADB)
     navigation = [l.strip() for l in (r.stdout or '').splitlines()
@@ -92,6 +108,12 @@ def main():
 
     with open(PROGRESS, encoding='utf-8') as f:
         targets = sorted(json.load(f)['verified'])
+    single_page = '--page' in sys.argv
+    if single_page:
+        index = sys.argv.index('--page')
+        if index + 1 >= len(sys.argv) or not sys.argv[index + 1].startswith('page_'):
+            raise SystemExit('--page 需要 page_* 目标')
+        targets = [sys.argv[index + 1]]
     print('=== 页面识别全量回归：%d 个页面（图 %d 节点 / %d 边）==='
           % (len(targets), node_n, edge_n))
     print('图里无入边的节点（只能同屏检测，不能导航到）：%s' % ', '.join(no_in))
@@ -106,14 +128,14 @@ def main():
             # 不可导航：先到它的"同屏兄弟"页，再要求它同时被检测到
             sibling = CO_DETECT.get(page)
             if sibling is None:
-                verdict, navigation, pages = 'no-in-edge', [], shot()
+                verdict, navigation, pages = 'no-in-edge', [], shot_until()
             else:
                 ok, navigation = goto(sibling)
-                pages = shot()
+                pages = shot_until(page)
                 verdict = 'ok' if (ok and page in pages) else 'co-detect-failed'
         else:
             ok, navigation = goto(page)
-            pages = shot()
+            pages = shot_until(page)
             verdict = 'ok' if (ok and page in pages) else (
                 'goto-failed' if not ok else 'not-detected')
         print('[%2d/%d] %-22s %-16s %5.1fs  命中=%s'
@@ -131,10 +153,18 @@ def main():
     bad = [r for r in results if r['verdict'] != 'ok']
     if bad:
         print('未通过: %s' % ', '.join('%s(%s)' % (r['page'], r['verdict']) for r in bad))
-    out = os.path.join(HERE, '..', 'data', 'regress_pages.json')
+    if single_page:
+        output_dir = os.path.join(HERE, '..', '.runtime', 'diagnostics')
+        os.makedirs(output_dir, exist_ok=True)
+        out = os.path.join(output_dir, 'regress_%s_%s.json' %
+                           (targets[0], time.strftime('%Y%m%dT%H%M%S')))
+    else:
+        out = os.path.join(HERE, '..', 'data', 'regress_pages.json')
     with open(out, 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=2, default=str)
     print('明细: %s' % os.path.abspath(out))
+    if single_page:
+        return 0 if not bad else 1
     return write_report(results, no_in, node_n, edge_n)
 
 

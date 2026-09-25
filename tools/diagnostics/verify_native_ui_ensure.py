@@ -20,12 +20,23 @@ class Device:
         self.config = object()
         self.image = np.full((8, 12, 3), (12, 34, 56), dtype=np.uint8)
         self.has_cached_image = True
+        self.visible = True
+        self.captures = 0
+        self.clicks = []
+
+    def click(self, button):
+        self.clicks.append(button)
+
+    def screenshot(self):
+        self.captures += 1
+        return self.image
 
 
 class FakeUI:
     instances = []
     failure = None
     switched = False
+    click_on_ensure = False
 
     def __init__(self, config, device):
         self.config = config
@@ -40,11 +51,13 @@ class FakeUI:
         if self.failure:
             Page.init_connection(destination)
             raise self.failure
+        if self.click_on_ensure:
+            self.device.click('native-edge')
         self.ui_current = destination
         return self.switched
 
     def ui_page_appear(self, destination):
-        return destination == self.ui_current
+        return destination == self.ui_current and self.device.visible
 
 
 def verify_idle_handler():
@@ -102,11 +115,24 @@ def main():
         assert FakeUI.instances[-1].destination is destination
         assert FakeUI.instances[-1].skip_first_screenshot is False
         engine.assert_called_once_with()
+        assert device.captures == 1, device.captures
 
         FakeUI.switched = True
-        switched = vision.op_ui_ensure({'destination': destination.name,
-                                        'allow_actions': True})
+        FakeUI.click_on_ensure = True
+        with patch.object(vision.time, 'sleep') as sleep:
+            switched = vision.op_ui_ensure({'destination': destination.name,
+                                            'allow_actions': True})
+        sleep.assert_called_once_with(1.0)
         assert switched['arrived'] and switched['changed'] is True, switched
+        assert device.clicks == ['native-edge'] and 'click' not in vars(device)
+        assert device.captures == 2, device.captures
+        FakeUI.click_on_ensure = False
+        device.visible = False
+        unstable = vision.op_ui_ensure({'destination': destination.name,
+                                        'allow_actions': True})
+        assert not unstable['arrived'] and unstable['error_kind'] == 'DestinationNotVisible', unstable
+        assert device.captures == 3, device.captures
+        device.visible = True
 
         FakeUI.failure = RuntimeError('fixture native failure')
         response = json.loads(vision.handle_line(json.dumps({

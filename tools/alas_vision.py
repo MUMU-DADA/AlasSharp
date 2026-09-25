@@ -3403,11 +3403,30 @@ def op_ui_ensure(args):
         from module.ui.ui import UI
         device = _device_engine()
         ui = UI(device.config, device)
-        changed = ui.ui_ensure(destination, skip_first_screenshot=False)
+        # Fast capture can expose a sibling page during a transition. Give each
+        # native page-graph click time to settle before UI.ui_goto selects a new edge.
+        native_click = device.click
+        had_click_override = 'click' in vars(device)
+        previous_click_override = vars(device).get('click')
+
+        def settled_click(*click_args, **click_kwargs):
+            value = native_click(*click_args, **click_kwargs)
+            time.sleep(1.0)
+            return value
+
+        device.click = settled_click
+        try:
+            changed = ui.ui_ensure(destination, skip_first_screenshot=False)
+        finally:
+            if had_click_override:
+                device.click = previous_click_override
+            else:
+                del device.click
         current = getattr(ui, 'ui_current', None)
         result['changed'] = bool(changed)
         result['final_page'] = getattr(current, 'name', None)
-        # ui_ensure/ui_goto already detected the destination on the current device frame.
+        # Confirm on a new frame; the frame that ended ui_goto can be transitional.
+        device.screenshot()
         result['arrived'] = bool(current == destination and ui.ui_page_appear(destination))
         if not result['arrived']:
             result.update(error='Destination not visible after native UI navigation',
