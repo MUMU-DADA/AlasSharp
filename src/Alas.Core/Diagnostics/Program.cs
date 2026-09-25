@@ -410,6 +410,46 @@ public static class DiagnosticCommands
                 }
                 return CampaignLoopCheck.Run(dataDir, loopFixture);
             }
+            if (command == "r5-run")
+            {
+                // 端到端干跑：真机帧 → 地图识别 → 引擎状态 → 关卡循环（动作只被记录，不连设备）。
+                string? runChapter = null, runLevel = null, runModule = null, runFrame = null;
+                string? runDetection = null, runFleet1 = null, runFleet2 = null, runMode = "main";
+                int runCurrentFleet = 1;
+                bool runAmbush = args.Contains("--map-has-ambush");
+                bool runClearAll = args.Contains("--clear-all");
+                bool runPoorMap = args.Contains("--poor-map-data");
+                bool runUseFleet2 = args.Contains("--use-fleet-2");
+                bool runFleetBoss = args.Contains("--fleet-boss-2");
+                bool runSiren = args.Contains("--map-has-siren");
+                bool runFortress = args.Contains("--map-has-fortress");
+                bool runJson = args.Contains("--json");
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--chapter") runChapter = args[i + 1];
+                    if (args[i] == "--level") runLevel = args[i + 1];
+                    if (args[i] == "--chapter-module") runModule = args[i + 1];
+                    // 宿主会把工作目录切到 engine 目录，相对路径会找不到帧 → 入口统一转绝对路径
+                    if (args[i] == "--frame")
+                    {
+                        runFrame = !Path.IsPathRooted(args[i + 1]) && File.Exists(args[i + 1])
+                            ? Path.GetFullPath(args[i + 1]) : args[i + 1];
+                    }
+                    if (args[i] == "--detection") runDetection = args[i + 1];
+                    if (args[i] == "--fleet-1") runFleet1 = args[i + 1];
+                    if (args[i] == "--fleet-2") runFleet2 = args[i + 1];
+                    if (args[i] == "--mode") runMode = args[i + 1];
+                    if (args[i] == "--current-fleet" && int.TryParse(args[i + 1], out int runParsedFleet))
+                    {
+                        runCurrentFleet = runParsedFleet;
+                    }
+                }
+                return CampaignRunCheck.Run(dataDir, repoDir, paths.ToolsDirectory,
+                                            runChapter, runLevel, runModule, runFrame, runDetection,
+                                            runFleet1, runFleet2, runCurrentFleet, runAmbush,
+                                            runClearAll, runPoorMap, runUseFleet2, runFleetBoss,
+                                            runSiren, runFortress, runMode, runJson);
+            }
             if (command == "r5-state")
             {
                 // 识别结果 → 引擎状态（离线）：声明地图 + 可选识别叠加 + 按上游顺序算成本场。
@@ -574,7 +614,7 @@ public static class DiagnosticCommands
                 _ => Fail($"未知命令: {command}"
                            + "（可用: verify / list / show / imaging / matching / vision / campaign / "
                            + "map / map-ir / capture / device / queue / plan-queue / report / runs / run / goto / "
-                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state）"),
+                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state / r5-run）"),
             };
         }
         catch (Exception ex)

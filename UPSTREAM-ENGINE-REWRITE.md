@@ -755,6 +755,33 @@ Alas.Server r5-state --chapter <章> --level <关> --detection <识别.json> --j
 夹具里故意放的 `is_teleporter` 必须出现在 `unknown_flags`、未被识别的格子保持声明状态），已登记进
 `verify_all.py`。实测 1-1 确实是 `G1` 一行七格（`SP -- -- -- -- ME MB`），与上游源码一致。
 
+#### P2-20 已完成：端到端干跑 `r5-run`（真机帧上闭合整条链）（2026-09-26）
+
+`Alas.Server r5-run --chapter <章> --level <关> [--frame <地图帧> | --detection <识别.json>]`：
+读计划 → 造引擎状态（声明地图 + 舰队 + 成本场）→ **进程内跑上游地图识别**并叠加运行期标志 →
+跑 C# 关卡循环（**干跑**，动作只被记录）。不连设备、不点任何东西。
+
+**在真机帧上的实测**（本地 `data/fixtures/` 的既有帧）：
+
+| 帧 | 关卡 | 结果 |
+| --- | --- | --- |
+| `inmap_3-1.png` | `campaign_3_1` | 识别 **28 格** → 循环：`battle_0` 真 ×3 → `battle_3` 假 → 撤退结束；干跑动作 **`clear_chosen_enemy(D2, expected=)` ×3**（D2 正是该帧识别出的敌人） |
+| `inmap_2-2.png` | `campaign_2_2` | 识别 **35 格** → 首轮 `battle_0` 假（该帧未识别到敌人）→ 撤退结束 |
+
+**意义**：这是"重写后的引擎"第一次在**真机画面**上走完 `识别 → 状态 → 决策 → 原语 → 动作（干跑）`
+整条链——之前每一步都是分开验证的。它同时也是"原语动作层对拍"的最后一块前置：
+现在可以让同一帧既喂给上游路径、又喂给 C# 干跑，逐步对照动作。
+
+**踩到并修掉的两处接口问题**（都写在代码注释里）：
+① `--frame` 传相对路径会失败（识图宿主会把工作目录切到 engine 目录）→ 入口统一转绝对路径；
+② 地图识别必须传**完整模块名**（`campaign.campaign_main.campaign_2_1`），只给目录名会
+`ModuleNotFoundError`。
+
+**对拍**：新增 `tools/diagnostics/verify_r5_run.py`——可复现用例（识别夹具驱动 `campaign_1_1`：
+先打 F1、再打 G1、最后撤退结束）+ 真机帧用例（`inmap_3-1.png`：识别 28 格、首轮 `battle_0`、
+动作含 `clear_chosen_enemy(`）；**帧在忽略目录里，缺帧时跳过并说明**，不把"没有帧"当失败。已登记进
+`verify_all.py`（R5 检查现共 **8** 个）。
+
 ### P4 收口
 
 `IVisionEngine` 只保留识图相关方法；上游目录只剩规则文件与识图组件；文档同步（`docs/architecture-roadmap.md`、本文件、[架构梳理](ARCHITECTURE-NOTES.md)）。
