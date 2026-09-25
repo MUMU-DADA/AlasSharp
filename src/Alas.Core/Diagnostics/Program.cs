@@ -414,6 +414,42 @@ public static class DiagnosticCommands
                 }
                 return CampaignLoopCheck.Run(dataDir, loopFixture);
             }
+            if (command == "r5-device")
+            {
+                // 真机宿主 + 录制渠道：打印"会发给上游的调用序列"（不连设备、不发动作）。
+                string? devChapter = null, devLevel = null, devModule = null, devFrame = null;
+                string? devDetection = null, devFleet1 = null, devFleet2 = null, devMode = "main";
+                int devCurrentFleet = 1;
+                bool devAmbush = args.Contains("--map-has-ambush");
+                bool devClearAll = args.Contains("--clear-all");
+                bool devPoorMap = args.Contains("--poor-map-data");
+                bool devUseFleet2 = args.Contains("--use-fleet-2");
+                bool devFleetBoss = args.Contains("--fleet-boss-2");
+                bool devSiren = args.Contains("--map-has-siren");
+                bool devFortress = args.Contains("--map-has-fortress");
+                bool devJson = args.Contains("--json");
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--chapter") devChapter = args[i + 1];
+                    if (args[i] == "--level") devLevel = args[i + 1];
+                    if (args[i] == "--chapter-module") devModule = args[i + 1];
+                    if (args[i] == "--detection") devDetection = AbsoluteIfExists(args[i + 1]);
+                    if (args[i] == "--fleet-1") devFleet1 = args[i + 1];
+                    if (args[i] == "--fleet-2") devFleet2 = args[i + 1];
+                    if (args[i] == "--mode") devMode = args[i + 1];
+                    if (args[i] == "--current-fleet" && int.TryParse(args[i + 1], out int devParsedFleet))
+                    {
+                        devCurrentFleet = devParsedFleet;
+                    }
+                    if (args[i] == "--frame") devFrame = AbsoluteIfExists(args[i + 1]);
+                }
+                var devOptions = new CampaignDryRunHelper.Options(
+                    devChapter, devLevel, devModule, devFrame, devDetection,
+                    devFleet1, devFleet2, devCurrentFleet, devAmbush,
+                    devClearAll, devPoorMap, devUseFleet2, devFleetBoss,
+                    devSiren, devFortress, devMode);
+                return CampaignDeviceCheck.Run(dataDir, repoDir, paths.ToolsDirectory, devOptions, devJson);
+            }
             if (command == "r5-calls")
             {
                 // 计划步骤 → 宿主调用（上游方法名 + 参数引用形式）的翻译核对（只读）。
@@ -697,7 +733,7 @@ public static class DiagnosticCommands
                 _ => Fail($"未知命令: {command}"
                            + "（可用: verify / list / show / imaging / matching / vision / campaign / "
                            + "map / map-ir / capture / device / queue / plan-queue / report / runs / run / goto / "
-                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state / r5-run / r5-diff / r5-switch / r5-calls）"),
+                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state / r5-run / r5-diff / r5-switch / r5-calls / r5-device）"),
             };
         }
         catch (Exception ex)

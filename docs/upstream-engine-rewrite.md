@@ -688,6 +688,28 @@ C# 侧新增 `CampaignCallTranslator`（纯函数）：把计划步骤翻成"上
 `verify_r5_host_seam.py`（联锁、`@`/`#` 引用还原成上游对象、kwargs 按关键字传、`CampaignEnd` 走合同分类、
 `info` 只读）；均已登记进 `verify_all.py`（R5 检查现共 **13** 个）。
 
+#### 设备宿主：`DeviceCampaignHost`（路线 a 的 C# 侧）
+
+`src/Alas.Core/Campaign/DeviceCampaignHost.cs`：实现 `ICampaignPrimitiveHost`，把每个成员翻成对上游方法的
+调用，经 `ICampaignCallChannel` 发出。**与录制宿主（离线干跑用）是同一套原语逻辑，只换宿主**。
+
+| 成员类别 | 做法 |
+| --- | --- |
+| 状态（`battle_count` / `fleet_*_location` / `camera` / `ammo_count` / `fleet_ammo`） | **只读**（渠道 `Read`，走宿主 `s3_campaign_call` 的属性读取分支） |
+| 舰队切换（`EnsureFleet`） | 访问 `fleet_1` / `fleet_2` 属性再调 `switch_to`——上游这两个属性本身就会 `fleet_ensure(index=…)` 后返回 `self`（`module/map/fleet.py:25/35`），**点号路径即忠实调用** |
+| 动作（`goto` / `clear_chosen_enemy` / `clear_chosen_mystery` / `submarine_move_near_boss` / `update` / `map_swipe` / `focus_to` / `ensure_edge_insight` / `ensure_no_info_bar` / `withdraw`） | 调上游方法，参数用 `#节点` / `kwargs` 引用形式 |
+| 无上游入口（`ClearCaughtBySirenFlags`） | **如实抛 `NotSupportedException`** 并说明原因（上游是在 `fleet_2_break_siren_caught` 内部逐格清标记，没有公开入口）——这是目前唯一已知缺口 |
+
+**离线核对**（`verify_r5_device.py`）：同一关卡、同一识别输入，`r5-run`（录制宿主）与 `r5-device`
+（真机宿主 + **录制渠道**，只记不发）必须发出**同样的原语序列**。
+口径：比**共同前缀**——录制渠道的状态是静态桩（`battle_count` 不增长），真机宿主会打到 20 轮上限才撤退，
+而录制宿主清掉敌人就提前撤退；这是"桩状态 vs 自增状态"的差别（真机上 `battle_count` 由设备侧结算刷新），
+不是宿主缺陷。
+
+**这还不能证明什么**：整条链仍是**离线**的——渠道是录制的，没有任何设备动作。真正的"由 C# 驱动一局"
+需要：① `loop=csharp` + 闸门；② 把渠道换成真机实现（`s3_campaign_call`，`allow_actions=true`）；
+③ 一次授权运行并做三层对照。
+
 #### `loop` 域切成 csharp 需要什么（前置清单）
 
 | 项 | 要求 | 现状 |

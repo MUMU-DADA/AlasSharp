@@ -42,14 +42,28 @@ public static class CampaignCallTranslator
 
     public static CampaignHostCall Translate(CampaignPlanStep step)
     {
-        // `SplitFleetPrefix` 返回 (前缀, 内层原语)：前缀为空表示没有舰队前缀。
-        // `super()` 不是舰队前缀——它是"调基类实现"，翻译成直接调那个方法（C# 执行器已按同一语义处理）。
+        // `SplitFleetPrefix` 返回 (前缀, 内层原语)。
+        // 舰队前缀**保留成点号路径**：上游 `Fleet.fleet_2` 是属性，会先 `fleet_ensure(index=2)` 再
+        // **返回 self**（`module/map/fleet.py:35`），所以 `instance.fleet_2.clear_boss` 才是忠实调用
+        // ——"切队 + 内层原语"一次到位，比在 C# 侧分开调 `ensure_fleet` 更贴上游语义。
+        // `super()` 不是舰队前缀：它是"调基类实现"，翻译成直接调那个方法。
         var (prefix, inner) = CampaignPrimitiveRegistry.SplitFleetPrefix(step.Op);
-        if (prefix == "super()") prefix = "";
-        string upstreamName = MethodNames.TryGetValue(inner, out string? renamed) ? renamed : inner;
+        string? fleetPrefix = null;
+        if (prefix == "super()")
+        {
+            prefix = "";
+        }
+        else if (prefix.Length > 0)
+        {
+            fleetPrefix = prefix;
+        }
+        string methodName = prefix.Length > 0 ? $"{prefix}.{inner}" : inner;
+        string upstreamName = prefix.Length > 0 || !MethodNames.TryGetValue(inner, out string? renamed)
+            ? methodName
+            : renamed;
         if (Unsupported.TryGetValue(inner, out string? reason))
         {
-            return new CampaignHostCall(step.Op, upstreamName, prefix.Length == 0 ? null : prefix, [], [], reason);
+            return new CampaignHostCall(step.Op, upstreamName, fleetPrefix, [], [], reason);
         }
         var args = new List<JsonNode?>();
         var keywords = new List<KeyValuePair<string, JsonNode?>>();
@@ -63,7 +77,7 @@ public static class CampaignCallTranslator
                 keywords.Add(new KeyValuePair<string, JsonNode?>(key, Encode(value)));
             }
         }
-        return new CampaignHostCall(step.Op, upstreamName, prefix.Length == 0 ? null : prefix, args, keywords, null);
+        return new CampaignHostCall(step.Op, upstreamName, fleetPrefix, args, keywords, null);
     }
 
     /// <summary>

@@ -27,14 +27,23 @@ internal static class CampaignDryRunHelper
         bool ClearAll, bool PoorMapData, bool UseFleet2, bool FleetBoss,
         bool HasSiren, bool HasFortress, string Mode);
 
-    /// <summary>造状态并干跑；失败时返回错误文本（调用方转成退出码）。</summary>
-    public static bool TryExecute(string dataDir, string repoDir, string toolsDir, Options options,
-                                  out CampaignDryRunResult? result, out string? error)
+    /// <summary>
+    /// 只造状态（计划 + 引擎格子 + 识别叠加），不跑循环。干跑宿主与**真机宿主**共用这一步，
+    /// 保证两边看到的状态完全一样（对照才有意义）。
+    /// </summary>
+    public static bool TryBuildState(string dataDir, string repoDir, string toolsDir, Options options,
+                                     out Alas.Campaign.CampaignPlan? plan,
+                                     out IReadOnlyList<CampaignGrid> grids,
+                                     out string? detectionSource,
+                                     out IReadOnlyList<string> unknownFlags,
+                                     out string? error)
     {
-        result = null;
+        plan = null;
+        grids = [];
+        detectionSource = null;
+        unknownFlags = [];
         error = null;
 
-        Alas.Campaign.CampaignPlan? plan;
         if (!string.IsNullOrEmpty(options.ChapterModule)
             && CampaignPlanReader.TryReadModule(dataDir, options.ChapterModule, out plan))
         {
@@ -63,16 +72,14 @@ internal static class CampaignDryRunHelper
             return false;
         }
 
-        var grids = CampaignMapState.FromPlan(plan, options.Fleet1, options.Fleet2, options.HasAmbush,
+        var state = CampaignMapState.FromPlan(plan, options.Fleet1, options.Fleet2, options.HasAmbush,
                                               options.CurrentFleet);
-        if (grids.Count == 0)
+        if (state.Count == 0)
         {
             error = $"{plan.Chapter}/{plan.Level} 的导出里没有可用 map_data";
             return false;
         }
 
-        IReadOnlyList<string> unknownFlags = [];
-        string? detectionSource = null;
         if (!string.IsNullOrEmpty(options.Frame))
         {
             if (!File.Exists(options.Frame))
@@ -96,7 +103,7 @@ internal static class CampaignDryRunHelper
                 error = $"地图未检出：{detection.Reason ?? detection.Load}";
                 return false;
             }
-            grids = CampaignMapState.OverlayDetection(grids, detection.GridFlags, out unknownFlags);
+            state = CampaignMapState.OverlayDetection(state, detection.GridFlags, out unknownFlags);
             detectionSource = $"{Path.GetFileName(options.Frame)}（识别到 {detection.GridCount} 格）";
         }
         else if (!string.IsNullOrEmpty(options.DetectionPath))
@@ -122,21 +129,39 @@ internal static class CampaignDryRunHelper
                 error = $"识别结果解析失败：{failure.Message}";
                 return false;
             }
-            grids = CampaignMapState.OverlayDetection(grids, flags, out unknownFlags);
+            state = CampaignMapState.OverlayDetection(state, flags, out unknownFlags);
             detectionSource = Path.GetFileName(options.DetectionPath);
         }
 
-        var config = new CampaignRuntimeConfig(
-            MapClearAllThisTime: options.ClearAll,
-            MapHasSiren: options.HasSiren,
-            MapHasFortress: options.HasFortress,
-            Fleet2: options.UseFleet2,
-            FleetBoss: options.FleetBoss,
-            MapHasAmbush: options.HasAmbush,
-            PoorMapData: options.PoorMapData);
+        grids = state;
+        return true;
+    }
+
+    /// <summary>运行配置（干跑宿主与真机宿主共用）。</summary>
+    public static CampaignRuntimeConfig BuildConfig(Options options) => new(
+        MapClearAllThisTime: options.ClearAll,
+        MapHasSiren: options.HasSiren,
+        MapHasFortress: options.HasFortress,
+        Fleet2: options.UseFleet2,
+        FleetBoss: options.FleetBoss,
+        MapHasAmbush: options.HasAmbush,
+        PoorMapData: options.PoorMapData);
+
+    /// <summary>造状态并干跑；失败时返回错误文本（调用方转成退出码）。</summary>
+    public static bool TryExecute(string dataDir, string repoDir, string toolsDir, Options options,
+                                  out CampaignDryRunResult? result, out string? error)
+    {
+        result = null;
+        if (!TryBuildState(dataDir, repoDir, toolsDir, options, out var plan, out var grids,
+                           out string? detectionSource, out var unknownFlags, out error))
+        {
+            return false;
+        }
+
+        var config = BuildConfig(options);
         var host = new RecordingCampaignHost(grids, config)
         {
-            BouncingRoutes = plan.Map?.BouncingEnemyData ?? [],
+            BouncingRoutes = plan!.Map?.BouncingEnemyData ?? [],
             Fleet1Location = options.Fleet1 ?? "",
             Fleet2Location = options.Fleet2 ?? "",
             FleetCurrentIndex = options.CurrentFleet,
