@@ -349,6 +349,13 @@ public static class CampaignPrimitives
         "is_caught_by_siren" => grid with { IsCaughtBySiren = value },
         "is_cleared" => grid with { IsCleared = value },
         "is_enemy" => grid with { IsEnemy = value },
+        // 识别提示类（上游 `for grid in self.map: grid.may_siren = True` 这种整图设置用）
+        "may_siren" => grid with { MaySiren = value },
+        "may_enemy" => grid with { MayEnemy = value },
+        "may_boss" => grid with { MayBoss = value },
+        "may_mystery" => grid with { MayMystery = value },
+        "may_ambush" => grid with { MayAmbush = value },
+        "may_ammo" => grid with { MayAmmo = value },
         _ => throw new NotSupportedException($"未知的格子标志 {flag}（不在模型里；要同步新标志时在 ApplyFlag 里显式加）"),
     };
 
@@ -1590,6 +1597,21 @@ public static class CampaignHookRunner
                 {
                     return Result(plan, battle, branchRun.ReturnValue, null, stepLog, host, actionsBefore, actions);
                 }
+                continue;
+            }
+
+            // `map_set`：上游 `for grid in self.map: grid.<flag> = <字面量>` —— 整图设一个布尔标志。
+            // 逐个格子走宿主的 `SetGridFlag`（写模型 + 通知上游），**没有设备动作**。
+            if (step.Kind == "map_set")
+            {
+                if (step.Flag is not { Length: > 0 } flag) 
+                    return Result(plan, battle, null, "map_set 缺少 flag", stepLog, host, actionsBefore, actions);
+                bool value = step.Value?.GetValue<bool>() ?? true;
+                // **先取快照再写**：宿主的 `SetGridFlag` 会替换同一个列表里的元素，
+                // 直接 foreach 枚举 `host.Grids` 会抛"Collection was modified"（实测被抓出来）。
+                var targets = host.Grids.ToList();
+                foreach (var grid in targets) host.SetGridFlag(grid, flag, value);
+                stepLog.Add($"map_set：{targets.Count} 格的 {flag} = {value}");
                 continue;
             }
 

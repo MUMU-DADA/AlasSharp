@@ -826,6 +826,26 @@ def derive_plan(body: list, where: str, resolve=None):
                     locals_.add(target)
                 else:
                     unparsed.append(f'Assign@{stmt.lineno}: {_brief(stmt)}')
+            elif isinstance(stmt, ast.For):
+                # `for grid in self.map: grid.<flag> = <字面量>` —— 整图设一个布尔标志（识别提示）。
+                # 只认这一种形态：循环目标是单个名字、迭代对象是 `self.map`、循环体只有一条
+                # `grid.<flag> = 字面量`；别的循环一律照旧记未解析（不猜）。
+                target = stmt.target
+                body = [s for s in stmt.body
+                        if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant))]
+                ok = (isinstance(target, ast.Name) and isinstance(stmt.iter, ast.Attribute)
+                      and isinstance(stmt.iter.value, ast.Name) and stmt.iter.value.id == 'self'
+                      and stmt.iter.attr == 'map' and not stmt.orelse and len(body) == 1)
+                if ok and isinstance(body[0], ast.Assign) and len(body[0].targets) == 1 \
+                        and isinstance(body[0].targets[0], ast.Attribute) \
+                        and isinstance(body[0].targets[0].value, ast.Name) \
+                        and body[0].targets[0].value.id == target.id \
+                        and isinstance(body[0].value, ast.Constant) \
+                        and isinstance(body[0].value.value, bool):
+                    steps.append({'kind': 'map_set', 'flag': body[0].targets[0].attr,
+                                  'value': body[0].value.value})
+                else:
+                    unparsed.append(f'For@{stmt.lineno}: {_brief(stmt)}')
             elif isinstance(stmt, ast.Pass):
                 continue
             else:

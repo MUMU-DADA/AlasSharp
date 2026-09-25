@@ -104,6 +104,9 @@ public sealed class CampaignPlanStep
     /// <summary>`kind=return` 时返回的**字面量**（上游 `return True` / `return False`；缺省即 None）。</summary>
     [JsonPropertyName("value")] public JsonNode? Value { get; init; }
 
+    /// <summary>`kind=map_set` 时给**所有格子**设置的布尔标志名（上游 `grid.may_siren = True`）。</summary>
+    [JsonPropertyName("flag")] public string? Flag { get; init; }
+
     /// <summary>`kind=raise` 时抛出的**控制流信号**（上游 `raise CampaignEnd()` / `MapEnemyMoved()`）。</summary>
     [JsonPropertyName("signal")] public string? Signal { get; init; }
 
