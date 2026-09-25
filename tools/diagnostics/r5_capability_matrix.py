@@ -55,6 +55,18 @@ OWNERSHIP: dict[str, tuple[str, str]] = {
 }
 
 
+# 静态数据现状（人工核对 `data/` 下的导出文件；第三阶段的输入）
+#   已导出：已经有对应导出文件，将来自研引擎可以直接消费
+#   未导出：数据在上游代码里，但还没导出——第三阶段要先补导出器
+STATIC_DATA: dict[str, str] = {
+    "SetServer": "已导出（`data/assets.json` 的 `servers`）",
+    "AssetButtonCenter": "已导出（`data/assets.json` 的 `assets` 绑定）",
+    "PageList": "**未导出**（上游页面定义还没导出）",
+    "PageGraph": "**未导出**（上游 `Page.links` 还没导出）",
+    "TaskCatalog": "**未导出**（上游 `task/` 配置还没导出）",
+}
+
+
 def interface_methods() -> list[str]:
     text = INTERFACE.read_text(encoding="utf-8")
     text = re.sub(r"///.*", "", text)
@@ -123,17 +135,24 @@ def main() -> int:
         f"- 接口方法：**{len(methods)}** 个；Core 里调用点合计 **{total_sites}** 处",
         f"- 分类统计：" + "、".join(f"**{key} {value}**" for key, value in sorted(by_category.items())),
         "",
-        "| 方法 | 归属 | 调用点 | 涉及文件 | 说明 |",
-        "| --- | --- | --- | --- | --- |",
+        "| 方法 | 归属 | 静态数据 | 调用点 | 涉及文件 | 说明 |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
-    lines += [f"| `{name}` | {category} | {count} | {files} | {reason} |"
+    lines += [f"| `{name}` | {category} | {STATIC_DATA.get(name, "—")} | {count} | {files} | {reason} |"
               for name, category, count, files, reason in rows]
     lines += [
         "",
         "## 怎么读这张表（对第三阶段的意义）",
         "",
+        "> ⚠️ **边界（别读错）**：`可静态化` 说的是「数据**可以**来自静态导出」，**不是**现在就该把运行时切过去。",
+        "> 按仓库纪律（`AGENTS.md`、`docs/architecture-roadmap.md`）：静态导出只用于**离线展示、来源追踪与漂移校验**；",
+        "> 界面导航、任务目录与地图识别在**替换宿主之前**必须继续走上游对象与原生流程，",
+        "> 切换属于第三阶段、要过 R5 的门槛（同局对照 + 性能基线 + 真实产品路径证据）。",
+        "> 这张表的作用是**列清差距**，不是提前动运行时。",
+        "",
         "- **可静态化**：数据在上游的静态规则/配置里，导出后自研引擎能自己消费——"
-        "这些是第三阶段可以直接摘掉的运行时调用；",
+        "这些是第三阶段可以直接摘掉的运行时调用；标着**未导出**的（页面图、任务目录）"
+        "就是第三阶段要先补的导出器；",
         "- **识图保留**：运行时要跑上游模板匹配/OCR，替换宿主前必须有等价的自研视觉"
         "（或继续借上游视觉宿主）；",
         "- **必须自研**：目前只在 Python 侧实现的业务逻辑（统计报表、商店策略、S3 生产路径），"
