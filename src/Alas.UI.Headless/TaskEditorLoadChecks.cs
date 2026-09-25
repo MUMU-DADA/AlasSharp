@@ -349,18 +349,25 @@ internal static class TaskEditorLoadChecks
             {
                 var editor = new TaskEditorViewModel { AutoSave = false };
                 var watch = Stopwatch.StartNew();
+                long startAllocated = GC.GetAllocatedBytesForCurrentThread();
                 editor.Load(instance, task, (JsonObject)schemaNode.DeepClone(), (JsonObject)configNode.DeepClone());
                 double model = watch.Elapsed.TotalMilliseconds;
+                long modelAllocated = GC.GetAllocatedBytesForCurrentThread();
                 var page = new TaskEditorView();
                 double ctor = watch.Elapsed.TotalMilliseconds;
+                long ctorAllocated = GC.GetAllocatedBytesForCurrentThread();
                 page.Model = editor;
                 double groups = watch.Elapsed.TotalMilliseconds;
+                long groupsAllocated = GC.GetAllocatedBytesForCurrentThread();
                 host.Content = page;
                 double attach = watch.Elapsed.TotalMilliseconds;
+                long attachAllocated = GC.GetAllocatedBytesForCurrentThread();
                 host.UpdateLayout();
                 double layout = watch.Elapsed.TotalMilliseconds;
+                long layoutAllocated = GC.GetAllocatedBytesForCurrentThread();
                 Pump();
                 double render = watch.Elapsed.TotalMilliseconds;
+                long renderAllocated = GC.GetAllocatedBytesForCurrentThread();
                 AssertFieldLayout(page, editor.Fields);
                 host.Content = null;
                 phases[task] = new Dictionary<string, object?>
@@ -374,6 +381,12 @@ internal static class TaskEditorLoadChecks
                     ["render_ms"] = Round(render - layout),
                     ["attach_layout_render_ms"] = Round(render - groups),
                     ["total_ms"] = Round(render),
+                    ["model_allocated_bytes"] = modelAllocated - startAllocated,
+                    ["view_ctor_allocated_bytes"] = ctorAllocated - modelAllocated,
+                    ["build_groups_allocated_bytes"] = groupsAllocated - ctorAllocated,
+                    ["attach_allocated_bytes"] = attachAllocated - groupsAllocated,
+                    ["layout_allocated_bytes"] = layoutAllocated - attachAllocated,
+                    ["render_allocated_bytes"] = renderAllocated - layoutAllocated,
                     ["realised_controls"] = page.GetVisualDescendants().Count(),
                 };
             }
@@ -418,6 +431,9 @@ internal static class TaskEditorLoadChecks
                 + $"build_groups={row["build_groups_ms"],-7} attach={row["attach_ms"],-9} "
                 + $"layout={row["layout_ms"],-9} render={row["render_ms"],-9} "
                 + $"controls={row["realised_controls"]}");
+            text.AppendLine($"         allocations: model={row["model_allocated_bytes"]}, ctor={row["view_ctor_allocated_bytes"]}, "
+                + $"groups={row["build_groups_allocated_bytes"]}, attach={row["attach_allocated_bytes"]}, "
+                + $"layout={row["layout_allocated_bytes"]}, render={row["render_allocated_bytes"]}");
         }
         text.AppendLine($"  allocated={comparison["cold_page_build_allocated_bytes"]} bytes");
         return text.ToString();
