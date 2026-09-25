@@ -2,6 +2,43 @@
   "note": "R5 原语执行对拍夹具：供 `Alas.Server r5-exec --fixture <本文件>` 与 tools/diagnostics/verify_r5_execution.py 使用。关卡/钩子取自静态导出（data/campaign/**），地图状态与运行时配置由本夹具给出，动作只被干跑宿主记录。",
   "cases": [
     {
+      "name": "event_20200820_cn b3 battle_0：`if self.config.MAP_HAS_MOVABLE_ENEMY:` 分支（配置条件）→ 先推 2 队，再打塞壬",
+      "chapter": "event_20200820_cn",
+      "level": "b3",
+      "hook": "battle_0",
+      "config": {
+        "map_has_movable_enemy": true,
+        "map_has_siren": true,
+        "fleet_2": true,
+        "fleet_boss": true,
+        "fleet_1_location": "A1",
+        "fleet_2_location": "B1"
+      },
+      "grids": [
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "weight": 5,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "is_fleet": true,
+          "weight": 5,
+          "cost": 1
+        },
+        {
+          "location": "C1",
+          "is_siren": true,
+          "weight": 20,
+          "cost": 2
+        }
+      ],
+      "expect": {
+        "completed": true
+      }
+    },
+    {
       "name": "campaign_15_3 battle_3：`self.clear_chosen_enemy(H5); return True`——字面量返回也要进计划（以前整份作废）",
       "chapter": "campaign_main",
       "level": "campaign_15_3",

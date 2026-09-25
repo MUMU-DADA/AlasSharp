@@ -1285,6 +1285,26 @@ public static class CampaignHookRunner
             value = Truthy(bound);
             why = $"局部变量 {name} = {Describe(bound)}";
         }
+        else if (test.Config is { Length: > 0 } configKey)
+        {
+            // `self.config.<KEY>`：映射到 `CampaignRuntimeConfig` 的字段。没映射的键**显式报错**——
+            // 猜一个默认值会让分支走错，比停下来更糟。
+            value = configKey switch
+            {
+                "MAP_HAS_MOVABLE_ENEMY" => host.Config.MapHasMovableEnemy,
+                "MAP_HAS_MOVABLE_NORMAL_ENEMY" => host.Config.MapHasMovableNormalEnemy,
+                "MAP_CLEAR_ALL_THIS_TIME" => host.Config.MapClearAllThisTime,
+                "FLEET_BOSS" => host.Config.FleetBoss,
+                "FLEET_2" => host.Config.Fleet2,
+                "MAP_HAS_SIREN" => host.Config.MapHasSiren,
+                "MAP_HAS_FORTRESS" => host.Config.MapHasFortress,
+                "MAP_HAS_AMBUSH" => host.Config.MapHasAmbush,
+                "MAP_HAS_BOUNCING_ENEMY" => host.Config.MapHasBouncingEnemy,
+                _ => throw new NotSupportedException(
+                    $"branch 条件里的 config 键 {configKey} 还没有映射到 CampaignRuntimeConfig"),
+            };
+            why = $"config.{configKey} = {value}";
+        }
         else if (test.Call is { } call)
         {
             if (!CampaignPrimitiveRegistry.TryGet(call.Op, out var primitive))

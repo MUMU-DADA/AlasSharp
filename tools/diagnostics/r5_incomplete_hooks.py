@@ -30,7 +30,7 @@ DATA = ROOT / "data" / "campaign"
 REPORT = ROOT / "docs" / "archive" / "reports" / "r5-incomplete-hooks.md"
 
 # 棘轮基线：上次普查的"不完整且上游有 ≥2 条语句"的钩子数（只许下降）
-BASELINE = 118      # `battle_*` 里"不完整且上游有 ≥2 条语句"的钩子数（实测；计划语言扩展后从 163 降下来）
+BASELINE = 106      # `battle_*` 里"不完整且上游有 ≥2 条语句"的钩子数（实测；随计划语言扩展下降）
 
 
 def is_self_call(node) -> bool:
@@ -117,7 +117,10 @@ def main() -> int:
               "1. **局部变量 + `if <局部变量>:` + 分支体**：`boss = self.map.select(is_boss=True)` 这类「观察」，",
               "   以及 `branch` 步骤（条件为局部变量或一次原语调用，体内是步骤序列）；",
               "2. **局部变量的实参引用**：`check_accessibility(boss[0], fleet='boss')` 里的 `boss[0]`；",
-              "3. 其它形态（`compare` 条件、`for` 循环、`raise` 体）另计，需要单独设计，不要硬塞进上面的结构。", ""]
+              "3. **缺证据的形态**：`self.map_is_clear_mode`（在不完整 `battle_*` 钩子的条件里出现 67 次）"
+             "在上游快照里**只有使用、没有定义**（全库 grep 只命中用法），疑似运行时注入 —— "
+             "没找到定义就不猜语义，这些钩子继续按 `plan_complete=false` 拒绝执行并报原因；",
+             "4. 其它形态（`compare` 条件、`for` 循环、`raise` 体）另计，需要单独设计，不要硬塞进上面的结构。", ""]
     lines.append("")
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text("\n".join(lines), encoding="utf-8", newline="\n")

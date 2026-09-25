@@ -109,6 +109,10 @@ public sealed class CampaignPlanStep
 public sealed class CampaignPlanStepTest
 {
     [JsonPropertyName("local")] public string? Local { get; init; }
+
+    /// <summary>`self.config.<KEY>` 这类**配置读取**（如 `MAP_HAS_MOVABLE_ENEMY`）→ C# 的运行时配置字段。</summary>
+    [JsonPropertyName("config")] public string? Config { get; init; }
+
     [JsonPropertyName("call")] public CampaignPlanStepTestCall? Call { get; init; }
     [JsonPropertyName("negate")] public bool Negate { get; init; }
 }

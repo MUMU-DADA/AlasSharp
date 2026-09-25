@@ -691,6 +691,11 @@ def derive_plan(body: list, where: str, resolve=None):
         local = _local_reference(node, locals_)
         if local is not None:
             return {'local': local['__local__'], 'negate': negate}
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) \
+                and isinstance(node.value.value, ast.Name) and node.value.value.id == 'self' \
+                and node.value.attr == 'config':
+            # `self.config.MAP_HAS_MOVABLE_ENEMY` 这类**配置读取**：C# 侧配置里都有对应字段
+            return {'config': node.attr, 'negate': negate}
         if is_self_call(node):
             return {'call': {'op': call_name(node), 'args': call_args(node, arg_resolve)},
                     'negate': negate}
