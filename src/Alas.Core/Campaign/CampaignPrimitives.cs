@@ -1431,12 +1431,14 @@ public static class CampaignHookRunner
         {
             // `self.config.<KEY>`：映射到 `CampaignRuntimeConfig` 的字段。没映射的键**显式报错**——
             // 猜一个默认值会让分支走错，比停下来更糟。
-            value = configKey switch
+            object? configValue = configKey switch
             {
                 "MAP_HAS_MOVABLE_ENEMY" => host.Config.MapHasMovableEnemy,
                 "MAP_HAS_MOVABLE_NORMAL_ENEMY" => host.Config.MapHasMovableNormalEnemy,
                 "MAP_CLEAR_ALL_THIS_TIME" => host.Config.MapClearAllThisTime,
-                "FLEET_BOSS" => host.Config.FleetBoss,
+                // 上游 `FLEET_BOSS` 是**整数** 1/2；C# 配置里存的是 `== 2` 的布尔，
+                // 这里按同一编码还原（比较条件要的是整数，不能拿布尔硬比）
+                "FLEET_BOSS" => host.Config.FleetBoss ? 2 : 1,
                 "FLEET_2" => host.Config.Fleet2,
                 "MAP_HAS_SIREN" => host.Config.MapHasSiren,
                 "MAP_HAS_FORTRESS" => host.Config.MapHasFortress,
@@ -1445,7 +1447,8 @@ public static class CampaignHookRunner
                 _ => throw new NotSupportedException(
                     $"branch 条件里的 config 键 {configKey} 还没有映射到 CampaignRuntimeConfig"),
             };
-            why = $"config.{configKey} = {value}";
+            value = Truthy(configValue);
+            why = $"config.{configKey} = {configValue}";
         }
         else if (test.Call is { } call)
         {
@@ -1522,6 +1525,7 @@ public static class CampaignHookRunner
             if (literal is JsonValue value)
             {
                 if (value.TryGetValue<bool>(out bool flag)) return (flag, $"literal {flag}");
+                if (value.TryGetValue<int>(out int number)) return (number, $"literal {number}");
                 if (value.TryGetValue<string>(out string? text)) return (text, $"literal '{text}'");
             }
             return (null, "literal 不是布尔/字符串");   // null 字面量在 Python 里是 None（假）
@@ -1536,12 +1540,14 @@ public static class CampaignHookRunner
         }
         if (node["config"] is JsonValue configNode && configNode.TryGetValue<string>(out string? key))
         {
-            bool? resolved = key switch
+            object? resolved = key switch
             {
                 "MAP_HAS_MOVABLE_ENEMY" => host.Config.MapHasMovableEnemy,
                 "MAP_HAS_MOVABLE_NORMAL_ENEMY" => host.Config.MapHasMovableNormalEnemy,
                 "MAP_CLEAR_ALL_THIS_TIME" => host.Config.MapClearAllThisTime,
-                "FLEET_BOSS" => host.Config.FleetBoss,
+                // 上游 `FLEET_BOSS` 是**整数** 1/2；C# 配置里存的是 `== 2` 的布尔，
+                // 这里按同一编码还原（比较条件要的是整数，不能拿布尔硬比）
+                "FLEET_BOSS" => host.Config.FleetBoss ? 2 : 1,
                 "FLEET_2" => host.Config.Fleet2,
                 "MAP_HAS_SIREN" => host.Config.MapHasSiren,
                 "MAP_HAS_FORTRESS" => host.Config.MapHasFortress,
@@ -1551,6 +1557,54 @@ public static class CampaignHookRunner
             };
             if (resolved is null) return (null, $"值表达式里的 config 键 {key} 还没有映射");
             return (resolved, $"config.{key} = {resolved}");
+        }
+        if (node["host_value"] is JsonValue hostNode && hostNode.TryGetValue<string>(out string? hostName))
+        {
+            if (hostName != "battle_count") return (null, $"未知的宿主值 {hostName}");
+            return (host.BattleCount, $"host.battle_count = {host.BattleCount}");
+        }
+        if (node["grid_attr"] is JsonObject gridAttr && gridAttr["name"] is JsonValue attrName
+            && attrName.TryGetValue<string>(out string? attribute) && gridAttr["grid"] is { } gridNode2)
+        {
+            string location = GridLocationOf(gridNode2);
+            var grid = host.Grids.FirstOrDefault(item => item.Location == location);
+            if (grid is null) return (null, $"值表达式里的格子 {location} 不在当前地图状态里");
+            object? read = attribute switch
+            {
+                "enemy_scale" => grid.EnemyScale,
+                "weight" => grid.Weight,
+                "cost" => grid.Cost,
+                "cost_1" => grid.Cost1,
+                "cost_2" => grid.Cost2,
+                "enemy_genre" => grid.EnemyGenre,
+                _ => null,
+            };
+            if (read is null) return (null, $"值表达式里的格子属性 {attribute} 还没映射");
+            return (read, $"{location}.{attribute} = {read}");
+        }
+        if (node["compare"] is JsonObject compare && compare["op"] is JsonValue opValue
+            && opValue.TryGetValue<string>(out string? compareOp))
+        {
+            var (left, leftWhy) = EvaluateExpr(compare["left"], host, state, env);
+            if (left is null) return (null, leftWhy);
+            var (right, rightWhy) = EvaluateExpr(compare["right"], host, state, env);
+            if (right is null) return (null, rightWhy);
+            // 只做**整数**比较（上游这些条件都是整数/枚举比较）；类型不对就报错，不做隐式转换
+            if (left is not int leftNumber || right is not int rightNumber)
+            {
+                return (null, $"比较 {leftWhy} {compareOp} {rightWhy} 不是整数，无法比较");
+            }
+            bool result = compareOp switch
+            {
+                ">=" => leftNumber >= rightNumber,
+                ">" => leftNumber > rightNumber,
+                "<=" => leftNumber <= rightNumber,
+                "<" => leftNumber < rightNumber,
+                "==" => leftNumber == rightNumber,
+                "!=" => leftNumber != rightNumber,
+                _ => throw new NotSupportedException($"不支持的比较运算符 {compareOp}"),
+            };
+            return (result, $"{leftWhy} {compareOp} {rightWhy} → {result}");
         }
         if (node["runtime"] is JsonValue runtimeNode && runtimeNode.TryGetValue<string>(out string? flag2))
         {
@@ -1592,6 +1646,8 @@ public static class CampaignHookRunner
     {
         null => false,
         bool flag => flag,
+        // Python 的真假：整数 0 为假
+        int number => number != 0,
         CampaignGridSet set => !set.IsEmpty,
         _ => true,
     };

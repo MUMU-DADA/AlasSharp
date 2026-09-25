@@ -661,8 +661,13 @@ def _is_bare_return_true(body) -> bool:
 def _state_expression(node, resolve):
     """把 `self.X = …` 右值归一成值表达式；表示不了返回 None（调用方记未解析）。"""
     if isinstance(node, ast.Constant) and (node.value is True or node.value is False
-                                           or node.value is None):
+                                           or node.value is None or isinstance(node.value, int)):
         return {'literal': node.value}
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        # `A1.enemy_scale` 这类**格子属性**读取（裸格名是模块级 `= MAP.flatten()` 的绑定）
+        resolved = resolve(node.value)
+        if isinstance(resolved, dict) and '__grid__' in resolved:
+            return {'grid_attr': {'grid': resolved, 'name': node.attr}}
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
         inner = _state_expression(node.operand, resolve)
         return {'not': inner} if inner is not None else None
@@ -675,6 +680,10 @@ def _state_expression(node, resolve):
             and node.value.id == 'self':
         if node.attr == 'map_is_clear_mode':
             return {'runtime': 'map_is_clear_mode'}
+        if node.attr == 'battle_count':
+            # 宿主状态（不是关卡实例属性）：执行器从 `host.BattleCount` 取。
+            # 不加这条的话会被当成实例属性 → 没有初值 → 阻塞（实测踩过这个回归）。
+            return {'host_value': 'battle_count'}
         return {'state': node.attr}
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) \
             and isinstance(node.value.value, ast.Name) and node.value.value.id == 'self' \
@@ -760,6 +769,16 @@ def derive_plan(body: list, where: str, resolve=None):
             expression = _state_expression(node, resolve)
             if expression is not None:
                 return {'expr': expression, 'negate': negate}
+        if isinstance(node, ast.Compare) and len(node.ops) == 1 and len(node.comparators) == 1:
+            # 通用比较：左右都必须是能表达的值表达式（`self.fleet_step >= 3`、`A1.enemy_scale != 3`）
+            operators = {ast.GtE: '>=', ast.Gt: '>', ast.LtE: '<=', ast.Lt: '<',
+                         ast.Eq: '==', ast.NotEq: '!='}
+            left = _state_expression(node.left, resolve)
+            right = _state_expression(node.comparators[0], resolve)
+            if left is not None and right is not None and type(node.ops[0]) in operators:
+                return {'expr': {'compare': {'left': left, 'op': operators[type(node.ops[0])],
+                                             'right': right}},
+                        'negate': negate}
         if isinstance(node, ast.Compare) and isinstance(node.left, ast.Attribute) \
                 and isinstance(node.left.value, ast.Name) and node.left.value.id == 'self' \
                 and node.left.attr == 'battle_count' and len(node.ops) == 1 and len(node.comparators) == 1:
