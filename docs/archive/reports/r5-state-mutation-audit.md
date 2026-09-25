@@ -39,3 +39,23 @@
 | `pick_up_flare` | 格子标志赋值（campaign.campaign_main.campaign_14_base:CampaignBase） | `grid.is_flare = True` | `grid.is_flare = True`：C# 走宿主 `SetGridFlag` → 渠道 `set` 同步（r5-device 自检） |
 | `pick_up_light_house` | 无状态写入（campaign.campaign_main.campaign_14_base:CampaignBase） |  | 无需处理 |
 | `switch_to` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
+
+## 关卡钩子体里的状态写入
+
+用 `ast` 扫了全库 **2991** 个 `battle_*`/`handle_*` 钩子，命中状态写入 **9** 处。
+
+口径：钩子体是被导出成**计划**并执行的东西，所以这里的写入**不会**由上游执行；
+要么由计划里的原语覆盖，要么必须显式同步（见宿主 `SetGridFlag`）。
+
+| 模块 | 位置 | 行 |
+| --- | --- | --- |
+| `campaign/event_20210121_cn/a2.py` | `battle_0: may_siren = …` | 77 |
+| `campaign/event_20210121_cn/a3.py` | `battle_0: may_siren = …` | 80 |
+| `campaign/event_20210121_cn/c2.py` | `battle_0: may_siren = …` | 77 |
+| `campaign/event_20210121_cn/c3.py` | `battle_0: may_siren = …` | 80 |
+| `campaign/event_20240521_cn/sp.py` | `battle_0: is_left = …` | 109 |
+| `campaign/war_archives_20190911_cn/a2.py` | `battle_0: may_siren = …` | 77 |
+| `campaign/war_archives_20190911_cn/a3.py` | `battle_0: may_siren = …` | 82 |
+| `campaign/war_archives_20190911_cn/c2.py` | `battle_0: may_siren = …` | 77 |
+| `campaign/war_archives_20190911_cn/c3.py` | `battle_0: may_siren = …` | 80 |
+

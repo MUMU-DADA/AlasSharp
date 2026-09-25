@@ -2,6 +2,25 @@
   "note": "R5 原语执行对拍夹具：供 `Alas.Server r5-exec --fixture <本文件>` 与 tools/diagnostics/verify_r5_execution.py 使用。关卡/钩子取自静态导出（data/campaign/**），地图状态与运行时配置由本夹具给出，动作只被干跑宿主记录。",
   "cases": [
     {
+      "name": "campaign_10_1 battle_6：计划不完整（静态无法表达的嵌套 if）→ 必须**阻塞报原因**，不许静默什么都不做",
+      "chapter": "campaign_main",
+      "level": "campaign_10_1",
+      "hook": "battle_6",
+      "grids": [
+        {
+          "location": "A1",
+          "is_boss": true,
+          "is_enemy": true,
+          "weight": 10,
+          "cost": 1
+        }
+      ],
+      "expect": {
+        "completed": false,
+        "blocked_contains": "计划不完整"
+      }
+    },
+    {
       "name": "campaign_1_1 battle_0：terminal battle_default，地图上有敌人 → 打一个并返回真",
       "chapter": "campaign_main",
       "level": "campaign_1_1",

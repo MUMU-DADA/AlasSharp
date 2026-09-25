@@ -99,6 +99,22 @@ def main() -> int:
     total = len(EXPECTED_PRIMITIVES)
     print(f"[r5-coverage] 已登记原语 {total} 个：夹具覆盖 {total - len(missing)}"
           f"（{100 * (total - len(missing)) / total:.1f}%）")
+
+    # 计划完整性：`plan_complete=false` 的钩子 `steps` 恒为空——**必须由引擎拒绝执行**，
+    # 否则等于"静默什么都不做"。这里把数量报出来（口径只说清楚"有多少钩子没有可执行计划"，
+    # 不假装 100%）；引擎侧的拒绝行为由 `r5-exec` 的夹具用例断言。
+    incomplete = 0
+    hooks = 0
+    for path in sorted((ROOT / "data" / "campaign").rglob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for battle in (payload.get("campaign") or {}).get("battles") or []:
+            if not str(battle.get("method", "")).startswith("battle_"):
+                continue
+            hooks += 1
+            if not battle.get("plan_complete", True):
+                incomplete += 1
+    print(f"[r5-coverage] battle_* 钩子 {hooks} 个：有可执行计划 {hooks - incomplete}"
+          f"，**plan_complete=false（引擎拒绝执行并报原因）{incomplete}**")
     if declared:
         print("[已声明缺口]")
         for name in declared:

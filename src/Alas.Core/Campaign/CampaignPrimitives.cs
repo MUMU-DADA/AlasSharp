@@ -1212,6 +1212,18 @@ public static class CampaignHookRunner
         var actions = new List<string>();
         int actionsBefore = host is RecordingCampaignHost recording ? recording.Actions.Count : 0;
 
+        // **tier C 守卫**：`plan_complete=false` 表示该钩子含静态无法表达的部分（`unparsed` 里给原因），
+        // 此时 `steps` 恒为空。不检查就会把"什么都没做"当成钩子执行完毕——那是**静默失败**。
+        // 与 `BattlePlanRunner` 同一口径：拒绝执行并如实报原因。
+        if (!battle.PlanComplete)
+        {
+            string reason = battle.Unparsed.Count > 0
+                ? string.Join("、", battle.Unparsed)
+                : "plan_complete=false";
+            stepLog.Add($"{battle.Method}: 计划不完整（{reason}），拒绝执行");
+            return Result(plan, battle, null, $"计划不完整：{reason}", stepLog, host, actionsBefore, actions);
+        }
+
         foreach (var step in battle.Steps)
         {
             if (step.Kind == "super_delegate")

@@ -133,6 +133,46 @@ def scan(method) -> list[tuple[str, str]]:
     return hits
 
 
+def hook_mutation_scan() -> tuple[list[tuple[str, str, int]], int]:
+    """扫**关卡钩子体**里的状态写入。
+
+    原语的写入只覆盖"方法被替换"这一面；钩子体（`battle_*` 等覆写）才是被导出成**计划**并执行的东西。
+    用 `ast` 静态扫全库关卡文件，找"给属性赋值 / 调 `.set(` / `.wipe_out(`"这类写法，
+    返回 (命中列表, 扫过的钩子数)。命中项要在报告里逐条给结论。
+    """
+    import ast  # noqa: PLC0415
+
+    hits: list[tuple[str, str, int]] = []
+    hooks = 0
+    for path in sorted((UPSTREAM / "campaign").rglob("*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        module = str(path.relative_to(UPSTREAM)).replace("\\", "/")
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for item in node.body:
+                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if not (item.name.startswith("battle_") or item.name.startswith("handle_")):
+                    continue
+                hooks += 1
+                for sub in ast.walk(item):
+                    target = None
+                    if isinstance(sub, ast.Assign) and sub.targets and isinstance(sub.targets[0], ast.Attribute):
+                        target = sub.targets[0].attr
+                    elif isinstance(sub, ast.AugAssign) and isinstance(sub.target, ast.Attribute):
+                        target = sub.target.attr
+                    if target and re.fullmatch(r"(is|may)_[a-z_]+", target):
+                        hits.append((module, f"{item.name}: {target} = …", sub.lineno))
+                    if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute) and \
+                            sub.func.attr in ("set", "wipe_out"):
+                        hits.append((module, f"{item.name}: .{sub.func.attr}(…)", sub.lineno))
+    return hits, hooks
+
+
 def main() -> int:
     primitives = registry_primitives()
     methods = upstream_methods()
@@ -173,9 +213,24 @@ def main() -> int:
              "| 原语 | 写入类型 | 上游源码行 | 结论 |", "| --- | --- | --- | --- |"]
     lines += [f"| `{name}` | {kind} | {line} | {note} |" for name, kind, line, note in rows]
     lines.append("")
+
+    hook_hits, hook_count = hook_mutation_scan()
+    lines += ["## 关卡钩子体里的状态写入", "",
+              f"用 `ast` 扫了全库 **{hook_count}** 个 `battle_*`/`handle_*` 钩子，"
+              f"命中状态写入 **{len(hook_hits)}** 处。", "",
+              "口径：钩子体是被导出成**计划**并执行的东西，所以这里的写入**不会**由上游执行；",
+              "要么由计划里的原语覆盖，要么必须显式同步（见宿主 `SetGridFlag`）。", ""]
+    if hook_hits:
+        lines += ["| 模块 | 位置 | 行 |", "| --- | --- | --- |"]
+        lines += [f"| `{module}` | `{where}` | {line} |" for module, where, line in hook_hits[:40]]
+        if len(hook_hits) > 40:
+            lines.append(f"| … | 其余 {len(hook_hits) - 40} 处省略 | |")
+        lines.append("")
+    lines.append("")
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text("\n".join(lines), encoding="utf-8", newline="\n")
-    print(f"已重建 {REPORT.relative_to(ROOT)}：{len(primitives)} 个原语 / 待确认 {todo}")
+    print(f"已重建 {REPORT.relative_to(ROOT)}：{len(primitives)} 个原语 / 待确认 {todo} / "
+          f"钩子体状态写入 {len(hook_hits)}（扫了 {hook_count} 个钩子）")
     for name, kind, line, note in rows:
         if "待确认" in note:
             print(f"  - {name} [{kind}] {line}")
