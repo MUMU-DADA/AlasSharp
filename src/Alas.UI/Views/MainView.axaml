@@ -56,9 +56,7 @@
           <Panel x:Name="StatisticsHost" IsVisible="{Binding IsStatisticsActive}">
             <statistics:StatisticsView x:Name="StatisticsPage" DataContext="{Binding Statistics}" />
           </Panel>
-          <Panel x:Name="TaskEditorHost" IsVisible="{Binding IsTaskEditorActive}">
-            <taskeditor:TaskEditorView x:Name="TaskEditorPage" DataContext="{Binding TaskEditor}" />
-          </Panel>
+          <Panel x:Name="TaskEditorHost" IsVisible="{Binding IsTaskEditorActive}" />
           <Panel x:Name="MeowfficerHost" IsVisible="{Binding IsMeowfficerActive}">
             <taskeditor:MeowfficerScoreView x:Name="MeowfficerPage" />
           </Panel>

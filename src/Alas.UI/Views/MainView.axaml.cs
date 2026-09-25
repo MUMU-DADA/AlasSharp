@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Alas.UI.ViewModels;
+using Alas.UI.TaskEditor;
 
 namespace Alas.UI.Views;
 
@@ -21,6 +22,8 @@ public partial class MainView : UserControl
     private static readonly TranslateTransform None = new(0, 0);
     private readonly Avalonia.Threading.DispatcherTimer _stateTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private long _homeCreateVersion;
+    private readonly Dictionary<TaskEditorViewModel, TaskEditorView> _taskPages = [];
+    private readonly LinkedList<TaskEditorViewModel> _taskPageOrder = [];
 
     public MainView()
         : this(new Theming.MemoryThemeStore())
@@ -113,6 +116,7 @@ public partial class MainView : UserControl
 
     private void OnModelChanged(object? sender, PropertyChangedEventArgs args)
     {
+        if (args.PropertyName == nameof(ShellViewModel.TaskEditor)) ShowTaskEditor();
         if (args.PropertyName == nameof(ShellViewModel.CurrentTheme)) DevToolsPage.UiTheme = Model.CurrentTheme;
         if (args.PropertyName == nameof(ShellViewModel.IsDevToolsActive) && !Model.IsDevToolsActive)
             DevToolsPage.CloseModal();
@@ -145,6 +149,29 @@ public partial class MainView : UserControl
     {
         MeowfficerPage.IsActive = Model.IsMeowfficerActive;
         MeowfficerPage.Instance = Model.HasInstance ? Model.InstanceName : "";
+    }
+
+    private void ShowTaskEditor()
+    {
+        var editor = Model.TaskEditor;
+        if (!_taskPages.TryGetValue(editor, out var page))
+        {
+            page = new TaskEditorView { Model = editor };
+            _taskPages.Add(editor, page);
+            TaskEditorHost.Children.Add(page);
+        }
+        foreach (var candidate in _taskPages.Values) candidate.IsVisible = ReferenceEquals(candidate, page);
+        _taskPageOrder.Remove(editor);
+        _taskPageOrder.AddLast(editor);
+        while (_taskPageOrder.Count > 3)
+        {
+            var oldest = _taskPageOrder.First!.Value;
+            _taskPageOrder.RemoveFirst();
+            var removed = _taskPages[oldest];
+            TaskEditorHost.Children.Remove(removed);
+            removed.Dispose();
+            _taskPages.Remove(oldest);
+        }
     }
 
     private void ApplyLayout()

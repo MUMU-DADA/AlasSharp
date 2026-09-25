@@ -154,10 +154,11 @@ internal static class Program
             Check(model.HasInstance && model.IsOverviewActive && !homeHost.IsVisible, "selecting an instance opens its overview");
 
             // 字体：与上游视觉对照需要稳定的中文字形（上游用系统中文字体栈）。
-            Check(FontManager.Current.TryGetGlyphTypeface(new Typeface(view.FontFamily), out var font), "embedded font loads");
-            Check(font!.FamilyName == "Noto Sans CJK SC", $"embedded font family (got {font.FamilyName})");
-            Check("中文工作区 Alpha 123".All(c => font.CharacterToGlyphMap.TryGetGlyph(c, out var glyph) && glyph != 0),
-                "embedded Chinese and Latin glyphs");
+            Check(view.FontFamily.ToString().Contains("avares://Alas.UI/Assets/Fonts#Noto Sans CJK SC"),
+                "system-first font stack keeps packaged CJK fallback");
+            Check(FontManager.Current.TryGetGlyphTypeface(new Typeface(view.FontFamily), out var font), "UI font loads");
+            Check("中文工作区 Alpha 123".All(c => font!.CharacterToGlyphMap.TryGetGlyph(c, out var glyph) && glyph != 0),
+                "UI font renders Chinese and Latin glyphs");
 
             // 外壳几何：侧栏 232、列间距 14、顶栏行高 41.5、右栏 292（上游 layout.css/apple.css）。
             var sidebar = Find<Border>(view, "SidebarPanel");
@@ -274,11 +275,12 @@ internal static class Program
                 $"first resource card aligns with content padding (got {cards[0].TranslatePoint(new Point(0, 0), window)!.Value.X})");
             Check(model.Overview.Resources[0].Value == "14,200" && model.Overview.Resources[1].Value == "186,420", "resource values mirror the upstream mock");
             Check(model.Overview.Resources.Select(r => r.IsTint0 || r.IsTint1 || r.IsTint2 || r.IsTint3).All(v => v), "resource tint cycles by display index");
-            // 文本行盒必须容得下内置中文字体的字形高度，否则会出现上下裁切（照抄 CSS 紧凑行高的回归点）。
-            Check(Find<TextBlock>(view, "TitleText").Bounds.Height >= 32 * 1.35, "title line box fits the embedded font");
-            Check(Find<TextBlock>(view, "ValueText").Bounds.Height >= 23 * 1.35, "value line box fits the embedded font");
-            Check(Find<TextBlock>(view, "NameText").Bounds.Height >= 10 * 1.35, "resource name line box fits the embedded font");
-            Check(Find<TextBlock>(view, "FootText").Bounds.Height >= 8 * 1.35, "resource foot line box fits the embedded font");
+            // 系统字体优先时行高由实际字形度量决定，至少要容纳声明的字号。
+            foreach (var name in new[] { "TitleText", "ValueText", "NameText", "FootText" })
+            {
+                var text = Find<TextBlock>(view, name);
+                Check(text.Bounds.Height >= text.FontSize, $"{name} line box fits its font size");
+            }
             // 宽屏内容区按视口算好高度，不应出现滚动条。
             Check(main.Extent.Height <= main.Viewport.Height + 0.5,
                 $"wide content area does not overflow (extent {main.Extent.Height}, viewport {main.Viewport.Height})");

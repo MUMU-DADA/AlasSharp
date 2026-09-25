@@ -10,7 +10,7 @@
   <x:Double x:Key="AlasTopbarHeightNarrow">56</x:Double>
   <x:Double x:Key="AlasRailHeaderHeight">72</x:Double>
   <CornerRadius x:Key="AlasLogoRadius">9</CornerRadius>
-  <FontFamily x:Key="AlasFontSans">avares://Alas.UI/Assets/Fonts#Noto Sans CJK SC</FontFamily>
+  <FontFamily x:Key="AlasFontSans">Microsoft YaHei UI, PingFang SC, Noto Sans CJK SC, avares://Alas.UI/Assets/Fonts#Noto Sans CJK SC</FontFamily>
   <!-- 日志等宽字体：先取系统等宽字体（与上游 theme font mono 一致），最后用随包的内置字体兜底，
        保证没有 Consolas/Cascadia 的机器上中文与数字仍可渲染，不依赖外部字体。 -->
   <FontFamily x:Key="AlasFontMono">Consolas, Cascadia Code, avares://Alas.UI/Assets/Fonts#Noto Sans CJK SC</FontFamily>

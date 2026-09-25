@@ -28,11 +28,11 @@ namespace Alas.UI.Headless;
 /// 分三段计时，用来区分"读配置"和"建界面"各占多少：
 /// M1 模型层：<c>TaskEditorViewModel.Load</c>（schema 已在手，只算建模与字段构造）；
 /// M2 视图层：<c>TaskEditorView</c> 建组 + 挂窗口 + 布局 + 渲染一帧（schema 已在手）；
-/// M3 端到端：真实外壳里来回切换任务，从发出选择到页面可用（含后端读取、含页面及已展开组重建）。
+/// M3 端到端：真实外壳里来回切换任务，从发出选择到页面可用（含后端读取、首次完整建页及后续缓存切换）。
 ///
 /// 口径与边界：
 /// - 每个场景报样本数、median、p95、min、max 与托管分配量（percentile 用 nearest-rank）；
-/// - 首次打开（含后端读取）与稳态切换（schema 已缓存、控件仍重建）分开记，不混成一个数；
+/// - 首次打开（含后端读取）与稳态切换（schema 与完整控件树均已缓存）分开记，不混成一个数；
 /// - 只读上游文件与本地实例配置，不写回、不连设备、不启动 Python 宿主、不显示窗口；
 /// - 本机离屏 Skia 的数字不能外推现场窗口/浏览器/GPU；找不到本地 engine 时如实标记 skipped。
 ///
@@ -78,6 +78,7 @@ internal static class TaskEditorLoadChecks
         var fields = new Dictionary<string, int>(StringComparer.Ordinal);
         var controls = new Dictionary<string, int>(StringComparer.Ordinal);
         var firstOpen = new Dictionary<string, Dictionary<string, object?>>(StringComparer.Ordinal);
+        var pages = new Dictionary<string, TaskEditorView>(StringComparer.Ordinal);
         var steady = NewSampleMap();
         var steadyAllocated = new Dictionary<string, List<long>>(StringComparer.Ordinal);
         foreach (var (task, _) in Targets) steadyAllocated[task] = [];
@@ -107,6 +108,15 @@ internal static class TaskEditorLoadChecks
                 WaitFor(() => shell.Model.TaskEditor.IsLoaded && shell.Model.TaskEditor.TaskName == task);
                 window.UpdateLayout();
                 Pump();
+                var page = ActiveTaskPage(shell);
+                var inputs = page.GetVisualDescendants().OfType<Control>()
+                    .Where(control => control.Name?.StartsWith("Field_", StringComparison.Ordinal) == true)
+                    .ToDictionary(control => control.Name!, StringComparer.Ordinal);
+                var taskFields = shell.Model.TaskEditor.Fields.ToArray();
+                if (inputs.Count != taskFields.Length || taskFields.Any(field =>
+                    !inputs.TryGetValue("Field_" + field.Path, out var input) || input.IsEffectivelyVisible != field.IsVisible))
+                    throw new InvalidOperationException($"{task} 字段树不完整或可见性与上游 schema 不一致。");
+                pages.Add(task, page);
                 watch.Stop();
                 var reads = backend.Reads;
                 firstOpen[task] = new Dictionary<string, object?>
@@ -118,7 +128,7 @@ internal static class TaskEditorLoadChecks
                 };
             }
 
-            // 稳态：两个任务都已被外壳缓存，来回切换只重建控件、不再读 schema。
+            // 稳态：两个任务的完整控件树都留在宿主中，来回切换不重建控件、不再读 schema。
             for (var index = 0; index < Samples; index++)
                 foreach (var (task, _) in Targets)
                 {
@@ -130,14 +140,39 @@ internal static class TaskEditorLoadChecks
                     window.UpdateLayout();
                     Pump();
                     watch.Stop();
+                    long switchAllocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+                    if (!ReferenceEquals(ActiveTaskPage(shell), pages[task]))
+                        throw new InvalidOperationException($"稳态切换 {task} 重建了任务页，缓存断言失败。");
                     var reads = backend.Reads;
                     if (reads.Schema != 0 || reads.Config != 0)
                         throw new InvalidOperationException(
                             $"稳态切换 {task} 仍向后端读了 schema={reads.Schema}/config={reads.Config} 次；"
                             + "计数口径不成立，稳态结论无效。");
                     steady[task].Add(watch.Elapsed.TotalMilliseconds);
-                    steadyAllocated[task].Add(GC.GetAllocatedBytesForCurrentThread() - allocated);
+                    steadyAllocated[task].Add(switchAllocated);
                 }
+
+            var mainPage = pages["Main"];
+            var mainEditor = mainPage.Model;
+            mainEditor.Search = mainEditor.Fields.First(field => field.IsVisible).Label;
+            foreach (var entry in entries.Values.Where(entry => entry.Key is not ("Main" or "Event")).Take(3))
+            {
+                shell.Model.SelectTaskCommand.Execute(entry);
+                WaitFor(() => shell.Model.TaskEditor.IsLoaded && shell.Model.TaskEditor.TaskName == entry.Key);
+                window.UpdateLayout();
+                Pump();
+                if (TaskPageHost(shell).Children.Count > 3)
+                    throw new InvalidOperationException("任务页缓存超过三页上限。");
+            }
+            if (TaskPageHost(shell).Children.Contains(mainPage))
+                throw new InvalidOperationException("最久未使用的任务页未被淘汰。");
+            shell.Model.SelectTaskCommand.Execute(entries["Main"]);
+            window.UpdateLayout();
+            Pump();
+            if (ReferenceEquals(ActiveTaskPage(shell), mainPage) ||
+                !ReferenceEquals(shell.Model.TaskEditor, mainEditor) ||
+                shell.Model.TaskEditor.Search != mainEditor.Search)
+                throw new InvalidOperationException("缓存淘汰后未正确恢复任务模型和筛选状态。");
         }
         finally { window.Close(); Pump(); }
 
@@ -201,7 +236,7 @@ internal static class TaskEditorLoadChecks
             ["steady_switch_allocated"] = new Dictionary<string, object?>
             {
                 ["unit"] = "bytes",
-                ["note"] = "每次切换的 UI 线程托管分配；页面及已展开组重建的直接代价。",
+                ["note"] = "每次切换的 UI 线程托管分配；两个已打开任务页的完整控件树保持附着。",
                 ["per_task"] = Targets.ToDictionary(
                     target => target.Task,
                     target => (object?)new Dictionary<string, object?>
@@ -496,14 +531,22 @@ internal static class TaskEditorLoadChecks
         {
             "真实上游 schema：module/config/argument/{menu,args}.json + i18n/zh-CN.json，每次读取都重新读盘并解析（与 ConfigWorkspace.Schema 同形）。",
             "实例配置与 ConfigWorkspace.Get 同形：读实例 JSON 并与 config/template.json 递归合并。",
-            "M1/M2 的 schema 预先读好，只测建模与建界面；M3 包含后端读取与页面及已展开组重建。",
-            "控件重建依据：TaskEditorView 的 Model setter 会走 BuildGroups；组内字段按展开、导航或搜索命中按需实现。",
+            "M1/M2 的 schema 预先读好，只测建模与建界面；M3 包含后端读取、首次完整建页与后续缓存切换。",
+            "每个任务的全部可见字段默认构建；打开过的任务页在宿主中保留完整控件树，最近三页按模型复用。",
             "本机离屏 Skia 单轮数字，不作为现场窗口/浏览器/GPU 结论。",
         },
     };
 
     private static Dictionary<string, List<double>> NewSampleMap()
         => Targets.ToDictionary(target => target.Task, _ => new List<double>(), StringComparer.Ordinal);
+
+    private static TaskEditorView ActiveTaskPage(MainView shell)
+    {
+        return TaskPageHost(shell).Children.OfType<TaskEditorView>().Single(page => page.IsVisible);
+    }
+
+    private static Panel TaskPageHost(MainView shell) => shell.GetVisualDescendants().OfType<Panel>()
+        .First(control => control.Name == "TaskEditorHost");
 
     private static Dictionary<string, object?> Stats(string id, Dictionary<string, List<double>> samples, string unit)
         => new()

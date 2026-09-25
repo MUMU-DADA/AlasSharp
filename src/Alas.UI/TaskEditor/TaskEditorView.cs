@@ -4,7 +4,6 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
@@ -16,7 +15,7 @@ namespace Alas.UI.TaskEditor;
 /// Shared native/WASM task form. Every control is generated from upstream metadata, with no runtime
 /// reflection bindings. The host supplies a model/backend and may place report/log panels below it.
 /// </summary>
-public sealed class TaskEditorView : UserControl
+public sealed class TaskEditorView : UserControl, IDisposable
 {
     private TaskEditorViewModel _model = new();
     private readonly StackPanel _cards = new() { Spacing = 16 };
@@ -25,7 +24,7 @@ public sealed class TaskEditorView : UserControl
     private readonly List<Action> _detach = [];
     private readonly List<Action<bool>> _reflow = [];
     private readonly List<Action> _refreshFields = [];
-    private readonly List<GroupUi> _groups = [];
+    private readonly List<(TaskFieldGroup Group, Border Card, Button Link, List<(TaskFieldViewModel Field, Control Row)> Rows)> _groups = [];
     private readonly TextBlock _title = Text("任务设置", 26, FontWeight.Bold);
     private readonly TextBlock _status = Text("", 12);
     private readonly TextBlock _error = Text("", 13);
@@ -41,21 +40,11 @@ public sealed class TaskEditorView : UserControl
     private readonly StackPanel _main;
     private bool _legacyLayout;
     private bool _compactLayout;
-
-    private sealed class GroupUi(TaskFieldGroup group, Border card, Expander expander, StackPanel content, Button link)
-    {
-        public TaskFieldGroup Group { get; } = group;
-        public Border Card { get; } = card;
-        public Expander Expander { get; } = expander;
-        public StackPanel Content { get; } = content;
-        public Button Link { get; } = link;
-        public List<(TaskFieldViewModel Field, Control Row)> Rows { get; } = [];
-        public bool Built { get; set; }
-    }
+    private bool? _appliedNarrow;
+    private bool? _appliedLegacy;
 
     public TaskEditorView()
     {
-        FontFamily = new FontFamily("avares://Alas.UI/Assets/Fonts#Noto Sans CJK SC");
         Resource(this, ForegroundProperty, "AlasTextBrush");
         Resource(_error, TextBlock.ForegroundProperty, "AlasDangerBrush");
         Resource(_status, TextBlock.ForegroundProperty, "AlasMutedBrush");
@@ -117,53 +106,33 @@ public sealed class TaskEditorView : UserControl
         {
             var content = new StackPanel { Spacing = 0 };
             var heading = Text(group.Label, 16, FontWeight.SemiBold);
-            var header = new StackPanel { Spacing = 4, Children = { heading } };
-            if (group.Help.Length > 0)
+            heading.Margin = new Thickness(0, 0, 0, 14);
+            content.Children.Add(heading);
+            if (group.Help.Length > 0) { var help = Text(group.Help, 12); help.Margin = new Thickness(0, 0, 0, 14); content.Children.Add(help); }
+            var rows = new List<(TaskFieldViewModel, Control)>();
+            foreach (var field in group.Fields)
             {
-                var help = Text(group.Help, 12);
-                Resource(help, TextBlock.ForegroundProperty, "AlasMutedBrush");
-                header.Children.Add(help);
+                var row = CreateField(field); content.Children.Add(row); rows.Add((field, row));
             }
-            var expander = new Expander { Header = header, Content = content, IsExpanded = false };
-            expander.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-            var card = Card(expander);
+            var card = Card(content);
             card.Name = "ConfigGroup_" + group.Key;
             _cards.Children.Add(card);
             var link = Button(group.Label, "ConfigJump_" + group.Key);
             link.HorizontalAlignment = HorizontalAlignment.Stretch;
             link.HorizontalContentAlignment = HorizontalAlignment.Left;
-            var ui = new GroupUi(group, card, expander, content, link);
-            EventHandler<RoutedEventArgs> expanded = (_, _) => EnsureGroupBuilt(ui);
-            expander.Expanded += expanded;
-            _detach.Add(() => expander.Expanded -= expanded);
-            link.Click += (_, _) =>
-            {
-                expander.IsExpanded = true;
-                EnsureGroupBuilt(ui);
-                card.BringIntoView();
-            };
+            link.Click += (_, _) => card.BringIntoView();
             _navigation.Children.Add(link);
-            _groups.Add(ui);
+            _groups.Add((group, card, link, rows));
         }
-        if (_groups.Count > 0)
-        {
-            _groups[0].Expander.IsExpanded = true;
-            EnsureGroupBuilt(_groups[0]);
-        }
+        _appliedNarrow = null;
         Reflow(); Refresh();
     }
 
-    private void EnsureGroupBuilt(GroupUi group)
+    public void Dispose()
     {
-        if (group.Built) return;
-        group.Built = true;
-        foreach (var field in group.Group.Fields)
-        {
-            var row = CreateField(field);
-            group.Content.Children.Add(row);
-            group.Rows.Add((field, row));
-        }
-        Reflow();
+        _model.PropertyChanged -= OnModelChanged;
+        foreach (var detach in _detach) detach();
+        _detach.Clear();
     }
 
     private Control CreateField(TaskFieldViewModel field)
@@ -336,13 +305,8 @@ public sealed class TaskEditorView : UserControl
         var visible = 0;
         foreach (var group in _groups)
         {
-            var count = group.Group.Fields.Count(_model.Matches);
-            if (_model.Search.Length > 0 && count > 0)
-            {
-                group.Expander.IsExpanded = true;
-                EnsureGroupBuilt(group);
-            }
-            foreach (var (field, row) in group.Rows) row.IsVisible = _model.Matches(field);
+            var count = 0;
+            foreach (var (field, row) in group.Rows) { row.IsVisible = _model.Matches(field); if (row.IsVisible) count++; }
             group.Card.IsVisible = group.Link.IsVisible = count > 0;
             visible += count;
         }
@@ -352,7 +316,11 @@ public sealed class TaskEditorView : UserControl
     }
     private void Reflow()
     {
+        if (Bounds.Width <= 0) return;
         var narrow = Bounds.Width < 720;
+        if (_appliedNarrow == narrow && _appliedLegacy == LegacyLayout) return;
+        _appliedNarrow = narrow;
+        _appliedLegacy = LegacyLayout;
         _navigation.IsVisible = !narrow;
         _layout.ColumnDefinitions = new ColumnDefinitions(narrow ? "*" : LegacyLayout ? "*,180" : "180,*");
         Grid.SetColumn(_cards, narrow || LegacyLayout ? 0 : 1);
