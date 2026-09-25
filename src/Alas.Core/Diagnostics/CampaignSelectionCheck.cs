@@ -80,6 +80,8 @@ internal static class CampaignSelectionCheck
                 case "primitive_clear_any_enemy":
                 case "primitive_clear_siren":
                 case "primitive_clear_boss":
+                case "primitive_clear_roadblocks":
+                case "primitive_clear_potential_roadblocks":
                     var config = new CampaignRuntimeConfig(
                         EnemyPriority: testCase.EnemyPriority,
                         MapClearAllThisTime: testCase.MapClearAllThisTime,
@@ -93,8 +95,13 @@ internal static class CampaignSelectionCheck
                         Fleet1Location = testCase.Fleet1Location ?? "",
                         Fleet2Location = testCase.Fleet2Location ?? "",
                     };
+                    var roads = (testCase.Roads ?? [])
+                        .Select(road => new CampaignRoad(road)).ToArray();
                     bool result = testCase.Kind switch
                     {
+                        "primitive_clear_roadblocks" => CampaignPrimitives.ClearRoadblocks(host, roads, options),
+                        "primitive_clear_potential_roadblocks" =>
+                            CampaignPrimitives.ClearPotentialRoadblocks(host, roads, options),
                         "primitive_clear_any_enemy" => CampaignPrimitives.ClearAnyEnemy(host, options),
                         "primitive_clear_siren" => CampaignPrimitives.ClearSiren(host, options),
                         "primitive_clear_boss" => CampaignPrimitives.ClearBoss(host),
@@ -162,6 +169,7 @@ internal static class CampaignSelectionCheck
         MayAmbush: grid.MayAmbush,
         MayBouncingEnemy: grid.MayBouncingEnemy,
         IsCaughtBySiren: grid.IsCaughtBySiren,
+        IsFleet: grid.IsFleet,
         IsLand: grid.IsLand,
         IsMechanismBlock: grid.IsMechanismBlock,
         IsCleared: grid.IsCleared,
@@ -215,6 +223,9 @@ internal static class CampaignSelectionCheck
         [JsonPropertyName("map_clear_all_this_time")] public bool MapClearAllThisTime { get; init; }
         [JsonPropertyName("filter")] public string? Filter { get; init; }
         [JsonPropertyName("preserve")] public int Preserve { get; init; }
+
+        /// <summary>路段：`roads[road][block] = [节点名…]`（与上游 `RoadGrids` 同构）。</summary>
+        [JsonPropertyName("roads")] public List<List<List<string>>>? Roads { get; init; }
         [JsonPropertyName("has_movable_normal_enemy")] public bool HasMovableNormalEnemy { get; init; }
         [JsonPropertyName("map_has_siren")] public bool? MapHasSiren { get; init; }
         [JsonPropertyName("map_has_fortress")] public bool? MapHasFortress { get; init; }
@@ -254,6 +265,7 @@ internal static class CampaignSelectionCheck
         [JsonPropertyName("may_ambush")] public bool MayAmbush { get; init; }
         [JsonPropertyName("may_bouncing_enemy")] public bool MayBouncingEnemy { get; init; }
         [JsonPropertyName("is_caught_by_siren")] public bool IsCaughtBySiren { get; init; }
+        [JsonPropertyName("is_fleet")] public bool IsFleet { get; init; }
         [JsonPropertyName("is_land")] public bool IsLand { get; init; }
         [JsonPropertyName("is_mechanism_block")] public bool IsMechanismBlock { get; init; }
         [JsonPropertyName("is_cleared")] public bool IsCleared { get; init; }

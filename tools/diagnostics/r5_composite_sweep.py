@@ -4,7 +4,8 @@
 用法：
     python tools/diagnostics/r5_composite_sweep.py [--states 60] [--seed 13]
 
-覆盖 `clear_enemy` / `clear_any_enemy` / `clear_siren` / `clear_boss` 四个**复合原语**的判定：
+覆盖 `clear_enemy` / `clear_any_enemy` / `clear_siren` / `clear_boss` /
+`clear_roadblocks` / `clear_potential_roadblocks` 六个**复合原语**的判定：
 它们不只是选择器，还带配置分支（`EnemyPriority_EnemyScaleBalanceWeight`、`MAP_CLEAR_ALL_THIS_TIME`、
 `MAP_HAS_SIREN`/`MAP_HAS_FORTRESS`、`FLEET_2` 改排序键）、可能的 boss 兜底路径等。
 
@@ -34,7 +35,9 @@ SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Se
 UPSTREAM = ROOT / ".runtime" / "engine"
 
 GENRES = ["Light", "Main", "Carrier", "Treasure"]
-PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss"]
+PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss",
+              "clear_roadblocks", "clear_potential_roadblocks"]
+ROADBLOCK_PRIMITIVES = {"clear_roadblocks", "clear_potential_roadblocks"}
 CONFIGS = [
     {"enemy_priority": None},
     {"enemy_priority": "S3_enemy_first"},
@@ -71,17 +74,29 @@ def build_cases(states: int, seed: int) -> list[dict]:
                     "cost_1": 9999 if rng.random() < 0.3 else rng.randint(1, 28),
                     "cost_2": 9999 if rng.random() < 0.3 else rng.randint(1, 28),
                 })
+        # 上游 `find_path_initial` 会把舰队格标 `is_fleet`（`Fleet.find_path_initial` 里做的），
+        # 而 `potential_roadblocks` 会跳过含舰队的块 —— 夹具必须带上这个标志，否则两边状态不同
+        fleet_cell = grids[0]["location"]
         for kind in PRIMITIVES:
             for config_index, config in enumerate(CONFIGS):
-                cases.append({
+                case = {
                     "name": f"state{index}-{kind}-c{config_index}",
                     "kind": f"primitive_{kind}",
-                    "grids": grids,
+                    "grids": [dict(grid, is_fleet=grid["location"] == fleet_cell) for grid in grids],
                     # 舰队位置要与上游替身一致：1 队在第一格、没有 2 队（兜底分支的搜索起点靠它）
-                    "fleet_1_location": grids[0]["location"],
+                    "fleet_1_location": fleet_cell,
                     "fleet_current_index": 1,
                     **config,
-                })
+                }
+                if kind in ROADBLOCK_PRIMITIVES:
+                    # 路段：每行切成"3 格一块 + 1 格一块"两条路段，够覆盖 roadblocks/potential_roadblocks
+                    rows: dict[int, list[str]] = {}
+                    for grid in grids:
+                        rows.setdefault(int(grid["location"][1:]), []).append(grid["location"])
+                    blocks = [row[:3] for row in rows.values() if row]
+                    singles = [[row[3]] for row in rows.values() if len(row) > 3]
+                    case["roads"] = [[block] for block in blocks] + [[block] for block in singles]
+                cases.append(case)
     return cases
 
 
@@ -238,7 +253,18 @@ def upstream_target(case: dict) -> tuple[str | None, bool | None]:
         info = campaign_map[tuple((ord(grid["location"][0]) - 65, int(grid["location"][1:]) - 1))]
         costs[grid["location"]] = (int(info.cost), int(info.cost_1), int(info.cost_2))
     method = getattr(Map, case["kind"].replace("primitive_", ""))
-    result = method(stub)
+    if case["kind"].replace("primitive_", "") in ROADBLOCK_PRIMITIVES:
+        from module.map.map_grids import RoadGrids  # noqa: PLC0415
+        roads = []
+        for road in case.get("roads") or []:
+            blocks = []
+            for block in road:
+                blocks.append([campaign_map[tuple((ord(location[0]) - 65, int(location[1:]) - 1))]
+                               for location in block])
+            roads.append(RoadGrids(blocks))
+        result = method(stub, roads)
+    else:
+        result = method(stub)
     target = next((location for name, location in stub.calls
                    if name in ("clear_chosen_enemy", "goto")), None)
     return target, result, costs
@@ -328,7 +354,8 @@ def main() -> int:
 
     lines = ["# R5 复合原语扫描（C# 原语 vs 上游真实方法）", "",
              "> 本报告由 `tools/diagnostics/r5_composite_sweep.py` 重建，不手写。",
-             "> 覆盖：`clear_enemy` / `clear_any_enemy` / `clear_siren` / `clear_boss` 的判定，",
+             "> 覆盖：`clear_enemy` / `clear_any_enemy` / `clear_siren` / `clear_boss` /", 
+             "> `clear_roadblocks` / `clear_potential_roadblocks` 的判定（含路段语义），",
              "> 含配置分支（优先级、全清、塞壬/要塞、FLEET_2 改排序键）；上游侧跑的是**它自己的方法**。", "",
              f"- 状态数：**{options.states}**（seed={options.seed}，每种状态 × {len(PRIMITIVES)} 原语 × {len(CONFIGS)} 配置）",
              f"- 用例数：**{len(cases)}**；实际比较 **{compared}**",
