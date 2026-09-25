@@ -37,9 +37,20 @@ public sealed record CampaignActionDiff(
 /// </summary>
 public static class CampaignActionComparator
 {
+    /// <summary>
+    /// **纯日志标记**：只在上游日志里存在、不是引擎原语（舰队位置标记已由路线层对照消费）。
+    /// 不排除的话，它们会以"只有上游用到"的形式污染原语对照结论。
+    /// </summary>
+    private static readonly HashSet<string> LogOnlyMarkers = new(StringComparer.Ordinal)
+    {
+        "fleet_1_position", "fleet_2_position",
+    };
+
     public static CampaignActionDiff Compare(CampaignActionTrace upstream, CampaignActionTrace csharp)
     {
-        var primitives = upstream.Primitives.Union(csharp.Primitives, StringComparer.Ordinal)
+        var upstreamPrimitives = upstream.Primitives.Where(name => !LogOnlyMarkers.Contains(name)).ToArray();
+        var csharpPrimitives = csharp.Primitives.Where(name => !LogOnlyMarkers.Contains(name)).ToArray();
+        var primitives = upstreamPrimitives.Union(csharpPrimitives, StringComparer.Ordinal)
             .OrderBy(name => name, StringComparer.Ordinal);
         var entries = new List<CampaignActionDiffEntry>();
         foreach (string primitive in primitives)
@@ -54,8 +65,8 @@ public static class CampaignActionComparator
                 Targets(csharpActions)));
         }
 
-        var upstreamSet = upstream.Primitives.ToHashSet(StringComparer.Ordinal);
-        var csharpSet = csharp.Primitives.ToHashSet(StringComparer.Ordinal);
+        var upstreamSet = upstreamPrimitives.ToHashSet(StringComparer.Ordinal);
+        var csharpSet = csharpPrimitives.ToHashSet(StringComparer.Ordinal);
         var mismatches = entries
             .Where(entry => entry.UpstreamTargets.Count > 0 && entry.CSharpTargets.Count > 0
                             && !entry.TargetsIntersect)
@@ -77,4 +88,49 @@ public static class CampaignActionComparator
                .Distinct(StringComparer.Ordinal)
                .OrderBy(target => target, StringComparer.Ordinal)
                .ToArray();
+
+    /// <summary>路线层对照：上游的走位序列 vs C# 的攻击/走位序列（都按**出现顺序**去掉连续重复）。</summary>
+    public sealed record CampaignRouteComparison(
+        IReadOnlyList<string> UpstreamRoute,
+        IReadOnlyList<string> CSharpRoute,
+        IReadOnlyList<string> Common,
+        bool SameOrder);
+
+    /// <summary>
+    /// 比"走的路"：上游用日志里的 `[Fleet_1: X]` 位置标记串成序列；C# 侧用**动作目标**的首次出现顺序
+    /// （`clear_chosen_enemy(X)` 在下游本身就包含 `goto(X)`，所以它的目标就是"走到了哪"）。
+    ///
+    /// <see cref="CampaignRouteComparison.SameOrder"/>：两边共同格子在各自序列里的**相对顺序**是否一致
+    /// （不是要求逐格相同——干跑状态不刷新，C# 会在同一格反复出手）。
+    /// </summary>
+    public static CampaignRouteComparison CompareRoute(CampaignActionTrace upstream, CampaignActionTrace csharp,
+                                                       string fleetPrefix = "fleet_1_position")
+    {
+        var upstreamRoute = Distinct(upstream.Actions
+            .Where(action => action.Primitive == fleetPrefix)
+            .Select(action => action.Target));
+        var csharpRoute = Distinct(csharp.Actions
+            .Where(action => action.Primitive is "clear_chosen_enemy" or "goto" && action.Target is not null)
+            .Select(action => action.Target));
+        var common = upstreamRoute.Intersect(csharpRoute, StringComparer.Ordinal).ToArray();
+        var upstreamOrder = upstreamRoute.ToList();
+        var csharpOrder = csharpRoute.ToList();
+        bool sameOrder = common.Length < 2
+            || common.Select(value => upstreamOrder.IndexOf(value))
+                     .SequenceEqual(common.Select(value => csharpOrder.IndexOf(value)));
+        return new CampaignRouteComparison(upstreamRoute, csharpRoute, common, sameOrder);
+    }
+
+    /// <summary>按出现顺序去掉**连续重复**（上游每个出击点会打两次位置标记）。</summary>
+    private static IReadOnlyList<string> Distinct(IEnumerable<string?> values)
+    {
+        var result = new List<string>();
+        foreach (string? value in values)
+        {
+            if (string.IsNullOrEmpty(value)) continue;
+            if (result.Count > 0 && result[^1] == value) continue;
+            result.Add(value);
+        }
+        return result;
+    }
 }

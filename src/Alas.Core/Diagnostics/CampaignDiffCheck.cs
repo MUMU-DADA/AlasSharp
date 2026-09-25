@@ -41,6 +41,8 @@ internal static class CampaignDiffCheck
             : options.PoorMapData ? "battle_with_poor_map_data"
             : CampaignShadow.DefaultVariant;
         var hooks = CampaignShadow.Compare(dryRun!.Plan, observation, variant);
+        // 路线层（**参考项**，不改退出码）：上游走位序列 vs C# 攻击/走位序列。
+        var route = CampaignActionComparator.CompareRoute(upstream, csharp);
 
         if (asJson)
         {
@@ -62,6 +64,13 @@ internal static class CampaignDiffCheck
                         ["verdict"] = row.Verdict,
                         ["note"] = row.Note,
                     }).ToArray()),
+                },
+                ["route"] = new JsonObject
+                {
+                    ["upstream"] = new JsonArray(route.UpstreamRoute.Select(t => (JsonNode)t!).ToArray()),
+                    ["csharp"] = new JsonArray(route.CSharpRoute.Select(t => (JsonNode)t!).ToArray()),
+                    ["common"] = new JsonArray(route.Common.Select(t => (JsonNode)t!).ToArray()),
+                    ["same_order"] = route.SameOrder,
                 },
                 ["actions"] = new JsonObject
                 {
@@ -105,6 +114,12 @@ internal static class CampaignDiffCheck
                               (entry.UpstreamTargets.Count == 0 || entry.CSharpTargets.Count == 0
                                   ? "—" : entry.TargetsIntersect ? "是" : "**否**"));
         }
+        Console.WriteLine();
+        Console.WriteLine("== 路线层（参考项，不影响退出码）==");
+        Console.WriteLine($"  上游走位：{Join(route.UpstreamRoute)}");
+        Console.WriteLine($"  C# 走位：{Join(route.CSharpRoute)}");
+        Console.WriteLine($"  共同格子：{Join(route.Common)}" +
+                          (route.Common.Count == 0 ? "" : $"（相对顺序{(route.SameOrder ? "一致" : "**不一致**")}）"));
         Console.WriteLine();
         if (diff.OnlyUpstream.Count > 0) Console.WriteLine($"[只有上游用到] {string.Join(", ", diff.OnlyUpstream)}");
         if (diff.OnlyCSharp.Count > 0) Console.WriteLine($"[只有 C# 用到] {string.Join(", ", diff.OnlyCSharp)}");

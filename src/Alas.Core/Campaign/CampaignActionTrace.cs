@@ -60,6 +60,10 @@ public static class UpstreamActionParser
         new(new Regex(@"Fleet 2 step on got roadblocks", RegexOptions.Compiled), "fleet_2_step_on"),
         new(new Regex(@"Enemy roadblock:\s*(.+)$", RegexOptions.Compiled), "brute_clear_boss", 1),
         new(new Regex(@"Clear enemy:\s*(\S+)", RegexOptions.Compiled), "clear_chosen_enemy", 1),
+        // 舰队位置标记：上游 `logger.attr_align('Fleet_1', location)` → `[Fleet_1: C1]`。
+        // 它在**每次出击前后**打一次，串起来就是这一局的走位序列（路线层对照用）。
+        new(new Regex(@"\[Fleet_1:\s*([A-Z]+\d+)\]", RegexOptions.Compiled), "fleet_1_position", 1),
+        new(new Regex(@"\[Fleet_2:\s*([A-Z]+\d+)\]", RegexOptions.Compiled), "fleet_2_position", 1),
         new(new Regex(@"No battle executed", RegexOptions.Compiled), "battle_default"),
         new(new Regex(@"Grand Capture detected, Withdrawing", RegexOptions.Compiled), "capture_clear_boss"),
         new(new Regex(@"Failed to clear bouncing enemy", RegexOptions.Compiled), "clear_bouncing_enemy"),

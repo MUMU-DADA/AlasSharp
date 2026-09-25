@@ -149,6 +149,13 @@ def main() -> int:
                                 f"{hooks['mismatched']}")
             if not real_payload["actions"]["any_target_matched"]:
                 problems.append("真机口径用例：帧驱动后应至少有一个原语打到上游打过的格子")
+            route = real_payload["route"]
+            if not route["common"]:
+                problems.append("真机口径用例：路线层应报告共同格子（上游走位与 C# 走位有交集）")
+            if not route["same_order"]:
+                problems.append("真机口径用例：共同格子的相对顺序应一致")
+            if "fleet_1_position" in real_payload["actions"]["only_upstream"]:
+                problems.append("纯日志标记（fleet_1_position）不应出现在原语对照的 only_upstream 里")
         # 不给帧时应当**打不到任何格子**——这条对照说明"是状态适配器在起作用"，不是巧合
         plain_code, plain_payload, _ = run_diff(
             ["--log", str(REAL_LOG), "--chapter", "campaign_main", "--level", "campaign_1_4",
