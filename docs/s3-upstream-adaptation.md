@@ -298,6 +298,12 @@ Core/DataTool/Server Release 构建 0 警告/0 错误，架构检查通过。真
 账号配置 SHA-256 前后相同，脱敏归档 `tools/diagnostics/evidence/20260925T204302/` 经结果审计通过。
 此样本不证明其他章节或周回能力。
 
+普通模式 4-3 继续使用同一生产入口，章节 Config 合并 4-1 与自身的八项有效字段；
+上游 `battle_0`/`battle_3`、谜题清理、BOSS 可达性判断及相机恢复按原生流程执行。
+四场战斗后取得 S 级成功结算，`sortie-result/1` 为 `cleared` 且 0 违例；
+同队列后续实时抓帧确认 `page_campaign`、`in_map=false`。账号配置 SHA-256 前后相同，
+脱敏归档 `tools/diagnostics/evidence/20260925T204814/` 经结果审计通过；未验关卡仍保留缺口。
+
 ## 只读地图观测的章节配置
 
 `observe` 原先只向 `map_detect` 传 main/os，遗漏宿主已支持的章节参数；需要章节 Config 的画面因此可能按通用参数识别。
