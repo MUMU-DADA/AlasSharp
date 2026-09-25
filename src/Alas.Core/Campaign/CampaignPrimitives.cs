@@ -432,7 +432,7 @@ public static class CampaignPrimitives
             host.Log($"clear_potential_boss：{grid.Location} 不可达，找路障");
             var search = CampaignBruteFinder.FindRoadblocks(host.Grids, grid.Location,
                 FleetStart(host, host.Config.FleetBossIndex), host.Config.MapHasAmbush,
-                liveCost: grid.Cost);
+                liveCost: LiveCostFor(host, grid, host.Config.FleetBossIndex));
             if (!search.Found) continue;
             var roadblocks = new CampaignGridSet(search.Roadblocks).Sort("weight", "cost");
             host.Log($"clear_potential_boss：清路障 {roadblocks[0].Location}（fleet_1）");
@@ -769,7 +769,7 @@ public static class CampaignPrimitives
             host.Log("Brute clear BOSS");
             var search = CampaignBruteFinder.FindRoadblocks(host.Grids, boss[0].Location,
                 FleetStart(host, host.Config.FleetBossIndex), host.Config.MapHasAmbush,
-                liveCost: boss[0].Cost);
+                liveCost: LiveCostFor(host, boss[0], host.Config.FleetBossIndex));
             if (search.Exhausted && !search.Found)
             {
                 host.Log("brute_clear_boss：Enemy roadblock try exhausted.");
@@ -778,6 +778,8 @@ public static class CampaignPrimitives
             {
                 if (BruteFleetMeet(host)) return true;
                 var sorted = new CampaignGridSet(search.Roadblocks).Sort("weight", "cost");
+                // 子集本身也记日志：真机排查与离线对拍都要看"上游/C# 各自认哪些格子是路障"
+                host.Log($"brute_clear_boss：路障子集 [{string.Join(", ", sorted.Grids.Select(g => g.Location))}]");
                 host.Log($"Brute clear BOSS roadblocks：打 {sorted[0].Location}");
                 host.ClearChosenEnemy(sorted[0], "");
                 return true;
@@ -809,7 +811,7 @@ public static class CampaignPrimitives
         }
         var search = CampaignBruteFinder.FindRoadblocks(host.Grids, host.Fleet2Location,
             FleetStart(host, 1), host.Config.MapHasAmbush,
-            liveCost: host.GridAt(host.Fleet2Location).Cost);
+            liveCost: LiveCostFor(host, host.GridAt(host.Fleet2Location), 1));
         if (!search.Found)
         {
             host.Log($"brute_fleet_meet：两队之间未找到路障（{FleetStart(host, 1)} → {host.Fleet2Location}，" +
@@ -828,7 +830,7 @@ public static class CampaignPrimitives
     {
         if (host.Config.FleetBossIndex != 2) return false;
         var search = CampaignBruteFinder.FindRoadblocks(host.Grids, grid.Location,
-            FleetStart(host, 2), host.Config.MapHasAmbush, liveCost: grid.Cost);
+            FleetStart(host, 2), host.Config.MapHasAmbush, liveCost: LiveCostFor(host, grid, 2));
         if (!search.Found) return false;
         host.Log("Fleet_2 rescue");
         // 上游 self.select_grids(grids)：按**恢复后**的成本场过滤 is_accessible，再按 weight/cost 排序取第一个。
@@ -846,6 +848,22 @@ public static class CampaignPrimitives
     /// <summary>按舰队索引取该舰队所在格（上游 <c>find_path_initial()</c> 用 <c>fleet_current</c> 作起点）。</summary>
     private static string FleetStart(ICampaignPrimitiveHost host, int fleetIndex) =>
         fleetIndex == 2 ? host.Fleet2Location : host.Fleet1Location;
+
+    /// <summary>
+    /// 目标格在**指定舰队**成本场里的现成代价——对应上游 `brute_find_roadblocks(grid, fleet=f)` 的入口判断：
+    /// 它先 `fleet_current_index = f` 再 `find_path_initial()`，于是 `grid.is_accessible` 读的是 **f 队**的场
+    /// （`cost_1` / `cost_2`；当前队时就是 `cost`）。
+    /// 宿主没有维护该队的场（`9999`）时，按上游同一口径**现算一个**，不猜。
+    /// </summary>
+    private static int LiveCostFor(ICampaignPrimitiveHost host, CampaignGrid grid, int fleetIndex)
+    {
+        if (fleetIndex == host.FleetCurrentIndex) return grid.Cost;
+        int perFleet = fleetIndex == 2 ? grid.Cost2 : grid.Cost1;
+        if (perFleet < CampaignPathfinder.Unreachable) return perFleet;
+        return CampaignPathfinder
+            .FindPathInitial(host.Grids, FleetStart(host, fleetIndex), host.Config.MapHasAmbush, hasEnemy: true)
+            .CostOf(grid.Location);
+    }
 
     /// <summary>
     /// 上游 <c>Map.clear_bouncing_enemy()</c>：找一条"有可达巡逻敌人"的路线，沿路线循环走过去，

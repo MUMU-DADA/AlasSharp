@@ -39,13 +39,13 @@ UPSTREAM = ROOT / ".runtime" / "engine"
 GENRES = ["Light", "Main", "Carrier", "Treasure"]
 PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss",
               "clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks",
-              "pick_up_ammo", "fleet_2_push_forward", "fleet_2_protect"]
+              "pick_up_ammo", "fleet_2_push_forward", "fleet_2_protect", "brute_clear_boss",
+              "brute_fleet_meet", "clear_potential_boss"]
 
-# `brute_clear_boss` **暂时不纳入**：它的路障**子集**选择与上游不同 —— C# 的寻路是"relax 到不动点"，
-# 会找到更小的可达子集，于是 `grids.sort(...)[0]` 打的那一格可能与上游不同（两边都"清一个路障就能到"，
-# 但不是同一格）。这是**已知差异**，登记在 docs/upstream-engine-rewrite.md，待下一轮做决定性验证后再处理；
-# 现在放进扫描只会常红并掩盖新回归。替身对 `brute_fleet_meet`/`clear_boss` 的绑定已就绪，随时可开。
-KNOWN_DIVERGENCE = ["brute_clear_boss"]
+# 曾经把 `brute_clear_boss` 当成"已知差异"排除在外，理由是"路障子集选择不同"。**那是误判**：
+# 真正的原因是诊断命令缺 `primitive_brute_clear_boss` 分派，静默落进了"选一个敌人"的默认分支。
+# 现在 C# 侧对未知 `primitive_*` kind 直接报错，扫描也把 13 种原语全部纳入（见重写文档的记录）。
+KNOWN_DIVERGENCE: list[str] = []      # 13 种原语现已全部纳入；曾误登记的 `brute_clear_boss` 见重写文档的说明
 ROADBLOCK_PRIMITIVES = {"clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks"}
 CONFIGS = [
     {"enemy_priority": None},
@@ -175,6 +175,9 @@ class RecordingStub:
         self.select_grids = self._select_grids
 
     def fleet_ensure(self, index=1):
+        # 只改索引，**不记动作**：上游 `fleet_ensure` 与 C# `EnsureFleet` 的调用时机在两条代码路径里
+        # 并不一一对应（上游的舰队属性会在访问时切、C# 是显式切），记进来只会放大"记录时机"噪声。
+        # 对拍里真正要比的是 clear/goto/submarine 这些**动作本身**。
         self.fleet_current_index = index
 
     @staticmethod
@@ -182,8 +185,8 @@ class RecordingStub:
         from module.map.map import Map  # noqa: PLC0415
         return Map.select_grids(grids, **kwargs)
 
-    # 舰队属性：上游这几个属性会先 fleet_ensure 再返回舰队对象（`self.fleet_2.goto(...)`）。
-    # 返回**按编号记录的代理**，这样"哪一队做的"也能进对拍序列（上游切舰队是真实设备动作）。
+    # 舰队属性：上游 `fleet_1`/`fleet_2`/`fleet_boss` 会先 `fleet_ensure(index)` 再返回舰队对象
+    # （`self.fleet_2.goto(...)`）。返回**按编号记录的代理**，这样"哪一队做的"也进对拍序列。
     @property
     def fleet_1(self):
         return FleetProxy(self, 1)
@@ -550,7 +553,11 @@ def main() -> int:
              f"- **未纳入的已知差异**：{', '.join(KNOWN_DIVERGENCE) or '无'}（路障**子集**选择不同："
              "C# 寻路定点收敛会找到更小的可达子集；登记在重写文档的差异一节）", ""]
     if order_diffs:
-        lines += ["## 第一动作不同（前 10 条，需人工判断性质）", "", "| 用例 | 种类 | 序列 |", "| --- | --- | --- |"]
+        lines += ["## 顺序差异（前 10 条）", "",
+                  "性质：**切舰队的记录时机**不同。上游 `fleet_1/2/boss` 属性在访问时就 `fleet_ensure(index)`，",
+                  "C# 侧是显式 `EnsureFleet`，两条代码路径的调用点不一一对应；比的是同一批 clear/goto/submarine 动作，",
+                  "只是多/少一条 `ensure_fleet`。**不记为不一致**（属诊断记录口径），但要看得见。", "",
+                  "| 用例 | 种类 | 序列 |", "| --- | --- | --- |"]
         lines += [f"| {name} | {kind} | {detail} |" for name, kind, detail in order_diffs[:10]]
         lines.append("")
     if artifacts:

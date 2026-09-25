@@ -86,6 +86,9 @@ internal static class CampaignSelectionCheck
                 case "primitive_pick_up_ammo":
                 case "primitive_fleet_2_push_forward":
                 case "primitive_fleet_2_protect":
+                case "primitive_brute_clear_boss":
+                case "primitive_brute_fleet_meet":
+                case "primitive_clear_potential_boss":
                     var config = new CampaignRuntimeConfig(
                         EnemyPriority: testCase.EnemyPriority,
                         MapClearAllThisTime: testCase.MapClearAllThisTime,
@@ -109,6 +112,9 @@ internal static class CampaignSelectionCheck
                         "primitive_pick_up_ammo" => CampaignPrimitives.PickUpAmmo(host),
                         "primitive_fleet_2_push_forward" => CampaignPrimitives.Fleet2PushForward(host),
                         "primitive_fleet_2_protect" => CampaignPrimitives.Fleet2Protect(host),
+                        "primitive_brute_clear_boss" => CampaignPrimitives.BruteClearBoss(host),
+                        "primitive_brute_fleet_meet" => CampaignPrimitives.BruteFleetMeet(host),
+                        "primitive_clear_potential_boss" => CampaignPrimitives.ClearPotentialBoss(host),
                         "primitive_clear_first_roadblocks" =>
                             CampaignPrimitives.ClearFirstRoadblocks(host, roads, options),
                         "primitive_clear_roadblocks" => CampaignPrimitives.ClearRoadblocks(host, roads, options),
@@ -126,6 +132,14 @@ internal static class CampaignSelectionCheck
                                                           $"（动作 {host.Actions.Count} 条）");
                     break;
                 default:
+                    // **未知的 `primitive_*` kind 必须显式报错**，不能落到"选敌人"这个默认分支：
+                    // 实测踩过一次——新增原语时只接了替身侧，C# 侧忘了加 kind，诊断命令于是静默去跑
+                    // "选一个敌人"，把一次"命令没接线"误判成"引擎与上游行为不同"。
+                    if (testCase.Kind.StartsWith("primitive_", StringComparison.Ordinal))
+                    {
+                        return Fail($"未知的原语 kind：{testCase.Kind}（要在 CampaignSelectionCheck 的 " +
+                                    "switch 里显式接线，不能用默认分支兜底）");
+                    }
                     decision = CampaignTargetSelector.SelectEnemyTarget(
                         grids, testCase.EnemyPriority, testCase.MapClearAllThisTime, options);
                     break;
