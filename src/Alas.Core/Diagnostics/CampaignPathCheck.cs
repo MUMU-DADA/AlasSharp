@@ -80,6 +80,14 @@ internal static class CampaignPathCheck
                 connections[location] = connection;
             }
 
+            // 每格的**编码**（上游 `GridInfo.encode()`，即 `Filter` 用的 `grid.str`）：
+            // 逐格对拍一次覆盖"令牌解码 + 编码分支"整条链路。
+            var encodings = new JsonObject();
+            foreach (var grid in grids)
+            {
+                encodings[grid.Location] = grid.Encode();
+            }
+
             JsonNode? route = null;
             if (!string.IsNullOrEmpty(testCase.Destination))
             {
@@ -111,6 +119,7 @@ internal static class CampaignPathCheck
                 ["per_operation_ms"] = Math.Round(perOperationMs, 4),
                 ["costs"] = costs,
                 ["connections"] = connections,
+                ["encodings"] = encodings,
                 ["route"] = route,
                 ["routes"] = routes,
             });

@@ -107,17 +107,18 @@ def upstream_field(case: dict) -> tuple[dict, dict, dict]:
     campaign_map.grid_connection_initial(wall=True)
     campaign_map.find_path_initial(tuple(node2location(case["start"])),
                                    has_ambush=case["has_ambush"], has_enemy=case["has_enemy"])
-    costs, connections, ambush = {}, {}, {}
+    costs, connections, ambush, encodings = {}, {}, {}, {}
     for grid in campaign_map:
         node = location2node(grid.location)
         costs[node] = grid.cost
         connections[node] = location2node(grid.connection) if grid.connection is not None else None
         ambush[node] = bool(grid.may_ambush)
+        encodings[node] = grid.encode()
     routes: dict[str, list[str] | None] = {}
     for destination in case.get("destinations") or []:
         route = campaign_map._find_path(tuple(node2location(destination)))
         routes[destination] = None if route is None else [location2node(item) for item in route]
-    return costs, connections, routes, ambush
+    return costs, connections, routes, ambush, encodings
 
 
 def neighbours_of(node: str) -> set[str]:
@@ -165,6 +166,8 @@ def main() -> int:
     cost_diffs: list[tuple[str, str, object, object]] = []      # C# 比上游**更差**（真问题）
     artifacts: list[tuple[str, str, object, object]] = []        # 有伏击配置下的收敛伪影（信息项）
     connection_diffs: list[tuple[str, str, object, object]] = []
+    encoding_diffs: list[tuple[str, str, object, object]] = []
+    encoding_seen: set[tuple[str, str]] = set()
     route_problems: list[str] = []
     route_compared = route_identical = route_tiebreak = 0
     route_examples: list[tuple[str, str, str, str]] = []
@@ -175,7 +178,7 @@ def main() -> int:
     for case in cases:
         began = time.perf_counter()
         try:
-            costs, connections, upstream_routes, upstream_ambush = upstream_field(case)
+            costs, connections, upstream_routes, upstream_ambush, upstream_encodings = upstream_field(case)
         except Exception as error:                     # noqa: BLE001 —— 上游跑不动就如实记，不算通过
             cost_diffs.append((case["name"], "上游执行失败", type(error).__name__, str(error)[:80]))
             continue
@@ -183,6 +186,17 @@ def main() -> int:
         result = csharp.get(case["name"]) or {}
         csharp_costs = result.get("costs") or {}
         csharp_connections = result.get("connections") or {}
+        # 逐格比**编码**（上游 `GridInfo.encode()` = `Filter` 用的 `grid.str`）：
+        # 这条链路是"令牌 → 标志 → 编码"，一次性覆盖解码与编码两侧。
+        csharp_encodings = result.get("encodings") or {}
+        for node, expected_encoding in upstream_encodings.items():
+            key = (case.get("level", case["name"]), node)
+            if key in encoding_seen:
+                continue
+            encoding_seen.add(key)
+            if csharp_encodings.get(node) != expected_encoding:
+                encoding_diffs.append((case["name"], f"encode@{node}",
+                                       expected_encoding, csharp_encodings.get(node)))
         level_diffs = 0
         for node, expected in costs.items():
             actual = csharp_costs.get(node)
@@ -270,6 +284,8 @@ def main() -> int:
              f"- 用例数：**{len(per_level)}**（关卡 × 配置；配置见下表）",
              f"- 逐格比较：**{compared}** 格",
              f"- **成本场不一致（无伏击配置）**：**{len(cost_diffs)}** 处（硬指标：这类配置下 cost 与迭代序无关）",
+             f"- **逐格编码不一致**（上游 `GridInfo.encode()`，即 `Filter` 用的 `grid.str`）："
+             f"**{len(encoding_diffs)}** 处 —— 覆盖「令牌 → 标志 → 编码」整条链路",
              f"- 有伏击配置的**收敛伪影**：**{len(artifacts)}** 处（**全部是「上游偏大」**：C# relax 到不动点，"
              f"给出的是真正最短距离，不可能比上游更贵；更贵会被判为硬失败）",
              f"- 连接差异：**{len(connection_diffs)}** 处（**只允许等代价的多个最优前驱之间**；上游的择向依赖它自己 ",
@@ -309,12 +325,13 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text("\n".join(lines), encoding="utf-8", newline="\n")
     print(f"已重建 {REPORT.relative_to(ROOT)}：{len(per_level)} 关 / {compared} 格 / "
-          f"成本不一致 {len(cost_diffs)} / 连接差异 {len(connection_diffs)} / 路线问题 {len(route_problems)}")
-    if cost_diffs or route_problems:
-        for item in (cost_diffs + [(p, "", "", "") for p in route_problems])[:5]:
+          f"成本不一致 {len(cost_diffs)} / 编码不一致 {len(encoding_diffs)} / "
+          f"连接差异 {len(connection_diffs)} / 路线问题 {len(route_problems)}")
+    if cost_diffs or route_problems or encoding_diffs:
+        for item in (cost_diffs + encoding_diffs + [(p, "", "", "") for p in route_problems])[:5]:
             print("  -", item)
         return 1
-    print("PASS: 全库声明地图上成本场逐格一致；连接差异仅出现在等代价择向，且两侧路线都最优")
+    print("PASS: 全库声明地图上成本场与逐格编码一致；连接差异仅出现在等代价择向，且两侧路线都最优")
     return 0
 
 

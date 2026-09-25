@@ -29,6 +29,9 @@ public sealed record CampaignGrid(
     bool MayBouncingEnemy = false,
     bool IsCaughtBySiren = false,
     bool IsFleet = false,
+    bool IsCurrentFleet = false,
+    bool IsSubmarine = false,
+    bool IsMissileAttack = false,
     bool IsCleared = false,
     bool IsLand = false,
     bool IsMechanismTrigger = false,
@@ -55,10 +58,54 @@ public sealed record CampaignGrid(
     /// <summary>上游 <c>is_nearby = cost &lt; 20</c>。</summary>
     public bool IsNearby => Cost < 20;
 
-    /// <summary>上游 <c>GridInfo.str</c> 的敌人分支（非敌方格子返回空串，见类型注释）。</summary>
-    public string FilterKey => IsEnemy
-        ? $"{EnemyScale}{(string.IsNullOrEmpty(EnemyGenre) ? "E" : char.ToUpperInvariant(EnemyGenre[0]).ToString())}"
-        : "";
+    /// <summary>
+    /// 上游 <c>GridInfo.encode()</c>（`Filter` 用的 `grid.str`）的**完整移植**，判定顺序照抄：
+    /// 陆地 <c>++</c> → boss <c>BO</c> → 塞壬（按 `enemy_genre` 解析，形如 `Siren_xxx`）→
+    /// 敌人 <c>{scale}{genre首字母或E}</c> → 舰队/被抓/潜艇/神秘/弹药/要塞/导弹/巡逻/已清 →
+    /// 都不是则 <c>--</c>。注意塞壬名字长度为 1 时上游会补一个**空格**（`f'{name.upper()} '`）。
+    /// </summary>
+    public string FilterKey => Encode();
+
+    /// <summary>上游 <c>GridInfo.encode()</c>。</summary>
+    public string Encode()
+    {
+        if (IsLand) return "++";
+        if (IsBoss) return "BO";
+
+        if (IsSiren)
+        {
+            if (string.IsNullOrEmpty(EnemyGenre)) return "SU";
+            // enemy_genre 形如 "Siren_xxx"：去掉前 6 个字符，再有下划线就取最后一段，然后取前两个字符
+            string name = EnemyGenre.Length > 6 ? EnemyGenre[6..] : "";
+            int underscore = name.LastIndexOf('_');
+            if (underscore >= 0) name = name[(underscore + 1)..];
+            name = name.Length > 2 ? name[..2] : name;
+            return name.Length switch
+            {
+                2 => name.ToUpperInvariant(),
+                1 => $"{name.ToUpperInvariant()} ",
+                _ => "SU",
+            };
+        }
+
+        if (IsEnemy)
+        {
+            return $"{EnemyScale}" +
+                   (string.IsNullOrEmpty(EnemyGenre) ? "E" : char.ToUpperInvariant(EnemyGenre[0]).ToString());
+        }
+
+        if (IsCurrentFleet) return "FL";
+        if (IsCaughtBySiren) return "Fc";
+        if (IsFleet) return "Fl";
+        if (IsSubmarine) return "ss";
+        if (IsMystery) return "MY";
+        if (IsAmmo) return "AM";
+        if (IsFortress) return "FR";
+        if (IsMissileAttack) return "MI";
+        if (MayBouncingEnemy) return "BE";
+        if (IsCleared) return "==";
+        return "--";
+    }
 }
 
 /// <summary>

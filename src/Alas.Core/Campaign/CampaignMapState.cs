@@ -27,6 +27,7 @@ public static class CampaignMapState
         "is_enemy", "is_boss", "is_siren", "is_fortress", "is_mystery", "is_ammo",
         "is_fleet", "is_submarine", "is_cleared", "is_caught_by_siren",
         "may_bouncing_enemy", "is_mechanism_block", "is_spawn_point",
+        "is_current_fleet", "is_missile_attack",
     };
 
     /// <summary>
@@ -128,7 +129,12 @@ public static class CampaignMapState
                     "is_caught_by_siren" => grid with { IsCaughtBySiren = true },
                     "may_bouncing_enemy" => grid with { MayBouncingEnemy = true },
                     "is_mechanism_block" => grid with { IsMechanismBlock = true },
-                    _ => grid,   // is_submarine / is_spawn_point：引擎当前不消费，识别有也不写
+                    // 这三个只影响 `encode()`（`Filter` 用的 `grid.str`）与识别展示，
+                    // 不影响寻路/选择判定；但既然上游 encode 有分支，识别给了就照实写下来
+                    "is_current_fleet" => grid with { IsCurrentFleet = true },
+                    "is_submarine" => grid with { IsSubmarine = true },
+                    "is_missile_attack" => grid with { IsMissileAttack = true },
+                    _ => grid,   // is_spawn_point / is_submarine_spawn_point：上游 encode() 也没有对应分支
                 };
             }
             updated[at] = grid;
