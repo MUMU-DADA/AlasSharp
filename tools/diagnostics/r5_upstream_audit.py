@@ -414,7 +414,7 @@ def render(engine: pathlib.Path) -> str:
     add("# R5 上游引擎迁移审计（P0）")
     add("")
     add("> 本报告由 `tools/diagnostics/r5_upstream_audit.py` 重建，不手写；只做 AST 解析与静态计数，")
-    add("> 不导入游戏代码、不连设备。目标与流程见 [上游引擎重写](../../../UPSTREAM-ENGINE-REWRITE.md)。")
+    add("> 不导入游戏代码、不连设备。目标与流程见 [上游引擎重写](../../upstream-engine-rewrite.md)。")
     add("")
     add(f"上游检出：`campaign/` {campaign['files']} 个文件（解析失败 {campaign['failures']}）")
     add("")

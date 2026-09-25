@@ -1,7 +1,7 @@
 # 上游引擎重写：目标与流程
 
 > 本文档记录"用 C# 重写上游执行引擎、最终只依赖上游静态规则"这一目标的**口径、范围与推进流程**。
-> 依赖边界、上游结构与 A/B/C 分类的证据见 [架构梳理](ARCHITECTURE-NOTES.md)。
+> 依赖边界、上游结构与 A/B/C 分类的证据见 [架构梳理](architecture-notes.md)。
 > 定位：属路线图 **R5（宿主替换评估）** 级别的工作；在满足门槛之前，生产路径保持现状不变。
 
 ## 1. 目标
@@ -29,6 +29,14 @@
 | 待拆接口面 | `IVisionEngine` 24 个方法（其中识别类方法按第 1.1.3 条可保留） |
 | 规模最大的待处理项 | `campaign/**` 关卡覆写方法 3192 个 / 1396 文件 |
 | 上游逻辑总量 | `module/**` 385 个 py，16 个子系统 |
+
+### 1.4 当前阶段
+
+**完成度与未完成项只在[迁移路线](architecture-roadmap.md)维护**（本文件不重复状态表）。
+本文只保留三样东西：**范围界定**、**按域的迁移流程与设计决策**、以及每个切片的**根因、边界与证据口径**。
+
+一句话现状：C# 侧关卡计划 / 原语 / 关卡循环（三变体）/ 寻路已可离线干跑并在真机帧上端到端闭合，
+决策层已有真机证据；**原语的真机动作层对照、`path`/`primitives` 接线、域级切换尚未完成**。
 
 ## 2. 范围界定
 
@@ -76,7 +84,7 @@
 3. **静态化可达性**：每域给出三档结论——纯静态可达 / 需补导出（列出字段）/ 必须自研；
 4. 产出：**可行性 + 工作量 + 长尾**报告，作为立项与排期依据。
 
-#### P0 已完成（2026-09-25）
+#### P0 原语清单与收敛度（阶段结论）
 
 - 工具：`tools/diagnostics/r5_upstream_audit.py`（纯 AST 解析，不导入游戏代码、不连设备）
 - 报告：`docs/archive/reports/r5-upstream-migration.md`（由脚本重建，不手写；195 行）
@@ -123,7 +131,7 @@
 
 把引擎需要的规则与配置**全部**导出为数据，包括目前只在运行时才存在的字段；导出器沿用静态解析（不导入游戏代码），并纳入现有导出校验链（`tools/verify_export.py` / `alashub`/`Alas.Server verify`）。
 
-#### P1 覆盖盘点结果（2026-09-25，报告 D 节）
+#### P1 覆盖盘点结果（报告 D 节）
 
 现有导出**已经覆盖大部分需求**，缺口具体如下：
 
@@ -160,7 +168,7 @@
 
 ### P2 逐域迁移（每个切片独立交付）
 
-#### P2-0 已完成：C# 只读计划层（第一个切片，不切换生产路径）
+#### P2-0 C# 只读计划层（第一个切片，不切换生产路径）
 
 | 项 | 内容 |
 | --- | --- |
@@ -173,7 +181,7 @@
 | 跨语言对拍 | C# 与 Python 审计一致：**1437 个关卡导出 / 3019 个钩子 / 可表达 2795（92.6%）**，无读取失败 |
 | 构建 | `dotnet build Alas.sln -c Release`：0 警告 0 错误 |
 
-#### P2-1 已完成：执行侧骨架与计划契约（2026-09-25）
+#### P2-1 执行侧骨架与计划契约
 
 | 项 | 内容 |
 | --- | --- |
@@ -185,7 +193,7 @@
 | 命令输出 | `r5-plan` 概览给出执行面与契约符合数；`r5-plan <章> --level <关>` 逐钩子给出角色划分、契约形状与每步"已实现/未实现"标记 |
 | 含义 | P2 的待办面被量化：实现 **31 个原语**（2873 步为无条件/兜底调用，2814 步为条件尝试），原语实现后干跑状态会从"未实现"变为"可执行" |
 
-#### P2-2 已完成：第一批原语（目标选择）与上游直接对拍（2026-09-25）
+#### P2-2 第一批原语（目标选择）与上游直接对拍
 
 | 项 | 内容 |
 | --- | --- |
@@ -197,7 +205,7 @@
 | 命令 | `Alas.Server r5-select --fixture tools/diagnostics/r5-selection-fixture.json`（输出每个用例的分支、选中格子与未移植说明，JSON） |
 | 边界 | 只做"选哪个格子"的决策：不连设备、不执行游戏动作；原语注册表仍未登记实现（要等动手/移动侧接通后才算真正可执行） |
 
-#### P2-3 已完成：动作侧闭环与首批原语登记（2026-09-25）
+#### P2-3 动作侧闭环与首批原语登记
 
 | 项 | 内容 |
 | --- | --- |
@@ -221,7 +229,7 @@
 `clear_potential_roadblocks`（35）。**这些步骤当前无法直接执行**——需要导出器对常见表达式求值
 （多数是 `self.config.*` 常量或同文件常量），列入 P1 待办。
 
-#### P1-1 已完成：类属性链字面量解析（`<expr>` 1103 → 139）（2026-09-25）
+#### P1-1 类属性链字面量解析（`<expr>` 1103 → 139）
 
 - **根因**：关卡的实参写成 `self.clear_filter_enemy(self.ENEMY_FILTER, preserve=1)`，而 `ENEMY_FILTER`
   定义在**基类**（如 `.campaign_14_base` 的 `CampaignBase.ENEMY_FILTER = '1T > 1L > …'`）；
@@ -247,7 +255,7 @@
   `roads` 参数——它们是 `RoadGrids([...])` 这类**地图对象**（引用具体格子），不是标量字面量，
   需要单独设计"地图对象实参"的导出表达，列入 P1 待办。
 
-#### P2-5 已完成：舰队前缀规则（一次解锁 685 步）（2026-09-25）
+#### P2-5 舰队前缀规则（一次解锁 685 步）
 
 - **上游语义**（读源码确认）：`Fleet.fleet_1` / `fleet_2` / `fleet_submarine` / `fleet_boss` 是
   **返回 `self` 的 property**，只在当前舰队不同时才 `fleet_ensure(index)`（`fleet_boss` 的索引按上游
@@ -273,7 +281,7 @@
 | 计划形状符合契约 | 3006 / 3019 |
 | 实参完整（无 `<expr>`） | 5661 / 5694（**99.4%**） |
 
-#### P1-2 已完成：路段（`RoadGrids`）实参导出（`<expr>` 139 → 61）（2026-09-25）
+#### P1-2 路段（`RoadGrids`）实参导出（`<expr>` 139 → 61）
 
 - **根因**：`clear_roadblocks([road_main])` 的实参是模块级**路段对象**
   （`road_main = RoadGrids([[H3, B6, C5]])`），标量字面量表达不了；格子符号本身由
@@ -290,7 +298,7 @@
   `clear_map_items` 5、`pick_up_flare` 4、`fleet_boss.pick_up_flare` 4、`fleet_2_rescue` 4 等
   （多为"具体格子/对象"实参，需按类型逐个补导出表达）。
 
-#### P2-6 已完成：路段原语三件套（步覆盖 95.8% → 97.3%）（2026-09-25）
+#### P2-6 路段原语三件套（步覆盖 95.8% → 97.3%）
 
 | 新增原语 | 对应上游 | 关键语义 |
 | --- | --- | --- |
@@ -307,7 +315,7 @@
 多格 block 只剩一格非敌人 → `clear_potential_roadblocks` 命中；block 含舰队 → potential 跳过并交给
 `battle_default`），全部通过；注册原语 **10 个**（含舰队前缀组合共 12 个已实现）。
 
-#### P1-3 已完成：格子符号实参导出（`<expr>` 61 → 33）（2026-09-25）
+#### P1-3 格子符号实参导出（`<expr>` 61 → 33）
 
 - **根因**：`pick_up_flare(H9)`、`fleet_2_rescue(G2)`、`clear_map_items([F1, I1])` 这类实参传的是
   **具体格子符号**（由 `A1, B1, … = MAP.flatten()` 绑定），标量字面量表达不了。
@@ -321,7 +329,7 @@
   `clear_roadblocks` / `clear_potential_roadblocks` / `clear_first_roadblocks` 共 7（局部路段变量）、
   `clear_mechanism` 2 —— 都需要"方法内数据流"才能解析，属下一阶段。
 
-#### P2-7 已完成：拾取类原语（步覆盖 97.3% → 97.7%）（2026-09-25）
+#### P2-7 拾取类原语（步覆盖 97.3% → 97.7%）
 
 | 新增原语 | 定义位置 | 关键语义 |
 | --- | --- | --- |
@@ -344,7 +352,7 @@
 > 这是"关卡侧 helper"这一类需要迁移的代码，属 P2 逐域迁移范围；它们的语义务必与上游逐字对齐，
 > 不能因为"看起来只是 goto"就简化。
 
-#### P2-8 已完成：舰队机动三件套（步覆盖 97.7% → 98.8%）（2026-09-25）
+#### P2-8 舰队机动三件套（步覆盖 97.7% → 98.8%）
 
 | 新增原语 | 对应上游 | 关键语义 |
 | --- | --- | --- |
@@ -371,7 +379,7 @@
 `clear_map_items` 5、`fleet_2_rescue` 4（寻路）、`clear_mechanism` 4、`battle_0` 2、
 `fleet_1.switch_to` / `fleet_2.switch_to` 各 1、`clear_chosen_enemy` 1、`fleet_boss.clear_potential_boss` 1。
 
-#### P2-9 已完成：收尾易做 op + 跨钩子调用（步覆盖 98.8% → 99.1%）（2026-09-25）
+#### P2-9 收尾易做 op + 跨钩子调用（步覆盖 98.8% → 99.1%）
 
 | 新增原语 | 对应上游 | 关键语义 |
 | --- | --- | --- |
@@ -400,7 +408,7 @@
 | 导出缺口 | **12** | `clear_bouncing_enemy`：需要导出 `MAP.bouncing_enemy_data`（当前 `map` 段没有这个声明） |
 | 设计上不执行 | **7** | `super().handle_boss_appear_refocus`（委托父类，本层不执行） |
 
-#### P2-10 已完成：关卡循环（run / execute_a_battle / battle_function）（2026-09-25）
+#### P2-10 关卡循环（run / execute_a_battle / battle_function）
 
 `src/Alas.Core/Campaign/CampaignBattleLoop.cs`，逐条对应上游 `module/campaign/campaign_base.py`：
 
@@ -430,7 +438,7 @@
 > （`module/map/map_operation.py:410`）。干跑把"撤退 ⇒ 本关结束"当作近似；**成功通关时的结束时机**
 > 仍需模拟器验证（这是 P2 硬要求里剩下的关键一项）。
 
-#### P2-11 已完成：寻路成本场（对拍逐格一致）（2026-09-26）
+#### P2-11 寻路成本场（对拍逐格一致）
 
 `src/Alas.Core/Campaign/CampaignPathfinder.cs`，逐条对应上游 `module/map/map_base.py`：
 
@@ -458,7 +466,7 @@
 `fleet_2_step_on` 11）此前完全没有地基；现在成本场与路线已经与上游逐格一致，`brute_find_roadblocks`
 等上层算法可以在其上继续移植。
 
-#### P2-12 已完成：暴力找路障与 boss 救援（步覆盖 99.1% → 99.5%）（2026-09-26）
+#### P2-12 暴力找路障与 boss 救援（步覆盖 99.1% → 99.5%）
 
 | 新增 | 对应上游 | 关键语义 |
 | --- | --- | --- |
@@ -483,7 +491,7 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 | 实参是方法内局部变量 | **11** | `fleet_2_step_on(step_on, roadblocks=[...])`：实参是模块级 `SelectedGrids([E4, D3, …])` 与局部路段变量，需要导出器解析 `SelectedGrids([符号])` 与关键字路段参数 |
 | 设计上不执行 | **7** | `super().handle_boss_appear_refocus`（委托父类，本层不执行） |
 
-#### P1-4 已完成：模块级格子表实参导出（`<expr>` 32 → 22）（2026-09-26）
+#### P1-4 模块级格子表实参导出（`<expr>` 32 → 22）
 
 - **根因**：`self.fleet_2_step_on(step_on, roadblocks=[roadblocks_d4])` 的位置实参是**模块级变量**
   `step_on = SelectedGrids([E4, D3, G4, C3])`——既不是字面量也不是格子符号本身。
@@ -497,7 +505,7 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 - **更正一处此前的错误判断**：`MAP.bouncing_enemy_data`（`clear_bouncing_enemy` 依赖的巡逻路线）
   **其实早已导出**（12 个关卡），我在 P2-12 里把它记成"导出缺口"是错的——实际缺口只在"格子表变量"这一处。
 
-#### P2-13 已完成：步覆盖 **99.9%**（巡逻敌人 + 道中队踩点）（2026-09-26）
+#### P2-13 步覆盖 **99.9%**（巡逻敌人 + 道中队踩点）
 
 | 新增原语 | 对应上游 | 关键语义 |
 | --- | --- | --- |
@@ -526,7 +534,7 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 > ② 引用的符号（如 `G4`）必须存在于地图状态，否则如实报错；③ 可达性由**几何 + 成本场**决定，
 > 不能靠夹具里手写的 `cost` 值伪造。
 
-#### P1-5 已完成：`<expr>` 22 → 7，全库干跑 3019/3019 无阻塞（2026-09-26）
+#### P1-5 `<expr>` 22 → 7，全库干跑 3019/3019 无阻塞
 
 三处导出器根因（导出器 2.7.0 → 2.8.0）：
 
@@ -554,7 +562,7 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 > 一处夹具期望随之更新：`campaign_14_4 battle_3` 原来断言"filter 串是 `<expr>` → 诚实阻塞"，
 > 现在 filter 串已能解析，该钩子走完全程——**这正是本轮想要的结果**，期望改为断言完整执行。
 
-#### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
+#### P2-4 原语扩到 7 个（含 boss/siren/any_enemy）
 
 | 新增原语 | 对应上游 | 关键语义 |
 | --- | --- | --- |
@@ -607,7 +615,7 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 不代表原语在真机上的动作与上游一致——`capture_clear_boss` 结尾撤退、`fleet_2_protect` 的 20 轮循环、
 `CampaignEnd` 的成功时机，这三处都只能靠真机对照确认（见 P2-8 / P2-10 的诚实说明）。
 
-#### P2-14 已完成：影子模式脚手架（只算不执行）（2026-09-26）
+#### P2-14 影子模式脚手架（只算不执行）
 
 `src/Alas.Core/Campaign/CampaignShadow.cs` + 命令 `Alas.Server r5-shadow`：
 
@@ -628,7 +636,7 @@ C# 影子选择与上游实际 `Using function:` **4/4 完全一致**——包�
 （如 `campaign_2_1` 的一次运行日志）上游用的是另两个 `battle_function` 变体，C# 侧尚未迁移，
 影子比对会**全部跳过**——要让这些关卡也能比对，需要先迁移那两个变体。
 
-#### P2-15 已完成：三个 `battle_function` 变体全覆盖（2026-09-26）
+#### P2-15 三个 `battle_function` 变体全覆盖
 
 | 新增 | 对应上游 | 关键语义 |
 | --- | --- | --- |
@@ -650,7 +658,7 @@ C# 影子选择与上游实际 `Using function:` **4/4 完全一致**——包�
 - **真实日志**：`campaign_2_1` 的 `clear_all` 运行，声明 `--variant clear_all` 后 **7/7 一致**；
 - 注册原语 **28 个**；执行面/步覆盖不变（5687/5694，99.9%），全库干跑仍 3019/3019 无阻塞。
 
-#### P2-16 真实路径证据（决策层）：模拟器实跑 1-1 + 影子比对 2/2 一致（2026-09-26）
+#### P2-16 真实路径证据（决策层）：模拟器实跑 1-1 + 影子比对 2/2 一致
 
 **授权**：用户确认"有模拟器可以进行测试验证流程"，并在本轮明确同意跑一次最小关卡。
 
@@ -689,7 +697,7 @@ Alas.Server queue --file .runtime/device-probe/campaign-1-1-queue.json --run --a
 **下一步（真机口径）**：把影子模式接进真实运行（同一次运行里既跑上游又记录 C# 决策），
 并对 `fleet_2_protect` 这类有内部循环的原语做真机对照；在拿到这些证据前，域级开关保持关闭。
 
-#### P2-17 已完成：影子模式接进运行时（运行内比对，只加观测）（2026-09-26）
+#### P2-17 影子模式接进运行时（运行内比对，只加观测）
 
 `Alas.Core/Runtime/CampaignBatchRunner` 在每关结束后调用 `CompareShadow`：
 
@@ -709,7 +717,7 @@ Alas.Server queue --file .runtime/device-probe/campaign-1-1-queue.json --run --a
 > 说明：运行内这条路径的**端到端**要等下一次授权的真机运行才会首次产出 `shadow-*.json`
 > （本轮只做了离线可验证的部分：映射、解析、比对、落盘与日志；设备动作没有重复执行）。
 
-#### P2-18 已完成：原语级动作轨迹（真机口径的覆盖对照）（2026-09-26）
+#### P2-18 原语级动作轨迹（真机口径的覆盖对照）
 
 `src/Alas.Core/Campaign/CampaignActionTrace.cs` + 命令 `Alas.Server r5-actions --log <日志> [--chapter --level]`：
 
@@ -733,7 +741,7 @@ Alas.Server queue --file .runtime/device-probe/campaign-1-1-queue.json --run --a
 已登记进 `verify_all.py`。噪声修复：`[Emotion fleet_2]`、`Hard satisfied: Fleet_1` 这类属性行
 一度被误当成动作，已用收窄后的"像动作"特征排除。
 
-#### P2-19 已完成：识别结果 → 引擎状态适配器（最终引擎的边界）（2026-09-26）
+#### P2-19 识别结果 → 引擎状态适配器（最终引擎的边界）
 
 `src/Alas.Core/Campaign/CampaignMapState.cs` + 命令 `Alas.Server r5-state`：
 
@@ -755,7 +763,7 @@ Alas.Server r5-state --chapter <章> --level <关> --detection <识别.json> --j
 夹具里故意放的 `is_teleporter` 必须出现在 `unknown_flags`、未被识别的格子保持声明状态），已登记进
 `verify_all.py`。实测 1-1 确实是 `G1` 一行七格（`SP -- -- -- -- ME MB`），与上游源码一致。
 
-#### P2-20 已完成：端到端干跑 `r5-run`（真机帧上闭合整条链）（2026-09-26）
+#### P2-20 端到端干跑 `r5-run`（真机帧上闭合整条链）
 
 `Alas.Server r5-run --chapter <章> --level <关> [--frame <地图帧> | --detection <识别.json>]`：
 读计划 → 造引擎状态（声明地图 + 舰队 + 成本场）→ **进程内跑上游地图识别**并叠加运行期标志 →
@@ -782,7 +790,7 @@ Alas.Server r5-state --chapter <章> --level <关> --detection <识别.json> --j
 动作含 `clear_chosen_enemy(`）；**帧在忽略目录里，缺帧时跳过并说明**，不把"没有帧"当失败。已登记进
 `verify_all.py`（R5 检查现共 **8** 个）。
 
-#### P2-21 已完成：原语动作层对照 `r5-diff`（"打的是不是同一格"）（2026-09-26）
+#### P2-21 原语动作层对照 `r5-diff`（"打的是不是同一格"）
 
 `Alas.Server r5-diff --log <上游日志> (--chapter --level | --chapter-module) [--frame | --detection]`：
 一边是**上游实际动作**（日志解析），一边是 **C# 干跑动作**（同一关卡跑关卡循环，动作只被记录），
@@ -810,7 +818,7 @@ withdraw                 0     1    —        —        —
 夹具日志 `actions-3-1.log`，断言"两边都打 D2、目标交集为真、无目标不一致、只有上游用的包装层原语被列出"；
 帧可用时追加一次帧驱动对照，缺帧跳过）。已登记进 `verify_all.py`（R5 检查现共 **9** 个）。
 
-#### P2-22 已完成：域级开关骨架（回退能力落到代码）（2026-09-26）
+#### P2-22 域级开关骨架（回退能力落到代码）
 
 `src/Alas.Core/Runtime/CampaignEngineSwitch.cs` + 自检命令 `Alas.Server r5-switch`：
 
@@ -827,7 +835,7 @@ withdraw                 0     1    —        —        —
 
 ### P4 收口
 
-`IVisionEngine` 只保留识图相关方法；上游目录只剩规则文件与识图组件；文档同步（`docs/architecture-roadmap.md`、本文件、[架构梳理](ARCHITECTURE-NOTES.md)）。
+`IVisionEngine` 只保留识图相关方法；上游目录只剩规则文件与识图组件；文档同步（`docs/architecture-roadmap.md`、本文件、[架构梳理](architecture-notes.md)）。
 
 ## 4. 验收判据（沿用仓库既有口径，不得放宽）
 
@@ -839,7 +847,7 @@ withdraw                 0     1    —        —        —
 
 ## 5. 替换前必须守住的纪律
 
-沿用 [架构梳理](ARCHITECTURE-NOTES.md) 的三个接缝纪律：
+沿用 [架构梳理](architecture-notes.md) 的三个接缝纪律：
 
 1. `IVisionEngine` 不轻易扩容（每个新方法都是将来要拆的债）；
 2. 静态导出"能导就导"（它将是 C# 引擎的输入）；

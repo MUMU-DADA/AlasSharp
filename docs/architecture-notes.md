@@ -260,7 +260,7 @@ Core 内调用点 **33 处**，分布：`Device/DeviceController`、`Tasks/Obser
    并附依赖的上游模块与文件数；
 3. 建议把这两份产出登记到 `docs/architecture-roadmap.md` 的 R5 章节，作为"先开发、后替换"的验收锚点。
 
-**目标与流程已单独成文**：[上游引擎重写：目标与流程](UPSTREAM-ENGINE-REWRITE.md)
+**目标与流程已单独成文**：[上游引擎重写：目标与流程](upstream-engine-rewrite.md)
 （含范围界定、"识图引擎不要求 C# 重写"这一例外、P0→P4 推进流程与验收判据）。
 
 ## 8. 本轮修正过的错误结论（留档）

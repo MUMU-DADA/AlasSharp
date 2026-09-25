@@ -1,7 +1,7 @@
 # R5 上游引擎迁移审计（P0）
 
 > 本报告由 `tools/diagnostics/r5_upstream_audit.py` 重建，不手写；只做 AST 解析与静态计数，
-> 不导入游戏代码、不连设备。目标与流程见 [上游引擎重写](../../../UPSTREAM-ENGINE-REWRITE.md)。
+> 不导入游戏代码、不连设备。目标与流程见 [上游引擎重写](../../upstream-engine-rewrite.md)。
 
 上游检出：`campaign/` 1437 个文件（解析失败 0）
 
@@ -245,6 +245,7 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | `src\Alas.Core\Tasks\ObserveTask.cs` | 3 |
 | `src\Alas.Core\Diagnostics\CaptureCheck.cs` | 2 |
 | `src\Alas.Core\Tasks\OsStateTask.cs` | 2 |
+| `src\Alas.Core\Diagnostics\CampaignDryRunHelper.cs` | 1 |
 | `src\Alas.Core\Diagnostics\MapCheck.cs` | 1 |
 | `src\Alas.Core\Navigation\PageNavigator.cs` | 1 |
 | `src\Alas.Core\Runtime\AlasSession.cs` | 1 |
@@ -253,7 +254,7 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | `src\Alas.Core\Tasks\NavigateTask.cs` | 1 |
 | `src\Alas.Core\Tasks\TaskCatalogTask.cs` | 1 |
 | `src\Alas.Core\Tasks\TaskQueue.cs` | 1 |
-| **合计** | **28** |
+| **合计** | **29** |
 
 ## C. 上游重依赖的用法面（按子系统）
 
