@@ -414,6 +414,19 @@ public static class DiagnosticCommands
                 }
                 return CampaignLoopCheck.Run(dataDir, loopFixture);
             }
+            if (command == "r5-hooks")
+            {
+                // 给定 battle_count 时 C# 会选哪个钩子（供与上游 battle_function 逐点对拍，只读）。
+                string? hooksChapter = null, hooksLevel = null, hooksCounts = null;
+                bool hooksJson = args.Contains("--json");
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--chapter") hooksChapter = args[i + 1];
+                    if (args[i] == "--level") hooksLevel = args[i + 1];
+                    if (args[i] == "--battle-counts") hooksCounts = args[i + 1];
+                }
+                return CampaignHooksCheck.Run(dataDir, hooksChapter, hooksLevel, hooksCounts, hooksJson);
+            }
             if (command == "r5-device")
             {
                 // 真机宿主 + 录制渠道：打印"会发给上游的调用序列"（不连设备、不发动作）。
@@ -733,7 +746,7 @@ public static class DiagnosticCommands
                 _ => Fail($"未知命令: {command}"
                            + "（可用: verify / list / show / imaging / matching / vision / campaign / "
                            + "map / map-ir / capture / device / queue / plan-queue / report / runs / run / goto / "
-                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state / r5-run / r5-diff / r5-switch / r5-calls / r5-device）"),
+                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state / r5-run / r5-diff / r5-switch / r5-calls / r5-device / r5-hooks）"),
             };
         }
         catch (Exception ex)
