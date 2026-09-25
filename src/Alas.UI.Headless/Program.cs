@@ -33,6 +33,7 @@ internal static class Program
         bool taskLoad = args.Contains("--perf-task-load", StringComparer.Ordinal);
         bool taskLoadCold = args.Contains("--perf-task-load-cold", StringComparer.Ordinal);
         bool deployDraftPerformance = args.Contains("--perf-deploy-drafts", StringComparer.Ordinal);
+        bool resourceSettingsPerformance = args.Contains("--perf-resource-settings", StringComparer.Ordinal);
         string output = Path.GetFullPath(args.FirstOrDefault(arg => !arg.StartsWith("--", StringComparison.Ordinal)) ?? ".runtime/ui-headless");
         Directory.CreateDirectory(output);
         try
@@ -47,6 +48,12 @@ internal static class Program
             {
                 await using var deploySession = HeadlessUnitTestSession.StartNew(typeof(Program));
                 await deploySession.Dispatch(() => DeployDraftIntegrationChecks.RunPerformance(output), CancellationToken.None);
+                return 0;
+            }
+            if (resourceSettingsPerformance)
+            {
+                await using var resourceSession = HeadlessUnitTestSession.StartNew(typeof(Program));
+                await resourceSession.Dispatch(() => ResourceCardSettingsChecks.RunPerformance(output), CancellationToken.None);
                 return 0;
             }
             if (taskLoad)

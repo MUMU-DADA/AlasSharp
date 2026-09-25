@@ -39,7 +39,7 @@
                 ToolTip.Tip="资源卡片设置" AutomationProperties.Name="实例设置">
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedRight">
-              <overview:ResourceCardSettingsPanel />
+              <overview:ResourceSelectionPanel />
             </Flyout>
           </Button.Flyout>
           <controls:Icon Data="{StaticResource IconSettings2}" Size="16" />

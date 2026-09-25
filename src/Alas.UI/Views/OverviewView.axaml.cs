@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Threading;
 using Alas.UI.ViewModels;
+using Alas.UI.Overview;
 
 namespace Alas.UI.Views;
 
@@ -30,6 +31,7 @@ public partial class OverviewView : UserControl
     private const double PinSlack = 2;
 
     private OverviewViewModel? _model;
+    private ResourceSelectionPanel _resourceSettings = null!;
     private bool _subscribed;
     private bool _attached;
     private int _generation;
@@ -43,6 +45,7 @@ public partial class OverviewView : UserControl
     public OverviewView()
     {
         InitializeComponent();
+        _resourceSettings = (ResourceSelectionPanel)((Flyout)InstanceSettingsButton.Flyout!).Content!;
         _lastScrollExtent = LogScroll.Extent;
         _lastScrollViewport = LogScroll.Viewport;
         LogScroll.PropertyChanged += OnScrollPropertyChanged;
@@ -75,6 +78,7 @@ public partial class OverviewView : UserControl
         _queuedResume = false;
         Unsubscribe();
         _model = model;
+        _resourceSettings.Selection = model?.Selection;
         if (_attached) Subscribe();
         _pinnedToNewest = IsPinnedToNewest();
         UpdateReadingAnchorMode();

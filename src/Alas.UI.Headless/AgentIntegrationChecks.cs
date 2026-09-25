@@ -81,7 +81,7 @@ internal static class AgentIntegrationChecks
                 var cards = view.GetVisualDescendants().OfType<OverviewView>().Single()
                     .GetVisualDescendants().OfType<Button>().Single(b => b.Name == "InstanceSettingsButton");
                 Click(window, cards);
-                Check(cards.Flyout is Flyout { IsOpen: true, Content: Overview.ResourceCardSettingsPanel },
+                Check(cards.Flyout is Flyout { IsOpen: true, Content: Overview.ResourceSelectionPanel },
                     "instance settings opens the delivered resource selection component");
                 cards.Flyout!.Hide();
                 backend.DeployPatch = null;

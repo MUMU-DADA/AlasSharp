@@ -59,7 +59,7 @@ public sealed class DisconnectedResourceCardSettings : IResourceCardSettings
 /// <summary>
 /// 「资源卡片设置」面板（上游 resource.settings + resource.cardsHint）：
 /// 列出可选卡片并允许启用/停用与排序；未接能力时显示真实空/错误态，**不显示任何假卡片**。
-/// 当前组件提供启停、上移/下移和手动保存；实例偏好存储与上游即时保存/拖拽尚待接通。
+/// 离线遗留面板，仅用于旧接口回归和性能参照。生产 Flyout 使用同一份 ResourceSelection 的即时偏好路径。
 /// </summary>
 public sealed class ResourceCardSettingsPanel : UserControl
 {
