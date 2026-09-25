@@ -17,7 +17,7 @@
 | 控制动作（滑动/开关驱动/探测） | 3 | 3 | 0 | `controls.md` |
 | 控制原语（返回键/长按/滑动） | 4 | **4** | 0 | `primitives.md` |
 | 文本输入（装备码流程） | 3 | **3** | 0 | `text-input.md` |
-| 全量回归（产品路径导航） | 34 | **29** | 5 | `regression.md` |
+| 全量回归（产品路径导航） | 34 | **30** | 4 | `regression.md` |
 | 页面规则合成正对照 | 53 | 52 | 1 跳过（`page_unknown` 无素材） | `positive-control.md` |
 | 控件 Switch 合成正对照 | 31 | 15 | 16 跳过（颜色掩码或子类原生判据） | `positive-control.md` |
 
