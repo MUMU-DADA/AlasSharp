@@ -55,13 +55,19 @@ def collect(limit: int) -> list[dict]:
                 break
         if start is None:
             continue
-        cases.append({
-            "name": str(path.relative_to(ROOT / "data" / "campaign"))[:-5],
-            "rows": rows,
-            "start": start,
-            "has_ambush": False,
-            "has_enemy": True,
-        })
+        # 三种配置都跑：上游 `find_path_initial(location, has_ambush, has_enemy)` 的这两个开关
+        # 会改变代价与扩散规则（伏击格代价 10 / `not has_enemy` 时敌人格也继续扩散），
+        # 所以它们各自是一块真实的算法面。
+        for has_ambush, has_enemy, label in ((False, True, "默认"), (True, True, "有伏击"), (False, False, "不考虑敌人")):
+            cases.append({
+                "name": f"{str(path.relative_to(ROOT / 'data' / 'campaign'))[:-5]}#{label}",
+                "level": str(path.relative_to(ROOT / "data" / "campaign"))[:-5],
+                "config": label,
+                "rows": rows,
+                "start": start,
+                "has_ambush": has_ambush,
+                "has_enemy": has_enemy,
+            })
         if limit and len(cases) >= limit:
             break
     return cases
@@ -138,10 +144,12 @@ def main() -> int:
     csharp_seconds = time.perf_counter() - began
 
     compared = 0
-    cost_diffs: list[tuple[str, str, object, object]] = []
+    cost_diffs: list[tuple[str, str, object, object]] = []      # C# 比上游**更差**（真问题）
+    artifacts: list[tuple[str, str, object, object]] = []        # 有伏击配置下的收敛伪影（信息项）
     connection_diffs: list[tuple[str, str, object, object]] = []
     route_problems: list[str] = []
     per_level: list[tuple[str, int, int]] = []
+    per_config: dict[str, list[int]] = {}
     upstream_seconds = 0.0
     for case in cases:
         began = time.perf_counter()
@@ -158,7 +166,15 @@ def main() -> int:
         for node, expected in costs.items():
             actual = csharp_costs.get(node)
             if actual != expected:
-                cost_diffs.append((case["name"], f"cost@{node}", expected, actual))
+                # 上游 `find_path_initial` 用**前沿终止**（`len(new) == len(visited)` 就停），而它的
+                # `visited` / `grid_connection` 都是 set（对象身份哈希）→ 收敛到哪个不动点依赖迭代序。
+                #   * `has_ambush=False`：每步代价都是 1，等于 BFS，cost 与顺序无关 → 差异就是**硬失败**；
+                #   * `has_ambush=True`：伏击格代价 10，可能出现"某格还差一次 relax 就停"的残差，
+                #     方向不定（C# 也可能比上游贵）。这是上游实现的伪影，不是移植错误 —— 单列为信息项。
+                if case.get("has_ambush"):
+                    artifacts.append((case["name"], f"cost@{node}", expected, actual))
+                else:
+                    cost_diffs.append((case["name"], f"cost@{node}", expected, actual))
                 level_diffs += 1
                 continue
             expected_connection = connections.get(node)
@@ -178,18 +194,27 @@ def main() -> int:
             level_diffs += 1
         compared += len(costs)
         per_level.append((case["name"], len(costs), level_diffs))
+        bucket = per_config.setdefault(case.get("config", "默认"), [0, 0])
+        bucket[0] += len(costs)
+        bucket[1] += level_diffs
 
     lines = ["# R5 寻路全库对拍（C# 移植 vs 上游）", "",
              "> 本报告由 `tools/diagnostics/r5_path_sweep.py` 重建，不手写。",
-             "> 口径：同一份**声明地图**、同一算法（`find_path_initial(wall=True, has_enemy=True)`）逐格比 cost 与 connection。",
+             "> 口径：同一份**声明地图**，每种地图跑**三种配置**（默认 `has_ambush=False,has_enemy=True`、",
+             "> `has_ambush=True`、`has_enemy=False`），逐格比 `cost` 与 `connection`。",
              "> **不覆盖**真机识别状态（敌人/机关由识别提供），所以它证明的是**算法移植一致**，不是真机寻路一致。", "",
-             f"- 关卡数：**{len(per_level)}**",
+             f"- 用例数：**{len(per_level)}**（关卡 × 配置；配置见下表）",
              f"- 逐格比较：**{compared}** 格",
-             f"- **成本场不一致**：**{len(cost_diffs)}** 处（这是硬指标）",
+             f"- **成本场不一致（无伏击配置）**：**{len(cost_diffs)}** 处（硬指标：这类配置下 cost 与迭代序无关）",
+             f"- 有伏击配置的**收敛伪影**：**{len(artifacts)}** 处（上游前沿终止 + set 迭代序；方向不定，不是移植错误）",
              f"- 连接差异：**{len(connection_diffs)}** 处（**只允许等代价的多个最优前驱之间**；上游的择向依赖它自己 ",
              "  `set` 的迭代序、用对象身份哈希，本来就不保证跨实现一致）",
              f"- 路线最优性检查：{'**有** ' + str(len(route_problems)) + ' 处不满足' if route_problems else '两侧回溯代价都等于 cost（通过）'}",
              f"- 用时：C# 侧 {csharp_seconds:.1f}s（含进程启动）/ 上游侧 {upstream_seconds:.1f}s", ""]
+    if artifacts:
+        lines += ["## 有伏击配置的收敛伪影（前 20 条，信息项）", "", "| 用例 | 位置 | 上游 | C# |", "| --- | --- | --- | --- |"]
+        lines += [f"| {name} | {where} | `{expected}` | `{actual}` |" for name, where, expected, actual in artifacts[:20]]
+        lines.append("")
     if cost_diffs:
         lines += ["## 成本场不一致（前 20 条）", "", "| 关卡 | 位置 | 上游 | C# |", "| --- | --- | --- | --- |"]
         lines += [f"| {name} | {where} | `{expected}` | `{actual}` |" for name, where, expected, actual in cost_diffs[:20]]
@@ -200,6 +225,10 @@ def main() -> int:
         lines.append("")
     if route_problems:
         lines += ["## 路线最优性问题", ""] + [f"- {item}" for item in route_problems[:20]] + [""]
+    lines += ["## 每种配置的结果", "", "| 配置 | 逐格比较 | 差异 |", "| --- | --- | --- |"]
+    for config, (grids, diffs) in sorted(per_config.items()):
+        lines.append(f"| {config} | {grids} | {diffs} |")
+    lines.append("")
     histogram = {}
     for _, grids, level_diffs in per_level:
         histogram[level_diffs] = histogram.get(level_diffs, 0) + 1
