@@ -221,6 +221,32 @@
 `clear_potential_roadblocks`（35）。**这些步骤当前无法直接执行**——需要导出器对常见表达式求值
 （多数是 `self.config.*` 常量或同文件常量），列入 P1 待办。
 
+#### P1-1 已完成：类属性链字面量解析（`<expr>` 1103 → 139）（2026-09-25）
+
+- **根因**：关卡的实参写成 `self.clear_filter_enemy(self.ENEMY_FILTER, preserve=1)`，而 `ENEMY_FILTER`
+  定义在**基类**（如 `.campaign_14_base` 的 `CampaignBase.ENEMY_FILTER = '1T > 1L > …'`）；
+  导出器原先只解析 `Campaign` 类自身声明，于是实参被记成 `'<expr>'`。
+- **改动**：`tools/export_upstream_data.py` 新增 `campaign_literal_attributes()` 与
+  `attribute_literal_resolver()`——沿**相对导入的基类链**收集类属性/模块级声明里的**字面量**
+  （纯 AST，不导入游戏代码；表达式一律忽略、宁缺勿猜），`call_args()` 增加 `resolve` 回调，
+  导出器版本 2.2.0 → 2.3.0。
+- **结果**（同一上游检出、重跑导出后对比）：
+
+| 指标 | 改动前 | 改动后 |
+| --- | --- | --- |
+| 含未求值表达式步骤 | 1103（19.4%） | **139（2.4%）** |
+| `clear_filter_enemy` 表达式实参 | 970 | **6** |
+| 导出差异 | — | 775 个文件 / 964 处步骤实参，**只有 `<expr>` → 解析值**，无其它结构变化 |
+
+- **效果**：88 个此前"第一跳就卡在 `<expr>`"的关卡现在可以执行（已加进 `verify_r5_execution.py` 夹具：
+  `campaign_15_1 battle_1` 的 `preserve=1` 跳过一个、`campaign_14_2 battle_5` 的 `1T` 优先命中）。
+- **既有问题（未引入、未修复）**：`Alas.Server verify` 报 3 个 Campaign 声明不完整
+  （`event_20200227_cn/c2.py`、`d3.py`、`event_20200312_cn/sp3.py`）——用改动前的导出器重导到临时目录对比，
+  **失败项与计数完全一致**，确认与本次改动无关。
+- **剩余 139 个表达式实参**：主要是 `clear_roadblocks`（48）与 `clear_potential_roadblocks`（35）的
+  `roads` 参数——它们是 `RoadGrids([...])` 这类**地图对象**（引用具体格子），不是标量字面量，
+  需要单独设计"地图对象实参"的导出表达，列入 P1 待办。
+
 #### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
 
 | 新增原语 | 对应上游 | 关键语义 |

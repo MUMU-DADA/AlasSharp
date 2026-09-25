@@ -140,6 +140,36 @@
       }
     },
     {
+      "name": "campaign_15_1 battle_1：过滤串此前是 <expr>，导出器解析基类 ENEMY_FILTER 后可直接执行（preserve=1 跳过一个）",
+      "chapter": "campaign_main",
+      "level": "campaign_15_1",
+      "hook": "battle_1",
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Light", "weight": 10, "cost": 5 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 20, "cost": 6 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(B1, expected=)",
+        "log_contains": "过滤后 2 个，preserve=1"
+      }
+    },
+    {
+      "name": "campaign_14_2 battle_5：过滤串按优先级命中 1T（preserve=0）",
+      "chapter": "campaign_main",
+      "level": "campaign_14_2",
+      "hook": "battle_5",
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Treasure", "weight": 90, "cost": 9 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Light", "weight": 1, "cost": 1 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(A1, expected=)",
+        "log_contains": "过滤后 2 个，preserve=0"
+      }
+    },
+    {
       "name": "campaign_1_1 handle_boss_appear_refocus：super_delegate → 委托父类，不执行也不阻塞",
       "chapter": "campaign_main",
       "level": "campaign_1_1",

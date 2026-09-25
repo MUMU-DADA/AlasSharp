@@ -45,7 +45,7 @@ except ImportError:
     from upstream_map_export import MapResolver
     from upstream_campaign_export import CampaignResolver
 
-EXPORTER_VERSION = '2.2.0'
+EXPORTER_VERSION = '2.3.0'
 SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
@@ -143,17 +143,131 @@ def super_call_name(node: ast.Call):
     return f'super().{node.func.attr}'
 
 
-def call_args(node: ast.Call):
-    """调用实参 → {位置参数: [...], 关键字参数: {...}}，非字面量记 '<expr>'。"""
+def _campaign_module_path(root: str, module: str) -> str:
+    return os.path.join(root, 'campaign', *module.split('.')) + '.py'
+
+
+def _relative_import_origin(tree, current_module: str, name: str):
+    """`from .campaign_14_base import CampaignBase` → 'campaign_main.campaign_14_base'。
+
+    只处理相对导入（level >= 1）：绝对导入的基类可能在上游 `module/` 树里，本函数不追。
+    """
+    package = current_module.rsplit('.', 1)[0] if '.' in current_module else ''
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom) or not node.level or not node.module:
+            continue
+        for alias in node.names:
+            if alias.name != name or (alias.asname or alias.name) != name:
+                continue
+            parts = package.split('.') if package else []
+            up = node.level - 1
+            if up:
+                parts = parts[:-up] if up <= len(parts) else []
+            origin = '.'.join([p for p in parts if p] + [node.module])
+            return origin
+    return None
+
+
+def campaign_literal_attributes(tree, module: str, root: str, max_depth: int = 12) -> dict:
+    """收集 `Campaign` 类**属性链**上的字面量（含相对导入的基类），纯静态解析。
+
+    背景（实测）：关卡里的 `self.clear_filter_enemy(self.ENEMY_FILTER, preserve=1)` 这类实参
+    定义在**基类**（如 `.campaign_14_base` 的 `CampaignBase.ENEMY_FILTER = '1T > 1L > …'`），
+    而导出器原先只解析 `Campaign` 类自身声明，于是实参被记成 `'<expr>'`——C# 引擎无法执行
+    （全库 970 个 `clear_filter_enemy` 步骤因此被阻塞）。
+
+    这里**只取字面量**（模块级与类体里 `ast.literal_eval` 能算出的赋值），表达式一律忽略：
+    解析不出时保持 `'<expr>'`，宁缺勿猜，不会写入错误的过滤串。不导入游戏代码。
+    """
+    values: dict = {}
+    seen_modules: set = set()
+    parsed: dict = {module: tree}
+    pending = [(module, 'Campaign')]
+    steps = 0
+    while pending and steps < max_depth:
+        steps += 1
+        current_module, class_name = pending.pop(0)
+        current = parsed.get(current_module)
+        if current is None:
+            path = _campaign_module_path(root, current_module)
+            if not os.path.isfile(path):
+                continue
+            try:
+                with open(path, encoding='utf-8') as source:
+                    current = ast.parse(source.read())
+            except (OSError, SyntaxError):
+                continue
+            parsed[current_module] = current
+
+        if current_module not in seen_modules:
+            seen_modules.add(current_module)
+            for node in current.body:
+                if isinstance(node, ast.Assign):
+                    try:
+                        value = ast.literal_eval(node.value)
+                    except Exception:
+                        continue
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            values.setdefault(target.id, value)
+
+        for node in current.body:
+            if not isinstance(node, ast.ClassDef) or node.name != class_name:
+                continue
+            for sub in node.body:
+                if isinstance(sub, ast.Assign):
+                    try:
+                        value = ast.literal_eval(sub.value)
+                    except Exception:
+                        continue
+                    for target in sub.targets:
+                        if isinstance(target, ast.Name):
+                            values.setdefault(target.id, value)
+            for base in node.bases:
+                base_name = base.id if isinstance(base, ast.Name) else None
+                if not base_name:
+                    continue
+                origin = _relative_import_origin(current, current_module, base_name)
+                if origin:
+                    pending.append((origin, base_name))
+    return values
+
+
+def attribute_literal_resolver(literals: dict):
+    """把 `self.<NAME>` / `<NAME>` 实参节点解成字面量；解析不出返回哨兵。"""
+    def resolve(node):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) \
+                and node.value.id == 'self' and node.attr in literals:
+            return literals[node.attr]
+        if isinstance(node, ast.Name) and node.id in literals:
+            return literals[node.id]
+        return _UNRESOLVED
+    return resolve
+
+
+def call_args(node: ast.Call, resolve=None):
+    """调用实参 → {位置参数: [...], 关键字参数: {...}}。
+
+    字面量直接取；`self.<NAME>` 这类**类属性链上的字面量**经 `resolve` 解析（见
+    `campaign_literal_attributes`）；其余非字面量仍记 `'<expr>'`。
+    """
+    def value_of(argument):
+        value = literal(argument)
+        if value is not _UNRESOLVED:
+            return value
+        if resolve is not None:
+            resolved = resolve(argument)
+            if resolved is not _UNRESOLVED:
+                return resolved
+        return '<expr>'
+
     pos, kw = [], {}
     for a in node.args:
-        v = literal(a)
-        pos.append(v if v is not _UNRESOLVED else '<expr>')
+        pos.append(value_of(a))
     for k in node.keywords:
         if k.arg is None:
             continue
-        v = literal(k.value)
-        kw[k.arg] = v if v is not _UNRESOLVED else '<expr>'
+        kw[k.arg] = value_of(k.value)
     return {'positional': pos, 'keyword': kw}
 
 
@@ -267,7 +381,7 @@ def _is_bare_return_true(body) -> bool:
             and s.value.value is True)
 
 
-def derive_plan(body: list, where: str):
+def derive_plan(body: list, where: str, resolve=None):
     """
     把 battle_N 方法体归一成步骤序列。
 
@@ -291,7 +405,7 @@ def derive_plan(body: list, where: str):
     terminated = False
 
     def self_call_step(node, kind, **extra):
-        s = {'op': call_name(node), 'args': call_args(node), 'kind': kind}
+        s = {'op': call_name(node), 'args': call_args(node, resolve), 'kind': kind}
         s.update(extra)
         return s
 
@@ -325,7 +439,7 @@ def derive_plan(body: list, where: str):
                 terminated = True
             elif is_super_delegate(stmt.value):
                 # `return super().X(...)`：纯委托，本类没有新增逻辑，只是覆写钩子。
-                steps.append({'op': super_call_name(stmt.value), 'args': call_args(stmt.value),
+                steps.append({'op': super_call_name(stmt.value), 'args': call_args(stmt.value, resolve),
                               'kind': 'super_delegate'})
                 terminated = True
             else:
@@ -372,6 +486,9 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
             continue
 
         module = rel[len('campaign/'):-3].replace('/', '.')
+        # 类属性链上的字面量（如基类的 ENEMY_FILTER），用于解析 self.<NAME> 实参；
+        # 解析不出的实参仍记 '<expr>'，不猜值。
+        resolve_literal = attribute_literal_resolver(campaign_literal_attributes(tree, module, root))
         ir = {'source': rel, 'name': None, '_name_source': None, 'map': {}, 'config': {},
               'config_meta': {}, 'campaign': {'battles': [], 'attributes': {}},
               'unresolved': []}
@@ -383,7 +500,7 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
                             and node.name == 'Campaign':
                         body = [x for x in sub.body if not (isinstance(x, ast.Expr)
                                 and isinstance(x.value, ast.Constant))]
-                        steps, plan_complete, unparsed, dead = derive_plan(body, sub.name)
+                        steps, plan_complete, unparsed, dead = derive_plan(body, sub.name, resolve_literal)
                         calls = []
                         for x in ast.walk(sub):
                             if is_self_call(x):
