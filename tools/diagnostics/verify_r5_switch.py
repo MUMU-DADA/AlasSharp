@@ -8,7 +8,10 @@
   1. **默认**：`loop=Shadow`（仍跑上游、只多记一份 C# 决策）、`path` / `primitives` = `Upstream` 且标注"未接生产路径"；
   2. `ALAS_ENGINE_LOOP=csharp` 但**没有闸门** → 必须**拒绝**并退回 `Shadow`，理由里点名缺哪个变量；
   3. 加上 `ALAS_ENGINE_ALLOW_CSHARP=1` → 才允许 `csharp`；
-  4. 非法取值（如 `yes`）→ 退回默认并说明合法取值——不猜。
+  4. 非法取值（如 `yes`）→ 退回默认并说明合法取值——不猜；
+  5. **依赖关系**：C# 的寻路/原语没有独立调用点，只有 `loop` 切成 `csharp` 后才会被调用；
+     `loop` 未切时把 `path` 取值 csharp 改写成 `Upstream` 并说明；`loop` 已切时保留取值但注明
+     "尚未接线、没有调用点消费"。
 
 只做开关解析与核对：不连设备、不改变任何运行状态。
 """
@@ -72,8 +75,28 @@ def main() -> int:
     if "取值非法" not in json.dumps(invalid["domains"], ensure_ascii=False):
         problems.append("非法取值应给出说明")
 
+    # 依赖关系：实测 C# 的寻路/原语**没有独立调用点**，只有 loop 切成 csharp 后才会被调用
+    dependency = switch({"ALAS_ENGINE_PATH": "csharp", "ALAS_ENGINE_ALLOW_CSHARP": "1"})
+    if modes(dependency)["path"] != "Upstream":
+        problems.append(f"loop 未切 csharp 时 path 即便取值 csharp 也应改写成 Upstream，"
+                        f"实际 {modes(dependency)['path']}")
+    if "依赖 loop 域" not in json.dumps(dependency["domains"], ensure_ascii=False):
+        problems.append("依赖改写应说明原因")
+    depends = {domain["domain"]: domain.get("depends_on") for domain in default["domains"]}
+    if depends != {"loop": None, "path": "loop", "primitives": "loop"}:
+        problems.append(f"依赖字段应为 loop:None / path:loop / primitives:loop，实际 {depends}")
+
+    # loop 切成 csharp（有闸门）后，未接线域取值 csharp 应保留，但必须注明"没有调用点消费"
+    wired = switch({"ALAS_ENGINE_LOOP": "csharp", "ALAS_ENGINE_PATH": "csharp",
+                    "ALAS_ENGINE_ALLOW_CSHARP": "1"})
+    if modes(wired)["path"] != "CSharp":
+        problems.append(f"loop 已切 csharp 时 path 取值 csharp 应保留，实际 {modes(wired)['path']}")
+    if "尚未接线" not in json.dumps(wired["domains"], ensure_ascii=False):
+        problems.append("未接线域取值 csharp 时应注明没有调用点消费该取值")
+
     print(f"[r5-switch] 默认={modes(default)}；缺闸门 csharp → {modes(refused)['loop']}；"
-          f"有闸门 → {modes(allowed)['loop']}；非法值 → {modes(invalid)['loop']}")
+          f"有闸门 → {modes(allowed)['loop']}；非法值 → {modes(invalid)['loop']}；"
+          f"依赖改写 path → {modes(dependency)['path']}")
     if problems:
         print(f"FAIL: {len(problems)} 个问题")
         for item in problems:

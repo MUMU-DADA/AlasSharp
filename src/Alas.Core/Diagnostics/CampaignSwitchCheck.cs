@@ -26,6 +26,7 @@ internal static class CampaignSwitchCheck
                     ["domain"] = domain.Name,
                     ["mode"] = domain.Mode.ToString(),
                     ["wired"] = domain.Wired,
+                    ["depends_on"] = domain.DependsOn,
                     ["note"] = domain.Note,
                 });
             }
@@ -37,10 +38,11 @@ internal static class CampaignSwitchCheck
             return 0;
         }
 
-        Console.WriteLine($"{"域",-14}{"当前后端",-12}{"已接生产路径",-14}说明");
+        Console.WriteLine($"{"域",-14}{"当前后端",-12}{"已接生产路径",-12}{"依赖",-8}说明");
         foreach (var domain in snapshot)
         {
-            Console.WriteLine($"{domain.Name,-14}{domain.Mode,-12}{(domain.Wired ? "是" : "否（仅离线）"),-14}{domain.Note}");
+            Console.WriteLine($"{domain.Name,-14}{domain.Mode,-12}{(domain.Wired ? "是" : "否（仅离线）"),-12}" +
+                              $"{domain.DependsOn ?? "—",-8}{domain.Note}");
         }
         Console.WriteLine();
         Console.WriteLine($"[闸门   ] {CampaignEngineSwitch.AllowCSharpVariable}=" +

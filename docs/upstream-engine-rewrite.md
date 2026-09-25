@@ -596,6 +596,40 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 
 域级开关双跑，观察漂移；每域稳定后，再把上游那条路径标记为废弃。
 
+#### 接线分析：`path` / `primitives` **没有独立调用点**（实测，2026-09-26）
+
+在写"接线核对单"前先核实了生产路径：在 `src/Alas.Core/{Runtime,Vision,Tasks}` 里检索
+`CampaignPathfinder` / `CampaignPrimitives` / `CampaignBattleLoop` / `FindPathInitial` → **零命中**。
+也就是说：
+
+- C# 的寻路与原语**只服务离线对拍**，生产路径上**没有任何一处可替换的调用点**；
+- 它们唯一的将来调用点是 **C# 关卡循环内部**（`CampaignBattleLoop` 执行钩子时调原语，原语调寻路）。
+
+因此"独立切 `path` 域"是伪命题，开关模型据实修正：
+
+| 域 | 已接生产路径 | 依赖 | 行为 |
+| --- | --- | --- | --- |
+| `loop` | 是（决定要不要记录影子） | — | `upstream` / `shadow`（默认）/ `csharp`（需闸门） |
+| `path` | **否** | `loop` | `loop` 未切 csharp 时**改写成 upstream 并说明**；已切时保留取值但注明"尚未接线、没有调用点消费" |
+| `primitives` | **否** | `loop` | 同上 |
+
+**结论（对 P3 的影响）**：真正要做的不是"逐个域接线"，而是**让 `loop` 域可由 C# 执行**——
+即新增一条由 C# 驱动设备的执行路径（原语 → 设备动作、寻路 → 走位），`path`/`primitives` 随之自然生效。
+
+#### `loop` 域切成 csharp 需要什么（前置清单）
+
+| 项 | 要求 | 现状 |
+| --- | --- | --- |
+| 逐项对拍 | 决策层 / 动作层 / 路线层都有对照证据 | 决策层：同局真机 **4/4、2/2 一致**；动作层：跨局真机有目标交集；路线层：共同走位 `C2`、顺序一致 |
+| 性能对照 | 替换前后有同口径底数 | 已有 `docs/archive/reports/r5-performance-baseline.md`（寻路 C# 2.86ms vs 上游 5.53ms @200 格；全库计划读取 0.65s） |
+| 真实产品路径 | 成功结算并返回章节页 | 决策层有（1-1 `cleared=true`）；**动作层尚未由 C# 驱动过任何一局** |
+| 回退能力 | 开关 + 影子 + 拒绝机制 | 已实现（`r5-switch`：默认不改行为、`csharp` 双钥匙、依赖改写） |
+| 设备动作层实现 | **尚缺**：目前所有原语走 `ICampaignPrimitiveHost` 的**录制宿主**，没有真机宿主 | 待实现（`goto` / `clear_chosen_enemy` / `update_map` / `focus_to` 等映射到设备后端） |
+| 结果判定 | 仍走 `sortie-result/1`，不得在 C# 侧另立口径 | 已有合同与对拍（`verify_result_contract.py`） |
+
+**顺序**：先实现"真机宿主"（把 `ICampaignPrimitiveHost` 接到设备后端与识别上）→ 用同一局真机做三层对照 →
+证据齐了才开 `ALAS_ENGINE_LOOP=csharp`。**没有真机宿主之前，`csharp` 取值只是"允许但不生效"。**
+
 #### 切换与回退设计（P2 要求项，**尚未启用**）
 
 现状：C# 侧引擎（关卡计划 / 原语 / 关卡循环 / 寻路）已可在离线干跑，但**生产路径仍全部走上游**
