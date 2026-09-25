@@ -4,7 +4,7 @@
 为什么是这个形态：
 
 * **不需要框架决策**：产物是一个自带样式的 HTML 文件，双击就开，不引入任何前端栈；
-* **不需要设备**：它只消费 `alashub report --json` 的输出，而那是已经验收过的数据面；
+* **不需要设备**：它只消费 `Alas.Server report --json` 的输出，而那是已经验收过的数据面；
 * **顺带是一次架构检查**：如果某些信息在 HTML 里显示不出来，说明**数据面缺字段** ——
   这正是"先做数据面、再做界面"要暴露的东西，而不是等界面写完才发现。
 
@@ -24,7 +24,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -81,7 +81,7 @@ def build_report(target: Path) -> dict:
 
 
 def build_runs(target: Path) -> dict:
-    """artifacts 根目录下的**多次运行**列表（`alashub runs --json`）。"""
+    """artifacts 根目录下的**多次运行**列表（`Alas.Server runs --json`）。"""
     with tempfile.TemporaryDirectory(prefix='alas-html-') as tmp:
         out = Path(tmp) / 'runs.json'
         proc = subprocess.run([str(EXE), 'runs', '--artifacts', str(target), '--json', str(out)],

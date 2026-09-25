@@ -10,7 +10,7 @@ namespace Alas.Tasks;
 ///
 /// 它回答的是跑活动之前必须先知道的事："现在导出的数据里有哪些活动章节、各自
 /// 计划完整度如何"。数据来源是 S0 冻结的上游导出契约（`data/campaign/**`），
-/// 与 `alashub campaign` 用的是同一份 —— 所以**没有第二份章节表**，也不认地图名：
+/// 与 `Alas.Server campaign` 用的是同一份 —— 所以**没有第二份章节表**，也不认地图名：
 /// 筛选条件是"来源目录前缀"，由输入给，不写死在代码里。
 ///
 /// 输入（`Input`）：
@@ -121,7 +121,7 @@ public sealed class EventStateTask : ITaskRunner
 
     /// <summary>
     /// 按"来源目录前缀"筛章节。**筛选规则只有这一处** —— 清点任务与
-    /// `alashub plan-queue`（据清点结果生成队列）都调它，避免两边各写一套筛选慢慢走偏。
+    /// `Alas.Server plan-queue`（据清点结果生成队列）都调它，避免两边各写一套筛选慢慢走偏。
     /// </summary>
     public static List<CampaignIndexEntry> Select(UpstreamData.Catalog catalog, string prefix,
                                                   bool onlyComplete, CancellationToken token,

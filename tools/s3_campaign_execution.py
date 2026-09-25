@@ -30,6 +30,7 @@ def run_native_campaign(inst, *, max_rounds=20, max_seconds=1500, withdraw_file=
     state = {'round': 0, 'end': None}
     originals = {}
     failure_evidence = []
+    terminal_failure = None
     out = {'execution': 'upstream_run'}
     max_rounds = int(max_rounds)
     max_seconds = float(max_seconds)
@@ -39,10 +40,10 @@ def run_native_campaign(inst, *, max_rounds=20, max_seconds=1500, withdraw_file=
     def record_failure(step, error):
         # Nested wrappers see the same exception. Keep the earliest image and
         # share its path rather than overwriting it during exception unwinding.
-        for captured_error, details in failure_evidence:
+        for captured_error, details, first_step in failure_evidence:
             if captured_error is error:
                 step.update(details)
-                return
+                return first_step
         details = {}
         try:
             image = getattr(getattr(inst, 'device', None), 'image', None)
@@ -66,8 +67,9 @@ def run_native_campaign(inst, *, max_rounds=20, max_seconds=1500, withdraw_file=
         except Exception as save_error:
             # Saving diagnostic evidence must not replace the upstream failure.
             details['failure_frame_error'] = f'{type(save_error).__name__}: {save_error}'
-        failure_evidence.append((error, details))
+        failure_evidence.append((error, details, step))
         step.update(details)
+        return step
 
     def wrap(name):
         original = getattr(inst, name, None)
@@ -145,11 +147,13 @@ def run_native_campaign(inst, *, max_rounds=20, max_seconds=1500, withdraw_file=
         if boundary.reason == 'stopped_after_map_init':
             out['stopped_after'] = 'map_init'
     except Exception as error:
-        if not any(step.get('error') for step in steps):
-            import traceback
-            step = {'step': 'run', 'error': f'{type(error).__name__}: {error}',
-                    'traceback_tail': traceback.format_exc().strip().splitlines()[-8:]}
-            record_failure(step, error)
+        import traceback
+        step = {'step': 'run', 'error': f'{type(error).__name__}: {error}',
+                'traceback_tail': traceback.format_exc().strip().splitlines()[-8:]}
+        # An earlier error may have been recovered by the native subclass.
+        # Only the exception escaping run is terminal; reuse its observed step.
+        terminal_failure = record_failure(step, error)
+        if terminal_failure is step:
             steps.append(step)
     finally:
         for name, (owned, value) in originals.items():
@@ -159,6 +163,6 @@ def run_native_campaign(inst, *, max_rounds=20, max_seconds=1500, withdraw_file=
                 delattr(inst, name)
     out['steps'] = steps
     out['elapsed_s'] = round(time.monotonic() - started, 1)
-    if state['end'] is None and not any(step.get('error') for step in steps):
+    if state['end'] is None and terminal_failure is None:
         out.setdefault('stop_reason', 'upstream_returned_without_clear')
-    return finalize_sortie_result(out, steps, state['end'])
+    return finalize_sortie_result(out, steps, state['end'], terminal_failure=terminal_failure)

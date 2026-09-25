@@ -33,7 +33,7 @@
 
 ```powershell
 & $py tools\make_imaging_fixture.py            # 生成对拍基准（真值由 ALAS 函数产出）
-.\alashub.exe imaging                          # 校验原语
+.\Alas.Server.exe imaging                      # 校验原语
 & $py tools\make_matching_fixture.py           # 生成匹配基准（真值由 cv2 现算）
-.\alashub.exe matching                         # 校验匹配（会出现已知残差）
+.\Alas.Server.exe matching                     # 校验匹配（会出现已知残差）
 ```

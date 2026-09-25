@@ -118,7 +118,7 @@ public sealed class OsStateTask : ITaskRunner
             }
             else
             {
-                // 与 `alashub map --mode os` 走同一个上游判据。
+                // 与 `Alas.Server map --mode os` 走同一个上游判据。
                 var detection = context.Session.Vision.CallTyped<MapDetectResult>(
                     "map_detect", new { mode = "os" });
                 evidence["detected"] = detection.Detected;

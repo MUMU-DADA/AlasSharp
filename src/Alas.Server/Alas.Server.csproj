@@ -12,7 +12,4 @@
     <ProjectReference Include="../Alas.Contracts/Alas.Contracts.csproj" />
     <InternalsVisibleTo Include="Alas.ControlProbe" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="../../tools/control_ui.html" Link="tools/control_ui.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
 </Project>

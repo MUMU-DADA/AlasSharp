@@ -28,8 +28,8 @@ sys.path.insert(0, os.path.normpath(os.path.join(HERE, '..')))
 import alas_vision as av          # noqa: E402
 from queue_navigation import run_navigation  # noqa: E402
 
-ALASHUB = os.environ.get('ALASHUB', os.path.normpath(os.path.join(
-    HERE, '..', '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe')))
+ALAS_SERVER = os.environ.get('ALAS_SERVER', os.path.normpath(os.path.join(
+    HERE, '..', '..', 'src', 'Alas.Server', 'bin', 'Release', 'net10.0', 'Alas.Server.exe')))
 
 
 def op(op_name, **args):
@@ -72,7 +72,7 @@ def main():
         # **不用管道抓输出**：本机沙箱下"管道式 stdio"会以 EPERM 失败（实测）；
         # 这里只需要它的副作用（把游戏开到章节页），所以输出直接丢给 DEVNULL。
         try:
-            r = run_navigation(ALASHUB, 'page_campaign', args.serial,
+            r = run_navigation(ALAS_SERVER, 'page_campaign', args.serial,
                                timeout=180, capture_output=False)
             print(f'  exit={r.returncode}', flush=True)
             if r.returncode != 0:

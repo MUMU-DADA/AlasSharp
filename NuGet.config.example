@@ -7,7 +7,7 @@
   Directory.Build.props 将还原后的包固定在 .runtime/nuget/packages。
 
   用法：复制为 NuGet.config（已在 .gitignore 中忽略，不入库），然后
-      dotnet build src/Alas.DataTool/Alas.DataTool.csproj -c Release
+      dotnet build src/Alas.Server/Alas.Server.csproj -c Release
 
   能正常连通 nuget.org 的机器不需要这个文件，正常还原仍写入项目缓存。
   ImageSharp 2.1.8 是公开包，注意它的 2.x 才是 Apache-2.0（3.x 起改为 Split License）。

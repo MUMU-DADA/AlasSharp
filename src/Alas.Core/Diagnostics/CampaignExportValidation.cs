@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Alas.Core;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 internal static class CampaignExportValidation
 {

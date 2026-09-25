@@ -11,6 +11,8 @@ from contextlib import contextmanager
 
 from sortie_contract import stamp
 
+_UNOBSERVED_TERMINAL_FAILURE = object()
+
 
 @contextmanager
 def observe_battle_result(inst):
@@ -98,12 +100,14 @@ to the exception. Inspect the executing frames, not just the exception text.
     }
 
 
-def finalize_sortie_result(out, steps, end=None):
+def finalize_sortie_result(out, steps, end=None, *,
+                           terminal_failure=_UNOBSERVED_TERMINAL_FAILURE):
     """Do not let a later 'skipped' step erase an earlier failure.
 
     收尾时统一盖上 sortie-result/1 合同戳：补 `contract` / `cleared` / `failure` /
     `failure_frames`，并让生产方**自报**违例（`contract_violations`）。
     真出违例时不在这里抛异常：结果本身要留给调用方和工件，消费方（C#）会拒绝它。
+    完整 run 显式传 None 表示没有终端异常；省略参数的逐步调用仍保留首处失败。
     """
     failures = [step for step in steps if step.get('error')]
     if end:
@@ -111,12 +115,22 @@ def finalize_sortie_result(out, steps, end=None):
             out[key] = end[key]
         out['end_reason'] = end['reason']
         out['stop_reason'] = end['outcome']
-    elif failures:
+    elif failures and terminal_failure is _UNOBSERVED_TERMINAL_FAILURE:
         out.update(campaign_end=False, cleared=False, outcome='error')
         out['error'] = failures[0]['error']
         out['stop_reason'] = 'error'
     else:
         out.update(campaign_end=False, cleared=False, outcome='incomplete')
         out.setdefault('stop_reason', 'round_limit')
+    if terminal_failure is not _UNOBSERVED_TERMINAL_FAILURE and terminal_failure is not None:
+        # Keep observed settlement evidence, but never hide a later exception
+        # that escaped native run. Recovered intermediate errors remain steps.
+        out.update(cleared=False, outcome='error', stop_reason='error',
+                   error=terminal_failure['error'], failure={
+                       'step': terminal_failure['step'],
+                       'error': terminal_failure['error'],
+                       'traceback_tail': list(terminal_failure.get('traceback_tail') or []),
+                       'frame': terminal_failure.get('failure_frame'),
+                   })
     out['stopped_early'] = not out['cleared']
     return stamp(out)

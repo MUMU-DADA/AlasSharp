@@ -2,18 +2,18 @@ using System.Text.Json;
 using Alas.MapDetection;
 using Alas.Vision;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 /// <summary>
-/// S2（地图识别）的产品路径验收：`alashub map`。
+/// S2（地图识别）的产品路径验收：`Alas.Server map`。
 ///
 /// 与 `tools/diagnostics/verify_map_detection.py` 的区别：那个是 Python 诊断脚本，
 /// 这个走**产品路径**（C# → 进程内 CPython → 上游 module/map_detection），
 /// 证明"适配完的 S2 能被 C# 直接调用"，而不是只在我的诊断脚本里能跑。
 ///
 /// 用法：
-///   alashub map --fixture data/fixtures/os_map.png   # 离线：用已有截图
-///   alashub map --adb &lt;adb&gt; --serial &lt;serial&gt;      # 真机：先截图再识别
+///   Alas.Server map --fixture data/fixtures/os_map.png   # 离线：用已有截图
+///   Alas.Server map --adb &lt;adb&gt; --serial &lt;serial&gt;      # 真机：先截图再识别
 /// </summary>
 internal static class MapCheck
 {

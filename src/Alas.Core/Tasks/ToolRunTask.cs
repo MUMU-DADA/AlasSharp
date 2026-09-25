@@ -52,12 +52,22 @@ public sealed class ToolRunTask : ITaskRunner
             var run = context.Session.Vision.CallTyped<JsonObject>("tool_run", arguments);
             result.Evidence = (JsonObject)run.DeepClone();
             // A native return is dispatch evidence, never a campaign-clear verdict.
-            if (run["decision"]?.GetValue<string>() == "ran" &&
-                run["native_success"]?.GetValue<bool>() == true &&
-                run["constructed"]?.GetValue<bool>() == true && run["ran"]?.GetValue<bool>() == true &&
-                run["task"]?.GetValue<string>() == request.Input!["task"]!.GetValue<string>() &&
-                run["instance"]?.GetValue<string>() == request.Input!["instance"]!.GetValue<string>())
-                result.Outcome = TaskOutcome.Succeeded;
+            if (Text(run, "decision") == "ran")
+            {
+                var violations = SuccessfulDispatchViolations(run,
+                    request.Input!["task"]!.GetValue<string>(), request.Input!["instance"]!.GetValue<string>());
+                if (violations.Count == 0)
+                    result.Outcome = TaskOutcome.Succeeded;
+                else
+                {
+                    result.Outcome = TaskOutcome.Failed;
+                    result.ErrorKind = RuntimeErrorKind.ContractViolation;
+                    result.Error = $"原生工具成功响应不一致: {string.Join(", ", violations)}";
+                    if (Text(run, "error") is { Length: > 0 } error) result.Error += $"; {error}";
+                    result.Evidence["response_violations"] = new JsonArray(violations
+                        .Select(field => (JsonNode)JsonValue.Create(field)!).ToArray());
+                }
+            }
             else
             {
                 result.Outcome = TaskOutcome.Failed;
@@ -74,5 +84,36 @@ public sealed class ToolRunTask : ITaskRunner
             result.Error = wrapped.Message;
         }
         return result;
+    }
+
+    private static string? Text(JsonObject? value, string key) =>
+        value?[key] is JsonValue node && node.TryGetValue<string>(out var text) ? text : null;
+
+    private static bool IsTrue(JsonObject? value, string key) =>
+        value?[key] is JsonValue node && node.TryGetValue<bool>(out var flag) && flag;
+
+    private static List<string> SuccessfulDispatchViolations(JsonObject run, string task, string instance)
+    {
+        var violations = new List<string>();
+        if (Text(run, "task") != task) violations.Add("task");
+        if (Text(run, "instance") != instance) violations.Add("instance");
+        foreach (var field in new[] { "allow_actions", "confirm_matches", "constructed", "ran", "native_success" })
+            if (!IsTrue(run, field)) violations.Add(field);
+
+        // The native registry owns the method mapping; never maintain a C# tool table.
+        var plan = run["plan"] as JsonObject;
+        if (Text(plan, "task") != task) violations.Add("plan.task");
+        if (!IsTrue(plan, "found")) violations.Add("plan.found");
+        if (!IsTrue(plan, "skip_first_screenshot")) violations.Add("plan.skip_first_screenshot");
+        string? method = Text(plan, "method");
+        if (string.IsNullOrWhiteSpace(method)) violations.Add("plan.method");
+        var target = run["target"] as JsonObject;
+        if (Text(target, "module") != "alas") violations.Add("target.module");
+        if (Text(target, "class") != "AzurLaneAutoScript") violations.Add("target.class");
+        if (string.IsNullOrWhiteSpace(Text(target, "method")) || Text(target, "method") != method)
+            violations.Add("target.method");
+        if (run["error"] is not null && (Text(run, "error") is not { } error || !string.IsNullOrWhiteSpace(error)))
+            violations.Add("error");
+        return violations;
     }
 }

@@ -17,7 +17,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 CHAPTER = 'campaign.campaign_main.campaign_1_1'
 
 try:
@@ -67,7 +67,7 @@ def main() -> int:
         root = Path(temp)
         output = (root / 'server.log').open('w', encoding='utf-8')
         process = subprocess.Popen(
-            [str(EXE), 'control', '--port', str(port),
+            [str(EXE), '--root', str(ROOT), '--port', str(port),
              '--workspace', str(root / 'workspace'),
              '--artifacts', str(root / 'runs')],
             cwd=ROOT, stdout=output, stderr=output,
@@ -90,12 +90,8 @@ def main() -> int:
                 probe.settimeout(0.5)
                 assert probe.connect_ex(('127.0.0.1', extra_port)) != 0, '环境配置不能新增监听地址'
             assert state['active']['status'] == 'idle'
-            status, page = request(base, '/')
-            assert status == 200 and '<!doctype html>' in page.lower()
-            with urlopen(base + '/') as response:
-                assert response.headers['Cache-Control'] == 'no-store'
-                assert "frame-ancestors 'none'" in response.headers['Content-Security-Policy']
-                assert response.headers['X-Content-Type-Options'] == 'nosniff'
+            status, _ = request(base, '/')
+            assert status == 404, '无 ui-root 时服务只提供 API，不应回退到旧控制页'
             with urlopen(base + '/api/state') as response:
                 assert response.headers['Content-Type'].startswith('application/json')
                 assert response.headers['Cache-Control'] == 'no-store'

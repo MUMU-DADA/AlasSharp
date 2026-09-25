@@ -173,7 +173,9 @@ def host_checks(workspace):
 
 def queue_checks(workspace):
     result = dict(task='Benchmark', instance='fixture', constructed=True, ran=True,
-                  native_success=True, decision='ran', target={'method': 'benchmark'})
+                  native_success=True, decision='ran', allow_actions=True, confirm_matches=True,
+                  plan=dict(task='Benchmark', found=True, method='benchmark', skip_first_screenshot=True),
+                  target={'module': 'alas', 'class': 'AzurLaneAutoScript', 'method': 'benchmark'})
     base = dict(mode='queue', dry_run=False, allow_actions=True, artifacts=True,
                 tasks=[dict(id='tool', kind='tool_run', required=True,
                             input=dict(task='Benchmark', instance='fixture',
@@ -204,21 +206,56 @@ def queue_checks(workspace):
             case['expect']['outcome'] = 'failed'
             case['expect']['tasks'][0]['outcome'] = 'failed'
         cases.append(case)
+    inconsistent = []
+    for field in ('task', 'instance', 'allow_actions', 'confirm_matches', 'constructed', 'ran', 'native_success'):
+        for value in (None, False, 'wrong'):
+            changed = copy.deepcopy(result)
+            changed[field] = value
+            inconsistent.append((f'{field}_{value}', changed))
+        inconsistent.append((f'{field}_missing', {key: value for key, value in result.items() if key != field}))
+    for section, fields in (('target', ('module', 'class', 'method')),
+                            ('plan', ('task', 'found', 'method', 'skip_first_screenshot'))):
+        for field in fields:
+            changed = copy.deepcopy(result)
+            changed[section][field] = 'wrong'
+            inconsistent.append((f'{section}_{field}', changed))
+        inconsistent.append((f'{section}_missing', {key: value for key, value in result.items() if key != section}))
+        inconsistent.append((f'{section}_wrong_type', dict(result, **{section: []})))
+    inconsistent.append(('error_with_success', dict(result, error='fixture native failure',
+                                                    traceback_tail=['fixture.py:1 run'],
+                                                    failure_frames=['fixture-frame.png'])))
+    for label, response in inconsistent:
+        case = copy.deepcopy(base)
+        case['name'] = 'native_tool_contract_' + label
+        case['stub_responses']['tool_run'][0]['result'] = response
+        case['expect']['outcome'] = 'failed'
+        case['expect']['tasks'][0]['outcome'] = 'failed'
+        cases.append(case)
     fixture = workspace / 'tools.json'
     output = workspace / 'verdicts.json'
     fixture.write_text(json.dumps({'cases': cases}), encoding='utf-8')
-    exe = ROOT / 'src/Alas.DataTool/bin/Release/net10.0/alashub.exe'
+    exe = ROOT / 'src/Alas.Server/bin/Release/net10.0/Alas.Server.exe'
     completed = subprocess.run([str(exe), 'selftest-runtime', '--fixture', str(fixture), '--json', str(output),
                                 '--workspace', str(workspace / 'runs')], capture_output=True,
                                text=True, encoding='utf-8', errors='replace', timeout=60)
     assert completed.returncode == 0, completed.stdout + completed.stderr
     actual = json.loads(output.read_text(encoding='utf-8'))['cases']
-    for case in actual:
+    for source, case in zip(cases, actual, strict=True):
         assert case['ok'], case
         if case['name'].endswith(('dry_run', 'no_actions')):
             assert not any(op.startswith('tool_run:') for op in case['backend_ops']), case
         for task in case['tasks']:
             assert Path(task['artifact']).is_file(), case
+        artifact = json.loads(Path(case['tasks'][0]['artifact']).read_text(encoding='utf-8'))
+        state = json.loads((Path(case['run_directory']) / 'state.json').read_text(encoding='utf-8'))
+        if case['name'].startswith('native_tool_contract_'):
+            assert case['tasks'][0]['error_kind'] == 'contract_violation', case
+            assert 'tool' not in state['completed'], state
+            assert artifact['evidence']['response_violations'], artifact
+            for key, value in source['stub_responses']['tool_run'][0]['result'].items():
+                assert artifact['evidence'][key] == value, (case['name'], key)
+        elif case['name'] == 'native_tool_success':
+            assert 'tool' in state['completed'], state
     print(f'PASS: Core tool queue ({len(cases)} cases), fail-closed evidence, cancellation and artifacts')
 
 

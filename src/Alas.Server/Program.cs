@@ -1,4 +1,5 @@
 using System.Globalization;
+using Alas.Core.Diagnostics;
 
 namespace Alas.Server;
 
@@ -9,13 +10,15 @@ internal static class Program
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         try
         {
+            if (args.Length > 0 && (args[0].Length == 0 || args[0][0] != '-'))
+                return DiagnosticCommands.Run(args);
             if (args is ["--help"] or ["-h"])
             {
                 Console.WriteLine("Alas.Server [--root <运行根目录>] [--repo <上游>] [--data <数据>] " +
                     "[--tools <宿主脚本>] [--workspace <控制工作区>] [--artifacts <工件>] " +
                     "[--ui-root <预构建 wwwroot>] [--port 8765]");
                 Console.WriteLine("仅监听 127.0.0.1；root 默认是程序目录，其余相对路径均相对于 root。" +
-                    "未指定 ui-root 时提供本地队列控制页；自动化仍需要配置上游和 Python 依赖。");
+                    "程序目录的 ui/ 存在时自动托管预构建 Web UI，也可用 --ui-root 指定；自动化仍需要配置上游和 Python 依赖。");
                 return 0;
             }
             var values = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -41,6 +44,11 @@ internal static class Program
             string workspace = Resolve("--workspace", ".runtime/control");
             string? artifacts = values.ContainsKey("--artifacts") ? Resolve("--artifacts", "") : null;
             string? ui = values.ContainsKey("--ui-root") ? Resolve("--ui-root", "") : null;
+            if (ui is null)
+            {
+                string publishedUi = Path.Combine(AppContext.BaseDirectory, "ui");
+                if (File.Exists(Path.Combine(publishedUi, "index.html"))) ui = publishedUi;
+            }
             return await new ControlServer(root, repo, data, tools, artifacts, workspace, port, ui).RunAsync();
         }
         catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException)

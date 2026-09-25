@@ -120,7 +120,7 @@ def core_checks():
         fixture, output = workspace / 'fixture.json', workspace / 'result.json'
         fixture.write_text(json.dumps(dict(cases=cases)), encoding='utf-8')
         env = dict(os.environ, DOTNET_ROOT=str(ROOT / '.runtime/dotnet'))
-        proc = subprocess.run([str(ROOT / 'src/Alas.DataTool/bin/Release/net10.0/alashub.exe'),
+        proc = subprocess.run([str(ROOT / 'src/Alas.Server/bin/Release/net10.0/Alas.Server.exe'),
                                'selftest-runtime', '--fixture', str(fixture), '--json', str(output),
                                '--workspace', str(workspace / 'runs')], cwd=ROOT, env=env,
                               capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)

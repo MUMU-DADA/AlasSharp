@@ -20,6 +20,12 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
     private bool _disposed;
     private bool _connected;
 
+    public BrowserControlBackend()
+    {
+        // 与桌面适配器保持一致，构造时立即发起首屏连接。
+        Refresh();
+    }
+
     public event EventHandler? Changed;
     public Task<DeploySettingsResponse> ReadDeploySettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
         => _client.GetDeploySettingsAsync(language, cancellationToken);
@@ -53,6 +59,7 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
         }
         catch (Exception error) when (error is HttpRequestException or ControlApiException or ControlProtocolException)
         {
+            Console.Error.WriteLine($"[Alas 浏览器适配器] 读取实例失败: {error.GetType().Name}: {error.Message}");
             _instances.Clear();
             _connected = false;
         }
@@ -146,6 +153,10 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
 
 internal static partial class BrowserLocation
 {
-    [JSImport("globalThis.location.origin", "globalThis")]
-    internal static partial string Origin();
+    // globalThis.location.origin 是属性，JSImport 需要绑定可调用函数；不传模块名时
+    // globalThis.<路径> 才会解析到浏览器真实全局对象。
+    [JSImport("globalThis.location.toString")]
+    private static partial string Href();
+
+    internal static string Origin() => new Uri(Href()).GetLeftPart(UriPartial.Authority);
 }

@@ -11,7 +11,7 @@
    跨过上游阈值 10（见 `docs/archive/history/tasks-20260924.md` 的账号状态现场记录）。这里记录现场值，**不自动改阈值**：
    现场数据到了再决定要不要做兼容垫片。
 3. 一次**有界**的战役冒烟（默认 dry-run；要真跑必须显式 `--allow-actions`），
-   产出完整工件链供 `alashub report` 复核。
+   产出完整工件链供 `Alas.Server report` 复核。
 
 没有设备时：打印明确的跳过原因并返回 0（这样它可以常驻在 `verify_all` 里，
    而不是每轮都红）。
@@ -43,7 +43,7 @@ try:
 except Exception:
     pass
 
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 ADB = ROOT / '.runtime' / 'venv314' / 'Lib' / 'site-packages' / 'adbutils' / 'binaries' / 'adb.exe'
 SERIAL = os.environ.get('ALAS_SERIAL', '127.0.0.1:16384')
 CHAPTER = 'campaign.campaign_main.campaign_1_1'
@@ -60,7 +60,7 @@ CHECKLIST = [
      r'python tools\diagnostics\device_smoke.py --allow-actions',
      '会消耗石油；上限 max_rounds=2 / max_seconds=600；须按成功结算核对'),
     ('当前队列入口的导航真机回归',
-     r'alashub queue --file <navigate 队列.json> --run --allow-actions --serial <设备>',
+     r'Alas.Server queue --file <navigate 队列.json> --run --allow-actions --serial <设备>',
      '导航会点击游戏页面；仅离线替身和旧入口现场记录不足以证明新入口'),
     ('设备引擎回归（后端可切换 / 抓图 / 点击）',
      r'python tools\diagnostics\verify_device_engine.py',

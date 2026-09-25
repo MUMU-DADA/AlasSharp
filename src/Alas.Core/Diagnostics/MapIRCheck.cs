@@ -2,10 +2,10 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Alas.MapDetection;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 /// <summary>
-/// 关卡地图模型（S2 数据半边）的全量校验：`alashub map-ir`。
+/// 关卡地图模型（S2 数据半边）的全量校验：`Alas.Server map-ir`。
 ///
 /// 做两件事：
 ///   1. 把 1437 个章节 IR 全部解析一遍，检查**数据自洽性**（shape 推出的网格数 vs

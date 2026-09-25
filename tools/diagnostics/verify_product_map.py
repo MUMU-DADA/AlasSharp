@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""产品路径检查：`alashub map` 与同帧上游地图视图对照。
+"""产品路径检查：`Alas.Server map` 与同帧上游地图视图对照。
 
 与 `verify_map_detection.py` 的分工：那个走**识图协议**（Python 侧），
 这个走**产品路径**（C# → 进程内 CPython → 上游），确认"适配好的 S2 能被 C# 直接调用"。
@@ -19,7 +19,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
-ALASHUB = os.path.join(ROOT, 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe')
+ALAS_SERVER = os.path.join(ROOT, 'src', 'Alas.Server', 'bin', 'Release', 'net10.0', 'Alas.Server.exe')
 FIXTURES = os.path.join(ROOT, 'data', 'fixtures')
 
 CASES = [
@@ -81,8 +81,8 @@ def native_os_reference(path):
 
 
 def main():
-    if not os.path.exists(ALASHUB):
-        print('缺 alashub：先 dotnet build src/Alas.DataTool -c Release')
+    if not os.path.exists(ALAS_SERVER):
+        print('缺 Alas.Server：先 dotnet build src/Alas.Server -c Release')
         return 2
     failed = 0
     for fixture, mode, chapter, expect in CASES:
@@ -101,7 +101,7 @@ def main():
                 failed += 1
                 continue
             expect = reference['grids']
-        cmd = [ALASHUB, 'map', '--fixture', path, '--mode', mode]
+        cmd = [ALAS_SERVER, 'map', '--fixture', path, '--mode', mode]
         if chapter:
             cmd += ['--chapter', chapter]
         try:

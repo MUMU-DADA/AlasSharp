@@ -2,7 +2,7 @@ using System.Text.Json;
 using Alas.Campaign;
 using Alas.Core;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 /// <summary>
 /// S3 地基验收：关卡规则解释器。

@@ -36,8 +36,8 @@ except KeyError:
             '只想重建文档时用：--report-only（不需要该变量）')
 SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
 PROBE = os.path.join(HERE, '..', 'data', '_probe.png')
-ALASHUB = os.environ.get('ALASHUB', os.path.join(
-    HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe'))
+ALAS_SERVER = os.environ.get('ALAS_SERVER', os.path.join(
+    HERE, '..', 'src', 'Alas.Server', 'bin', 'Release', 'net10.0', 'Alas.Server.exe'))
 PROGRESS = os.path.join(HERE, '..', 'docs', 'archive/reports/page-verification.json')
 # 图里**没有入边**的页面不可能是导航目标 —— 它们是同一张画面的另一种状态（皮肤变体）
 # 或浮层：page_main_white（新版主界面皮肤，与 page_main 同屏）、page_channel（临时浮层）、
@@ -90,7 +90,7 @@ def shot_until(expected=None, attempts=5, interval=0.4):
 
 
 def goto(page):
-    r = run_navigation(ALASHUB, page, SERIAL, adb=ADB)
+    r = run_navigation(ALAS_SERVER, page, SERIAL, adb=ADB)
     navigation = [l.strip() for l in (r.stdout or '').splitlines()
                   if l.startswith('[原生导航]') or l.startswith('[导航失败]')]
     return r.returncode == 0, navigation
@@ -173,7 +173,7 @@ def write_report(results, no_in, node_n, edge_n):
     ok_n = sum(1 for r in results if r['verdict'] == 'ok')
     bad = [r for r in results if r['verdict'] != 'ok']
     entry_note = (
-        '本次样本经 `alashub queue --file` 的 `navigate` 任务采集。'
+        '本次样本经 `Alas.Server queue --file` 的 `navigate` 任务采集。'
         if results and all(r.get('navigation_entry') == 'queue:navigate' for r in results)
         else '当前存档是退役直接导航入口的历史样本；需重新运行脚本验证队列入口。')
     # ---- 账号前提：页面可达性受解锁进度影响，基线数字必须带上它。
@@ -200,7 +200,7 @@ def write_report(results, no_in, node_n, edge_n):
     lines = [
         '# 页面识别全量回归（产品路径）',
         '',
-        '用 `alashub queue --file` 的 `navigate` 任务对**已验证的每个页面**重跑一遍：既验证页面规则在各自页面上命中，',
+        '用 `Alas.Server queue --file` 的 `navigate` 任务对**已验证的每个页面**重跑一遍：既验证页面规则在各自页面上命中，',
         '也验证导航器（运行时取自上游的页面图 + 变体择优 + 未建模画面自救）本身没退化。',
         entry_note,
         '',

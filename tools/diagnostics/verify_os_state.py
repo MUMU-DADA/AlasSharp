@@ -36,7 +36,7 @@ try:
 except Exception:
     pass
 
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 FIXTURE = DATA / 'fixtures' / 'os_map.png'
 GLOBE_FIXTURE = DATA / 'fixtures' / 'os_globe_view.png'
 LIVE_FIXTURE = DATA / 'fixtures' / 'os_live_2.png'
@@ -47,7 +47,7 @@ def main() -> int:
         print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先运行 dotnet build）')
         return 1
     if not FIXTURE.is_file():
-        print(f'[跳过] 没有 {FIXTURE.relative_to(ROOT)}（`alashub map` 的默认夹具）；'
+        print(f'[跳过] 没有 {FIXTURE.relative_to(ROOT)}（`Alas.Server map` 的默认夹具）；'
               f'大世界探针的帧断言未跑。')
         return 0
 
@@ -90,7 +90,7 @@ def main() -> int:
                               capture_output=True, text=True, encoding='utf-8',
                               errors='replace', timeout=300)
         if proc.returncode != 0:
-            failures.append(f'alashub queue 退出码 {proc.returncode}')
+            failures.append(f'Alas.Server queue 退出码 {proc.returncode}')
             print((proc.stdout or '')[-1500:])
         run_dirs = sorted(p for p in artifacts.glob('*') if p.is_dir())
         if not run_dirs:

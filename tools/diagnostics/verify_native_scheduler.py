@@ -317,7 +317,7 @@ def queue_cases(workspace):
         cases.append(case)
     fixture, output = workspace / 'fixture.json', workspace / 'results.json'
     fixture.write_text(json.dumps({'cases': cases}), encoding='utf-8')
-    exe = ROOT / 'src/Alas.DataTool/bin/Release/net10.0/alashub.exe'
+    exe = ROOT / 'src/Alas.Server/bin/Release/net10.0/Alas.Server.exe'
     proc = subprocess.run([str(exe), 'selftest-runtime', '--fixture', str(fixture), '--json', str(output),
                            '--workspace', str(workspace / 'runs')], capture_output=True,
                           text=True, encoding='utf-8', errors='replace', timeout=60)

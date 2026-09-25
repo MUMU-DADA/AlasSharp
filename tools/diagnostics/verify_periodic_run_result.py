@@ -14,7 +14,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-EXE = ROOT / 'src/Alas.DataTool/bin/Release/net10.0/alashub.exe'
+EXE = ROOT / 'src/Alas.Server/bin/Release/net10.0/Alas.Server.exe'
 
 
 def cases_for(kind):

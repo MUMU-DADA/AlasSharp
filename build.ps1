@@ -3,16 +3,15 @@
 根目录增量构建脚本。构建完会直接列出可运行程序的路径；不启动窗口、不访问设备。
 
   ./build.ps1                                      # 增量构建主解决方案 Alas.sln（Release）
-  ./build.ps1 -Project src/Alas.DataTool/Alas.DataTool.csproj   # 只构建单个项目（内循环最快）
+  ./build.ps1 -Project src/Alas.Server/Alas.Server.csproj       # 只构建服务端入口
   ./build.ps1 -Ui                                  # 追加构建共享 UI 解决方案 Alas.UI.slnx
-  ./build.ps1 -Publish                             # 追加发布可运行目录到 .runtime/publish/<程序名>/
+  ./build.ps1 -Publish                             # 发布可运行目录；Server 包含预构建 Web UI
   ./build.ps1 -Publish -SelfContained              # 发布成不依赖本机运行时的目录（win-x64）
   ./build.ps1 -Restore                             # 强制还原
   ./build.ps1 -Clean                               # 非增量：先清理再重建
 
 可运行程序由各入口项目自己生成（OutputType=Exe/WinExe）：
-  alashub.exe          CLI 与本地控制台，构建后位于 src/Alas.DataTool/bin/<配置>/net10.0/
-  Alas.Server.exe      独立服务端，位于 src/Alas.Server/bin/<配置>/net10.0/
+  Alas.Server.exe      Core 命令、控制 API 与 Web UI 托管，位于 src/Alas.Server/bin/<配置>/net10.0/
   Alas.UI.Desktop.exe  桌面界面（需 -Ui），位于 src/Alas.UI.Desktop/bin/<配置>/net10.0/
 这些 exe 是框架依赖的 apphost，运行时需要机器上有 .NET 10 运行时；要脱离运行时就用 -Publish -SelfContained。
 
@@ -21,7 +20,7 @@
   2. 显式保留 MSBuild 节点复用与 Roslyn 编译器服务，省掉重复的进程启动与 JIT；
   3. 还原只在真有项目缺少或过期 obj/project.assets.json 时才执行，其余情况走 --no-restore。
 
-共享 UI 的发布与 Headless 验收仍在 tools/build_ui.ps1，服务端发布仍在 tools/publish_server.ps1。
+先用 tools/build_ui.ps1 -Publish 生成共享 Web UI；专用服务端发布仍在 tools/publish_server.ps1。
 #>
 [CmdletBinding()]
 param(
@@ -95,6 +94,7 @@ function Test-RestoreUpToDate([string[]] $Projects, [string] $NuGetConfig) {
 
 # 可运行程序：只认声明了 Exe/WinExe 的入口项目，按 SDK 的命名规则拼出 apphost 路径。
 function Get-RunnableEntry([string] $Project, [string] $ConfigurationValue) {
+    if ([IO.Path]::GetFileNameWithoutExtension($Project) -eq 'Alas.UI.Headless') { return $null }
     $text = Get-Content -LiteralPath $Project -Raw
     $outputType = [regex]::Match($text, '<OutputType>\s*([^<]+?)\s*</OutputType>').Groups[1].Value.Trim()
     if ($outputType -ne 'Exe' -and $outputType -ne 'WinExe') { return $null }
@@ -103,6 +103,33 @@ function Get-RunnableEntry([string] $Project, [string] $ConfigurationValue) {
     $path = Join-Path (Split-Path -Parent $Project) "bin/$ConfigurationValue/net10.0/$assembly.exe"
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
     return [pscustomobject]@{ Name = "$assembly.exe"; Path = $path; Project = $Project }
+}
+
+function Reset-PublishDirectory([string] $Name) {
+    if ($Name -notin @('Alas.Server', 'Alas.UI.Desktop')) { throw "未知产品发布入口：$Name" }
+    $root = [IO.Path]::GetFullPath((Join-Path $repo '.runtime/publish'))
+    $destination = [IO.Path]::GetFullPath((Join-Path $root $Name))
+    if ([IO.Path]::GetDirectoryName($destination) -ne $root) { throw '发布路径不在预期目录。' }
+    for ($ancestor = $destination; $null -ne $ancestor; $ancestor = [IO.Path]::GetDirectoryName($ancestor)) {
+        if (Test-Path -LiteralPath $ancestor) {
+            if ((Get-Item -LiteralPath $ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw '发布目录及其父目录不能使用链接。'
+            }
+        }
+    }
+    if (Test-Path -LiteralPath $destination) {
+        $pending = [Collections.Generic.Stack[string]]::new()
+        $pending.Push($destination)
+        while ($pending.Count -gt 0) {
+            $item = Get-Item -LiteralPath $pending.Pop() -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw '发布目录不能包含链接。' }
+            if ($item.PSIsContainer) {
+                foreach ($child in Get-ChildItem -LiteralPath $item.FullName -Force) { $pending.Push($child.FullName) }
+            }
+        }
+        Remove-Item -LiteralPath $destination -Recurse -Force
+    }
+    return $destination
 }
 
 Push-Location $repo
@@ -219,7 +246,13 @@ try {
     if ($Publish) {
         foreach ($entry in $runnable) {
             $name = [IO.Path]::GetFileNameWithoutExtension($entry.Name)
-            $destination = Join-Path $repo ".runtime/publish/$name"
+            if ($name -eq 'Alas.Server') {
+                $source = Join-Path $repo '.runtime/ui-publish/browser/wwwroot'
+                if (-not (Test-Path -LiteralPath (Join-Path $source 'index.html') -PathType Leaf)) {
+                    throw '缺少预构建 Web UI；请先运行 ./tools/build_ui.ps1 -Publish。'
+                }
+            }
+            $destination = Reset-PublishDirectory $name
             if ($SelfContained) {
                 # 自包含发布需要带 RID 的还原结果，先用同参数还原一次，再发布时跳过还原。
                 $restoreArguments = @('restore', $entry.Project, '-r', 'win-x64', '-p:SelfContained=true',
@@ -232,6 +265,11 @@ try {
             if ($SelfContained) { $publishArguments += @('-r', 'win-x64', '--self-contained', 'true') }
             Write-Output "[$name] 发布可运行目录…"
             Invoke-Dotnet $publishArguments
+            if ($name -eq 'Alas.Server') {
+                $uiDestination = Join-Path $destination 'ui'
+                Copy-Item -LiteralPath $source -Destination $uiDestination -Recurse -Force
+                Write-Output '  已包含共享 Web UI：ui/'
+            }
             Write-Output ('  已发布：{0}（运行 {1}）' -f [IO.Path]::GetRelativePath($repo, $destination),
                 [IO.Path]::GetRelativePath($repo, (Join-Path $destination $entry.Name)))
         }

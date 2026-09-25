@@ -3,10 +3,10 @@ using System.Text.Json.Nodes;
 using Alas.Runtime;
 using Alas.Vision;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 /// <summary>
-/// `alashub selftest-runtime`：R1 运行时的离线自检。**不启动 Python、不连设备** ——
+/// `Alas.Server selftest-runtime`：R1 运行时的离线自检。**不启动 Python、不连设备** ——
 /// 用一个替身识图后端（<see cref="StubVisionEngine"/>）喂预先准备好的结果文档，
 /// 于是"宿主只初始化一次""失败即停""取消在关卡边界生效""工件落盘"这些运行时行为
 /// 都可以在没有设备的情况下被断言。
@@ -315,6 +315,7 @@ internal static class RuntimeSelfCheck
              .Register(new Alas.Tasks.NavigateTask())
              .Register(new Alas.Tasks.ObserveTask())
              .Register(new Alas.Tasks.AccountStateTask())
+             .Register(new Alas.Tasks.TaskCatalogTask())
              .Register(new Alas.Tasks.OsStateTask())
              .Register(new Alas.Tasks.PeriodicRunTask())
              .Register(new Alas.Tasks.ToolRunTask())

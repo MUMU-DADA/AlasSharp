@@ -76,7 +76,7 @@ def make_multi_index_fixture(destination: Path, events: list[Path]) -> None:
         task = json.loads((destination / Path(row['artifact']).name).read_text(encoding='utf-8'))
         planned.append({key: task[key] for key in ('id', 'kind', 'input', 'required')})
     (destination / 'plan.json').write_text(json.dumps({
-        'generated_by': 'alashub plan-queue', 'dry_run': False, 'tasks': planned,
+        'generated_by': 'Alas.Server plan-queue', 'dry_run': False, 'tasks': planned,
     }), encoding='utf-8')
 
 

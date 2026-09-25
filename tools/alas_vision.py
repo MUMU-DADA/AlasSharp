@@ -28,7 +28,7 @@ import os
 import sys
 import time
 import traceback
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 FORK = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -767,32 +767,27 @@ def op_task_catalog(args):
     只读：不写配置、不生成产物、不碰游戏。
     """
     from module.config.utils import read_file
-    candidates = [os.path.join(FORK, 'module', 'config', 'argument', 'task.yaml'),
-                  './module/config/argument/task.yaml']
-    data, source, error = None, None, None
-    for path in candidates:
-        try:
-            data = read_file(path)
-            source = path
-            break
-        except Exception as e:                       # 换下一个候选路径再试
-            error = f'{type(e).__name__}: {e}'
-    if data is None:
-        return {'error': f'读不到上游 task.yaml: {error}', 'tried': candidates}
+    source = os.path.join(FORK, 'module', 'config', 'argument', 'task.yaml')
+    try:
+        # Native read_file returns {} for a missing file. Missing input must not
+        # look like a valid empty catalog or fall back to a different checkout.
+        if not os.path.isfile(source):
+            raise FileNotFoundError(source)
+        data = read_file(source)
+    except Exception as error:
+        return {'source': source, 'error': f'读不到上游 task.yaml: {type(error).__name__}: {error}'}
 
-    names, groups = [], {}
+    names, groups, problems = [], {}, []
     if isinstance(data, dict):
         names = sorted(data.keys())
         for name, value in data.items():
-            if isinstance(value, list):
-                groups[name] = [str(v) for v in value]
-    elif isinstance(data, list):
-        for item in data:
-            if isinstance(item, dict) and 'name' in item:
-                names.append(str(item['name']))
-            elif isinstance(item, str):
-                names.append(item)
-        names.sort()
+            tasks = value.get('tasks') if isinstance(value, dict) else None
+            if not isinstance(tasks, dict) or not all(isinstance(task, str) for task in tasks):
+                problems.append(f'上游分组 {name} 缺少有效 tasks 对象')
+            else:
+                groups[name] = list(tasks)
+    else:
+        problems.append('上游 task.yaml 必须是分组对象')
 
     # **两个来源要分清楚**（实测踩过）：`task.yaml` 的顶层键是**分组**（本机 9 个），
     # 而"有哪些任务"的扁平表是上游生成器产出的 `args.json`（本机 68 个）。
@@ -801,9 +796,18 @@ def op_task_catalog(args):
     try:
         with open(os.path.join(FORK, 'module', 'config', 'argument', 'args.json'),
                   encoding='utf-8') as stream:
-            generated = sorted(json.load(stream).keys())
+            generated_data = json.load(stream)
+            if not isinstance(generated_data, dict):
+                raise ValueError('args.json 必须是任务对象')
+            generated = sorted(generated_data)
     except Exception as e:
         generated_error = f'{type(e).__name__}: {e}'
+        problems.append(f'读不到生成任务表: {generated_error}')
+    if generated_error is None:
+        members = {task for tasks in groups.values() for task in tasks}
+        if members != set(generated):
+            problems.append(f'分组与生成任务表不一致: 仅分组={sorted(members - set(generated))}, '
+                            f'仅生成表={sorted(set(generated) - members)}')
     return {
         'source': source,
         'loader': 'module.config.utils.read_file',
@@ -815,6 +819,7 @@ def op_task_catalog(args):
         'generated_source': os.path.join(FORK, 'module', 'config', 'argument', 'args.json'),
         'generated_error': generated_error,
         'groups': groups,
+        'error': '; '.join(problems) if problems else None,
     }
 
 
@@ -1304,7 +1309,7 @@ def op_periodic_run(args):
         try:
             if method_name.startswith('opsi_'):
                 apply_os_combat_reentry_compat()
-            with native_task_runtime():
+            with native_task_runtime(device=device):
                 native_success = runner.run(method_name)
         finally:
             logger.removeHandler(failure)
@@ -1433,27 +1438,20 @@ def op_tool_run(args):
     started = time.monotonic()
     device = None
     previous_config = None
-    previous_device_checks = {}
     failure = _LoggedNativeFailure()
     from module.logger import logger
     logger.addHandler(failure)
     try:
         from alas import AzurLaneAutoScript
-        from native_tool_device import native_tool_device_scope
 
         def acquire_device(config):
-            nonlocal device, previous_config, previous_device_checks
+            nonlocal device, previous_config
             if args.get('device_configured') is not True or not _DEVICE_ARGS.get('serial'):
                 raise RuntimeError('工具需要设备，但会话未配置实例串号')
             current = _device_engine(config=config)
             if device is None:
                 device = current
                 previous_config = current.config
-                # DaemonBase disables these checks by replacing instance methods.
-                # Preserve exact instance overrides, including absence, for the
-                # next task sharing this device after the tool has returned.
-                previous_device_checks = {name: (name in vars(device), vars(device).get(name))
-                                          for name in ('stuck_record_check', 'click_record_check')}
                 device.config = config
                 device.stuck_record_clear()
                 device.click_record_clear()
@@ -1466,14 +1464,13 @@ def op_tool_run(args):
         class ToolRunner(AzurLaneAutoScript):
             @property
             def device(self):
-                return acquire_device(self.config)
+                return scoped_acquire(self.config)
 
         runner = ToolRunner(config_name=instance)
         out['constructed'] = True
         out['ran'] = True
-        with native_task_runtime():
-            with native_tool_device_scope(acquire_device):
-                native_success = runner.run(plan['method'], skip_first_screenshot=True)
+        with native_task_runtime(acquire_device=acquire_device) as scoped_acquire:
+            native_success = runner.run(plan['method'], skip_first_screenshot=True)
         out['native_success'] = native_success is True
         out['decision'] = 'ran' if native_success is True else 'failed'
         if native_success is not True:
@@ -1499,11 +1496,6 @@ def op_tool_run(args):
             if (directory / 'log.txt').is_file():
                 out['native_error_log'] = (directory / 'log.txt').relative_to(FORK).as_posix()
         if device is not None:
-            for name, (existed, value) in previous_device_checks.items():
-                if existed:
-                    vars(device)[name] = value
-                else:
-                    vars(device).pop(name, None)
             try:
                 device.config = previous_config
             except Exception as restore_error:
@@ -1831,16 +1823,24 @@ def prepare_native_runtime():
 
 
 @contextmanager
-def native_task_runtime():
+def native_task_runtime(*, acquire_device=None, device=None):
     """Scope shared runtime fixes without inheriting an explicit sortie option."""
     from native_campaign_runtime import native_campaign_scope
+    from native_tool_device import native_tool_device_scope
+
+    if acquire_device is None and device is not None:
+        def acquire_device(config):
+            device.config = config
+            return device
 
     prepare_native_runtime()
     previous = _CLEAR_ALL_OVERRIDE['enabled']
     _CLEAR_ALL_OVERRIDE['enabled'] = False
     try:
-        with native_campaign_scope(sys.modules[__name__]):
-            yield
+        device_scope = (native_tool_device_scope(acquire_device, device=device)
+                        if acquire_device is not None else nullcontext())
+        with native_campaign_scope(sys.modules[__name__]), device_scope as scoped_acquire:
+            yield scoped_acquire
     finally:
         _CLEAR_ALL_OVERRIDE['enabled'] = previous
 
@@ -3270,8 +3270,12 @@ def _device_engine(config=None):
     ctrl = str(_DEVICE_ARGS.get('control') or 'ADB')
     transport_key = (serial, shot, ctrl)
     if config is not None:
-        config.override(Emulator_Serial=serial, Emulator_ScreenshotMethod=shot,
-                        Emulator_ControlMethod=ctrl)
+        config.override(Emulator_Serial=serial, Emulator_ControlMethod=ctrl)
+        # Native Device resolves auto and persists the benchmark winner. An
+        # override of auto would reset it on every bind, forcing the ADB fallback.
+        # Keep the native value across config reloads; explicit backends stay fixed.
+        if shot != 'auto':
+            config.override(Emulator_ScreenshotMethod=shot)
         identity = _device_config_identity(config)
     if _DEVICE_OBJ is not None:
         if _DEVICE_KEY[:3] != transport_key:
@@ -3281,12 +3285,7 @@ def _device_engine(config=None):
                 raise RuntimeError('常驻设备的实例或设备配置已变化，请关闭会话后切换')
         return _DEVICE_OBJ
     cfg = config if config is not None else _map_config()
-    # 两个坑（实测踩过，缺一不可）：
-    #   1) 必须先导入 `module.device.pkg_resources` —— adbutils 会 import pkg_resources，
-    #      ALAS 靠这个桩顶替，而桩**只有先被导入才生效**（真实运行由 device.py 保证）；
-    #   2) 配置必须放进 `cfg.multi_set()` —— 否则 ALAS 的配置系统会回写覆盖，
-    #      Serial 变回 'auto'，设备探测失败，Device.__init__ 重试 4 次后抛
-    #      `RequestHumanTakeover`（消息还是空的，极具误导性）。
+    # adbutils 依赖 pkg_resources；上游兼容模块必须在设备模块前导入。
     import module.device.pkg_resources
     # 把项目内固定的 adb 目录挂到 PATH 上：引擎内部有些地方直接调**裸 `adb`**
     # （例如 `adb push` 推 MaaTouch/minitouch/DroidCast 的二进制），
@@ -3298,10 +3297,11 @@ def _device_engine(config=None):
     if os.path.isdir(_adb_dir) and _adb_dir not in os.environ.get('PATH', ''):
         os.environ['PATH'] = _adb_dir + os.pathsep + os.environ.get('PATH', '')
     if config is None:
-        with cfg.multi_set():
-            cfg.Emulator_Serial = serial
-            cfg.Emulator_ScreenshotMethod = shot
-            cfg.Emulator_ControlMethod = ctrl
+        # Default navigation/capture sessions use the same temporary transport
+        # binding as explicit task configs, never persist CLI device selections.
+        cfg.override(Emulator_Serial=serial, Emulator_ControlMethod=ctrl)
+        if shot != 'auto':
+            cfg.override(Emulator_ScreenshotMethod=shot)
     from module.device.device import Device
     _DEVICE_OBJ = Device(cfg)
     _DEVICE_KEY = (*transport_key, *_device_config_identity(cfg))

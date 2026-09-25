@@ -2,13 +2,13 @@
 <#
 Publish the standalone loopback server from the project-local .NET toolchain.
 The automation repository, Python environment and device backend remain explicit
-runtime inputs; this script only publishes Alas.Server and optional prebuilt UI.
+runtime inputs; this script publishes Alas.Server and the prebuilt shared Web UI.
 #>
 [CmdletBinding()]
 param(
     [string]$Runtime = 'win-x64',
     [switch]$SelfContained,
-    [switch]$IncludeUi,
+    [switch]$ApiOnly,
     [string]$Output = ''
 )
 
@@ -112,7 +112,7 @@ try {
         "-p:SelfContained=$selfContainedValue") + $flags)
     Invoke-Dotnet $publishArgs
     Assert-NoLinks $output
-    if ($IncludeUi) {
+    if (-not $ApiOnly) {
         $source = Join-Path $repo '.runtime/ui-publish/browser/wwwroot'
         Assert-NoLinks $source
         if (-not (Test-Path -LiteralPath (Join-Path $source 'index.html') -PathType Leaf)) {
@@ -124,8 +124,8 @@ try {
         Copy-Item -LiteralPath $source -Destination $ui -Recurse -Force
         Assert-NoLinks $ui
     }
-    Write-Output "PASS: Alas.Server published for $Runtime under .runtime; UI included=$IncludeUi."
-    Write-Output 'Runtime inputs remain explicit: --root, --repo, --data, --tools and optional --ui-root ui.'
+    Write-Output "PASS: Alas.Server published for $Runtime under .runtime; UI included=$(-not $ApiOnly)."
+    Write-Output 'Runtime inputs remain explicit: --root, --repo, --data and --tools; ui/ is discovered automatically.'
 }
 finally {
     foreach ($name in $environmentNames) {

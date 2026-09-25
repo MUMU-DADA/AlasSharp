@@ -30,7 +30,7 @@
 | `campaign_end` | 仅表示"收到过 CampaignEnd"；**单独不能证明任何事** |
 | `end_reason` / `stop_reason` / `reason` | 结束原因；`incomplete` 必须给合法的限额理由 |
 | `end_evidence` | 结算证据链：`battle_rank` / `rank_source` / `combat_status` / `stage_observed` / `withdrawn` / `call_path` |
-| `failure` | 第一处失败：`step` / `error` / `traceback_tail` / `frame` |
+| `failure` | 导致原生运行终止的失败；逐步观测时取首处失败：`step` / `error` / `traceback_tail` / `frame` |
 | `failure_frames` | 本次落盘的全部失败帧路径（`failure.*` 与各步 `failure_frame` 都必须在里面登记） |
 | `contract_violations` | 生产方**自报**的违例码；消费方不信它，会自己再判一次 |
 | `steps` | 上游操作轨迹（`prepare_campaign_navigation` / `enter_map` / `execute_a_battle` …） |
@@ -65,6 +65,10 @@
 
 失败帧存在性只在能判的时候判：绝对路径直接查；相对路径需要 `artifact_root`；都没有就不算违例。
 
+原生继承流程自行恢复的异常保留在 `steps`，不会覆盖之后的正常结算或执行限额。真正逃出 `Campaign.run()` 的异常
+必须得到 `outcome=error`，即使此前已观察到结算；原结算证据仍保留，顶层 `error/failure` 指向终端异常。
+这些组合沿用现有词表与不变量，生产者场景纳入 Python/C# 的 38 例对拍。
+
 ## 四、跨关复位的定义
 
 同一进程连续跑多关时，"上一关"的状态不能变成"这一关"的结论：
@@ -82,14 +86,14 @@
 
 1. **生产方自报**：`finalize_sortie_result` 末尾 `stamp()`，把 `cleared` 从 `outcome` 推出，
    有违例就写进 `contract_violations`（不吞掉、不抛异常，结果本身要留给调用方）。
-2. **消费方裁决**：`alashub campaign` 每关跑 `SortieContract.Violations`，
+2. **消费方裁决**：`Alas.Server campaign` 每关跑 `SortieContract.Violations`，
    有违例就打印 `[合同]` 并让退出码非 0；`--artifacts <目录>` 同时落盘整份结果文档。
 3. **跨语言对拍**：`python tools/diagnostics/verify_result_contract.py`
    —— 四类结果由替身真跑产出、20 条反例必须被拒绝、两侧裁决逐例相同。
 4. **静态守卫**：`python tools/diagnostics/verify_architecture.py`
    —— 生产代码出现 `cleared = ... campaign_end` 直接失败；两侧词表/违例码漂移也直接失败；
    并要求 `docs/result-contract.md`、`tools/sortie_contract.py`、`SortieResult.cs` 都在。
-5. **离线单命令**：`alashub contract --fixture <用例.json> [--artifacts <目录>] [--json <裁决.json>]`。
+5. **离线单命令**：`Alas.Server contract --fixture <用例.json> [--artifacts <目录>] [--json <裁决.json>]`。
 
 ## 六、实机证据
 

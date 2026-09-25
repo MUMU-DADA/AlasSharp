@@ -75,6 +75,7 @@ def run_scheduler(args, host):
     from alas import AzurLaneAutoScript
     from cached_property import cached_property
     from module.logger import logger
+    from module.config.config import AzurLaneConfig
 
     class SchedulerRunner(AzurLaneAutoScript):
         @cached_property
@@ -117,7 +118,7 @@ def run_scheduler(args, host):
             try:
                 if command.startswith('opsi_'):
                     host.apply_os_combat_reentry_compat()
-                with host.native_task_runtime():
+                with host.native_task_runtime(device=self.device):
                     result = super().run(command, skip_first_screenshot=skip_first_screenshot)
                 record.update(native_success=result is True, returned=True)
                 last_success = result is True
@@ -154,7 +155,12 @@ def run_scheduler(args, host):
                 write(name, record)
                 status('selecting', config=self.config)
 
+    hoarding_owned = 'is_hoarding_task' in vars(AzurLaneConfig)
+    previous_hoarding = getattr(AzurLaneConfig, 'is_hoarding_task', True)
     try:
+        # Native webui starts each scheduler in a fresh process. This class
+        # field belongs to that loop, not to each Config reload or dispatch.
+        AzurLaneConfig.is_hoarding_task = True
         capture = NativeLogCapture(directory, instance)
         logger.addHandler(capture)
         status('starting')
@@ -177,6 +183,10 @@ def run_scheduler(args, host):
         out.update(decision='error', error=f'{type(error).__name__}: {error}',
                    traceback_tail=_traceback_tail(error))
     finally:
+        if hoarding_owned:
+            AzurLaneConfig.is_hoarding_task = previous_hoarding
+        else:
+            delattr(AzurLaneConfig, 'is_hoarding_task')
         # Core consumes the task summary, not individual dispatch files. Preserve
         # the last native cause as well as every saved failure frame on that path.
         out['failure_frames'] = failure_frames

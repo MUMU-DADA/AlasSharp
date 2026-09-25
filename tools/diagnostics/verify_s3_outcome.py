@@ -20,7 +20,9 @@ sys.path.insert(0, os.path.join(ROOT, 'tools'))
 import alas_vision as av
 from s3_campaign_outcome import finalize_sortie_result, observe_battle_result
 from s3_campaign_execution import run_native_campaign
-from s3_stub_campaign import FakeScreenCampaign, NativeRunCampaign
+from s3_stub_campaign import (
+    FakeScreenCampaign, NativeRunCampaign, RecoveringNativeRunCampaign, RecoverableEntryError,
+)
 
 
 class OutcomeTests(unittest.TestCase):
@@ -93,6 +95,64 @@ class OutcomeTests(unittest.TestCase):
 
 
 class NativeRunTests(unittest.TestCase):
+    def test_recovered_error_does_not_override_later_execution_boundary(self):
+        from sortie_contract import evaluate
+        for boundary in ('round_limit', 'stopped_after_map_init', 'upstream_returned_without_clear'):
+            with self.subTest(boundary=boundary):
+                inst = RecoveringNativeRunCampaign()
+                options = {}
+                if boundary == 'round_limit':
+                    inst.execute_a_battle = lambda: True
+                    options['max_rounds'] = 1
+                elif boundary == 'stopped_after_map_init':
+                    options['stop_after'] = 'map_init'
+                else:
+                    def recover_and_return():
+                        try:
+                            NativeRunCampaign.run(inst)
+                        except RecoverableEntryError:
+                            return None
+                    inst.run = recover_and_return
+                result = run_native_campaign(inst, **options)
+                self.assertEqual(result['outcome'], 'incomplete')
+                self.assertEqual(result['stop_reason'], boundary)
+                self.assertIsNone(result.get('error'))
+                self.assertTrue(any(step.get('error') for step in result['steps']))
+                self.assertEqual(evaluate(result)['violations'], [])
+
+    def test_recovered_error_and_terminal_error_remain_distinct(self):
+        from module.logger import logger
+        from sortie_contract import evaluate
+        for fails_at_end in (False, True):
+            with self.subTest(fails_at_end=fails_at_end):
+                inst = RecoveringNativeRunCampaign()
+                original_click = inst.device.click
+                original_hr = logger.hr
+                def log(title, *args, **kwargs):
+                    if fails_at_end and title == 'Campaign end':
+                        raise OSError('terminal log failure')
+                    return original_hr(title, *args, **kwargs)
+                with patch.object(logger, 'hr', side_effect=log):
+                    result = run_native_campaign(inst)
+                self.assertEqual(result['outcome'], 'error' if fails_at_end else 'cleared')
+                self.assertEqual(result['cleared'], not fails_at_end)
+                self.assertEqual(result['end_evidence']['battle_rank'], 'S')
+                self.assertTrue(result['end_evidence']['stage_observed'])
+                failures = [step for step in result['steps'] if step.get('error')]
+                self.assertEqual(len(failures), 2 if fails_at_end else 1)
+                self.assertIn('recovered entry failure', failures[0]['error'])
+                self.assertTrue(all(step['traceback_tail'] for step in failures))
+                if fails_at_end:
+                    self.assertEqual(result['error'], 'OSError: terminal log failure')
+                    self.assertEqual(result['failure']['step'], 'run')
+                    self.assertEqual(result['failure']['error'], result['error'])
+                else:
+                    self.assertIsNone(result.get('error'))
+                self.assertEqual(evaluate(result)['violations'], [])
+                self.assertIs(inst.device.click, original_click)
+                self.assertNotIn('map_init', vars(inst))
+                self.assertNotIn('execute_a_battle', vars(inst))
+
     def test_native_run_owns_emotion_entry_and_battle_dispatch(self):
         inst = NativeRunCampaign()
         result = run_native_campaign(inst)
@@ -244,7 +304,7 @@ class NativeRunTests(unittest.TestCase):
 class CliArgumentTests(unittest.TestCase):
     def test_final_run_flag_is_enforced_before_runtime_starts(self):
         import subprocess
-        exe = os.path.join(ROOT, 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe')
+        exe = os.path.join(ROOT, 'src', 'Alas.Server', 'bin', 'Release', 'net10.0', 'Alas.Server.exe')
         if not os.path.exists(exe):
             self.skipTest('build Release first to verify the CLI')
         result = subprocess.run([exe, 'campaign', 'campaign.campaign_main.campaign_2_1', '--run'],

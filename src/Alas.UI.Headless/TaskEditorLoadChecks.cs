@@ -82,6 +82,8 @@ internal static class TaskEditorLoadChecks
         var steady = NewSampleMap();
         var steadyAllocated = new Dictionary<string, List<long>>(StringComparer.Ordinal);
         foreach (var (task, _) in Targets) steadyAllocated[task] = [];
+        var inputChange = new List<double>();
+        var inputAllocated = new List<long>();
 
         // ── M3 先跑：这是进程内第一次建任务页，JIT 与字体都还没热，最接近"冷启动" ────────
         var shell = new MainView(new MemoryThemeStore(), backend, resourceStore: new MemoryResourceSelectionStore());
@@ -151,6 +153,30 @@ internal static class TaskEditorLoadChecks
                     steady[task].Add(watch.Elapsed.TotalMilliseconds);
                     steadyAllocated[task].Add(switchAllocated);
                 }
+
+            shell.Model.SelectTaskCommand.Execute(entries["Main"]);
+            window.UpdateLayout();
+            Pump();
+            var inputEditor = shell.Model.TaskEditor;
+            inputEditor.AutoSave = false;
+            var inputField = inputEditor.Fields.First(field => !field.ReadOnly &&
+                field.Kind is TaskFieldKind.Text or TaskFieldKind.Number);
+            for (var index = 0; index < 20; index++)
+            {
+                Pump();
+                long allocated = GC.GetAllocatedBytesForCurrentThread();
+                var watch = Stopwatch.StartNew();
+                inputField.SetText(index % 2 == 0 ? "7" : "8");
+                window.UpdateLayout();
+                Pump();
+                watch.Stop();
+                inputChange.Add(watch.Elapsed.TotalMilliseconds);
+                inputAllocated.Add(GC.GetAllocatedBytesForCurrentThread() - allocated);
+            }
+            if (ActiveTaskPage(shell).GetVisualDescendants().OfType<Control>()
+                    .Count(control => control.Name?.StartsWith("Field_", StringComparison.Ordinal) == true)
+                != inputEditor.Fields.Count())
+                throw new InvalidOperationException("输入性能场景丢失了字段控件。");
 
             var mainPage = pages["Main"];
             var mainEditor = mainPage.Model;
@@ -233,6 +259,14 @@ internal static class TaskEditorLoadChecks
                 ["per_task"] = firstOpen,
             },
             ["steady_switch_end_to_end"] = Stats("M3_steady_switch", steady, "ms"),
+            ["input_change_end_to_end"] = new Dictionary<string, object?>
+            {
+                ["samples"] = inputChange.Count,
+                ["median_ms"] = Round(Median(inputChange)),
+                ["p95_ms"] = Round(Percentile(inputChange, 0.95)),
+                ["median_allocated_bytes"] = Round(Median([.. inputAllocated.Select(value => (double)value)])),
+                ["field"] = "Main 中首个可编辑文本或数字字段",
+            },
             ["steady_switch_allocated"] = new Dictionary<string, object?>
             {
                 ["unit"] = "bytes",

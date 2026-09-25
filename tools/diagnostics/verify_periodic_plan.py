@@ -553,7 +553,7 @@ def main() -> int:
     # ---- 任务侧：走队列（产品路径），断言结论与证据；输入有错必须 failed 而不是"部分成功"
     print()
     print('=== 任务侧（kind = periodic_plan，走队列）===')
-    exe = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+    exe = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
     if not exe.is_file():
         print(f'[跳过] 未构建 {exe.relative_to(ROOT)}（先 dotnet build）—— 任务侧未验。')
     else:
@@ -646,7 +646,7 @@ def main() -> int:
     print()
     print('=== 放行判定（kind = periodic_preflight）===')
     if not exe.is_file():
-        print('[跳过] 未构建 alashub —— 放行判定未验。')
+        print('[跳过] 未构建 Alas.Server —— 放行判定未验。')
     else:
         import subprocess
         import tempfile

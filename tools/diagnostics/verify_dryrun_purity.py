@@ -10,7 +10,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
-ALASHUB = os.path.join(ROOT, 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe')
+ALAS_SERVER = os.path.join(ROOT, 'src', 'Alas.Server', 'bin', 'Release', 'net10.0', 'Alas.Server.exe')
 CHAPTER = 'campaign.campaign_main.campaign_2_1'
 ADB = os.path.join(ROOT, 'offline-do-not-connect-adb.exe')
 SERIAL = 'offline-do-not-connect'
@@ -22,14 +22,14 @@ except Exception:
 
 
 def main():
-    if not os.path.exists(ALASHUB):
-        print('**失败**：未找到 %s（先 dotnet build）' % os.path.relpath(ALASHUB, ROOT))
+    if not os.path.exists(ALAS_SERVER):
+        print('**失败**：未找到 %s（先 dotnet build）' % os.path.relpath(ALAS_SERVER, ROOT))
         return 1
     ok = True
     outputs = []
     for chapter in (CHAPTER, 'campaign.event_20200716_en.a1'):
         # Device options and authorization do not turn a dry-run into execution.
-        cmd = [ALASHUB, 'campaign', chapter, '--adb', ADB, '--serial', SERIAL,
+        cmd = [ALAS_SERVER, 'campaign', chapter, '--adb', ADB, '--serial', SERIAL,
                '--allow-actions', '--clear-all']
         result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8',
                                 errors='replace', timeout=60)
@@ -46,7 +46,7 @@ def main():
         for name, good in checks:
             print('%s %-20s %s' % (chapter, name, 'OK' if good else '**失败**'))
             ok = ok and good
-    refused = subprocess.run([ALASHUB, 'campaign', CHAPTER, '--serial', SERIAL, '--run'],
+    refused = subprocess.run([ALAS_SERVER, 'campaign', CHAPTER, '--serial', SERIAL, '--run'],
                              capture_output=True, text=True, encoding='utf-8', timeout=30)
     denied = refused.returncode == 2 and '[批量' not in refused.stdout
     print('末尾 --run 无授权、宿主启动前拒绝: %s' % ('OK' if denied else '**失败**'))

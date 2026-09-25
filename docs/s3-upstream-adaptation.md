@@ -90,9 +90,9 @@
 ## 使用与验收
 
 ```powershell
-alashub campaign campaign.campaign_main.campaign_1_4
-alashub campaign campaign.campaign_main.campaign_1_4 --run --allow-actions
-alashub campaign campaign.campaign_main.campaign_2_1 --run --allow-actions --clear-all
+Alas.Server campaign campaign.campaign_main.campaign_1_4
+Alas.Server campaign campaign.campaign_main.campaign_1_4 --run --allow-actions
+Alas.Server campaign campaign.campaign_main.campaign_2_1 --run --allow-actions --clear-all
 ```
 
 第一条只读取规则；真跑默认最多 20 场、1500 秒，在上游操作边界检查限制。
@@ -107,8 +107,8 @@ alashub campaign campaign.campaign_main.campaign_2_1 --run --allow-actions --cle
 ```powershell
 python tools/verify_export.py
 python tools/diagnostics/verify_map_export.py
-alashub verify
-alashub map-ir
+Alas.Server verify
+Alas.Server map-ir
 python tools/diagnostics/verify_map_ir.py
 python tools/diagnostics/verify_upstream_coverage.py
 python tools/sync_all.py --verify
@@ -195,6 +195,13 @@ OCR 参数复核发现通用探针把 `letter` 误作字符白名单、缺省时
 此前 `20260925T073557` 的成功结算缺独立返页抓帧，仍标为“未核验”，不借本次画面补证。两次样本均不外推其他章节。
 
 ## 原生任务异常证据
+
+完整原生运行的收尾现在区分“上游自行恢复的中间异常”和“逃出 `Campaign.run()` 的终端异常”。此前结算证据优先，
+可能让成功结算后的未处理异常仍判为通关；先前已有错误步骤时，后来的新异常还会被去重遗漏。
+现按异常对象复用最早的观测步骤和失败帧，单独记录终端失败；已有结算证据保留，但最终结果为 `error`，
+顶层原因指向真正终止运行的异常。上游自行恢复后正常结算或达到限额时，历史错误不覆盖后续结果。
+修复没有改动章节配置、MAP、原生加载/调度、词表或双端合同判据；24 项 S3 离线测试及 38 例 Python/C# 合同对拍通过，
+包含恢复后结算、结算后异常及恢复后的三种边界。这里不新增真机通关结论，历史成功结算和原始失败记录保持原样。
 
 2026-09-25 困难任务进入地图后发生 `MapDetectionError: No vertical line detected`。
 上游 `AzurLaneAutoScript.run()` 已记录根因并保存截图，随后 `exit(1)`；周期适配器原先仅在正常返回 False

@@ -34,7 +34,7 @@ try:
 except Exception:
     pass
 
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 IN_MAP_THRESHOLD = 10.0          # 上游 `appear(button, threshold=10)` 的默认值
 BORDERLINE = (8.0, 14.0)         # 记录下来供真机复核的临界区间
 
@@ -96,7 +96,7 @@ def main() -> int:
                               errors='replace', timeout=300)
         output = (proc.stdout or '') + (proc.stderr or '')
         if proc.returncode != 0:
-            failures.append(f'alashub queue 退出码 {proc.returncode}')
+            failures.append(f'Alas.Server queue 退出码 {proc.returncode}')
             print(output[-2000:])
 
         run_dirs = sorted(p for p in artifacts.glob('*') if p.is_dir())

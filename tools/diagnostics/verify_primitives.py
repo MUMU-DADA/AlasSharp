@@ -16,7 +16,6 @@
 """
 import json
 import os
-import subprocess
 import sys
 import time
 
@@ -25,12 +24,13 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import alas_vision as av          # noqa: E402
 import adb_util                   # noqa: E402
+from queue_navigation import run_navigation  # noqa: E402
 
 ADB = os.environ['STUB_ADB']
 SERIAL = os.environ.get('SERIAL', '127.0.0.1:16384')
 PROBE = os.path.join(HERE, '..', 'data', '_probe.png')
-ALASHUB = os.environ.get('ALASHUB', os.path.join(
-    HERE, '..', 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe'))
+ALAS_SERVER = os.environ.get('ALAS_SERVER', os.path.join(
+    HERE, '..', 'src', 'Alas.Server', 'bin', 'Release', 'net10.0', 'Alas.Server.exe'))
 SCROLL = ('module.storage.storage', 'MATERIAL_SCROLL')
 
 
@@ -58,11 +58,10 @@ def adb(*args):
 
 
 def goto(page):
-    r = subprocess.run([ALASHUB, 'goto', page, '--adb', ADB, '--serial', SERIAL],
-                       capture_output=True, text=True, encoding='utf-8',
-                       errors='replace', timeout=600)
+    r = run_navigation(ALAS_SERVER, page, SERIAL, adb=ADB, timeout=600)
     ok = r.returncode == 0
-    return ok, [l for l in (r.stdout or '').splitlines() if l.startswith('[result')]
+    return ok, [l for l in (r.stdout or '').splitlines()
+                if l.startswith(('[原生导航]', '[导航失败]'))]
 
 
 results = []

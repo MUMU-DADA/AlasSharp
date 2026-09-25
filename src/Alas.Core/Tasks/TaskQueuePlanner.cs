@@ -8,7 +8,7 @@ namespace Alas.Tasks;
 ///
 /// 为什么需要它：活动域清点出 768 个可跑章节，但没人愿意手写 768 个任务。生成队列
 /// 这一步把"有哪些能跑"接到"批量去跑"，而且生成的是**普通队列文件** —— 后面照样能被
-/// `alashub queue` 跑、被 `--resume` 续、被 `alashub report` 复核，不需要新机制。
+/// `Alas.Server queue` 跑、被 `--resume` 续、被 `Alas.Server report` 复核，不需要新机制。
 ///
 /// 纪律：筛选规则复用 <see cref="EventStateTask.Select"/>（**只有一处**），
 /// 本类只负责"翻译成任务"，不新增任何判据，也不写死关卡名。
@@ -66,7 +66,7 @@ public static class TaskQueuePlanner
 
         var document = new JsonObject
         {
-            ["generated_by"] = "alashub plan-queue",
+            ["generated_by"] = "Alas.Server plan-queue",
             ["folder_prefix"] = prefix,
             ["only_complete"] = onlyComplete,
             ["limit"] = limit,

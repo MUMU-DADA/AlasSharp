@@ -2,10 +2,10 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Alas.Campaign;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 /// <summary>
-/// `alashub contract`：把结果合同（sortie-result/1）拿到离线用例上跑一遍。
+/// `Alas.Server contract`：把结果合同（sortie-result/1）拿到离线用例上跑一遍。
 ///
 /// 为什么要有这个子命令：结果口径是**两种语言各实现一份**（生产方 Python、
 /// 消费方 C#）。只做单侧单测无法发现两侧分叉，所以夹具里既写"期望裁决"，

@@ -4,7 +4,7 @@ using Alas.Core;
 using Alas.Device;
 using Alas.Vision;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 /// <summary>
 /// 设备层验收（无需真机）：用**桩 adb 可执行文件**跑通整条真实调用链。

@@ -5,7 +5,7 @@ using Alas.Core.Imaging;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 public sealed class GrayCase
 {

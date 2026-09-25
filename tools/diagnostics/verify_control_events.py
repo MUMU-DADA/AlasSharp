@@ -1,4 +1,4 @@
-"""SSE state feed: real Kestrel/client/dry-run and deterministic hub lifecycle faults."""
+"""SSE state feed: real Kestrel/client/dry-run and deterministic server lifecycle faults."""
 from __future__ import annotations
 
 import os
@@ -38,7 +38,7 @@ static async Task<ControlStateUpdate> Next(IAsyncEnumerator<ControlStateUpdate> 
 // share one sampler; pending capacity is bounded; failure ends the stream.
 int reads = 0, value = 0;
 bool fail = false;
-await using (var hub = new ControlStateFeed(() =>
+await using (var feed = new ControlStateFeed(() =>
 {
     Interlocked.Increment(ref reads);
     if (Volatile.Read(ref fail)) throw new IOException("injected snapshot read failure");
@@ -47,8 +47,8 @@ await using (var hub = new ControlStateFeed(() =>
 {
     await Task.Delay(1150);
     Check(reads == 0, "No observers must mean no disk sampling");
-    using var fast = hub.Subscribe();
-    using var slow = hub.Subscribe();
+    using var fast = feed.Subscribe();
+    using var slow = feed.Subscribe();
     Check(reads == 1, "Two initial observers share a snapshot");
     var initial = await fast.Pending.Reader.ReadAsync();
     Check((await slow.Pending.Reader.ReadAsync()).Cursor == initial.Cursor, "Initial cursor shared");
@@ -66,7 +66,7 @@ await using (var hub = new ControlStateFeed(() =>
     try { await fast.Pending.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)); throw new Exception("Expected fault"); }
     catch (System.Threading.Channels.ChannelClosedException error) { Check(error.InnerException is IOException, "Sampling fault is visible"); }
     Volatile.Write(ref fail, false);
-    using var recovered = hub.Subscribe();
+    using var recovered = feed.Subscribe();
     Check((await recovered.Pending.Reader.ReadAsync()).Json == "3", "New subscription recovers after read fault");
     recovered.Dispose(); fast.Dispose(); slow.Dispose();
     int before = Volatile.Read(ref reads);

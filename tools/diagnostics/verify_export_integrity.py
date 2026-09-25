@@ -188,8 +188,8 @@ class ExportIntegrityTests(unittest.TestCase):
                      missing_campaign_metadata, missing_campaign_reference, wrong_campaign_grid,
                      wrong_campaign_type, missing_campaign_origin, missing_campaign_alias, wrong_campaign_alias_source,
                      wrong_campaign_scope, unresolved_campaign, incomplete_campaign, wrong_campaign_index, wrong_campaign_count]
-            exe = ROOT / 'src/Alas.DataTool/bin/Release/net10.0/alashub.exe'
-            self.assertTrue(exe.is_file(), 'Build Release alashub before verification')
+            exe = ROOT / 'src/Alas.Server/bin/Release/net10.0/Alas.Server.exe'
+            self.assertTrue(exe.is_file(), 'Build Release Alas.Server before verification')
             for corrupt in cases:
                 with self.subTest(case=corrupt.__name__ if corrupt else 'valid'):
                     values = copy.deepcopy(baseline)

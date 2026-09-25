@@ -90,13 +90,35 @@ public sealed class TaskEditorView : UserControl, IDisposable
         }
     }
     // Theme layout is selected by the host; brushes and radii remain dynamic resources.
-    public bool LegacyLayout { get => _legacyLayout; set { _legacyLayout = value; Reflow(); Refresh(); } }
-    public bool CompactLayout { get => _compactLayout; set { _compactLayout = value; Refresh(); } }
+    public bool LegacyLayout { get => _legacyLayout; set { _legacyLayout = value; Reflow(); RefreshState(); } }
+    public bool CompactLayout { get => _compactLayout; set { _compactLayout = value; RefreshState(); } }
 
     private void OnModelChanged(object? sender, PropertyChangedEventArgs args)
     {
-        if (args.PropertyName == nameof(TaskEditorViewModel.Groups)) BuildGroups();
-        else Refresh();
+        if (args.PropertyName == nameof(TaskEditorViewModel.Groups))
+        {
+            BuildGroups();
+            return;
+        }
+
+        if (args.PropertyName == nameof(TaskEditorViewModel.Search))
+        {
+            RefreshSearch();
+            return;
+        }
+
+        if (args.PropertyName == nameof(TaskEditorViewModel.HasChanges))
+        {
+            // A field already refreshed its own editor and row state. Only the action/status
+            // chrome depends on the aggregate dirty flag; avoid walking every field delegate.
+            RefreshChrome();
+            return;
+        }
+
+        // Field controls already subscribe to their own model. Aggregate changes only affect
+        // action/status chrome. StateVersion marks operations that also require global field
+        // refreshes (for example IsBusy changes that gate script actions).
+        RefreshState();
     }
     private void BuildGroups()
     {
@@ -125,7 +147,9 @@ public sealed class TaskEditorView : UserControl, IDisposable
             _groups.Add((group, card, link, rows));
         }
         _appliedNarrow = null;
-        Reflow(); Refresh();
+        Reflow();
+        RefreshSearch();
+        RefreshState();
     }
 
     public void Dispose()
@@ -144,6 +168,7 @@ public sealed class TaskEditorView : UserControl, IDisposable
         var controls = new StackPanel { Spacing = 6 };
         var editor = CreateInput(field);
         controls.Children.Add(editor);
+        Action? refreshFieldActions = null;
         if (field.Kind == TaskFieldKind.Lua)
         {
             var check = Button("检查脚本", "Check_" + field.Path);
@@ -154,7 +179,7 @@ public sealed class TaskEditorView : UserControl, IDisposable
             var diagnostics = Text("", 12);
             Resource(diagnostics, TextBlock.ForegroundProperty, "AlasDangerBrush");
             controls.Children.Add(new WrapPanel { Children = { check, apply } }); controls.Children.Add(scriptStatus); controls.Children.Add(diagnostics);
-            _refreshFields.Add(() =>
+            refreshFieldActions = () =>
             {
                 check.IsEnabled = !field.ReadOnly && !field.IsChecking && !_model.IsBusy && _model.Backend is not null;
                 apply.IsEnabled = !field.ReadOnly && !field.IsChecking && !_model.IsBusy && field.ScriptValidated && _model.Backend is not null;
@@ -162,7 +187,8 @@ public sealed class TaskEditorView : UserControl, IDisposable
                 diagnostics.Text = string.Join(Environment.NewLine, field.Diagnostics.Select(d =>
                     (d.Line is { } line ? $"{line}:{d.Column ?? 1} " : "") + $"{d.Severity}: {d.Message}"));
                 diagnostics.IsVisible = field.Diagnostics.Count > 0;
-            });
+            };
+            _refreshFields.Add(refreshFieldActions);
         }
         if (field.CanResetSchedule)
         {
@@ -197,6 +223,7 @@ public sealed class TaskEditorView : UserControl, IDisposable
         controls.Children.Add(resolution);
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), Children = { labels, controls } };
         var row = new Border { Padding = new Thickness(0, 14), BorderThickness = new Thickness(0, 1, 0, 0), Child = grid };
+        row.Name = "ConfigField_" + field.Path;
         Resource(row, Border.BorderBrushProperty, "AlasBorderBrush");
         _reflow.Add(narrow =>
         {
@@ -218,7 +245,12 @@ public sealed class TaskEditorView : UserControl, IDisposable
             resolution.IsVisible = field.HasConflict;
             remote.Text = "远端值：" + (field.Kind == TaskFieldKind.Password ? "••••••" : field.RemoteText);
         }
-        PropertyChangedEventHandler handler = (_, _) => Update();
+        PropertyChangedEventHandler handler = (_, _) =>
+        {
+            Update();
+            refreshFieldActions?.Invoke();
+            if (row.IsVisible != _model.Matches(field)) RefreshSearch();
+        };
         field.PropertyChanged += handler; _detach.Add(() => field.PropertyChanged -= handler);
         _refreshFields.Add(Update);
         return row;
@@ -289,7 +321,13 @@ public sealed class TaskEditorView : UserControl, IDisposable
         return input;
     }
 
-    private void Refresh()
+    private void RefreshState()
+    {
+        RefreshChrome();
+        foreach (var update in _refreshFields) update();
+    }
+
+    private void RefreshChrome()
     {
         _title.Text = _model.Title; _title.IsVisible = !LegacyLayout && !CompactLayout;
         if (_search.Text != _model.Search) _search.Text = _model.Search;
@@ -302,17 +340,28 @@ public sealed class TaskEditorView : UserControl, IDisposable
         _overlay.IsVisible = _model.ConfirmRun; _main.IsEnabled = !_model.ConfirmRun;
         if (!wasConfirming && _model.ConfirmRun) _confirm.Focus();
         if (wasConfirming && !_model.ConfirmRun) _run.Focus();
+    }
+
+    private void RefreshSearch()
+    {
         var visible = 0;
         foreach (var group in _groups)
         {
             var count = 0;
-            foreach (var (field, row) in group.Rows) { row.IsVisible = _model.Matches(field); if (row.IsVisible) count++; }
-            group.Card.IsVisible = group.Link.IsVisible = count > 0;
+            foreach (var (field, row) in group.Rows)
+            {
+                var isVisible = _model.Matches(field);
+                if (row.IsVisible != isVisible) row.IsVisible = isVisible;
+                if (isVisible) count++;
+            }
+            var groupVisible = count > 0;
+            if (group.Card.IsVisible != groupVisible) group.Card.IsVisible = groupVisible;
+            if (group.Link.IsVisible != groupVisible) group.Link.IsVisible = groupVisible;
             visible += count;
         }
-        _empty.IsVisible = visible == 0;
+        var emptyVisible = visible == 0;
+        if (_empty.IsVisible != emptyVisible) _empty.IsVisible = emptyVisible;
         _empty.Text = _model.Search.Length > 0 ? "未找到匹配配置，请尝试其他关键词" : "此任务暂无可显示的配置";
-        foreach (var update in _refreshFields) update();
     }
     private void Reflow()
     {

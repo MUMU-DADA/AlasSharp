@@ -24,7 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / '.runtime' / 'engine' / 'config' / 'alas.json'
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 LAST_STDOUT = ''          # 上一任务的 CLI 输出：给'打印机没静默失效'这条断言用
 
 try:

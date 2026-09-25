@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Alas.Core;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 /// <summary>Offline declaration consistency only; never constructs runtime MAP objects.</summary>
 internal static class MapExportValidation

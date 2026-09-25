@@ -24,6 +24,7 @@ public sealed class TaskEditorViewModel : EditorObservable
     private bool _confirming;
     private CancellationTokenSource? _autoSaveCancellation;
     private bool _suppressAutoSave;
+    private int _stateVersion;
     public ObservableCollection<TaskFieldGroup> Groups { get; } = [];
     public IEnumerable<TaskFieldViewModel> Fields => Groups.SelectMany(g => g.Fields);
     public ITaskEditorBackend? Backend
@@ -47,6 +48,8 @@ public sealed class TaskEditorViewModel : EditorObservable
     public bool HasChanges => Fields.Any(f => f.IsDirty);
     public bool HasConflicts => Fields.Any(f => f.HasConflict);
     public int ChangedCount => Fields.Count(f => f.IsDirty);
+    /// <summary>Monotonic aggregate state signal for the view chrome.</summary>
+    public int StateVersion => _stateVersion;
     public bool CanSave => IsLoaded && Backend is not null && !IsBusy &&
         Fields.Any(f => f.IsDirty && f.Kind != TaskFieldKind.Lua) && !HasConflicts &&
         Fields.All(f => !f.IsDirty || f.Kind == TaskFieldKind.Lua || f.Error.Length == 0);
@@ -154,7 +157,9 @@ public sealed class TaskEditorViewModel : EditorObservable
 
     private void OnFieldChanged()
     {
-        Refresh();
+        // The field raises its own notification for input controls. The aggregate notification
+        // only updates the action/status chrome; the view must not rescan every row for each key.
+        Notify(nameof(HasChanges));
         if (_suppressAutoSave || !AutoSave || Backend is null || IsBusy || !HasChanges) return;
         _autoSaveCancellation?.Cancel();
         var cancellation = _autoSaveCancellation = new CancellationTokenSource();
@@ -240,7 +245,11 @@ public sealed class TaskEditorViewModel : EditorObservable
         foreach (var part in key.Split('.')) value = value is JsonObject obj ? obj[part] : null;
         return value is JsonValue j && j.TryGetValue<string>(out var text) ? text : fallback;
     }
-    private void Refresh() => Notify(string.Empty);
+    private void Refresh()
+    {
+        _stateVersion++;
+        Notify(nameof(StateVersion));
+    }
     private static JsonNode? FindValue(JsonObject values, string task, string group, string argument, JsonNode? fallback) =>
         values[task] is JsonObject taskValues && taskValues[group] is JsonObject groupValues && groupValues.TryGetPropertyValue(argument, out var value)
             ? value : fallback;

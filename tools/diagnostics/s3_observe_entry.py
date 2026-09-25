@@ -27,6 +27,7 @@ sys.path.insert(0, HERE)
 
 import adb_util                      # noqa: E402
 import alas_vision as av             # noqa: E402
+from queue_navigation import run_navigation  # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -34,7 +35,7 @@ except Exception:
     pass
 
 ADB = os.environ.get('STUB_ADB', '')
-ALASHUB = os.path.join(ROOT, 'src', 'Alas.DataTool', 'bin', 'Release', 'net10.0', 'alashub.exe')
+ALAS_SERVER = os.path.join(ROOT, 'src', 'Alas.Server', 'bin', 'Release', 'net10.0', 'Alas.Server.exe')
 
 DRIVER = r'''
 import json, sys, time
@@ -79,9 +80,11 @@ def main():
 
     # 0) 前置：导航到 page_campaign 并校验（不满足就停，绝不带病往下跑）
     print('[前置] 导航到 page_campaign ...', flush=True)
-    subprocess.run([ALASHUB, 'goto', 'page_campaign', '--adb', ADB,
-                    '--serial', '127.0.0.1:16384', '--capture-engine'],
-                   capture_output=True, timeout=300)
+    navigation = run_navigation(ALAS_SERVER, 'page_campaign', '127.0.0.1:16384',
+                                adb=ADB, timeout=300)
+    if navigation.returncode != 0:
+        print('[退出] 前置导航队列未完成')
+        return navigation.returncode
     snap('pre')
     pages = op('page_current').get('hit') or []
     print(f'[前置] pages={pages}', flush=True)

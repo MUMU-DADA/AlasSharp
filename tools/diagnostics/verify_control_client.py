@@ -18,7 +18,7 @@ from verify_control import request
 
 ROOT = Path(__file__).resolve().parents[2]
 DOTNET = ROOT / '.runtime/dotnet/dotnet.exe'
-SERVER = ROOT / 'src/Alas.DataTool/bin/Release/net10.0/alashub.dll'
+SERVER = ROOT / 'src/Alas.Server/bin/Release/net10.0/Alas.Server.dll'
 
 HARNESS = r'''
 using System.Net;
@@ -274,7 +274,7 @@ def main() -> int:
             port = reservation.getsockname()[1]
         base = f'http://127.0.0.1:{port}'
         with (work / 'server.log').open('wb') as output:
-            process = subprocess.Popen([str(DOTNET), str(SERVER), 'control', '--port', str(port),
+            process = subprocess.Popen([str(DOTNET), str(SERVER), '--root', str(ROOT), '--port', str(port),
                                         '--workspace', str(work / 'workspace'), '--artifacts', str(work / 'runs')],
                                        cwd=ROOT, env=environment, stdout=output, stderr=output)
             try:

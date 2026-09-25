@@ -156,7 +156,7 @@ public sealed class RunReport
                 report.BatchOutcome = report.BatchOutcome is null ? outcome
                     : report.BatchOutcome == outcome ? report.BatchOutcome : "mixed";
                 report.DryRun |= batch["dry_run"]?.GetValue<bool>() ?? false;
-                // 单批命令（`alashub campaign`）没有 queue.json：宿主/设备的初始化次数要**回头从
+                // 单批命令（`Alas.Server campaign`）没有 queue.json：宿主/设备的初始化次数要**回头从
                 // index.json 取**，否则数据面上是 `?`，而"宿主只起一次"正是 R1 门槛要看的东西。
                 report.HostStartCount ??= batch["host_start_count"]?.GetValue<int>();
                 report.DeviceConfigureCount ??= batch["device_configure_count"]?.GetValue<int>();

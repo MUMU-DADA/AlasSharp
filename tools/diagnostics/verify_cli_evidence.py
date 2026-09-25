@@ -9,7 +9,7 @@
 
 | 域 | 怎么离线跑 | 断言的行 |
 | --- | --- | --- |
-| 战役批量（dry-run） | `alashub campaign <章节> --artifacts`（dry-run 不碰设备） | `[任务证据] batch_outcome=…` |
+| 战役批量（dry-run） | `Alas.Server campaign <章节> --artifacts`（dry-run 不碰设备） | `[任务证据] batch_outcome=…` |
 | 账号状态（存盘帧） | 队列 + `account_state` 任务，输入 `screenshot` | `[任务证据] server=…` |
 | 大世界探针（存盘帧） | 队列 + `os_state` 任务，输入 `screenshot` | `[任务证据] mode=… detected=…` |
 
@@ -29,7 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / 'data'
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 CHAPTER = 'campaign.campaign_main.campaign_2_1'
 
 try:

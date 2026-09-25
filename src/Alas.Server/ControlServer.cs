@@ -21,7 +21,6 @@ public sealed class ControlServer
     private readonly ControlWorkspace _workspace;
     private readonly ConfigWorkspace _config;
     private readonly DeploySettingsWorkspace _deploy;
-    private readonly string _tools;
     private readonly StaticUiFiles? _ui;
     private readonly int _port;
     private readonly string _token = RandomNumberGenerator.GetHexString(32);
@@ -30,7 +29,6 @@ public sealed class ControlServer
                          string? artifacts, string? workspace, int port, string? uiRoot = null)
     {
         if (port is < 1 or > 65535) throw new ArgumentException("port 必须在 1–65535 之间");
-        _tools = Path.GetFullPath(tools);
         _port = port;
         _ui = uiRoot is null ? null : new StaticUiFiles(uiRoot);
         _workspace = new ControlWorkspace(root, repo, data, tools, artifacts, workspace);
@@ -61,7 +59,9 @@ public sealed class ControlServer
         try
         {
             await app.StartAsync(shutdown);
-            Console.WriteLine($"[控制界面] http://127.0.0.1:{_port}/");
+            Console.WriteLine(_ui is null
+                ? $"[API 服务] http://127.0.0.1:{_port}/api/state"
+                : $"[控制界面] http://127.0.0.1:{_port}/");
             await app.WaitForShutdownAsync(shutdown);
         }
         finally
@@ -97,20 +97,6 @@ public sealed class ControlServer
             }
             if (_ui is not null && !path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) &&
                 path != "/api" && await _ui.TryServe(context)) return;
-            if (_ui is null && HttpMethods.IsGet(request.Method) && path == "/")
-            {
-                string page = Path.Combine(_tools, "control_ui.html");
-                if (!File.Exists(page))
-                {
-                    await Reply(context, 404, Error("控制界面文件不存在"));
-                    return;
-                }
-                context.Response.ContentType = "text/html; charset=utf-8";
-                context.Response.Headers.ContentSecurityPolicy =
-                    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'";
-                await context.Response.SendFileAsync(page, context.RequestAborted);
-                return;
-            }
             if (HttpMethods.IsGet(request.Method) && path == "/api/state")
             {
                 string? selected = request.Query.ContainsKey("instance") ? RequiredQuery(request, "instance") : null;

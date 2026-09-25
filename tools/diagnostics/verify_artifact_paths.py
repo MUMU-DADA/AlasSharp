@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 CHAPTER = 'campaign.campaign_main.campaign_2_1'
 
 
@@ -20,7 +20,7 @@ def run(*args: str) -> subprocess.CompletedProcess[str]:
 
 def main() -> int:
     if not EXE.is_file():
-        print('missing Release alashub.exe; build the project first')
+        print('missing Release Alas.Server.exe; build the project first')
         return 1
     runtime = ROOT / '.runtime'
     runtime.mkdir(exist_ok=True)

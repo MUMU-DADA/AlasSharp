@@ -13,7 +13,7 @@
 
 用法：
     python tools/diagnostics/verify_result_contract.py
-未构建 Release 的 alashub 时，只跳过跨语言那一半并**显式说明**（不静默通过）。
+未构建 Release 的 Alas.Server 时，只跳过跨语言那一半并**显式说明**（不静默通过）。
 """
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -37,9 +38,9 @@ import alas_vision as av                                    # noqa: E402
 from sortie_contract import CONTRACT, evaluate              # noqa: E402
 from s3_campaign_execution import run_native_campaign       # noqa: E402
 from s3_campaign_outcome import finalize_sortie_result      # noqa: E402
-from s3_stub_campaign import FakeScreenCampaign, NativeRunCampaign  # noqa: E402
+from s3_stub_campaign import FakeScreenCampaign, NativeRunCampaign, RecoveringNativeRunCampaign  # noqa: E402
 
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 # 规则词表里的"真跑过一仗"步骤：手工正例要按生产形态带上它。
 BATTLE_STEP = {'step': 'execute_a_battle', 'round': 1, 'ms': 12.0}
 
@@ -111,6 +112,22 @@ def produced_documents(artifact_dir: Path):
     broken.map_init = broken_map_init
     documents['produced_error_with_frame'] = (
         run_native_campaign(broken, artifact_dir=str(artifact_dir)), 'error', [])
+
+    # Recovery belongs to the native subclass. A later unhandled exception
+    # must fail even when settlement and return to the chapter were observed.
+    from module.logger import logger
+    original_hr = logger.hr
+    def terminal_log(title, *args, **kwargs):
+        if title == 'Campaign end':
+            raise OSError('terminal log failure')
+        return original_hr(title, *args, **kwargs)
+    documents['produced_recovered_then_cleared'] = (
+        run_native_campaign(RecoveringNativeRunCampaign()), 'cleared', [])
+    documents['produced_recovered_then_boundary'] = (
+        run_native_campaign(RecoveringNativeRunCampaign(), stop_after='map_init'), 'incomplete', [])
+    with patch.object(logger, 'hr', side_effect=terminal_log):
+        documents['produced_settled_then_error'] = (
+            run_native_campaign(RecoveringNativeRunCampaign()), 'error', [])
 
     return documents
 
@@ -298,7 +315,7 @@ def main() -> int:
         if not EXE.is_file():
             print()
             print(f'[跳过] 未构建 {EXE.relative_to(ROOT)}；跨语言对拍未跑'
-                  f'（构建: dotnet build src\\Alas.DataTool\\Alas.DataTool.csproj -c Release）')
+                  f'（构建: dotnet build src\\Alas.Server\\Alas.Server.csproj -c Release）')
             return 1 if failures else 0
 
         verdicts = tmpdir / 'verdicts.json'
@@ -307,11 +324,11 @@ def main() -> int:
                               capture_output=True, text=True, encoding='utf-8',
                               errors='replace', timeout=120)
         print()
-        print('--- C# 侧（alashub contract）---')
+        print('--- C# 侧（Alas.Server contract）---')
         for line in (proc.stdout or '').strip().splitlines():
             print('  ' + line)
         if proc.returncode != 0:
-            failures.append(f'alashub contract 退出码 {proc.returncode}')
+            failures.append(f'Alas.Server contract 退出码 {proc.returncode}')
         if proc.stderr:
             print(f'  stderr: {proc.stderr.strip()[:400]}')
 

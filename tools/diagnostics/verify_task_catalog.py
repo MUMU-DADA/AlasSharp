@@ -22,6 +22,9 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / '.runtime' / 'engine'
@@ -76,13 +79,20 @@ def main() -> int:
     groups = catalog.get('groups') or {}
     print(f"  带分组信息的顶层键：{len(groups)} 个"
           + (f"，例：{list(groups.items())[:2]}" if groups else ''))
+    native_groups = yaml.safe_load(task_yaml.read_text(encoding='utf-8'))
+    expected_groups = {name: list(group['tasks']) for name, group in native_groups.items()}
+    expected_tasks = set(json.loads(args_json.read_text(encoding='utf-8')))
+    if groups != expected_groups:
+        failures.append('Python 宿主丢失或更改了原生分组成员/顺序')
+    if set(task for tasks in groups.values() for task in tasks) != expected_tasks:
+        failures.append('分组成员与生成任务表不一致')
 
     # ---- 第二段：C# 任务路径（`kind = "task_catalog"`）—— 与**独立读出的**两个来源对拍。
     # 为什么两段都要：第一段验宿主 op（Python 侧），这一段验产品路径（队列里的任务）；
     # 都对着同一份上游数据，才能把"任务报的数对不对"钉死。
     print()
     print('=== C# 任务路径（队列里的 task_catalog）===')
-    exe = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+    exe = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
     if not exe.is_file():
         print(f'[跳过] 未构建 {exe.relative_to(ROOT)}（先 dotnet build）—— 任务路径未验。')
     else:
@@ -124,6 +134,8 @@ def main() -> int:
                      f"sample={evidence.get('task_sample')}"),
                     ('limit 限制样本条数', len(evidence.get('task_sample') or []) == 3,
                      f"sample={evidence.get('task_sample')}"),
+                    ('全部分组成员及顺序原样进入工件，不受 limit 截断',
+                     evidence.get('group_tasks') == expected_groups, 'group_tasks 与原生 YAML 不一致'),
                 ]
                 for name, ok, detail in task_checks:
                     print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
@@ -167,6 +179,46 @@ def main() -> int:
                         print(f"  {'ok  ' if ok else 'FAIL'} {name}: {detail if not ok else 'skipped before host call'}")
                         if not ok:
                             failures.append(f'{name}: {detail}')
+
+        with tempfile.TemporaryDirectory(prefix='task-catalog-invalid-source-') as tmp:
+            root = Path(tmp)
+            config = root / 'module/config/argument'
+            config.mkdir(parents=True)
+            valid = {'SampleGroup': {'menu': 'collapse', 'page': 'setting', 'tasks': {'SampleTask': []}}}
+            for name, raw, generated in (
+                ('missing-source', None, {'SampleTask': {}}),
+                ('invalid-group', {'SampleGroup': []}, {'SampleTask': {}}),
+                ('missing-generated', valid, None),
+                ('mismatched-generated', valid, {'AnotherTask': {}}),
+            ):
+                (config / 'task.yaml').unlink(missing_ok=True)
+                (config / 'args.json').unlink(missing_ok=True)
+                if raw is not None:
+                    (config / 'task.yaml').write_text(yaml.safe_dump(raw), encoding='utf-8')
+                if generated is not None:
+                    (config / 'args.json').write_text(json.dumps(generated), encoding='utf-8')
+                with patch.object(av, 'FORK', str(root)):
+                    broken = av.op_task_catalog({})
+                if not broken.get('error'):
+                    failures.append(f'{name}: 损坏任务目录没有报告错误')
+                fixture = root / 'fixture.json'
+                fixture.write_text(json.dumps({'cases': [dict(
+                    name=name, mode='queue', artifacts=True,
+                    tasks=[dict(id='catalog', kind='task_catalog', required=True)],
+                    stub_responses={'task_catalog': [{'result': broken}]},
+                    expect=dict(outcome='failed', cleared=False,
+                                tasks=[dict(id='catalog', outcome='failed')]))]}), encoding='utf-8')
+                verdict = root / 'verdict.json'
+                executed = subprocess.run([str(exe), 'selftest-runtime', '--fixture', str(fixture),
+                    '--json', str(verdict), '--workspace', str(root / name)], cwd=ROOT,
+                    capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
+                rows = json.loads(verdict.read_text(encoding='utf-8'))['cases']
+                task_result = rows[0]['tasks'][0]
+                if (executed.returncode != 0 or task_result.get('error_kind') != 'host_unavailable'
+                        or not any(op.startswith('task_catalog:') for op in rows[0]['backend_ops'])):
+                    failures.append(f'{name}: Core 将损坏目录当作成功')
+                else:
+                    print(f'  ok   {name}: Python/Core 均拒绝损坏目录')
 
     print()
     if failures:

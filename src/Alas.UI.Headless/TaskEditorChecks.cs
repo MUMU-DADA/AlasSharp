@@ -36,6 +36,7 @@ public static class TaskEditorChecks
             Check(model.ConfirmRun, "real run click opened confirmation");
             Click(window, Find<Button>(view, "TaskConfigCancelRun"));
             Check(!model.ConfirmRun, "real cancel click closed confirmation");
+            VerifyStorageVisibility();
         }
         finally { window.Close(); }
     }
@@ -114,6 +115,60 @@ public static class TaskEditorChecks
         toolModel.Load("instance-a", "Daily", toolSchema, config);
         Check(!toolModel.CanRun, "config-only pages cannot run");
     }
+
+    private static void VerifyStorageVisibility()
+    {
+        var model = new TaskEditorViewModel { AutoSave = false };
+        model.Load("instance-a", "Daily", StorageSchema(), StorageConfig("r1", false));
+        var view = new TaskEditorView { Model = model };
+        var window = new Window { Width = 900, Height = 800, Content = view };
+        window.Show();
+        Pump();
+        try
+        {
+            var row = Find<Border>(view, "ConfigField_Daily.General.Stored");
+            var card = Find<Border>(view, "ConfigGroup_General");
+            var link = Find<Button>(view, "ConfigJump_General");
+            Check(row.IsVisible && card.IsVisible && link.IsVisible, "non-empty storage is visible on initial load");
+
+            var storage = model.Fields.Single(field => field.Argument == "Stored");
+            storage.ClearStorage();
+            Pump();
+            Check(!row.IsVisible && !card.IsVisible && !link.IsVisible, "clearing storage hides its row, group and navigation");
+
+            storage.Restore();
+            Pump();
+            Check(row.IsVisible && card.IsVisible && link.IsVisible, "restoring storage re-shows its row, group and navigation");
+
+            model.Reconcile(StorageConfig("r2", true));
+            Pump();
+            Check(!row.IsVisible && !card.IsVisible && !link.IsVisible, "remote empty storage hides its row, group and navigation");
+
+            model.Reconcile(StorageConfig("r3", false));
+            Pump();
+            Check(row.IsVisible && card.IsVisible && link.IsVisible, "remote non-empty storage re-shows its row, group and navigation");
+        }
+        finally { window.Close(); }
+    }
+
+    private static JsonObject StorageSchema() => new()
+    {
+        ["translations"] = new JsonObject
+        {
+            ["General._info.name"] = "常规", ["General.Stored.name"] = "记录",
+        },
+        ["menu"] = new JsonObject(),
+        ["args"] = new JsonObject { ["Daily"] = new JsonObject {
+            ["General"] = new JsonObject
+            { ["Stored"] = new JsonObject { ["type"] = "storage", ["value"] = new JsonObject() } } } },
+    };
+
+    private static JsonObject StorageConfig(string revision, bool empty) => new()
+    {
+        ["instance"] = "instance-a", ["revision"] = revision,
+        ["values"] = new JsonObject { ["Daily"] = new JsonObject { ["General"] = new JsonObject
+        { ["Stored"] = empty ? new JsonObject() : new JsonObject { ["entry"] = "value" } } } },
+    };
 
     private static JsonObject Config(string instance, string revision, int count, string mode, string script) => new()
     {

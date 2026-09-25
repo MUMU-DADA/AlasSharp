@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """R2 运行报告验收：工件 → 结构化事实 + 证据完整性检查。
 
-`alashub report` 要回答两件事，本脚本分别在**真实产生的运行目录**上核对：
+`Alas.Server report` 要回答两件事，本脚本分别在**真实产生的运行目录**上核对：
 
 1. **这次运行到底发生了什么**：队列/批次结论、逐任务与逐关卡结论、日志计数、
    宿主与设备初始化次数 —— 全部来自工件，报告不重判通关。
@@ -31,7 +31,7 @@ try:
 except Exception:
     pass
 
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 CHAPTER = 'campaign.campaign_main.campaign_2_1'
 FRAME = '_boss122.png'          # 真机地图帧（账号状态任务用）
 

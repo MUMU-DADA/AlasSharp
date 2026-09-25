@@ -63,11 +63,11 @@
 
 导出的素材规则有明确的离线消费范围；运行时视觉识别有独立的上游对象解析路径。后续修改不能混用两条路径，也不能遗漏已有消费者：
 
-- `data/assets.json`、`data/schema/assets.schema.json` 和 `manifest.json` 中的素材统计、来源及哈希属于离线导出契约。`src/Alas.Core/UpstreamData.cs` 的 `Catalog.Open()` 与 `src/Alas.Core/UpstreamModels.cs` 的 `AssetCatalog` / `AssetBinding` 负责加载和建模；`src/Alas.DataTool/Program.cs` 的 `alashub verify`、`tools/verify_export.py`、`tools/make_imaging_fixture.py`、`tools/make_matching_fixture.py` 负责完整性校验和夹具生成；`tools/export_upstream_data.py`、`tools/sync_all.py`、`tools/sync_upstream_assets.py` 负责生成、契约校验和上游素材快照同步。修改素材导出结构时必须逐项检查这些模块，不能只更新其中一个调用点。
-- 运行时页面、按钮、模板和 OCR 素材必须继续由 `tools/alas_vision.py` 的 `_resolve()` 等操作从上游 `module.<module>.assets` 解析。`src/Alas.Core/Vision/IVisionEngine.cs` 只传递素材 id 和调用参数，`src/Alas.Core/Navigation/PageNavigator.cs`、`src/Alas.DataTool/DeviceCheck.cs` 等调用方通过该视觉宿主消费上游规则；不得从 `assets.json` 重建运行时视觉对象，不得复制维护另一份素材规则表，也不得绕开服务器变体和上游匹配语义。
+- `data/assets.json`、`data/schema/assets.schema.json` 和 `manifest.json` 中的素材统计、来源及哈希属于离线导出契约。`src/Alas.Core/UpstreamData.cs` 的 `Catalog.Open()` 与 `src/Alas.Core/UpstreamModels.cs` 的 `AssetCatalog` / `AssetBinding` 负责加载和建模；`src/Alas.Core/Diagnostics/Program.cs` 的 `Alas.Server verify`、`tools/verify_export.py`、`tools/make_imaging_fixture.py`、`tools/make_matching_fixture.py` 负责完整性校验和夹具生成；`tools/export_upstream_data.py`、`tools/sync_all.py`、`tools/sync_upstream_assets.py` 负责生成、契约校验和上游素材快照同步。修改素材导出结构时必须逐项检查这些模块，不能只更新其中一个调用点。
+- 运行时页面、按钮、模板和 OCR 素材必须继续由 `tools/alas_vision.py` 的 `_resolve()` 等操作从上游 `module.<module>.assets` 解析。`src/Alas.Core/Vision/IVisionEngine.cs` 只传递素材 id 和调用参数，`src/Alas.Core/Navigation/PageNavigator.cs`、`src/Alas.Core/Diagnostics/DeviceCheck.cs` 等调用方通过该视觉宿主消费上游规则；不得从 `assets.json` 重建运行时视觉对象，不得复制维护另一份素材规则表，也不得绕开服务器变体和上游匹配语义。
 - 地图识别必须使用 `tools/alas_vision.py` 的 `map_detection_assets` 路径和上游 `module.map_detection.utils_assets.Assets`，包括其遮罩、瓦片模板和检测区域；`src/Alas.Core/MapDetection/MapDetection.cs` 只消费视觉宿主返回的地图识别配置。不得把 `assets.json` 中的普通 UI 绑定误当成地图识别素材，也不得在 C# 侧按地图补写坐标、模板或阈值。
 - 导出器必须完整保留素材的所属模块、唯一 id、kind、服务器变体、`area`、`button`、`color`、`file` 和来源信息；不能因为字段暂时没有被某个单一调用点使用就省略。任何模块遗漏、服务器变体丢失、文件引用错误或字段错误映射都必须由导出校验失败暴露，不能静默回退。
-- 调整素材导出字段或语义时，必须同步更新 JSON Schema、C# 数据模型、`alashub verify`、`tools/verify_export.py`、两个夹具生成脚本以及 manifest / 同步校验链，并验证所有消费者。不得按地图、页面、服务器或少数素材名称增加专用坐标、阈值或 fallback；素材失败时先检查模块来源、服务器变体、文件路径和上游调用链。
+- 调整素材导出字段或语义时，必须同步更新 JSON Schema、C# 数据模型、`Alas.Server verify`、`tools/verify_export.py`、两个夹具生成脚本以及 manifest / 同步校验链，并验证所有消费者。不得按地图、页面、服务器或少数素材名称增加专用坐标、阈值或 fallback；素材失败时先检查模块来源、服务器变体、文件路径和上游调用链。
 
 ## 结果判定：只能走 sortie-result/1 合同
 
@@ -77,7 +77,7 @@ Frozen：结论口径写在 `docs/result-contract.md`，生产方 `tools/sortie_
 
 - 不得在任何调用点用单个字段拼通关结论；`CampaignEnd` 只表示"出击结束"（撤退也抛它），不能单独证明通关。
 - 改词表、不变量或违例码，必须**同时**改 Python 与 C# 两侧，并跑
-  `python tools/diagnostics/verify_result_contract.py`（35 例）与
+  `python tools/diagnostics/verify_result_contract.py`（38 例）与
   `python tools/diagnostics/verify_architecture.py`（词表/违例码漂移会直接失败）。
 - `docs/archive/reports/result-evidence.md` 由 `tools/diagnostics/audit_real_records.py` 从本地 `data/*.log` 与
   `tools/diagnostics/evidence/` 脱敏归档重建，不手写；
@@ -89,7 +89,7 @@ Frozen：结论口径写在 `docs/result-contract.md`，生产方 `tools/sortie_
 R1 起，业务编排（跑哪几关、怎么判成功、什么时候停、工件写到哪）属于
 `src/Alas.Core/Runtime/`。改动时必须遵守：
 
-- `alashub`（`src/Alas.DataTool/Program.cs`）只解析参数、调用运行时、排版输出；
+- `Alas.Server`（转发 `src/Alas.Core/Diagnostics/Program.cs`）只解析参数、调用运行时、排版输出；
   不得在命令分支里直接调用 `RunCampaignPlan`、自己驱动宿主或复制一套状态机
   （`verify_architecture.py` 会静态报错）。
 - 会话（宿主 + 设备后端）一个进程只起一次；新增任务域时复用 `AlasSession`，不要另开宿主。

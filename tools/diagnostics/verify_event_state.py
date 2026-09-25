@@ -36,7 +36,7 @@ try:
 except Exception:
     pass
 
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 INDEX = DATA / 'campaign_index.json'
 PREFIX = 'event_'
 
@@ -108,7 +108,7 @@ def main() -> int:
                               capture_output=True, text=True, encoding='utf-8',
                               errors='replace', timeout=300)
         if proc.returncode != 0:
-            failures.append(f'alashub queue 退出码 {proc.returncode}')
+            failures.append(f'Alas.Server queue 退出码 {proc.returncode}')
             print((proc.stdout or '')[-1200:])
         run_dirs = sorted(p for p in artifacts.glob('*') if p.is_dir())
         if not run_dirs:

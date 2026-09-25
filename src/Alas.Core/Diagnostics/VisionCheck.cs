@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 using Alas.Core;
 using Alas.Vision;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 /// <summary>
 /// 桥接验收：C# 通过 worker 驱动**上游 Python 识图代码**，结果与独立算出的真值比对。

@@ -27,9 +27,9 @@
 ## 执行方式
 
 ```powershell
-alashub queue --file queue.json --artifacts runs
-alashub queue --file queue.json --run --read-only-device --serial <设备> --screenshot adb --control ADB
-alashub queue --file queue.json --run --allow-actions --serial <设备> --screenshot adb --control ADB
+Alas.Server queue --file queue.json --artifacts runs
+Alas.Server queue --file queue.json --run --read-only-device --serial <设备> --screenshot adb --control ADB
+Alas.Server queue --file queue.json --run --allow-actions --serial <设备> --screenshot adb --control ADB
 ```
 
 第一条为默认 dry-run；后两条分别显式授权只读设备和动作会话。JSON 不能把 dry-run 或只读会话提升为动作会话。
@@ -73,12 +73,19 @@ alashub queue --file queue.json --run --allow-actions --serial <设备> --screen
 
 独立工具走 `AzurLaneAutoScript(instance).run(method, skip_first_screenshot=True)`，配置与设备按上游实际访问延迟构造；
 工具自行绑定任务配置，不套用周期任务的 `Scheduler.Command`。工具正常返回只证明原生执行完成，不能推导领取或通关。
+工具的成功响应也校验请求身份、授权、运行标记和原生计划/实际目标的一致性；错误或矛盾响应记为 `contract_violation`，
+保留原始证据，不能进入断点完成列表。方法映射仍来自原生注册表，Core 不另建工具映射表。
 周期任务、连续调度与独立工具都在动作授权后进入共享数值兼容上下文，不依赖先跑战役或地图探针；
 此前关卡显式开启的全清覆盖在该上下文内暂停，返回或异常后恢复，任务仍使用自己的上游配置。
+上下文同时让嵌套 `ModuleBase` 设备工厂复用会话设备，并逐任务恢复 `DaemonBase` 覆盖的卡死/点击检测方法；
+连续调度每次分派结束即恢复，不能等整个循环结束。设备无关的工具保持惰性获取。
 取消在工具返回后的队列边界生效；持续运行的守护工具不会被强杀。尚未迁入当前引擎的工具明确拒绝，不以 UI 菜单代替注册表。
 工具的失败摘要包含原生调用栈尾部；设备配置恢复失败会追加到原始错误，不能覆盖先前根因和失败帧。
 
 连续调度直接调用上游 `loop/get_next_task/wait_until/run`，保留任务排序、首次重启跳过、配置重载和失败处理。
+每轮调度按原生独立进程语义初始化类级囤积状态，结束或异常时恢复调用前状态；同轮配置重载和逐任务分派不重置它。
+`verify_scheduler_hoarding.py` 用真实 Config 和调度循环覆盖连续运行、原状态为 False 及异常恢复共 5 组；
+固定时钟下观察应有的 300 秒等待，不实际睡眠、不操作设备。
 Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等待或任务切换检查响应；不打断正在执行的战斗。
 每次原生分派记录 `dispatch-*.json`，运行状态写 `state.json`，均在队列的 `scheduler-<id>/` 下。
 正常停止记为取消，不能当作全部任务成功；失败优先保留。服务器维护等待仍沿用上游重试，停止延迟可能包含该等待。
@@ -98,7 +105,7 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 `input.mode` 可选 `normal/hard`，省略或 null 沿用账号模式；显式模式经 `config.override()` 只作用于本次加载，
 不写入账号的模式字段。章节 Config 合并、导航钩子及运行时仍可按上游语义调整它；工件分别保留请求模式与实际模式。
 首次困难开荒使用主线章节模块和 `mode=hard`；上游每日 `hard` 任务要求已解锁周回，不应拿未满足此前提的执行替代开荒流程。
-`alashub plan-queue --out events.json --only-complete --limit 5` 生成普通任务队列；
+`Alas.Server plan-queue --out events.json --only-complete --limit 5` 生成普通任务队列；
 加 `--capture-after` 可在每关后插入实时账号状态任务，证明返页，不改变通关判据。
 
 ## 识别与导航边界
@@ -148,6 +155,15 @@ TaskEnd 和重试异常，并验证原生 Restart 配置写入、设备恢复及
 `verify_native_tool_devices.py` 再深入全部工具的真实构造器，包括函数型入口的内部构造和 DaemonBase，
 仅替换末端 run 与物理设备构造；验证任务配置初始化、显式设备/内部工厂共用会话、未配置时拒绝、
 正常/异常退出及原有卡死/多次点击检测恢复。它仍不执行工具业务动作。
+`verify_native_task_devices.py` 保留原生生产规划器与嵌套扫描器构造器，16 个场景验证缓存有无、正常/异常、
+继承/自定义检测方法和连续两次调度，I/O 端点使用替身。`verify_screenshot_auto.py` 保留原生配置绑定、截图分派和基准写回，
+验证自动选择结果不被永久 `auto` 覆盖重置、显式选择保持及下一任务重载后设备复用；不测真实后端速度。
+缺省导航/抓帧入口同样只临时覆盖会话设备参数；6 组/18 个原生观测与 14 个实例绑定场景通过。
+真实两任务队列复验后账号配置字节不变；此前后端写回的失败断言及配置前后副本保留，并经无并发修改比对还原。
+`verify_native_tools.py` 的 47 个 Core 队列场景验证工具响应合同和失败工件。
+`task_catalog` 从所选上游的 `task.yaml` 读取完整分组成员，与生成的 `args.json` 任务集合核对；
+Core 工件的 `group_tasks` 不受展示用 `limit` 截断。缺文件、结构错误和集合漂移均失败，保留可读到的证据。
+`verify_task_catalog.py` 对照当前 9 组/68 个成员，并覆盖四类损坏来源和真实 Core 工件；目录读取不证明任务业务执行。
 地图故障边界由 `verify_map_detect_failures.py` 验证。
 `verify_upstream_coverage.py` 覆盖当前全部关卡、四服素材、页面、导航图、控件声明与调度绑定；
 源依赖损坏也会失败，证据范围见[全量规则报告](archive/reports/upstream-coverage.md)。

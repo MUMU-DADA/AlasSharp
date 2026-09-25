@@ -26,7 +26,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[2]
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 GENERATOR = ROOT / 'tools' / 'report_html.py'
 CHAPTER = 'campaign.campaign_main.campaign_2_1'
 
@@ -66,7 +66,7 @@ def render(artifacts: Path, html_path: Path):
 
 def main() -> int:
     if not EXE.is_file() or not GENERATOR.is_file():
-        print('**失败**：缺 alashub 或 tools/report_html.py')
+        print('**失败**：缺 Alas.Server 或 tools/report_html.py')
         return 1
 
     failures: list[str] = []
@@ -289,7 +289,7 @@ def main() -> int:
     print()
     print('=== 交互第 1、2 级（锚点 + 失败优先区块）===')
     if not EXE.is_file() or not GENERATOR.is_file():
-        print('[跳过] 缺 alashub 或渲染器')
+        print('[跳过] 缺 Alas.Server 或渲染器')
     else:
         with tempfile.TemporaryDirectory(prefix='alas-html-interact-') as tmp:
             tmpdir = Path(tmp)

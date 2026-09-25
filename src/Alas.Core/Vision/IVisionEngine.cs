@@ -162,6 +162,8 @@ public sealed class TaskCatalogResult
     /// <summary>`task.yaml` 的顶层键 —— 是**分组**，不是任务。</summary>
     [JsonPropertyName("source_groups")] public List<string>? SourceGroups { get; set; }
     [JsonPropertyName("source_group_count")] public int? SourceGroupCount { get; set; }
+    /// <summary>每个分组的全部任务名，保留上游声明顺序。</summary>
+    [JsonPropertyName("groups")] public Dictionary<string, List<string>>? Groups { get; set; }
     /// <summary>生成产物里的**扁平任务清单** —— "有哪些任务"看这个。</summary>
     [JsonPropertyName("generated_tasks")] public List<string>? GeneratedTasks { get; set; }
     [JsonPropertyName("generated_task_count")] public int? GeneratedTaskCount { get; set; }

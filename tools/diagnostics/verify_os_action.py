@@ -10,12 +10,12 @@ from tempfile import TemporaryDirectory
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 
 
 def main() -> int:
     if not EXE.is_file():
-        print('FAIL: build Alas.DataTool in Release before verifying os_action')
+        print('FAIL: build Alas.Server in Release before verifying os_action')
         return 1
     with TemporaryDirectory(prefix='alas-os-action-') as temporary:
         root = Path(temporary)

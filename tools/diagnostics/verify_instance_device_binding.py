@@ -162,7 +162,7 @@ class Fixture:
             'traceback': traceback,
             '_DEVICE_OBJ': None, '_DEVICE_KEY': None, '_DEVICE_ARGS': dict(TRANSPORT),
             '_LoggedNativeFailure': Failure,
-            'native_task_runtime': contextlib.nullcontext,
+            'native_task_runtime': lambda **kwargs: contextlib.nullcontext(),
             'op_periodic_plan': lambda args: {
                 'found': True, 'method': args['task'].lower(), 'scheduler_command': args['task'],
             },
@@ -241,9 +241,7 @@ def verify_legacy(fixture):
     assert device.config.Emulator_Serial == TRANSPORT['serial']
     assert device.config.Emulator_ScreenshotMethod == TRANSPORT['screenshot']
     assert device.config.Emulator_ControlMethod == TRANSPORT['control']
-    assert {item[1] for item in fixture.writes} == {
-        'Emulator_Serial', 'Emulator_ScreenshotMethod', 'Emulator_ControlMethod',
-    }, '原无参设备初始化路径的 multi_set 语义应保持不变'
+    assert not fixture.writes, '缺省导航/抓帧入口的会话参数不得写回账号偏好'
 
 
 def main():
@@ -259,7 +257,7 @@ def main():
              ('串号变化时拒绝', lambda f: verify_incompatible(f, transport={'serial': 'other-device'})),
              ('截图后端变化时拒绝', lambda f: verify_incompatible(f, transport={'screenshot': 'adb'})),
              ('输入后端变化时拒绝', lambda f: verify_incompatible(f, transport={'control': 'ADB'})),
-             ('原无参 S3 设备初始化与复用不变', verify_legacy)]
+             ('缺省设备初始化与复用不持久化会话参数', verify_legacy)]
     for mode in ('native_false', 'exception', 'system_exit', 'pre_dispatch_failure'):
         cases.append((f'{mode} 后恢复共享配置且可继续运行', lambda f, mode=mode: verify_failure_restore(f, mode)))
     failures = []

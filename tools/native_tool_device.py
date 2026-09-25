@@ -1,4 +1,4 @@
-"""Keep native ModuleBase tool factories inside the current session device.
+"""Keep native ModuleBase task factories inside the current session device.
 
 The host serializes native operations. This temporary type facade preserves
 ModuleBase's isinstance branch and delegates only construction; native config
@@ -8,10 +8,24 @@ from contextlib import contextmanager
 
 
 @contextmanager
-def native_tool_device_scope(acquire):
+def native_tool_device_scope(acquire, device=None):
     import module.base.base as base
 
     original = base.Device
+    snapshots = []
+
+    def remember(current):
+        if not any(saved is current for saved, _ in snapshots):
+            snapshots.append((current, {
+                name: (name in vars(current), vars(current).get(name))
+                for name in ('stuck_record_check', 'click_record_check')}))
+        return current
+
+    def scoped_acquire(config):
+        return remember(acquire(config))
+
+    if device is not None:
+        remember(device)
 
     class SessionDeviceType(type):
         def __instancecheck__(cls, instance):
@@ -21,13 +35,21 @@ def native_tool_device_scope(acquire):
             return issubclass(subclass, original)
 
         def __call__(cls, config):
-            return acquire(config)
+            return scoped_acquire(config)
 
     class SessionDevice(metaclass=SessionDeviceType):
         pass
 
     base.Device = SessionDevice
     try:
-        yield
+        yield scoped_acquire
     finally:
         base.Device = original
+        # DaemonBase replaces instance methods even when passed an existing
+        # device. Restore absence as well as custom overrides at every task.
+        for current, checks in reversed(snapshots):
+            for name, (existed, value) in checks.items():
+                if existed:
+                    vars(current)[name] = value
+                else:
+                    vars(current).pop(name, None)

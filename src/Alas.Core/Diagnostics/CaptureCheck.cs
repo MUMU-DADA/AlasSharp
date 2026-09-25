@@ -1,10 +1,10 @@
 using Alas.Device;
 using Alas.Vision;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 /// <summary>
-/// 设备通道对比：`alashub capture`。
+/// 设备通道对比：`Alas.Server capture`。
 ///
 /// 目的：证明**产品路径**能用引擎的设备层截图，并量出收益。
 ///   A 路（现状）：C# 自己 `adb exec-out screencap -p` → 把 PNG 交给宿主解码

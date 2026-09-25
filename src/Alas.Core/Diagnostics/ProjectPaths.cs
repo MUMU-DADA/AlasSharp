@@ -1,4 +1,4 @@
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 /// <summary>
 /// 运行时项目布局的唯一解析入口。

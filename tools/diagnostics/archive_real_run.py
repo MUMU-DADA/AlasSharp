@@ -53,7 +53,7 @@ def archive_run(source: Path, product_commit: str) -> Path:
     metadata = {
         'source_run': source_id,
         'product_base_commit': product_commit,
-        'entry': 'alashub queue --file <input> --run --allow-actions',
+        'entry': 'Alas.Server queue --file <input> --run --allow-actions',
         'redactions': REDACTIONS,
         'source_files_sha256': originals,
         'files': {name: hashlib.sha256(data).hexdigest() for name, data in copies.items()},

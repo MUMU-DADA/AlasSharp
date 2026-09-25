@@ -276,7 +276,7 @@ def audit_queue_chain(directory: Path, sortie_name: str, result: dict, session: 
     if plan_path.is_file():
         plan = json.loads(plan_path.read_text(encoding='utf-8'))
         planned = plan.get('tasks')
-        if (plan.get('generated_by') != 'alashub plan-queue'
+        if (plan.get('generated_by') not in ('alashub plan-queue', 'Alas.Server plan-queue')
                 or plan.get('dry_run') != queue.get('dry_run')
                 or not isinstance(planned, list) or len(planned) != len(tasks)):
             problems.append('生成计划与执行队列不一致')

@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 import sys
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -154,7 +155,7 @@ def periodic_run_gate_intact() -> list[str]:
         "_device_engine(config=config)",
         "config.override(**overrides)",
         "runner.run(method_name)",
-        "with native_task_runtime():",
+        "with native_task_runtime(device=device):",
     )
     missing = [marker for marker in required if marker not in body]
     if missing:
@@ -202,9 +203,9 @@ def native_tool_boundary_intact() -> list[str]:
         if construct < 0 or position < 0 or position > construct:
             problems.append(f'独立工具必须先验证授权/注册再构造: {marker}')
     for marker in ("runner.run(plan['method'], skip_first_screenshot=True)",
-                   'with native_task_runtime():',
+                   'with native_task_runtime(acquire_device=acquire_device) as scoped_acquire:',
                    'class ToolRunner(AzurLaneAutoScript):', '_device_engine(config=config)',
-                   'return acquire_device(self.config)', 'with native_tool_device_scope(acquire_device):'):
+                   'return scoped_acquire(self.config)'):
         if marker not in body:
             problems.append(f'独立工具偏离上游分派/设备语义: {marker}')
     domain = read('src/Alas.Core/Tasks/ToolRunTask.cs')
@@ -224,7 +225,7 @@ def native_scheduler_boundary_intact() -> list[str]:
     for marker in ('class SchedulerRunner(AzurLaneAutoScript):', 'runner.loop()',
                    'return super().wait_until(future)',
                    'super().run(command, skip_first_screenshot=skip_first_screenshot)',
-                   'with host.native_task_runtime():',
+                   'with host.native_task_runtime(device=self.device):',
                    "object.__setattr__(config, 'stop_event', stop)"):
         if marker not in text:
             problems.append(f'调度器没有保持原生循环/事件/分派语义: {marker}')
@@ -245,7 +246,7 @@ def cli_task_boundary_intact() -> list[str]:
     也调用 TaskQueue，实际却保留了第二套任务入口和状态边界；参数遗漏还能在任务校验前
     触及设备。兼容命令只能给出迁移提示，具体 `observe` / `navigate` 输入必须进队列 JSON。
     """
-    path = ROOT / "src/Alas.DataTool/Program.cs"
+    path = ROOT / "src/Alas.Core/Diagnostics/Program.cs"
     if not path.is_file():
         return ["缺少 Program.cs，无法检查 CLI 任务边界"]
     text = path.read_text(encoding="utf-8")
@@ -379,10 +380,40 @@ def contract_consistency() -> list[str]:
     return problems
 
 
+def executable_boundary_intact() -> list[str]:
+    """Only Server and Desktop are product executables; Core owns diagnostics."""
+    problems: list[str] = []
+    projects = ROOT / "src"
+    for path in projects.glob("*/*.csproj"):
+        tree = ET.parse(path).getroot()
+        output = tree.findtext(".//OutputType", "Library")
+        if output in ("Exe", "WinExe") and path.parent.name not in (
+                "Alas.Server", "Alas.UI.Desktop", "Alas.UI.Headless"):
+            problems.append(f"额外可执行入口: {path.relative_to(ROOT)}")
+        if path.parent.name == "Alas.Core":
+            references = [item.attrib.get("Include", "") for item in tree.iter("ProjectReference")]
+            if any("Alas.Server" in item or "Alas.UI" in item for item in references):
+                problems.append("Core 反向依赖 Server 或 UI")
+    for path in (ROOT / "Alas.sln", ROOT / "Alas.UI.slnx"):
+        if "Alas.DataTool" in path.read_text(encoding="utf-8"):
+            problems.append(f"产品解决方案仍包含旧 DataTool: {path.name}")
+    if (ROOT / "src/Alas.DataTool/Alas.DataTool.csproj").exists():
+        problems.append("旧 DataTool 可执行项目仍存在")
+    if (ROOT / "tools/control_ui.html").exists():
+        problems.append("旧控制网页仍存在")
+    server = (ROOT / "src/Alas.Server/Program.cs").read_text(encoding="utf-8")
+    core = (ROOT / "src/Alas.Core/Diagnostics/Program.cs").read_text(encoding="utf-8")
+    if "DiagnosticCommands.Run(args)" not in server or "public static class DiagnosticCommands" not in core:
+        problems.append("Server 未转发 Core 诊断命令")
+    if 'command == "control"' in core or "new ControlServer(" in core:
+        problems.append("Core 诊断命令仍重复启动服务")
+    return problems
+
+
 def main() -> int:
     problems: list[str] = []
     required = {
-        "路径解析": ROOT / "src/Alas.DataTool/ProjectPaths.cs",
+        "路径解析": ROOT / "src/Alas.Core/Diagnostics/ProjectPaths.cs",
         "上游数据入口": ROOT / "src/Alas.Core/UpstreamData.cs",
         "视觉宿主接口": ROOT / "src/Alas.Core/Vision/IVisionEngine.cs",
         "迁移路线": ROOT / "docs/architecture-roadmap.md",
@@ -418,12 +449,12 @@ def main() -> int:
         path = ROOT / rel
         return path.read_text(encoding="utf-8") if path.is_file() else ""
 
-    program = read("src/Alas.DataTool/Program.cs")
+    program = read("src/Alas.Core/Diagnostics/Program.cs")
     vision = read("src/Alas.Core/Vision/IVisionEngine.cs")
     models = read("src/Alas.Core/UpstreamModels.cs")
     upstream = read("src/Alas.Core/UpstreamData.cs")
     batch = read("src/Alas.Core/Runtime/CampaignBatchRunner.cs")
-    device_check = read("src/Alas.DataTool/DeviceCheck.cs")
+    device_check = read("src/Alas.Core/Diagnostics/DeviceCheck.cs")
     real_device_check = device_check.split("public static int RunReal(", 1)[-1].split(
         "public static int Run(", 1)[0]
     checks = {
@@ -439,14 +470,14 @@ def main() -> int:
         "CLI 不直接驱动引擎": "RunCampaignPlan" not in program
                               and "InProcessVisionEngine" not in program,
         "观测任务只在队列入口注册": "RunLoop.Run" not in program
-                                   and not (ROOT / "src/Alas.DataTool/RunLoop.cs").exists()
+                                   and not (ROOT / "src/Alas.Core/Diagnostics/RunLoop.cs").exists()
                                    and "new ObserveTask()" in read("src/Alas.Core/Runtime/QueueExecution.cs"),
         "导航动作检查会话授权": all(marker in read("src/Alas.Core/Tasks/NavigateTask.cs")
                                   for marker in ("context.Options.DryRun",
                                                  "context.Options.AllowActions",
                                                  "context.Session.DeviceConfigureCount")),
         "导航任务只在队列入口注册": "DeviceCheck.RunGoto" not in program
-                                   and "public static int RunGoto" not in read("src/Alas.DataTool/DeviceCheck.cs")
+                                   and "public static int RunGoto" not in device_check
                                    and "new NavigateTask()" in read("src/Alas.Core/Runtime/QueueExecution.cs"),
         "导航生产路径调用上游 UI": '"ui_ensure"' in read("src/Alas.Core/Tasks/NavigateTask.cs")
                               and "PageNavigator(" not in read("src/Alas.Core/Tasks/NavigateTask.cs")
@@ -461,7 +492,7 @@ def main() -> int:
         "控件发现来自上游继承声明": "discover_controls(FORK)" in read("tools/alas_vision.py")
                                and (ROOT / "tools/ui_rule_catalog.py").is_file(),
         "全量原生规则覆盖进入总验收": "verify_upstream_coverage.py" in read("tools/diagnostics/verify_all.py"),
-        "原生任务统一进入战役兼容作用域": 'with native_campaign_scope(sys.modules[__name__]):' in read("tools/alas_vision.py")
+        "原生任务统一进入战役兼容作用域": 'with native_campaign_scope(sys.modules[__name__]), device_scope as scoped_acquire:' in read("tools/alas_vision.py")
                                   and 'verify_native_campaign_runtime.py' in read("tools/diagnostics/verify_all.py"),
         "战役兼容保留原生加载和运行": all(marker in read("tools/native_campaign_runtime.py") for marker in (
             'return original_load(self, *args, **kwargs)', 'return original_run(self, *args, **kwargs)',
@@ -483,8 +514,7 @@ def main() -> int:
         "参数解析共享": program.count("ParseRunFlags(") >= 2,
         "任务模型是接口": "interface ITaskRunner" in read("src/Alas.Core/Tasks/TaskModel.cs"),
         "控制队列编排归运行时": "QueueExecution.RunFile" in read("src/Alas.Core/Runtime/ControlWorkspace.cs")
-                                  and "QueueExecution.RunFile" not in read("src/Alas.Server/ControlServer.cs")
-                                  and not (ROOT / "src/Alas.DataTool/ControlServer.cs").exists(),
+                                  and "QueueExecution.RunFile" not in read("src/Alas.Server/ControlServer.cs"),
         "控制服务无 UI 引用": "Microsoft.AspNetCore.App" in read("src/Alas.Server/Alas.Server.csproj")
                               and "Alas.UI" not in read("src/Alas.Server/Alas.Server.csproj")
                               and "Avalonia" not in read("src/Alas.Server/Alas.Server.csproj"),
@@ -516,6 +546,7 @@ def main() -> int:
             problems.append(f"架构入口缺失: {label}")
 
     problems.extend(contract_consistency())
+    problems.extend(executable_boundary_intact())
     problems.extend(task_domain_registration())
     problems.extend(withdraw_hook_present())
     problems.extend(periodic_run_gate_intact())

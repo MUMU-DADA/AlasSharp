@@ -34,7 +34,7 @@ except Exception:
 
 from sortie_contract import CONTRACT                       # noqa: E402
 
-EXE = ROOT / 'src' / 'Alas.DataTool' / 'bin' / 'Release' / 'net10.0' / 'alashub.exe'
+EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
 
 CLEARED = 'campaign.campaign_main.campaign_1_1'
 CLEARED2 = 'campaign.campaign_main.campaign_1_2'

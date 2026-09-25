@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 using Alas.Core;
 using Alas.Core.Imaging;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 public sealed class FixtureCase
 {

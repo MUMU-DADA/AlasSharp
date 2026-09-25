@@ -101,3 +101,22 @@ class NativeRunCampaign(FakeScreenCampaign):
     def map_init(self, map_data):
         self.events.append(('map_init', map_data is self.MAP))
         self.battle_count = 0
+
+
+class RecoverableEntryError(Exception):
+    pass
+
+
+class RecoveringNativeRunCampaign(NativeRunCampaign):
+    """A native subclass owns recovery; the adapter must only observe it."""
+    def map_init(self, map_data):
+        if not getattr(self, 'retried', False):
+            self.retried = True
+            raise RecoverableEntryError('recovered entry failure')
+        return super().map_init(map_data)
+
+    def run(self):
+        try:
+            return super().run()
+        except RecoverableEntryError:
+            return super().run()

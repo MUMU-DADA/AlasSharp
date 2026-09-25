@@ -1,9 +1,8 @@
 using Alas.Core;
 using Alas.Device;
 using Alas.Vision;
-using Alas.Server;
 
-namespace Alas.DataTool;
+namespace Alas.Core.Diagnostics;
 
 /// <summary>
 /// S0 工具：读取上游数据契约并用 C# 独立复现校验。
@@ -11,9 +10,9 @@ namespace Alas.DataTool;
 /// 之所以用 C# 重写一遍校验（而不是信任 Python 侧的结论），是因为 S0 的验收标准是
 /// 「C# 能消费这些数据」，而不是「Python 说数据没问题」。
 /// </summary>
-internal static class Program
+public static class DiagnosticCommands
 {
-    private static int Main(string[] args)
+    public static int Run(string[] args)
     {
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         // `--adb` 传相对路径会在真机上失败：宿主把工作目录切到了 engine 目录（实测
@@ -151,40 +150,6 @@ internal static class Program
                 }
                 finally { Console.CancelKeyPress -= requestStop; }
             }
-            if (command == "control")
-            {
-                int port = 8765;
-                string? artifacts = null;
-                string? workspace = null;
-                string? uiRoot = null;
-                for (int i = 1; i < args.Length; i++)
-                {
-                    switch (args[i])
-                    {
-                        case "--port":
-                            port = ParsePositiveIntOption(args, ref i, "--port");
-                            if (port > 65535) throw new ArgumentException("--port 必须不大于 65535");
-                            break;
-                        case "--artifacts":
-                            artifacts = RequireOptionValue(args, ref i, "--artifacts");
-                            break;
-                        case "--workspace":
-                            workspace = RequireOptionValue(args, ref i, "--workspace");
-                            break;
-                        case "--ui-root":
-                            uiRoot = RequireOptionValue(args, ref i, "--ui-root");
-                            break;
-                        case "--data":
-                        case "--repo":
-                            RequireOptionValue(args, ref i, args[i]);
-                            break;
-                        default:
-                            throw new ArgumentException($"control 未知参数: {args[i]}");
-                    }
-                }
-                return new ControlServer(paths.RootDirectory, repoDir, dataDir,
-                    paths.ToolsDirectory, artifacts, workspace, port, uiRoot).Run();
-            }
             if (command == "plan-queue")
             {
                 // R2 数据面：把活动清点结果翻译成**普通队列文件**（后面照样 queue/report/--resume）。
@@ -246,7 +211,7 @@ internal static class Program
                                   + $"{document["chapters_total"]} 章，前缀 {prefix}"
                                   + (onlyComplete ? "，只要计划完整" : "") + "）");
                 Console.WriteLine($"[队列文件] {full}");
-                Console.WriteLine($"[提醒    ] 生成的是普通队列文件：alashub queue --file <该文件>"
+                Console.WriteLine($"[提醒    ] 生成的是普通队列文件：Alas.Server queue --file <该文件>"
                                   + (dryRun ? "（默认 dry-run）" : "（--run --allow-actions）"));
                 return 0;
             }
@@ -843,7 +808,7 @@ internal static class Program
     private static int Show(UpstreamData.Catalog catalog, string? key)
     {
         if (string.IsNullOrWhiteSpace(key))
-            return Fail("用法: alashub show <关卡名 | 源文件路径片段>");
+            return Fail("用法: Alas.Server show <关卡名 | 源文件路径片段>");
 
         var entry = catalog.Campaign.Chapters.FirstOrDefault(c =>
             string.Equals(c.Name, key, StringComparison.OrdinalIgnoreCase))
