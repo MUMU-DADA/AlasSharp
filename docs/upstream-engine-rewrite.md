@@ -829,6 +829,26 @@ withdraw                 0     1    —        —        —
 **对拍**：`tools/diagnostics/verify_r5_diff.py` 断言决策层无漂移 + 动作层两边都打 D2 + 目标交集为真 +
 无目标不一致 + 包装层原语被如实列出；帧可用时追加帧驱动对照，缺帧跳过。已登记进 `verify_all.py`。
 
+#### P2-23 运行目录入口（真机验证时不用手填路径）
+
+`Alas.Server r5-diff --run <运行目录>`：直接吃一次运行写出的工件目录，自己解析出对照所需的三件事，
+并把**解析来源逐条打印**（不做隐式猜测）：
+
+| 项 | 来源（按优先级） |
+| --- | --- |
+| 章节模块名 | `queue.json` 的 `tasks[].input.chapters[0]`；没有则 `task-*.json` 的 `chapter` |
+| 运行开关 | `queue.json` 的 `input.clear_all` → 声明 `clear_all` 变体 |
+| 上游日志 | ① 运行目录内的 `*.log`/`*.txt`；② `shadow-*.json` 记录的 `upstream_log` → 引擎 `log/`；③ 引擎 `log/` 里**运行时间窗内**的一份（时间窗用运行目录自身最早的工件时间 −60 秒定；窗内没有匹配时降级为最新一份并**明说"可能不是本次运行"**） |
+
+舰队所在格**不会**从队列输入推断（`fleet1=1` 只说明用了 1 号舰队位，不是格子坐标）——
+要 `--fleet-1/--fleet-2` 显式给，或由识别结果提供；输出里也会提示这一点。
+
+实测（真实运行目录 `artifacts-1-1/<stamp>`）：解析出 `campaign.campaign_main.campaign_1_1`、
+在时间窗内选中本次的上游日志、决策层 2/2 一致、动作层 `clear_chosen_enemy` 两边都打 `F1/G1`。
+
+**对拍**：`verify_r5_diff.py` 增加**运行目录用例**（临时造目录 + `queue.json` + 目录内日志），
+断言它能自解析出 `campaign_3_1`、给出同样的两层结论、并打印章节来源。
+
 #### P2-22 域级开关骨架（回退能力落到代码）
 
 `src/Alas.Core/Runtime/CampaignEngineSwitch.cs` + 自检命令 `Alas.Server r5-switch`：

@@ -14,6 +14,8 @@
   - 只有上游用到的原语（`clear_enemy`，上游会额外打包装层表头）与只有 C# 用到的原语（`withdraw`）
     被如实列出——这类差异是**轨迹粒度/状态来源**造成的，不是引擎错误；
   - 没有"目标不一致"（本夹具两边打同一格）；
+  - **运行目录入口**（`--run`）：临时造一个运行目录（`queue.json` + 目录内日志），核对它自己能解析出
+    章节与日志并给出同样的两层结论——真机验证时就不用再手填 `--chapter/--level/--log`；
   - 帧可用时（`data/fixtures/inmap_3-1.png`）额外跑一次帧驱动对照，缺帧则跳过并说明。
 
 只做离线对照：不连设备、不改变任何运行状态。
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import shutil
 import subprocess
 import sys
 
@@ -30,6 +33,7 @@ LOG = ROOT / "tools" / "diagnostics" / "fixtures" / "actions-3-1.log"
 DETECTION = ROOT / "tools" / "diagnostics" / "fixtures" / "detection-3-1.json"
 FRAME = ROOT / "data" / "fixtures" / "inmap_3-1.png"
 SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
+RUN_DIR = ROOT / ".runtime" / "r5-probe" / "run-dir-fixture"
 
 
 def diff(*extra: str) -> tuple[int, dict | None, str]:
@@ -94,7 +98,35 @@ def main() -> int:
         skipped.append(f"缺 {FRAME.relative_to(ROOT)}（忽略目录），跳过帧用例")
         frame_note = "帧用例：跳过"
 
-    print(f"[r5-diff] 识别夹具用例：决策层无漂移、动作层两边都打 D2、目标交集为真；{frame_note}")
+    # 运行目录入口：造一个最小运行目录（queue.json + 目录内日志），核对 --run 能自解析
+    if RUN_DIR.exists():
+        shutil.rmtree(RUN_DIR)
+    RUN_DIR.mkdir(parents=True)
+    (RUN_DIR / "queue.json").write_text(json.dumps({
+        "tasks": [{"id": "fixture", "kind": "campaign_batch", "required": True,
+                   "input": {"chapters": ["campaign.campaign_main.campaign_3_1"], "clear_all": False}}],
+    }, ensure_ascii=False), encoding="utf-8")
+    shutil.copyfile(LOG, RUN_DIR / "upstream.log")
+    run_completed = subprocess.run(
+        [str(SERVER), "r5-diff", "--run", str(RUN_DIR), "--detection", str(DETECTION),
+         "--fleet-1", "A1", "--json"],
+        cwd=ROOT, capture_output=True, text=True, timeout=600, encoding="utf-8", errors="replace")
+    run_text = run_completed.stdout + run_completed.stderr
+    run_start = run_text.find("{")
+    run_payload = json.loads(run_text[run_start:]) if run_start >= 0 else None
+    if run_completed.returncode not in (0, 1):
+        problems.append(f"运行目录用例退出码 {run_completed.returncode}：{run_text.strip().splitlines()[-3:]}")
+    if run_payload is None:
+        problems.append("运行目录用例没有解析到 JSON 输出")
+    else:
+        if run_payload["level"] != "campaign_main/campaign_3_1":
+            problems.append(f"运行目录用例应从 queue.json 解析出 campaign_3_1，实际 {run_payload['level']}")
+        problems += check(run_payload, run_text, "运行目录用例")
+    if "章节来自 queue.json" not in run_text:
+        problems.append("运行目录用例应说明章节来源（解析来源必须打印，不能隐式猜）")
+
+    print(f"[r5-diff] 识别夹具用例：决策层无漂移、动作层两边都打 D2、目标交集为真；"
+          f"运行目录用例：已跑；{frame_note}")
     for note in skipped:
         print(f"  跳过：{note}")
     if problems:
@@ -102,7 +134,7 @@ def main() -> int:
         for item in problems:
             print(f"  - {item}")
         return 1
-    print("PASS: 统一对照同时覆盖决策层（钩子）与动作层（原语/目标），并如实列出差异")
+    print("PASS: 统一对照同时覆盖决策层（钩子）与动作层（原语/目标），运行目录入口可自解析，差异如实列出")
     return 0
 
 

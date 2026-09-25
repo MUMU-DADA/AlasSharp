@@ -463,7 +463,7 @@ public static class DiagnosticCommands
             if (command == "r5-diff")
             {
                 // 原语动作层对照：上游日志动作 vs C# 干跑动作（只读，不连设备）。
-                string? diffChapter = null, diffLevel = null, diffModule = null, diffFrame = null;
+                string? diffChapter = null, diffLevel = null, diffModule = null, diffFrame = null, diffRun = null;
                 string? diffDetection = null, diffFleet1 = null, diffFleet2 = null, diffMode = "main", diffLog = null;
                 int diffCurrentFleet = 1;
                 bool diffAmbush = args.Contains("--map-has-ambush");
@@ -479,6 +479,7 @@ public static class DiagnosticCommands
                     if (args[i] == "--chapter") diffChapter = args[i + 1];
                     if (args[i] == "--level") diffLevel = args[i + 1];
                     if (args[i] == "--chapter-module") diffModule = args[i + 1];
+                    if (args[i] == "--run") diffRun = args[i + 1];
                     if (args[i] == "--log") diffLog = AbsoluteIfExists(args[i + 1]);
                     if (args[i] == "--detection") diffDetection = AbsoluteIfExists(args[i + 1]);
                     if (args[i] == "--fleet-1") diffFleet1 = args[i + 1];
@@ -492,6 +493,25 @@ public static class DiagnosticCommands
                     {
                         diffFrame = !Path.IsPathRooted(args[i + 1]) && File.Exists(args[i + 1])
                             ? Path.GetFullPath(args[i + 1]) : args[i + 1];
+                    }
+                }
+                // --run：从一次运行目录直接解析章节/开关/日志，省掉手填路径（解析来源会打印出来）。
+                if (!string.IsNullOrEmpty(diffRun))
+                {
+                    string runDirectory = Path.GetFullPath(diffRun);
+                    if (!CampaignRunDirectory.TryResolve(runDirectory, repoDir, diffLog, out var runInput, out string? runError))
+                    {
+                        Console.Error.WriteLine($"[错误   ] {runError}");
+                        return 1;
+                    }
+                    diffModule = runInput!.ChapterModule;
+                    diffLog = runInput.LogPath;
+                    if (runInput.ClearAll) diffClearAll = true;
+                    Console.WriteLine($"[运行来源] {runDirectory}");
+                    foreach (string note in runInput.Source) Console.WriteLine($"  · {note}");
+                    foreach (string extra in args.Where(item => item.StartsWith("--fleet-", StringComparison.Ordinal)))
+                    {
+                        Console.WriteLine($"  · {extra}（舰队所在格只能来自识别结果或显式参数）");
                     }
                 }
                 var diffOptions = new CampaignDryRunHelper.Options(
