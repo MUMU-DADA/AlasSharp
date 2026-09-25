@@ -607,6 +607,27 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 不代表原语在真机上的动作与上游一致——`capture_clear_boss` 结尾撤退、`fleet_2_protect` 的 20 轮循环、
 `CampaignEnd` 的成功时机，这三处都只能靠真机对照确认（见 P2-8 / P2-10 的诚实说明）。
 
+#### P2-14 已完成：影子模式脚手架（只算不执行）（2026-09-26）
+
+`src/Alas.Core/Campaign/CampaignShadow.cs` + 命令 `Alas.Server r5-shadow`：
+
+| 组成 | 做什么 |
+| --- | --- |
+| `UpstreamLogParser` | 解析上游运行日志里的既有信号：`logger.hr(...)` 的 `──── BATTLE_N ────` 规则行（给出该轮的 `battle_count`）、`Using function: <钩子>`、`ScriptError, No combat executed.`、`Campaign end` / `Battle function exhausted.`。**只认这些真信号，解析不出一律跳过**，日志格式变化时表现为"轮次变少"而不是错误结论 |
+| `CampaignShadow.Compare` | 对上游实际发生的每一轮，用 `CampaignBattleLoop.SelectHook(plan, battle_count)` 算出 C# 会选哪个钩子，与 `Using function:` 逐轮比对；输出 一致 / 不一致 / 跳过（非默认变体 `clear_all` / `battle_with_poor_map_data` 尚未迁移，明确跳过） |
+| 命令 | `r5-shadow --chapter <章> --level <关> --log <上游日志> [--json]`；**有漂移即非零退出**，可直接当门禁 |
+
+**真实日志验证**（本地已有的一次成功运行）：`campaign_main/campaign_1_4` 4 轮出击，
+C# 影子选择与上游实际 `Using function:` **4/4 完全一致**——包括"`battle_1`/`battle_2` 不存在时回退到
+`battle_0`"这种回看逻辑，这一条是离线干跑证明不了的。
+
+**对拍**：新增 `tools/diagnostics/verify_r5_shadow.py`（两份确定性夹具日志：一致一例、漂移一例——
+含"第 1 轮不一致 + 第 2 轮变体跳过 + 第 3 轮没打成"），已登记进 `verify_all.py`。
+
+**已知限制（如实记录）**：走 `MAP_CLEAR_ALL_THIS_TIME=True` 或 `POOR_MAP_DATA=True` 的关卡
+（如 `campaign_2_1` 的一次运行日志）上游用的是另两个 `battle_function` 变体，C# 侧尚未迁移，
+影子比对会**全部跳过**——要让这些关卡也能比对，需要先迁移那两个变体。
+
 ### P4 收口
 
 `IVisionEngine` 只保留识图相关方法；上游目录只剩规则文件与识图组件；文档同步（`docs/architecture-roadmap.md`、本文件、[架构梳理](ARCHITECTURE-NOTES.md)）。
