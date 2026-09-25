@@ -97,6 +97,7 @@ STEPS = [
     ('verify_control_client.py', 'R4 共享客户端（真实 HTTP / 无反射 JSON / 取消与重试边界）', False, 300),
     ('verify_control_events.py', 'R4 状态流（游标 / 日志尾部 / 慢订阅 / 关闭 / 工件共享读取）', False, 180),
     ('r5_state_mutation_audit.py', 'R5 状态写入审计（上游会改状态的方法 vs C# 替换的原语）', False, 300),
+    ('r5_incomplete_hooks.py', 'R5 不完整钩子普查（成因分类 + 棘轮基线）', False, 300),
     ('verify_r5_selection.py', 'R5 目标选择对拍（C# 移植 vs 上游 Filter，离线无设备）', False, 180),
     ('verify_r5_execution.py', 'R5 计划→原语→动作闭环（干跑记录 vs 上游选敌规则）', False, 180),
     ('verify_r5_loop.py', 'R5 关卡循环（run/execute_a_battle/battle_function vs 上游钩子选择规则）', False, 180),
