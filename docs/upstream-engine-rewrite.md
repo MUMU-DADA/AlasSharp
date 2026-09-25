@@ -49,7 +49,7 @@
 | 宿主调用翻译 | 全库 5694 步 | **5694/5694 可翻译，0 不支持** | `verify_r5_calls.py` |
 | 目标选择（过滤 DSL） | 200 个随机状态 × 2166 例 | 与上游 `Filter` **不一致 0**（真实过滤器串 + 两个优先级预设 + preserve） | [选择扫描](archive/reports/r5-selection-sweep.md) |
 | 目标选择（分支） | 120 个随机状态 × 1680 例 | 与上游 `Map.select_grids` **不一致 0**（`nearby`/`is_accessible`/`scale`·`genre` 无序 vs 有序/`strongest`/`weakest`/`sort` 多键） | [分支扫描](archive/reports/r5-selectgrids-sweep.md) |
-| 复合原语 | 20 个随机状态 × **8 原语** × 8 配置 / 1280 例 | 与上游**真实方法**（`clear_enemy`/`clear_any_enemy`/`clear_siren`/`clear_boss`/`clear_roadblocks`/`clear_potential_roadblocks`/`clear_first_roadblocks`/`pick_up_ammo`）**不一致 0、跳过 0** | [复合扫描](archive/reports/r5-composite-sweep.md) |
+| 复合原语 | 20 个随机状态 × **10 原语** × 10 配置 / 1991 例 | 与上游**真实方法**（清敌/塞壬/boss/路段三变体/弹药/2 队推进与护航）**不一致 0**；9 处跳过是上游自身越界（`grids[0]` IndexError） | [复合扫描](archive/reports/r5-composite-sweep.md) |
 | 历史运行日志 | 4 段 / 17 轮出击 | 决策层一致 17/17 | [日志扫描](archive/reports/r5-log-sweep.md) |
 | 真机帧 | 6 帧（4 帧可识别） | 识别 → 状态 → 循环 → 两宿主序列一致 | [帧扫描](archive/reports/r5-frame-sweep.md) |
 
