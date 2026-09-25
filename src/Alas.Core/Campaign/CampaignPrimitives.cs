@@ -1104,9 +1104,17 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>Map.clear_filter_enemy(string, preserve)</c>。</summary>
     public static bool ClearFilterEnemy(ICampaignPrimitiveHost host, string filter, int preserve)
     {
+        // 上游：`MAP_HAS_MOVABLE_NORMAL_ENEMY` 时**整个过滤串被忽略**，直接转成
+        // `clear_any_enemy(sort=('cost_2',))`。`cost_2` 排序键早已支持，所以这条分支现在直接委托，
+        // 不再报"未移植"。
+        if (host.Config.MapHasMovableNormalEnemy)
+        {
+            host.Log("clear_filter_enemy：MAP_HAS_MOVABLE_NORMAL_ENEMY → clear_any_enemy(sort=('cost_2',))");
+            return ClearAnyEnemy(host, new CampaignTargetOptions(Sort: ["cost_2"]));
+        }
         var decision = CampaignTargetSelector.SelectFilterEnemyTarget(
             new CampaignGridSet(host.Grids), filter, preserve,
-            host.Config.EnemyPriority, host.Config.MapHasMovableNormalEnemy);
+            host.Config.EnemyPriority, hasMovableNormalEnemy: false);
         if (decision.Unsupported is not null)
             throw new NotSupportedException($"clear_filter_enemy 走到未移植分支：{decision.Branch}——{decision.Unsupported}");
         if (decision.Target is null)

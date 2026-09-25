@@ -89,6 +89,7 @@ internal static class CampaignSelectionCheck
                 case "primitive_brute_clear_boss":
                 case "primitive_brute_fleet_meet":
                 case "primitive_clear_potential_boss":
+                case "primitive_clear_filter_enemy":
                     var config = new CampaignRuntimeConfig(
                         EnemyPriority: testCase.EnemyPriority,
                         MapClearAllThisTime: testCase.MapClearAllThisTime,
@@ -112,6 +113,8 @@ internal static class CampaignSelectionCheck
                         "primitive_pick_up_ammo" => CampaignPrimitives.PickUpAmmo(host),
                         "primitive_fleet_2_push_forward" => CampaignPrimitives.Fleet2PushForward(host),
                         "primitive_fleet_2_protect" => CampaignPrimitives.Fleet2Protect(host),
+                        "primitive_clear_filter_enemy" =>
+                            CampaignPrimitives.ClearFilterEnemy(host, testCase.Filter ?? "", testCase.Preserve),
                         "primitive_brute_clear_boss" => CampaignPrimitives.BruteClearBoss(host),
                         "primitive_brute_fleet_meet" => CampaignPrimitives.BruteFleetMeet(host),
                         "primitive_clear_potential_boss" => CampaignPrimitives.ClearPotentialBoss(host),

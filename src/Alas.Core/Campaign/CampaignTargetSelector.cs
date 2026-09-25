@@ -156,8 +156,9 @@ public static class CampaignTargetSelector
     {
         if (hasMovableNormalEnemy)
         {
-            return new CampaignTargetDecision(null, "MAP_HAS_MOVABLE_NORMAL_ENEMY → clear_any_enemy(sort=('cost_2',))",
-                                              "该分支依赖 cost_2 排序键，尚未移植");
+            // 保留这个入口参数只为"传错就有明确结果"：真正的 movable 分支在 `ClearFilterEnemy` 里
+            // 直接委托给 `clear_any_enemy(sort=('cost_2',))`（上游就是这么写的），不再报未移植。
+            return new CampaignTargetDecision(null, "MAP_HAS_MOVABLE_NORMAL_ENEMY（已在 ClearFilterEnemy 委托 clear_any_enemy）");
         }
 
         string branch = "filter";

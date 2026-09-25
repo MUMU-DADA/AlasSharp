@@ -37,10 +37,12 @@ SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Se
 UPSTREAM = ROOT / ".runtime" / "engine"
 
 GENRES = ["Light", "Main", "Carrier", "Treasure"]
+# 库里的真实过滤器串（`clear_filter_enemy` 用得最多的那条）
+ENEMY_FILTER_TEXT = "1L > 1M > 1E > 1C > 2L > 2M > 2E > 2C > 3L > 3M > 3E > 3C"
 PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss",
               "clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks",
               "pick_up_ammo", "fleet_2_push_forward", "fleet_2_protect", "brute_clear_boss",
-              "brute_fleet_meet", "clear_potential_boss"]
+              "brute_fleet_meet", "clear_potential_boss", "clear_filter_enemy"]
 
 # 曾经把 `brute_clear_boss` 当成"已知差异"排除在外，理由是"路障子集选择不同"。**那是误判**：
 # 真正的原因是诊断命令缺 `primitive_brute_clear_boss` 分派，静默落进了"选一个敌人"的默认分支。
@@ -60,6 +62,9 @@ CONFIGS = [
     {"fleet_2": True, "fleet_boss": True, "map_has_movable_enemy": True},
     {"fleet_2": True, "fleet_boss": True, "map_has_movable_enemy": True,
      "map_has_movable_normal_enemy": True, "map_has_siren": True},
+    # 给 `clear_filter_enemy` 的 movable 分支（上游会**忽略过滤串**转 clear_any_enemy(sort=("cost_2",))）
+    {"map_has_movable_normal_enemy": True},
+    {"map_has_movable_normal_enemy": True, "fleet_2": True, "map_has_siren": True},
 ]
 
 
@@ -107,6 +112,10 @@ def build_cases(states: int, seed: int) -> list[dict]:
                     "fleet_current_index": 1,
                     **config,
                 }
+                if kind == "clear_filter_enemy":
+                    # 过滤器串与 preserve 也要给 C# 侧（默认那条 + 0/1 交替，覆盖 preserve 截断）
+                    case["filter"] = ENEMY_FILTER_TEXT
+                    case["preserve"] = 1 if len(grids) % 2 else 0
                 if kind in ROADBLOCK_PRIMITIVES:
                     # 路段：每行切成"3 格一块 + 1 格一块"两条路段，够覆盖 roadblocks/potential_roadblocks
                     rows: dict[int, list[str]] = {}
@@ -243,6 +252,11 @@ class RecordingStub:
         from module.map.map import Map  # noqa: PLC0415
         return Map.clear_boss(self)
 
+    def clear_any_enemy(self, **kwargs):
+        # 上游 `clear_filter_enemy` 在 `MAP_HAS_MOVABLE_NORMAL_ENEMY` 时会委托给它
+        from module.map.map import Map  # noqa: PLC0415
+        return Map.clear_any_enemy(self, **kwargs)
+
     def find_path_initial(self, location=None, has_ambush=True, has_enemy=True):
         """上游有**两个同名方法**：`Fleet.find_path_initial(self)`（无参、读自己的舰队位置）与
         `Map.find_path_initial(self, location, …)`。`brute_find_roadblocks` 调的是前者——
@@ -347,6 +361,10 @@ def upstream_target(case: dict) -> tuple[str | None, bool | None]:
                                for location in block])
             roads.append(RoadGrids(blocks))
         result = method(stub, roads)
+    elif case["kind"] == "primitive_clear_filter_enemy":
+        # 上游 `clear_filter_enemy(string, preserve=0)`：过滤器串用库里的真实用法（最常见那条），
+        # preserve 由用例给出（0/1 各半），把"保留最弱若干个"这条路径也覆盖到。
+        result = method(stub, ENEMY_FILTER_TEXT, case.get("preserve", 0))
     else:
         result = method(stub)
     target = next((location for name, location in stub.calls
@@ -395,9 +413,10 @@ def normalize_csharp(actions: list[str] | None) -> list[tuple[str, str]]:
     return normalized
 
 
-# 只比**排序键**：上游 `SelectedGrids.add` 的 `set` 打乱的是"谁先被加入"，
-# 于是等 weight/cost 的格子可能来自不同过滤组（如 enemy 与 fortress），这同样是不可复现的集合序伪影。
-RANK_KEYS = ("weight", "cost")
+# 只比**排序键**（上游能按 `weight`/`cost`/`cost_1`/`cost_2` 排序，四种都算）：
+# 上游 `SelectedGrids.add` 的 `set` 打乱的是"谁先被加入"，于是等价的格子可能来自不同过滤组
+# （如 enemy 与 fortress/siren），这同样是不可复现的集合序伪影。
+RANK_KEYS = ("weight", "cost", "cost_1", "cost_2")
 
 
 def find_grid(case: dict, location: str | None) -> dict | None:
@@ -406,11 +425,22 @@ def find_grid(case: dict, location: str | None) -> dict | None:
     return next((grid for grid in case["grids"] if grid["location"] == location), None)
 
 
-def same_rank(left: dict, right: dict) -> bool:
-    """两个格子是否"同价位"：排序键与标志都一样（含可达性），只是身份不同。"""
-    if any(left.get(key) != right.get(key) for key in RANK_KEYS):
-        return False
-    return (left.get("cost", 9999) < 9999) == (right.get("cost", 9999) < 9999)
+def effective_sort_keys(case: dict) -> tuple[str, ...]:
+    """该用例**实际生效**的排序键。
+
+    `clear_filter_enemy` 在 `MAP_HAS_MOVABLE_NORMAL_ENEMY` 时会忽略过滤串、转
+    `clear_any_enemy(sort=("cost_2",))`（上游就这么写），所以那支只按 `cost_2` 排序；
+    其余情况按默认的 `("weight", "cost")`。判"同价位"必须用**实际**的键，否则会把
+    真正的等价平手误判成不一致（实测踩过）。
+    """
+    if case["kind"] == "primitive_clear_filter_enemy" and case.get("map_has_movable_normal_enemy"):
+        return ("cost_2",)
+    return ("weight", "cost")
+
+
+def same_rank(left: dict, right: dict, keys: tuple[str, ...]) -> bool:
+    """两个格子是否"同价位"：按**实际排序键**比，都一样就只是身份不同（不可复现的集合序）。"""
+    return all(left.get(key) == right.get(key) for key in keys)
 
 
 def only_submarine_arg_differs(left: list[tuple[str, str]], right: list[tuple[str, str]]) -> bool:
@@ -528,7 +558,7 @@ def main() -> int:
             # 所以两侧选了**同价位等价格**（同 weight/cost/标志/可达性）时不算不一致，单列伪影。
             left = find_grid(case, result["selected"])
             right = find_grid(case, expected)
-            if left is not None and right is not None and same_rank(left, right):
+            if left is not None and right is not None and same_rank(left, right, effective_sort_keys(case)):
                 artifacts.append((case["name"], result["selected"], expected))
                 continue
             mismatches.append((case["name"], f"{case['kind']} {json.dumps({k: v for k, v in case.items() if k not in ('grids', 'name', 'kind')}, ensure_ascii=False)}",

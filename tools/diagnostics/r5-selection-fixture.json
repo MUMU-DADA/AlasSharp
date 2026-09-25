@@ -115,14 +115,14 @@
       "expect": { "selected": null }
     },
     {
-      "name": "clear_filter_enemy + MAP_HAS_MOVABLE_NORMAL_ENEMY：走未移植分支，必须显式报出",
+      "name": "clear_filter_enemy + MAP_HAS_MOVABLE_NORMAL_ENEMY：选择器不自己选，交由 ClearFilterEnemy 委托 clear_any_enemy",
       "kind": "clear_filter_enemy",
       "filter": "3L",
       "has_movable_normal_enemy": true,
       "grids": [
         { "location": "A1", "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Light", "weight": 1, "cost": 1 }
       ],
-      "expect": { "selected": null, "unsupported_contains": "cost_2" }
+      "expect": { "selected": null, "branch_contains": "已" }
     },
     {
       "name": "select_grids：is_accessible=false 时包含不可达格子",
