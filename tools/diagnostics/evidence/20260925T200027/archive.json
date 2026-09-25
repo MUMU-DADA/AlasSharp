@@ -1,0 +1,27 @@
+{
+  "source_run": ".runtime/verification/live-20260925/sortie-2-4/20260925T200027",
+  "product_base_commit": "a0c6e51",
+  "entry": "Alas.Server queue --file <input> --run --allow-actions",
+  "redactions": [
+    "absolute project paths replaced with <project> placeholders",
+    "device serial and configured endpoint replaced with <device>",
+    "account config and config_name replaced with <redacted-account-config>",
+    "raw console log and screenshots remain in local ignored directory"
+  ],
+  "source_files_sha256": {
+    "index.json": "ba54abde1ac7b8910d4943db3d9bc9fb012d661049e789997cb5f5afa9248d3f",
+    "session-log.jsonl": "658648a3cf6110adbbcebaf1f72153cd54da2125f7ead29ee558700716eff97d",
+    "queue.json": "280a87b1ec764f2d26b66bcb0147baea073c4e1fd0c81a98b538934a3f09a698",
+    "sortie-2-4.json": "7bd5526f16551f1d69989bae789fee9e49065b813468b606c865adabb5161c82",
+    "task-after-sortie.json": "4c3930acb7ff42f40177b975b206088ca3daee48a0d3706c190aa6e05a384015",
+    "task-sortie-2-4.json": "43c79b424c0433d1fcfe70a66afd652d1260a433b3b70ac9d975f2d441e13d25"
+  },
+  "files": {
+    "index.json": "0e5ec4a26183eb0f89ea321946b67cc7cd379ee7a84a37080f6a84de089b08d4",
+    "session-log.jsonl": "d24fdff81f3b09af7b700e69945c4b84ada094cf7bb875dfdcce2b8660895889",
+    "queue.json": "087b22b6c13202b9573d6c684c6965d98c97fc91ceee3023312b7aa156d9b9cb",
+    "sortie-2-4.json": "c087f810dfd853f299bad4dad78d7a58d9c55fba2e5ee924146eb594550d5db8",
+    "task-after-sortie.json": "4ace62f1471c2dc09cc1a865ddcd5b51d17e01e4214e18b79b770ac4b0d2d981",
+    "task-sortie-2-4.json": "60ef0929d4f0b05ba3e2dafa7bc35d99d23c35dac8126ebe2600dab09bf8bba5"
+  }
+}

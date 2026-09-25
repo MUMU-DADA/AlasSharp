@@ -251,7 +251,13 @@ Core/DataTool/Server Release 构建 0 警告/0 错误，架构检查通过。真
 同日普通模式 2-3 使用相同入口完成四场原生战斗，继承 2-1 的 Config 和章节 CampaignBase，
 上游 BOSS 可达性与战后相机恢复均在真实路径出现。S 级结算后 `sortie-result/1` 给出 `cleared`、
 0 违例，紧接的 `device_capture` 为 `page_campaign`、`in_map=false`，账号配置 SHA-256 前后相同。
-脱敏归档 `tools/diagnostics/evidence/20260925T195405/` 经相同审计通过；不据此推断 2-4 或所有章节成功。
+脱敏归档 `tools/diagnostics/evidence/20260925T195405/` 经相同审计通过；不据此推断其他章节成功。
+
+普通模式 2-4 继续由相同的通用入口执行。原生章节 Config 合并 2-1 继承字段与自身两项边缘参数，
+道路阻塞、潜在阻塞、BOSS 可达性和战后相机恢复由上游流程处理；四场战斗后 S 级结算，
+`sortie-result/1` 给出 `cleared`、0 违例，后续 `device_capture` 为 `page_campaign`、`in_map=false`。
+账号配置 SHA-256 前后相同，脱敏归档 `tools/diagnostics/evidence/20260925T200027/` 经结果审计通过。
+这仍是单关现场样本，不证明其他关卡、自动周回或全部界面操作。
 
 ## 只读地图观测的章节配置
 
