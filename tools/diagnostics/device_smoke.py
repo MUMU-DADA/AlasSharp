@@ -178,6 +178,7 @@ def audit_smoke_run(run_dir: Path, queue_returncode: int, report_returncode: int
         expected['observe'] = 'observe'
     if allow_actions:
         expected['campaign-smoke'] = 'campaign_batch'
+        expected['after-campaign-smoke'] = 'account_state'
     tasks = queue.get('tasks')
     if (not isinstance(tasks, list) or any(not isinstance(item, dict) for item in tasks)
             or len(tasks) != len(expected)):
@@ -200,10 +201,17 @@ def audit_smoke_run(run_dir: Path, queue_returncode: int, report_returncode: int
             continue
         if task.get('outcome') != 'succeeded' or task.get('unmet_preconditions'):
             failures.append(f'{task_id} 未成功执行: {task.get("error")}')
+        evidence = object_at(task, 'evidence')
+        if task_id == 'after-campaign-smoke':
+            campaign = object_at(evidence, 'campaign')
+            if (campaign.get('chapter') != CHAPTER
+                    or campaign.get('stage') != '1-1'
+                    or 'page_campaign' not in (evidence.get('pages') or [])
+                    or evidence.get('in_map') is not False):
+                failures.append('战役后抓帧未确认同一章节页且不在地图内')
         done = object_at(completed, task_id)
         if done.get('outcome') != 'succeeded' or not done.get('identity'):
             failures.append(f'{task_id} 缺少匹配的完成断点')
-        evidence = object_at(task, 'evidence')
         if kind == 'account_state':
             frame = object_at(evidence, 'frame')
             shape = frame.get('shape')
@@ -297,6 +305,10 @@ def main() -> int:
         if allow_actions:
             tasks.append({'id': 'campaign-smoke', 'kind': 'campaign_batch',
                           'input': {'chapters': [CHAPTER], 'max_rounds': 2, 'max_seconds': 600}})
+            # The next task is deliberately a fresh capture: the campaign task's boundary frame
+            # describes the pre-run state and cannot prove that a cleared sortie returned home.
+            tasks.append({'id': 'after-campaign-smoke', 'kind': 'account_state', 'required': True,
+                          'input': {'capture': True}})
         queue_file = tmpdir / 'queue.json'
         queue_file.write_text(json.dumps({'tasks': tasks}, ensure_ascii=False, indent=1),
                               encoding='utf-8')

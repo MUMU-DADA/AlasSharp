@@ -1,0 +1,29 @@
+{
+  "source_run": "data/device_runs/20260925T083148/artifacts/20260925T083148",
+  "product_base_commit": "1102823",
+  "entry": "alashub queue --file <input> --run --allow-actions",
+  "redactions": [
+    "absolute project paths replaced with <project> placeholders",
+    "device serial and configured endpoint replaced with <device>",
+    "account config and config_name replaced with <redacted-account-config>",
+    "raw console log and screenshots remain in local ignored directory"
+  ],
+  "source_files_sha256": {
+    "index.json": "1294624f9f0621177d8c089a82106c31a49315d9a14e709fabdbe17b23f5b10b",
+    "session-log.jsonl": "c8a14117590ca795a6b67e4b44c115465e7f20e98a7c508520950ab6e44f0f15",
+    "queue.json": "b1f4c5de74b8d71a0704b22e50f0cbc7fec3ced84f8890299b0a8b84af475b0c",
+    "sortie-1-1.json": "7262cdfd487ca61b3d31451ca17cb237f4bc57e28232036d06479e496d712301",
+    "task-after-campaign-smoke.json": "3979e9863027c4cf26e1d5988715a6d14fad412f08a6768b99f0b9338079909d",
+    "task-campaign-smoke.json": "717026c7341f7e713e2a4aa8f311ea7f97d9e448efb92b2101703595b9f7cc1d",
+    "task-live-state.json": "46299114aa32c9264430dbaf1bdb764dd6a3815415976ce8986c6cfd1e4b4732"
+  },
+  "files": {
+    "index.json": "80815b3dedfc24bebe23e6766e1f6863d527cca18ce8fef0602fabd5a5402c50",
+    "session-log.jsonl": "df72fca6ef823f9b456779fd74daf4d28c40b7eed0f93142d5706d84e69ff893",
+    "queue.json": "faa18c826d97d56ad2fa8a92b4a0edeec7c398d08de9d5b07f83b78ba87dbd01",
+    "sortie-1-1.json": "c36320ab38e3bfc6e2fd060ecbc82f08f23e6ca41ff91965ad3bc2acea17bf07",
+    "task-after-campaign-smoke.json": "c4287fd0c9cad329b654be1d7534b63aff56322d59e1aa4089fea19cf5960421",
+    "task-campaign-smoke.json": "0381867ebca13b8bf58fa029e5f93d5d12c299a0547e28c275cb6ea811f375e5",
+    "task-live-state.json": "dd106a3c2bb40f098dfb0627d6049b12181556ce8d4dad696d7ca3828f5b90fa"
+  }
+}

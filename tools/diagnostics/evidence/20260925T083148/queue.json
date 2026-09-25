@@ -1,0 +1,54 @@
+{
+  "outcome": "succeeded",
+  "dry_run": false,
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 83.8,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "tasks": [
+    {
+      "id": "live-state",
+      "kind": "account_state",
+      "required": false,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 4.2,
+      "artifact": "<project>/data/device_runs/20260925T083148/artifacts/20260925T083148/task-live-state.json"
+    },
+    {
+      "id": "campaign-smoke",
+      "kind": "campaign_batch",
+      "required": false,
+      "input": {
+        "chapters": [
+          "campaign.campaign_main.campaign_1_1"
+        ],
+        "max_rounds": 2,
+        "max_seconds": 600
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 79.4,
+      "artifact": "<project>/data/device_runs/20260925T083148/artifacts/20260925T083148/task-campaign-smoke.json"
+    },
+    {
+      "id": "after-campaign-smoke",
+      "kind": "account_state",
+      "required": true,
+      "input": {
+        "capture": true
+      },
+      "outcome": "succeeded",
+      "error_kind": "none",
+      "error": null,
+      "elapsed_s": 0.2,
+      "artifact": "<project>/data/device_runs/20260925T083148/artifacts/20260925T083148/task-after-campaign-smoke.json"
+    }
+  ]
+}

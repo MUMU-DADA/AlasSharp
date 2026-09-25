@@ -189,6 +189,11 @@ OCR 参数复核发现通用探针把 `letter` 误作字符白名单、缺省时
 
 真实结算与撤退结论见[结果审计](archive/reports/result-evidence.md)，当前未完成范围见[路线](architecture-roadmap.md)。
 
+2026-09-25 的有界 1-1 冒烟在原生 `CampaignRun.load_campaign()`/`Campaign.run()` 路径取得 S 级成功结算，
+`sortie-result/1` 违例为 0；队列紧接着以独立 `account_state(capture=true)` 实时抓帧，确认同一章节 `page_campaign` 且不在图内。
+脱敏归档 `20260925T083148` 的队列、单关、会话、战后抓帧与本机原件哈希经审计一致；原始日志、截图和设备信息未入库。
+此前 `20260925T073557` 的成功结算缺独立返页抓帧，仍标为“未核验”，不借本次画面补证。两次样本均不外推其他章节。
+
 ## 原生任务异常证据
 
 2026-09-25 困难任务进入地图后发生 `MapDetectionError: No vertical line detected`。

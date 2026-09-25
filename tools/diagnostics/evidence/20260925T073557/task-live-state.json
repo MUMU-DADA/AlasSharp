@@ -1,0 +1,47 @@
+{
+  "id": "live-state",
+  "kind": "account_state",
+  "required": false,
+  "input": {
+    "capture": true
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 3.2,
+  "boundary_state": {
+    "available": false,
+    "frame_source": "device_cached",
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "常驻设备没有缓存画面；未创建设备或抓帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "server": "cn",
+    "pages": [
+      "page_campaign"
+    ],
+    "page_errors": [],
+    "in_map": false,
+    "in_map_error": null,
+    "in_map_tolerance": 143.8,
+    "frame": {
+      "available": true,
+      "source": "device_capture",
+      "path": null,
+      "shape": [
+        720,
+        1280,
+        3
+      ]
+    },
+    "source": "device_capture",
+    "campaign": null,
+    "config": "<redacted-account-config>",
+    "config_name": "<redacted-account-config>",
+    "config_error": null
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "id": "campaign-smoke",
+  "kind": "campaign_batch",
+  "required": false,
+  "input": {
+    "chapters": [
+      "campaign.campaign_main.campaign_1_1"
+    ],
+    "max_rounds": 2,
+    "max_seconds": 600
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 59.6,
+  "boundary_state": {
+    "available": true,
+    "frame_source": "device_cached",
+    "server": "cn",
+    "pages": [
+      "page_campaign"
+    ],
+    "in_map": false
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "batch_outcome": "cleared",
+    "cleared": true,
+    "stopped_early": false,
+    "index_artifact": "<project>/data/device_runs/20260925T073556/artifacts/20260925T073557/index.json",
+    "stages": [
+      {
+        "chapter": "campaign.campaign_main.campaign_1_1",
+        "stage": "1-1",
+        "requested_mode": null,
+        "campaign_mode": "normal",
+        "outcome": "cleared",
+        "cleared": true,
+        "failed": false,
+        "skipped": false,
+        "error_kind": "none",
+        "error": null,
+        "contract_violations": [],
+        "artifact": "<project>/data/device_runs/20260925T073556/artifacts/20260925T073557/sortie-1-1.json"
+      }
+    ]
+  }
+}

@@ -50,6 +50,14 @@ def fixture(root, mode):
                          'stopped_early': False,
                          'index_artifact': str(root / 'index.json')},
         }
+        docs['after-campaign-smoke'] = {
+            'id': 'after-campaign-smoke', 'kind': 'account_state', 'required': True,
+            'input': {'capture': True}, 'outcome': 'succeeded',
+            'evidence': {'source': 'device_capture', 'frame': {'available': True, 'shape': [720, 1280, 3]},
+                         'pages': ['page_campaign'], 'page_errors': [], 'in_map': False,
+                         'in_map_tolerance': 37.5,
+                         'campaign': {'chapter': CHAPTER, 'stage': '1-1', 'instantiated': True}},
+        }
         write(root / 'index.json', {'contract': 'sortie-result/1', 'dry_run': False,
                                    'outcome': 'cleared', 'cleared': True,
                                    'stopped_early': False, 'stages': [stage]})
@@ -82,13 +90,16 @@ def fixture(root, mode):
         session = [
             event('session', {'dry_run': False, 'host_start_ms': 1}),
             event('session', {'serial': '<device>', 'configured': 'device'}),
-            event('queue', {'tasks': len(entries), 'kinds': 'account_state,campaign_batch'}),
+            event('queue', {'tasks': len(entries), 'kinds': 'account_state,campaign_batch,account_state'}),
             event('queue', {'task': 'live-state', 'kind': 'account_state'}),
             event('task', {'outcome': 'succeeded', 'error_kind': 'none', 'error': None,
                            'elapsed_s': 1.0}),
             event('queue', {'task': 'campaign-smoke', 'kind': 'campaign_batch'}),
             event('stage', {'chapter': CHAPTER, 'stage': '1-1', 'outcome': 'cleared',
                             'cleared': True, 'violations': 0}),
+            event('task', {'outcome': 'succeeded', 'error_kind': 'none', 'error': None,
+                           'elapsed_s': 1.0}),
+            event('queue', {'task': 'after-campaign-smoke', 'kind': 'account_state'}),
             event('task', {'outcome': 'succeeded', 'error_kind': 'none', 'error': None,
                            'elapsed_s': 1.0}),
             event('queue', {'outcome': 'succeeded', 'tasks': len(entries)}),
@@ -159,6 +170,12 @@ def main():
         run('观测声明零错误但部分抓帧失败', mutate=lambda p: change(p / 'task-observe.json',
             lambda d: d['evidence']['capture'].update(succeeded=3, failed=1)), expected='只读观测')
         run('战役工件缺失', 'campaign', lambda p: (p / 'task-campaign-smoke.json').unlink(), expected='task-campaign-smoke.json 缺失')
+        run('战后抓帧不是章节页', 'campaign', lambda p: change(p / 'task-after-campaign-smoke.json',
+            lambda d: d['evidence'].update(pages=['page_main'])), expected='战役后抓帧未确认')
+        run('战后抓帧仍在地图内', 'campaign', lambda p: change(p / 'task-after-campaign-smoke.json',
+            lambda d: d['evidence'].update(in_map=True)), expected='战役后抓帧未确认')
+        run('战后抓帧章节关联错误', 'campaign', lambda p: change(p / 'task-after-campaign-smoke.json',
+            lambda d: d['evidence']['campaign'].update(chapter='other')), expected='战役后抓帧未确认')
         run('战役原始工件缺失', 'campaign', lambda p: (p / 'sortie-1-1.json').unlink(), expected='战役原始工件缺失')
         run('CampaignEnd 不足以证明通关', 'campaign', lambda p: change(p / 'sortie-1-1.json',
             lambda d: d['result'].pop('end_evidence')), expected='合同/批次/会话核对')
