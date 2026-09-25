@@ -2,6 +2,115 @@
   "note": "R5 原语执行对拍夹具：供 `Alas.Server r5-exec --fixture <本文件>` 与 tools/diagnostics/verify_r5_execution.py 使用。关卡/钩子取自静态导出（data/campaign/**），地图状态与运行时配置由本夹具给出，动作只被干跑宿主记录。",
   "cases": [
     {
+      "name": "campaign_8_2 battle_0：`if self.mystery_count < 1 and self.clear_roadblocks([road_MY]):`——宿主计数（mystery_count）+ 复合条件里的比较",
+      "chapter": "campaign_main",
+      "level": "campaign_8_2",
+      "hook": "battle_0",
+      "config": {
+        "fleet_boss": true,
+        "fleet_2": true,
+        "fleet_1_location": "A1",
+        "fleet_2_location": "B1"
+      },
+      "grids": [
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "weight": 5,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "is_fleet": true,
+          "weight": 5,
+          "cost": 1
+        },
+        {
+          "location": "A2",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "A4",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "B2",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "B3",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "C2",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "D3",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "D5",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "E3",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "E4",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "E5",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "F1",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "F2",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "G2",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "G3",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "H3",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "H4",
+          "weight": 10,
+          "cost": 3
+        }
+      ],
+      "expect": {
+        "steps_contains": "host.mystery_count = 0"
+      }
+    },
+    {
       "name": "campaign_15_1 battle_0：复合条件 `not self.map_is_clear_mode and self.map_has_mob_move`——第一操作数为真、短路求值到第二操作数；第二项没有初值（默认值在别的钩子里设置）→ 阻塞报原因",
       "chapter": "campaign_main",
       "level": "campaign_15_1",

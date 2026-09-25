@@ -99,8 +99,12 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
         return true;
     }
 
+    /// <summary>上游 <c>mystery_count</c>：清掉一个神秘格子就 +1。</summary>
+    public int MysteryCount { get; private set; }
+
     public bool ClearChosenMystery(CampaignGrid grid)
     {
+        MysteryCount++;
         _channel.Call("clear_chosen_mystery", [Node($"#{grid.Location}")], []);
         return true;
     }

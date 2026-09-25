@@ -30,7 +30,7 @@ DATA = ROOT / "data" / "campaign"
 REPORT = ROOT / "docs" / "archive" / "reports" / "r5-incomplete-hooks.md"
 
 # 棘轮基线：上次普查的"不完整且上游有 ≥2 条语句"的钩子数（只许下降）
-BASELINE = 9        # `battle_*` 里"不完整且上游有 ≥2 条语句"的钩子数（实测；随计划语言扩展下降）
+BASELINE = 7        # `battle_*` 里"不完整且上游有 ≥2 条语句"的钩子数（实测；随计划语言扩展下降）
 
 
 def is_self_call(node) -> bool:

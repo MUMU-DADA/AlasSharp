@@ -128,6 +128,12 @@ public interface ICampaignPrimitiveHost
     /// 请求**结束本关**（上游钩子里 `raise CampaignEnd()` 的语义：`run()` 捕获后正常返回）。
     /// 与 <see cref="Withdraw"/> 不同：这是**控制流信号**，不点撤退、不发设备动作。
     /// </summary>
+    /// <summary>
+    /// 已清掉的神秘格子数（上游 `mystery_count`：地图初始化置 0，每清一个 +1）。
+    /// 关卡里会读它（`campaign_8_2`：`if self.mystery_count < 1 and …`）。
+    /// </summary>
+    int MysteryCount { get; }
+
     void RequestCampaignEnd(string reason);
 
     void SetGridFlag(CampaignGrid grid, string flag, bool value);
@@ -214,8 +220,12 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
         return true;
     }
 
+    /// <summary>上游 <c>mystery_count</c>：清掉一个神秘格子就 +1。</summary>
+    public int MysteryCount { get; private set; }
+
     public bool ClearChosenMystery(CampaignGrid grid)
     {
+        MysteryCount++;
         Actions.Add($"clear_chosen_mystery({grid.Location})");
         return true;
     }
@@ -1601,8 +1611,12 @@ public static class CampaignHookRunner
         }
         if (node["host_value"] is JsonValue hostNode && hostNode.TryGetValue<string>(out string? hostName))
         {
-            if (hostName != "battle_count") return (null, $"未知的宿主值 {hostName}");
-            return (host.BattleCount, $"host.battle_count = {host.BattleCount}");
+            return hostName switch
+            {
+                "battle_count" => (host.BattleCount, $"host.battle_count = {host.BattleCount}"),
+                "mystery_count" => (host.MysteryCount, $"host.mystery_count = {host.MysteryCount}"),
+                _ => (null, $"未知的宿主值 {hostName}"),
+            };
         }
         if (node["grid_attr"] is JsonObject gridAttr && gridAttr["name"] is JsonValue attrName
             && attrName.TryGetValue<string>(out string? attribute) && gridAttr["grid"] is { } gridNode2)

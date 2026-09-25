@@ -5,8 +5,8 @@
 > 所以是「少做」而不是「做错」。本报告只说清还差什么。
 
 - 导出里的钩子条目：**3019**
-- `plan_complete=false` 且上游**有 ≥2 条语句**的：**53**（其中 `battle_*` **9**、变体/其它 **44**）
-- 棘轮基线：**9**（只允许下降）
+- `plan_complete=false` 且上游**有 ≥2 条语句**的：**51**（其中 `battle_*` **7**、变体/其它 **44**）
+- 棘轮基线：**7**（只允许下降）
 
 ## `if` 的形态分布（条件 / 语句体）
 
@@ -16,18 +16,18 @@
 
 | 条件形态 | 语句体形态 | 次数 |
 | --- | --- | --- |
-| self_call | return | 13 |
 | other | expr | 10 |
+| self_call | return | 9 |
 | other | assign+expr+return | 6 |
 | self_call | assign | 6 |
 | compare | assign | 5 |
 | compare | return | 4 |
 | other | assign | 2 |
-| other | return | 2 |
 | other | expr+return | 2 |
 | local_name | assign+expr+raise | 1 |
 | other | for | 1 |
 | local_name | assign+if | 1 |
+| not_self_call | return | 1 |
 
 ## 例子
 

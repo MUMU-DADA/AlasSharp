@@ -663,6 +663,15 @@ def _state_expression(node, resolve):
     if isinstance(node, ast.Constant) and (node.value is True or node.value is False
                                            or node.value is None or isinstance(node.value, int)):
         return {'literal': node.value}
+    if isinstance(node, ast.Compare) and len(node.ops) == 1 and len(node.comparators) == 1:
+        # 比较也能作为**值表达式**：复合条件里要用
+        # （`self.mystery_count < 1 and self.clear_roadblocks([road_MY])`）。与 `branch_test` 同一套编码。
+        operators = {ast.GtE: '>=', ast.Gt: '>', ast.LtE: '<=', ast.Lt: '<',
+                     ast.Eq: '==', ast.NotEq: '!='}
+        left = _state_expression(node.left, resolve)
+        right = _state_expression(node.comparators[0], resolve)
+        if left is not None and right is not None and type(node.ops[0]) in operators:
+            return {'compare': {'left': left, 'op': operators[type(node.ops[0])], 'right': right}}
     if is_self_call(node):
         # 调用作为值：真假/数值由执行器调原语得到（实参仍要能静态表达）。
         # 条件里的 `self.fleet_at(A3, fleet=2) and A2.is_mystery` 就靠这一支。
@@ -684,6 +693,9 @@ def _state_expression(node, resolve):
             and node.value.id == 'self':
         if node.attr == 'map_is_clear_mode':
             return {'runtime': 'map_is_clear_mode'}
+        if node.attr in ('battle_count', 'mystery_count'):
+            # 宿主状态（不是关卡实例属性）：执行器从宿主取（`battle_count` / `mystery_count`）
+            return {'host_value': node.attr}
         if node.attr == 'battle_count':
             # 宿主状态（不是关卡实例属性）：执行器从 `host.BattleCount` 取。
             # 不加这条的话会被当成实例属性 → 没有初值 → 阻塞（实测踩过这个回归）。
