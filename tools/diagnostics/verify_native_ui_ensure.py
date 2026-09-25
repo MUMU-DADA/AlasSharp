@@ -3,7 +3,9 @@
 import json
 import sys
 import tempfile
+from collections import deque
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -13,6 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import alas_vision as vision  # noqa: E402
 from module.ui.page import Page  # noqa: E402
 from module.ui.ui import UI  # noqa: E402
+from module.device.device import Device as NativeDevice  # noqa: E402
+from module.device.screenshot import Screenshot  # noqa: E402
+import module.base.timer as native_timer  # noqa: E402
 
 
 class Device:
@@ -23,6 +28,13 @@ class Device:
         self.visible = True
         self.captures = 0
         self.clicks = []
+        self.resets = []
+
+    def stuck_record_clear(self):
+        self.resets.append('stuck')
+
+    def click_record_clear(self):
+        self.resets.append('click')
 
     def click(self, button):
         self.clicks.append(button)
@@ -91,8 +103,73 @@ def verify_idle_handler():
     handler.device.click.assert_not_called()
 
 
+def verify_task_boundary():
+    """Run actual UI entry, Device guards and Timer with inert capture/recognition.
+
+    No native device constructor, account configuration, real clock wait or
+    physical input runs. New-task guards must work after clearing old history.
+    """
+    destination = Page.all_pages['page_campaign']
+    for scenario in ('stale_stuck', 'stale_click', 'current_stuck', 'current_click'):
+        clock = [1000.0]
+        captures = []
+        with patch.object(native_timer, 'time', lambda: clock[0]):
+            device = object.__new__(NativeDevice)
+            device.config = SimpleNamespace(is_actual_task=False, Emulator_ControlMethod='MaaTouch')
+            device.stuck_timer = native_timer.Timer(60, count=60).start()
+            device.stuck_timer_long = native_timer.Timer(180, count=180).start()
+            device.detect_record = {'previous-task'}
+            device.click_record = deque(['previous-button'] * 11, maxlen=15)
+            device.app_is_running = lambda: True
+            device.handle_night_commission = lambda: False
+            device.click = lambda button: device.handle_control_check(button)
+            original_click = device.click
+            if scenario == 'stale_stuck':
+                for _ in range(61):
+                    assert device.stuck_record_check() is False
+                clock[0] += 61
+
+            def capture(current):
+                assert current is device
+                captures.append(True)
+                device.image = np.zeros((8, 12, 3), dtype=np.uint8)
+
+            def recognize(ui, page):
+                if page is not destination:
+                    return False
+                if len(captures) == 1:
+                    assert not device.detect_record and not device.click_record
+                    if scenario == 'stale_click':
+                        device.click('previous-button')
+                    elif scenario == 'current_stuck':
+                        for _ in range(61):
+                            assert device.stuck_record_check() is False
+                        clock[0] += 61
+                        device.screenshot()
+                    elif scenario == 'current_click':
+                        for _ in range(12):
+                            device.click('current-button')
+                return True
+
+            with patch.object(vision, '_device_engine', return_value=device), \
+                    patch.object(NativeDevice, '__init__', side_effect=AssertionError('Physical device forbidden')), \
+                    patch.object(Screenshot, 'screenshot', capture), \
+                    patch.object(UI, 'ui_page_appear', recognize), \
+                    patch.object(vision.time, 'sleep'):
+                result = vision.op_ui_ensure(dict(destination=destination.name, allow_actions=True))
+            expected = {'current_stuck': 'GameStuckError', 'current_click': 'GameTooManyClickError'}.get(scenario)
+            assert result.get('error_kind') == expected, (scenario, result)
+            assert result['arrived'] is (expected is None), (scenario, result)
+            assert len(captures) == (1 if expected else 2), (scenario, captures)
+            assert device.click is original_click, scenario
+            if scenario == 'stale_click':
+                assert list(device.click_record) == ['previous-button']
+    print('OK: four native navigation task-boundary/active-guard scenarios')
+
+
 def main():
     verify_idle_handler()
+    verify_task_boundary()
     device = Device()
     destination = Page.all_pages['page_campaign']
     FakeUI.instances = []
@@ -104,6 +181,7 @@ def main():
                                        'allow_actions': True})
         assert unknown['error_kind'] == 'UnknownPage', unknown
         engine.assert_not_called()
+        assert device.resets == []
 
         already = vision.op_ui_ensure({'destination': destination.name,
                                        'allow_actions': True})
@@ -116,6 +194,7 @@ def main():
         assert FakeUI.instances[-1].skip_first_screenshot is False
         engine.assert_called_once_with()
         assert device.captures == 1, device.captures
+        assert device.resets == ['stuck', 'click']
 
         FakeUI.switched = True
         FakeUI.click_on_ensure = True
@@ -126,6 +205,7 @@ def main():
         assert switched['arrived'] and switched['changed'] is True, switched
         assert device.clicks == ['native-edge'] and 'click' not in vars(device)
         assert device.captures == 2, device.captures
+        assert device.resets == ['stuck', 'click'] * 2
         FakeUI.click_on_ensure = False
         device.visible = False
         unstable = vision.op_ui_ensure({'destination': destination.name,
@@ -179,9 +259,11 @@ def main():
             assert success['arrived'] and success.get('failure_frames', []) == []
             assert not (Path(directory) / 'success.png').exists()
             engine.reset_mock()
+            prior_resets = list(device.resets)
             bad_path = vision.op_ui_ensure({**arguments, 'failure_frame': '../relative.png'})
             assert bad_path['error_kind'] == 'InvalidArtifactPath'
             engine.assert_not_called()
+            assert device.resets == prior_resets
 
     print('OK: native UI navigation host contract')
 

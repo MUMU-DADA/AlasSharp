@@ -3402,6 +3402,10 @@ def op_ui_ensure(args):
     try:
         from module.ui.ui import UI
         device = _device_engine()
+        # Match native task entry: old detection history belongs to the previous
+        # task. Clear once; guards remain active throughout this navigation.
+        device.stuck_record_clear()
+        device.click_record_clear()
         ui = UI(device.config, device)
         # Fast capture can expose a sibling page during a transition. Give each
         # native page-graph click time to settle before UI.ui_goto selects a new edge.
