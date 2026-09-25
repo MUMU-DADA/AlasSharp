@@ -980,7 +980,7 @@
           "enemy_scale": 3,
           "enemy_genre": "Main",
           "weight": 30,
-          "cost": 3
+          "cost": 9999
         }
       ],
       "expect": {
@@ -1111,17 +1111,17 @@
         {
           "location": "E2",
           "weight": 10,
-          "cost": 6
+          "cost": 9999
         },
         {
           "location": "F2",
           "weight": 10,
-          "cost": 7
+          "cost": 9999
         },
         {
           "location": "G2",
           "weight": 10,
-          "cost": 8
+          "cost": 9999
         }
       ],
       "expect": {

@@ -29,14 +29,30 @@ public static class CampaignBruteFinder
 {
     public const int DefaultMaxTries = 200_000;
 
+    /// <param name="liveCost">
+    /// 目标格在**地图现成成本场**里的代价（`CampaignGrid.Cost`）。上游 `brute_find_roadblocks` 的入口判断
+    /// 用的就是地图上已有的 `grid.is_accessible`（即成本场里的值），而**不是**重算一遍——两者在
+    /// "上一轮寻路之后地图状态又变了"的情况下会不同。传 null 时才回退到重算（旧行为）。
+    /// </param>
     public static CampaignRoadblockSearch FindRoadblocks(IReadOnlyList<CampaignGrid> grids, string target,
                                                          string fleetStart, bool hasAmbush,
-                                                         int maxTries = DefaultMaxTries)
+                                                         int maxTries = DefaultMaxTries,
+                                                         int? liveCost = null)
     {
-        var initial = CampaignPathfinder.FindPathInitial(grids, fleetStart, hasAmbush, hasEnemy: true);
-        if (initial.CostOf(target) < CampaignPathfinder.Unreachable)
+        if (liveCost is { } cost)
         {
-            return new CampaignRoadblockSearch([], AlreadyAccessible: true, Exhausted: false, 0);
+            if (cost < CampaignPathfinder.Unreachable)
+            {
+                return new CampaignRoadblockSearch([], AlreadyAccessible: true, Exhausted: false, 0);
+            }
+        }
+        else
+        {
+            var initial = CampaignPathfinder.FindPathInitial(grids, fleetStart, hasAmbush, hasEnemy: true);
+            if (initial.CostOf(target) < CampaignPathfinder.Unreachable)
+            {
+                return new CampaignRoadblockSearch([], AlreadyAccessible: true, Exhausted: false, 0);
+            }
         }
 
         var enemies = grids.Where(grid => grid.IsEnemy).ToArray();

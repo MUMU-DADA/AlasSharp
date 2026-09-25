@@ -40,6 +40,12 @@ GENRES = ["Light", "Main", "Carrier", "Treasure"]
 PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss",
               "clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks",
               "pick_up_ammo", "fleet_2_push_forward", "fleet_2_protect"]
+
+# `brute_clear_boss` **暂时不纳入**：它的路障**子集**选择与上游不同 —— C# 的寻路是"relax 到不动点"，
+# 会找到更小的可达子集，于是 `grids.sort(...)[0]` 打的那一格可能与上游不同（两边都"清一个路障就能到"，
+# 但不是同一格）。这是**已知差异**，登记在 docs/upstream-engine-rewrite.md，待下一轮做决定性验证后再处理；
+# 现在放进扫描只会常红并掩盖新回归。替身对 `brute_fleet_meet`/`clear_boss` 的绑定已就绪，随时可开。
+KNOWN_DIVERGENCE = ["brute_clear_boss"]
 ROADBLOCK_PRIMITIVES = {"clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks"}
 CONFIGS = [
     {"enemy_priority": None},
@@ -220,9 +226,19 @@ class RecordingStub:
         from module.map.map import Map  # noqa: PLC0415
         return Map.brute_find_roadblocks(self, grid, fleet=fleet)
 
+    def brute_fleet_meet(self):
+        # 绑**上游真实实现**（它自己会走 `brute_find_roadblocks` + `clear_chosen_enemy`）
+        from module.map.map import Map  # noqa: PLC0415
+        return Map.brute_fleet_meet(self)
+
     def clear_potential_boss(self):
         from module.map.map import Map  # noqa: PLC0415
         return Map.clear_potential_boss(self)
+
+    def clear_boss(self):
+        # 上游 `self.fleet_boss.clear_boss()` 最终调的就是 `Map.clear_boss`（代理透传到宿主）
+        from module.map.map import Map  # noqa: PLC0415
+        return Map.clear_boss(self)
 
     def find_path_initial(self, location=None, has_ambush=True, has_enemy=True):
         """上游有**两个同名方法**：`Fleet.find_path_initial(self)`（无参、读自己的舰队位置）与
@@ -530,7 +546,9 @@ def main() -> int:
              f"集合序伪影（只在 `submarine_move_near_boss` 实参上不同）{len(set_order)} 条；"
              f"其余顺序差异 {len(order_diffs)} 条",
              f"- 等价位**集合序伪影**：**{len(artifacts)}** 处（上游 `SelectedGrids.add` 走 `set`，"
-             f"等 weight/cost 的格子谁在前不可复现；两侧都选中同价位格子）", ""]
+             f"等 weight/cost 的格子谁在前不可复现；两侧都选中同价位格子）",
+             f"- **未纳入的已知差异**：{', '.join(KNOWN_DIVERGENCE) or '无'}（路障**子集**选择不同："
+             "C# 寻路定点收敛会找到更小的可达子集；登记在重写文档的差异一节）", ""]
     if order_diffs:
         lines += ["## 第一动作不同（前 10 条，需人工判断性质）", "", "| 用例 | 种类 | 序列 |", "| --- | --- | --- |"]
         lines += [f"| {name} | {kind} | {detail} |" for name, kind, detail in order_diffs[:10]]

@@ -306,7 +306,7 @@
           "location": "C1",
           "is_fleet": true,
           "weight": 5,
-          "cost": 2
+          "cost": 9999
         },
         {
           "location": "D1",
@@ -314,7 +314,7 @@
           "enemy_scale": 2,
           "enemy_genre": "Main",
           "weight": 20,
-          "cost": 3
+          "cost": 9999
         },
         {
           "location": "E1",
@@ -323,7 +323,7 @@
           "enemy_scale": 3,
           "enemy_genre": "Main",
           "weight": 30,
-          "cost": 4
+          "cost": 9999
         }
       ],
       "expect": {

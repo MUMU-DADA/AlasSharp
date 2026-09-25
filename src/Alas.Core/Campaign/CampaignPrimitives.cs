@@ -431,7 +431,8 @@ public static class CampaignPrimitives
         {
             host.Log($"clear_potential_boss：{grid.Location} 不可达，找路障");
             var search = CampaignBruteFinder.FindRoadblocks(host.Grids, grid.Location,
-                FleetStart(host, host.Config.FleetBossIndex), host.Config.MapHasAmbush);
+                FleetStart(host, host.Config.FleetBossIndex), host.Config.MapHasAmbush,
+                liveCost: grid.Cost);
             if (!search.Found) continue;
             var roadblocks = new CampaignGridSet(search.Roadblocks).Sort("weight", "cost");
             host.Log($"clear_potential_boss：清路障 {roadblocks[0].Location}（fleet_1）");
@@ -767,7 +768,8 @@ public static class CampaignPrimitives
         {
             host.Log("Brute clear BOSS");
             var search = CampaignBruteFinder.FindRoadblocks(host.Grids, boss[0].Location,
-                FleetStart(host, host.Config.FleetBossIndex), host.Config.MapHasAmbush);
+                FleetStart(host, host.Config.FleetBossIndex), host.Config.MapHasAmbush,
+                liveCost: boss[0].Cost);
             if (search.Exhausted && !search.Found)
             {
                 host.Log("brute_clear_boss：Enemy roadblock try exhausted.");
@@ -806,7 +808,8 @@ public static class CampaignPrimitives
             return false;
         }
         var search = CampaignBruteFinder.FindRoadblocks(host.Grids, host.Fleet2Location,
-            FleetStart(host, 1), host.Config.MapHasAmbush);
+            FleetStart(host, 1), host.Config.MapHasAmbush,
+            liveCost: host.GridAt(host.Fleet2Location).Cost);
         if (!search.Found)
         {
             host.Log($"brute_fleet_meet：两队之间未找到路障（{FleetStart(host, 1)} → {host.Fleet2Location}，" +
@@ -825,7 +828,7 @@ public static class CampaignPrimitives
     {
         if (host.Config.FleetBossIndex != 2) return false;
         var search = CampaignBruteFinder.FindRoadblocks(host.Grids, grid.Location,
-            FleetStart(host, 2), host.Config.MapHasAmbush);
+            FleetStart(host, 2), host.Config.MapHasAmbush, liveCost: grid.Cost);
         if (!search.Found) return false;
         host.Log("Fleet_2 rescue");
         // 上游 self.select_grids(grids)：按**恢复后**的成本场过滤 is_accessible，再按 weight/cost 排序取第一个。
