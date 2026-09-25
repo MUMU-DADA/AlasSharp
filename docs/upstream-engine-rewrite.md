@@ -829,6 +829,41 @@ withdraw                 0     1    —        —        —
 **对拍**：`tools/diagnostics/verify_r5_diff.py` 断言决策层无漂移 + 动作层两边都打 D2 + 目标交集为真 +
 无目标不一致 + 包装层原语被如实列出；帧可用时追加帧驱动对照，缺帧跳过。已登记进 `verify_all.py`。
 
+#### P2-22 域级开关骨架（回退能力落到代码）
+
+`src/Alas.Core/Runtime/CampaignEngineSwitch.cs` + 自检命令 `Alas.Server r5-switch`：
+
+| 约束 | 实现 |
+| --- | --- |
+| 默认**不改行为** | `loop` 域默认 `shadow`（仍跑上游，只多记一份 C# 决策）；`path` / `primitives` 默认 `upstream` 且明确标注**未接进生产路径**（C# 实现目前只用于离线对拍） |
+| `csharp` 是**双钥匙** | 既要 `ALAS_ENGINE_LOOP=csharp`，又要 `ALAS_ENGINE_ALLOW_CSHARP=1`（表示"真实路径证据已备齐、由人明确放行"）；缺第二把钥匙**拒绝**并退回影子模式，拒绝原因进日志 |
+| 非法取值**退回默认** | 取值只认 `upstream` / `shadow` / `csharp`（大小写不敏感）；其它值退回默认并把原因写进说明——不猜 |
+| 可核对 | `r5-switch` 打印每个域的当前后端、是否已接生产路径、闸门状态；`--json` 给机器读 |
+| 生产路径接线 | `CampaignBatchRunner.CompareShadow` 按 `loop` 域决定"要不要记录影子"；若被显式放行成 `csharp`，如实告警"**尚未接线**（仍走上游）"并按影子处理 |
+
+**对拍**：新增 `tools/diagnostics/verify_r5_switch.py`（默认模式 / 未接线域标注 / 缺闸门拒绝 / 有闸门放行 /
+非法值退回），已登记进 `verify_all.py`（R5 检查现共 **10** 个）。
+
+#### P2-23 运行目录入口（真机验证时不用手填路径）
+
+`Alas.Server r5-diff --run <运行目录>`：直接吃一次运行写出的工件目录，自己解析出对照所需的三件事，
+并把**解析来源逐条打印**（不做隐式猜测）：
+
+| 项 | 来源（按优先级） |
+| --- | --- |
+| 章节模块名 | `queue.json` 的 `tasks[].input.chapters[0]`；没有则 `task-*.json` 的 `chapter` |
+| 运行开关 | `queue.json` 的 `input.clear_all` → 声明 `clear_all` 变体 |
+| 上游日志 | ① 运行目录内的 `*.log`/`*.txt`；② `shadow-*.json` 记录的 `upstream_log` → 引擎 `log/`；③ 引擎 `log/` 里**运行时间窗内**的一份（时间窗用运行目录自身最早的工件时间 −60 秒定；窗内没有匹配时降级为最新一份并**明说"可能不是本次运行"**） |
+
+舰队所在格**不会**从队列输入推断（`fleet1=1` 只说明用了 1 号舰队位，不是格子坐标）——
+要 `--fleet-1/--fleet-2` 显式给，或由识别结果提供；输出里也会提示这一点。
+
+实测（真实运行目录 `artifacts-1-1/<stamp>`）：解析出 `campaign.campaign_main.campaign_1_1`、
+在时间窗内选中本次的上游日志、决策层 2/2 一致、动作层 `clear_chosen_enemy` 两边都打 `F1/G1`。
+
+**对拍**：`verify_r5_diff.py` 增加**运行目录用例**（临时造目录 + `queue.json` + 目录内日志），
+断言它能自解析出 `campaign_3_1`、给出同样的两层结论、并打印章节来源。
+
 #### P2-24 `super` 委托执行与 `<expr>` 归零（步覆盖 100%）
 
 最后 7 处 `super().handle_boss_appear_refocus(preset)` 此前被当"本层未执行"跳过——那是**引擎的保真缺口**：
@@ -851,41 +886,6 @@ withdraw                 0     1    —        —        —
 
 > 诚实边界：`focus_to` 的机位在干跑里是**占位**（默认 `<未记录>`），真机由识别提供；
 > `MAP_BOSS_APPEAR_REFOCUS_SWIPE` 是用户配置项、**没有随关卡导出**，只有关卡显式传 preset 时才走滑动分支。
-
-#### P2-23 运行目录入口（真机验证时不用手填路径）
-
-`Alas.Server r5-diff --run <运行目录>`：直接吃一次运行写出的工件目录，自己解析出对照所需的三件事，
-并把**解析来源逐条打印**（不做隐式猜测）：
-
-| 项 | 来源（按优先级） |
-| --- | --- |
-| 章节模块名 | `queue.json` 的 `tasks[].input.chapters[0]`；没有则 `task-*.json` 的 `chapter` |
-| 运行开关 | `queue.json` 的 `input.clear_all` → 声明 `clear_all` 变体 |
-| 上游日志 | ① 运行目录内的 `*.log`/`*.txt`；② `shadow-*.json` 记录的 `upstream_log` → 引擎 `log/`；③ 引擎 `log/` 里**运行时间窗内**的一份（时间窗用运行目录自身最早的工件时间 −60 秒定；窗内没有匹配时降级为最新一份并**明说"可能不是本次运行"**） |
-
-舰队所在格**不会**从队列输入推断（`fleet1=1` 只说明用了 1 号舰队位，不是格子坐标）——
-要 `--fleet-1/--fleet-2` 显式给，或由识别结果提供；输出里也会提示这一点。
-
-实测（真实运行目录 `artifacts-1-1/<stamp>`）：解析出 `campaign.campaign_main.campaign_1_1`、
-在时间窗内选中本次的上游日志、决策层 2/2 一致、动作层 `clear_chosen_enemy` 两边都打 `F1/G1`。
-
-**对拍**：`verify_r5_diff.py` 增加**运行目录用例**（临时造目录 + `queue.json` + 目录内日志），
-断言它能自解析出 `campaign_3_1`、给出同样的两层结论、并打印章节来源。
-
-#### P2-22 域级开关骨架（回退能力落到代码）
-
-`src/Alas.Core/Runtime/CampaignEngineSwitch.cs` + 自检命令 `Alas.Server r5-switch`：
-
-| 约束 | 实现 |
-| --- | --- |
-| 默认**不改行为** | `loop` 域默认 `shadow`（仍跑上游，只多记一份 C# 决策）；`path` / `primitives` 默认 `upstream` 且明确标注**未接进生产路径**（C# 实现目前只用于离线对拍） |
-| `csharp` 是**双钥匙** | 既要 `ALAS_ENGINE_LOOP=csharp`，又要 `ALAS_ENGINE_ALLOW_CSHARP=1`（表示"真实路径证据已备齐、由人明确放行"）；缺第二把钥匙**拒绝**并退回影子模式，拒绝原因进日志 |
-| 非法取值**退回默认** | 取值只认 `upstream` / `shadow` / `csharp`（大小写不敏感）；其它值退回默认并把原因写进说明——不猜 |
-| 可核对 | `r5-switch` 打印每个域的当前后端、是否已接生产路径、闸门状态；`--json` 给机器读 |
-| 生产路径接线 | `CampaignBatchRunner.CompareShadow` 按 `loop` 域决定"要不要记录影子"；若被显式放行成 `csharp`，如实告警"**尚未接线**（仍走上游）"并按影子处理 |
-
-**对拍**：新增 `tools/diagnostics/verify_r5_switch.py`（默认模式 / 未接线域标注 / 缺闸门拒绝 / 有闸门放行 /
-非法值退回），已登记进 `verify_all.py`（R5 检查现共 **10** 个）。
 
 ### P4 收口
 
