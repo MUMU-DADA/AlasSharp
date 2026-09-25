@@ -125,6 +125,21 @@ class PeriodicOverrideTests(unittest.TestCase):
         self.assertEqual(self.file.read_bytes(), self.baseline)
         self.assertIs(self.device.config, self.prior)
 
+    def test_mixed_numeric_select_options_follow_upstream_option_types(self):
+        from native_task_overrides import validate_task_overrides
+        config = AzurLaneConfig('fixture', task='IslandProductionPlanner')
+        fields = {key: path for key, path in config.bound.items() if path.endswith(
+            ('.FieldsEfficiency', '.OrchardEfficiency', '.NurseryEfficiency'))}
+        self.assertEqual(len(fields), 3, fields)
+        for key in fields:
+            values = validate_task_overrides(config, {key: 0.04,})
+            self.assertEqual(values, {key: 0.04})
+            self.assertIs(type(values[key]), float)
+        values = validate_task_overrides(config, {key: 0.12 for key in fields})
+        self.assertEqual(values, {key: 0.12 for key in fields})
+        self.assertTrue(all(type(value) is float for value in values.values()))
+        self.assertEqual(self.file.read_bytes(), self.baseline)
+
     def test_mixed_override_is_atomic_before_execution(self):
         result = self.invoke(dict(Reward_CollectOil=False, Reward_CollectCoin='false'))
         self.assertEqual(result['decision'], 'denied', result)
