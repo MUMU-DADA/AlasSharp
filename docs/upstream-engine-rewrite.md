@@ -638,29 +638,29 @@ boss 本来就可达时退回 `fleet_boss.clear_boss`；`fleet_2_rescue` 清掉�
 
 **（b）的待办就是上面那张表的 26 行**；(a) 是本轮之后可以立刻做、并且能拿到真机动作层证据的路线。
 
-#### 路线 (a) 的宿主侧：外驱驱动器（`tools/s3_campaign_driver.py`）
+#### 路线 (a) 的宿主侧：seam **早已存在**（一次自查纠错）
 
-`CampaignStepDriver` 把"一个已构造好的上游关卡对象"变成可逐步驱动的对象：
+我一度新写了 `tools/s3_campaign_driver.py` 去做"C# 决定原语、上游方法执行"，随后发现**宿主里早就有这套
+seam**——重复维护两套外驱机制违反项目纪律，**自建模块与对应检查已删除**，改为核对既有 seam。
 
-| 方法 | 做什么 | 纪律 |
+| 既有 op | 做什么 | 已具备的保证 |
 | --- | --- | --- |
-| `prepare()` | 照上游 `CampaignBase.run()` **前半段**做准备：`emotion.check_reduce` → `ENTRANCE.area` → `enter_map` →（auto search 分支或）`handle_map_fleet_lock` + `map_init` | **同一批上游方法、同一顺序**，不另写一套准备逻辑 |
-| `call(op, …)` | `getattr(instance, op)` 调上游自己的方法；舰队前缀（`fleet_2.` 等）只**记账**（切队是 C# 的 `ensure_fleet` 原语，上游 `switch_to` 本身是 `pass`） | 未 `prepare()` 就调用**直接报错**（与上游"未进图不调原语"一致）；上游的 `CampaignEnd` 等信号**照常抛出**，驱动器不吞 |
-| `state()` | 只读读回 `battle_count` / `map_clear_percentage` / `in_stage` / `fleet_current_index` 供 C# 决策 | 不做任何设备动作 |
-| `steps` | 调用轨迹（原语名 + 参数摘要 + 返回值/异常名），进工件 | 断言"调用的是上游方法"的证据 |
+| `s3_campaign_init` | 构造 Campaign 实例（复用上游 `CampaignRun.load_campaign` 的配置合并路径）+ **种一帧**（上游方法假定 `device.image` 已存在） | 实例与 loader 记在宿主 `_CAMPAIGN` 里，供后续逐步调用 |
+| `s3_campaign_call` | 调用实例上任意方法（支持点号路径与 `@属性` 引用） | **危险前缀联锁**（`battle*`/`clear*`/`enter_map`/`run`/`goto`/`map_*`/`execute`/`full_scan` … 必须显式 `allow_actions`）；`CampaignEnd` 走**结果合同**分类（返回 `cleared`/`withdrawn`/`outcome`，不是裸异常）；内部报错带调用栈尾部 |
+| `s3_campaign_info` | 只读状态 | 关卡进度字段（`map_progress`：`map_clear_percentage`、星级条件、`MAP_CLEAR_ALL_THIS_TIME` 等），并注明"进度来自游戏自己的面板读数" |
 
-**离线核对**（`tools/diagnostics/verify_r5_driver.py`，假 I/O + 真上游方法）：
+**离线核对**（`tools/diagnostics/verify_r5_host_seam.py`，把替身注入 `_CAMPAIGN`，不连设备）：
+① 三个 op 都已注册；② 危险前缀不带 `allow_actions` **必须被拒绝**且说明理由；③ `@ENTRANCE` 这类引用
+解析成实例上的对象；④ `CampaignEnd` 返回**合同字段**；⑤ `info` 报进度字段；⑥ 替身挂的
+`execute_a_battle` 底层函数 `is CampaignBase.execute_a_battle`（防"手工复刻"）。
 
-1. **准备阶段等价**：驱动器在替身上产生的事件序列（`emotion → enter_map → fleet_lock → map_init`）
-   与上游 `CampaignBase.run()` 在同一替身上的前缀序列**完全一致**；
-2. **调的是上游方法对象**：实例上的 `execute_a_battle` 底层函数 `is CampaignBase.execute_a_battle`——
-   任何"手工复刻"都会在这里失败（实例属性访问得到绑定方法，所以比对 `__func__`）；
-3. `CampaignEnd` 是上游的正常结束信号：**照常抛出**且如实记进轨迹；
-4. 舰队前缀只记账；`state()` 与实例一致；未准备就调用报错。
+**结论**：路线 (a) 的宿主侧**不需要新代码**——C# 侧的设备宿主直接调这三个 op 即可。
+剩下的是 C# 侧那一半（把 `ICampaignPrimitiveHost` 的成员翻译成 `s3_campaign_call` 的
+`name + args`），以及一处待补的通道：**格子对象**（C# 只有格子名如 `C1`，宿主需要把它解析成
+`inst.map['C1']`；现有 `@属性` 通道只认实例属性）。
 
-**这还不能证明什么**：驱动器只做到"能逐步调用上游方法"这一层。真正接设备还要有 C# 侧的**真机宿主**
-（实现 `ICampaignPrimitiveHost` 并把调用转给这个驱动器），以及"进图/结算"这类关卡级流程的对接——
-那些都要真机证据。
+**这还不能证明什么**：以上都是离线核对。真机动作层证据仍然要跑一局（而且只有 `loop=csharp` + 闸门
+才会走到这条路径）。
 
 #### `loop` 域切成 csharp 需要什么（前置清单）
 
