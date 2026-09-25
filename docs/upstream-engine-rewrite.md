@@ -48,7 +48,7 @@
 | 钩子选择 | 1437 个模块 × 5 个 battle_count | **6660 次比较，不一致 0**（基准=上游真实 `battle_function`） | [决策层扫描](archive/reports/r5-decision-sweep.md) |
 | 寻路成本场 + 路线 + **逐格编码** | 1370 关 × **3 种配置** / **275,934 格** / **32,877 条路线** | 无伏击配置**成本差异 0**；有伏击配置 52 处全部是「上游偏大」（C# 已 relax 到不动点，**不可能更贵**）；**逐格编码不一致 0**（覆盖「令牌 → 标志 → 编码」整条链路）；连接差异 990 处全为等代价择向；路线完全相同 32,739、等代价择向 138、**不合法 0** | [寻路扫描](archive/reports/r5-path-sweep.md) |
 | 宿主调用翻译 | 全库 **5806** 步（含分支体与字面量返回） | **5764 可翻译 + 42 结构步骤（`branch`/`return`，由执行器处理），0 不支持**；7 条实参是**运行期解析** | `verify_r5_calls.py` |
-| 目标选择（过滤 DSL） | 200 个随机状态 × 2166 例 | 与上游 `Filter` **不一致 0**（真实过滤器串 + 两个优先级预设 + preserve） | [选择扫描](archive/reports/r5-selection-sweep.md) |
+| 目标选择（过滤 DSL） | 200 个随机状态 × 2166 例 | **重跑后 421 处不一致**：报告曾以"不一致 0"提交，但选择器在那之后又改过（`b7eccc3` 补 movable 分支），而这些扫描**不在检查套件里**，没人重跑 → 报告过期。现已把该扫描纳入检查并**声明上限 421（只许下降）**；421 是**已知缺口**、不是近期改动引入的（已在 HEAD 上复现验证） | [选择扫描](archive/reports/r5-selection-sweep.md) |
 | 目标选择（分支） | 120 个随机状态 × 1680 例 | 与上游 `Map.select_grids` **不一致 0**（`nearby`/`is_accessible`/`scale`·`genre` 无序 vs 有序/`strongest`/`weakest`/`sort` 多键） | [分支扫描](archive/reports/r5-selectgrids-sweep.md) |
 | 复合原语（**动作序列级**） | 20 个随机状态 × **17 原语** × 12 配置 / 4061 例 | 与上游**真实方法**（清敌/过滤敌/movable 委托/塞壬/boss/**`map.select` 集合**/`brute_clear_boss`/`brute_fleet_meet`/`clear_potential_boss`/路段三变体/弹药/2 队推进与护航）**不一致 0**；序列完全相同 3265、干跑前缀 4（有意偏离）、集合序伪影 44 + 等价位 6、切舰队记录时机差异 28；19 处跳过是上游自身越界 | [复合扫描](archive/reports/r5-composite-sweep.md) |
 | 历史运行日志 | 4 段 / 17 轮出击 | 决策层一致 17/17 | [日志扫描](archive/reports/r5-log-sweep.md) |
