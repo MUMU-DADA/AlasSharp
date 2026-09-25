@@ -170,6 +170,46 @@
       }
     },
     {
+      "name": "campaign_11_3 battle_6：terminal fleet_boss.clear_boss（舰队前缀 = 必要时切舰队 + clear_boss）",
+      "chapter": "campaign_main",
+      "level": "campaign_13_1",
+      "hook": "battle_6",
+      "grids": [
+        { "location": "A1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 1, "cost": 5 }
+      ],
+      "expect": {
+        "completed": true,
+        "action_contains": "clear_chosen_enemy(A1, expected=boss)",
+        "log_contains": "clear_boss：打 A1"
+      }
+    },
+    {
+      "name": "campaign_11_3 battle_6 + FLEET_BOSS/FLEET_2：boss 舰队索引为 2，需要先切舰队",
+      "chapter": "campaign_main",
+      "level": "campaign_13_1",
+      "hook": "battle_6",
+      "config": { "fleet_boss": true, "fleet_2": true, "fleet_current_index": 1 },
+      "grids": [
+        { "location": "A1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 1, "cost": 5 }
+      ],
+      "expect": {
+        "completed": true,
+        "action_contains": "fleet_ensure(2)",
+        "log_contains": "clear_boss：打 A1"
+      }
+    },
+    {
+      "name": "campaign_11_3 battle_6：已经在 boss 舰队时不重复切换",
+      "chapter": "campaign_main",
+      "level": "campaign_13_1",
+      "hook": "battle_6",
+      "config": { "fleet_current_index": 1 },
+      "grids": [
+        { "location": "A1", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 1, "cost": 5 }
+      ],
+      "expect": { "completed": true, "actions_exclude": "fleet_ensure" }
+    },
+    {
       "name": "campaign_1_1 handle_boss_appear_refocus：super_delegate → 委托父类，不执行也不阻塞",
       "chapter": "campaign_main",
       "level": "campaign_1_1",

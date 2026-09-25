@@ -134,6 +134,8 @@ def main() -> int:
             problems.append(f"{case['name']}: 阻塞原因 {result.get('blocked')!r} 不含 {expect['blocked_contains']!r}")
         if "action_contains" in expect and not any(expect["action_contains"] in a for a in result["actions"]):
             problems.append(f"{case['name']}: 动作 {result['actions']} 不含 {expect['action_contains']!r}")
+        if "actions_exclude" in expect and any(expect["actions_exclude"] in a for a in result["actions"]):
+            problems.append(f"{case['name']}: 动作 {result['actions']} 不该含 {expect['actions_exclude']!r}")
         if "log_contains" in expect and not any(expect["log_contains"] in line for line in result["logs"]):
             problems.append(f"{case['name']}: 日志 {result['logs']} 不含 {expect['log_contains']!r}")
         if "steps_contains" in expect and not any(expect["steps_contains"] in line for line in result["steps"]):

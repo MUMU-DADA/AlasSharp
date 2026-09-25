@@ -41,7 +41,7 @@ internal static class CampaignPlanCheck
             Console.WriteLine();
             Console.WriteLine($"{"章节",-26}{"关卡",-6}{"钩子",-6}{"可表达",-8}{"未表达",-8}可表达率");
             int levels = 0, battles = 0, complete = 0, traceMatch = 0, traceDiff = 0, traceEmpty = 0;
-            int surfaceSteps = 0, surfaceHooks = 0, surfaceConforming = 0;
+            int surfaceSteps = 0, surfaceHooks = 0, surfaceConforming = 0, surfaceImplementedSteps = 0;
             int surfaceSetup = 0, surfaceAttempts = 0, surfaceFallbacks = 0, surfaceDelegates = 0;
             var surfaceOps = new HashSet<string>(StringComparer.Ordinal);
             var allFailures = new List<string>();
@@ -61,6 +61,7 @@ internal static class CampaignPlanCheck
                 surfaceSteps += chapterSurface.Steps;
                 surfaceHooks += chapterSurface.Hooks;
                 surfaceConforming += chapterSurface.ConformingHooks;
+                surfaceImplementedSteps += chapterSurface.ImplementedSteps;
                 surfaceSetup += chapterSurface.Setup;
                 surfaceAttempts += chapterSurface.Attempts;
                 surfaceFallbacks += chapterSurface.Fallbacks;
@@ -77,7 +78,10 @@ internal static class CampaignPlanCheck
             Console.WriteLine($"[执行面 ] {surfaceHooks} 个钩子（形状符合契约 {surfaceConforming}），" +
                               $"{surfaceSteps} 步涉及 {surfaceOps.Count} 个原语、已实现 " +
                               $"{surfaceOps.Count(CampaignPrimitiveRegistry.IsImplemented)} 个；" +
-                              $"角色：前置 {surfaceSetup} / 尝试 {surfaceAttempts} / 兜底 {surfaceFallbacks} / 委托 {surfaceDelegates}");
+                              $"步覆盖 {surfaceImplementedSteps}/{surfaceSteps}" +
+                              $"（{(surfaceSteps == 0 ? 0 : (double)surfaceImplementedSteps / surfaceSteps):P1}）");
+            Console.WriteLine($"[角色   ] 前置 {surfaceSetup} / 尝试 {surfaceAttempts} / " +
+                              $"兜底 {surfaceFallbacks} / 委托 {surfaceDelegates}");
             if (allFailures.Count > 0)
             {
                 Console.WriteLine($"[警告   ] {allFailures.Count} 个关卡导出读不出，前 3 条：");
@@ -157,7 +161,9 @@ internal static class CampaignPlanCheck
         var surface = CampaignPlanExecutor.Summarize(chapter, chapterPlans);
         Console.WriteLine($"[执行面 ] {surface.Hooks} 个钩子（形状符合契约 {surface.ConformingHooks}），" +
                           $"涉及原语 {surface.Ops.Count} 个、已实现 {surface.ImplementedOps} 个；" +
-                          $"角色：前置 {surface.Setup} / 尝试 {surface.Attempts} / 兜底 {surface.Fallbacks} / 委托 {surface.Delegates}");
+                          $"步覆盖 {surface.ImplementedSteps}/{surface.Steps}（{surface.StepCoverage:P1}）");
+        Console.WriteLine($"[角色   ] 前置 {surface.Setup} / 尝试 {surface.Attempts} / " +
+                          $"兜底 {surface.Fallbacks} / 委托 {surface.Delegates}");
         Console.WriteLine("[步骤类型]");
         foreach (var (kind, count) in chapterSummary.Kinds.OrderByDescending(pair => pair.Value))
         {

@@ -9,6 +9,7 @@ public sealed record CampaignRuntimeConfig(
     bool MapHasSiren = false,
     bool MapHasFortress = false,
     bool Fleet2 = false,
+    bool FleetBoss = false,
     bool MapHasMovableNormalEnemy = false);
 
 /// <summary>
@@ -26,6 +27,17 @@ public interface ICampaignPrimitiveHost
 
     /// <summary>上游 <c>self.battle_count</c>：判断"猜 boss"是否打中（真机由战斗结果刷新）。</summary>
     int BattleCount { get; }
+
+    /// <summary>上游 <c>self.fleet_current_index</c>：决定是否需要切换舰队。</summary>
+    int FleetCurrentIndex { get; }
+
+    /// <summary>
+    /// 切换到指定舰队（上游 <c>Fleet.fleet_ensure(index)</c>）。
+    /// 上游的 <c>fleet_1</c> / <c>fleet_2</c> / <c>fleet_boss</c> / <c>fleet_submarine</c> 是
+    /// **返回 self 的 property**，只在当前舰队不同时才切换——所以 <c>self.fleet_boss.clear_boss()</c>
+    /// 的语义就是"必要时切到 boss 舰队，再调用 <c>clear_boss()</c>"。
+    /// </summary>
+    bool EnsureFleet(int index);
 
     /// <summary>
     /// 清掉选中格子上的敌人（上游 <c>clear_chosen_enemy</c>）。
@@ -60,11 +72,23 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
     /// <summary>干跑时默认不推进战斗计数（真机由战斗结果刷新）。</summary>
     public int BattleCount { get; set; }
 
+    /// <summary>干跑时的当前舰队索引（真机由设备侧维护）。</summary>
+    public int FleetCurrentIndex { get; set; } = 1;
+
     /// <summary>干跑记录到的动作（按调用顺序）。</summary>
     public List<string> Actions { get; } = [];
 
     /// <summary>干跑记录到的日志（原语的判断依据，便于人工核对）。</summary>
     public List<string> Logs { get; } = [];
+
+    /// <summary>与上游一致：只在当前舰队不同时才切换。</summary>
+    public bool EnsureFleet(int index)
+    {
+        if (FleetCurrentIndex == index) return false;
+        Actions.Add($"fleet_ensure({index})");
+        FleetCurrentIndex = index;
+        return true;
+    }
 
     public bool ClearChosenEnemy(CampaignGrid grid, string expected, string fleet = "")
     {
@@ -435,13 +459,82 @@ public static class CampaignPrimitiveRegistry
             (host, _) => CampaignPrimitives.ClearBoss(host)),
     };
 
-    /// <summary>已实现的原语名（排序返回，便于输出与对拍）。</summary>
+    /// <summary>已实现的原语名（排序返回，便于输出与对拍）。不含舰队前缀组合。</summary>
     public static IReadOnlyList<string> ImplementedOps =>
         Table.Keys.OrderBy(name => name, StringComparer.Ordinal).ToArray();
 
-    public static bool IsImplemented(string op) => Table.ContainsKey(op);
+    /// <summary>
+    /// 上游把 <c>fleet_1</c> / <c>fleet_2</c> / <c>fleet_boss</c> / <c>fleet_submarine</c> 做成
+    /// **返回 self 的 property**（必要时先切舰队），所以 <c>fleet_boss.clear_boss()</c> 这类调用等价于
+    /// "确保在 boss 舰队 + 执行 <c>clear_boss()</c>"。这里按同一规律解析前缀，不做逐关卡特例。
+    /// </summary>
+    private static readonly Dictionary<string, string> FleetPrefixes = new(StringComparer.Ordinal)
+    {
+        ["fleet_1"] = "1",
+        ["fleet_2"] = "2",
+        ["fleet_submarine"] = "submarine",
+        ["fleet_boss"] = "boss",
+    };
 
-    public static bool TryGet(string op, out CampaignPrimitive primitive) => Table.TryGetValue(op, out primitive!);
+    /// <summary>是否为"舰队前缀 + 原语"的调用形态（如 <c>fleet_boss.clear_boss</c>）。</summary>
+    public static bool IsFleetPrefixed(string op)
+    {
+        int dot = op.IndexOf('.');
+        return dot > 0 && FleetPrefixes.ContainsKey(op[..dot]);
+    }
+
+    /// <summary>拆出舰队前缀与底层原语名。</summary>
+    public static (string Prefix, string Inner) SplitFleetPrefix(string op)
+    {
+        int dot = op.IndexOf('.');
+        return dot > 0 ? (op[..dot], op[(dot + 1)..]) : ("", op);
+    }
+
+    /// <summary>前缀对应的舰队索引；<c>fleet_boss</c> 按上游 <c>fleet_boss_index</c> 规则取 2 或 1。</summary>
+    private static int? FleetIndexFor(string prefix, CampaignRuntimeConfig config) => prefix switch
+    {
+        "fleet_1" => 1,
+        "fleet_2" => 2,
+        "fleet_boss" => config.FleetBoss && config.Fleet2 ? 2 : 1,
+        _ => null,
+    };
+
+    /// <summary>该原语（含舰队前缀组合）当前是否可实现。</summary>
+    public static bool IsImplemented(string op)
+    {
+        if (Table.ContainsKey(op)) return true;
+        if (!IsFleetPrefixed(op)) return false;
+        var (prefix, inner) = SplitFleetPrefix(op);
+        // fleet_submarine 只是"当前对象"，没有上游的切换索引；其余前缀会切舰队。
+        return (prefix == "fleet_submarine" || FleetIndexFor(prefix, new CampaignRuntimeConfig()) is not null)
+               && Table.ContainsKey(inner);
+    }
+
+    public static bool TryGet(string op, out CampaignPrimitive primitive)
+    {
+        if (Table.TryGetValue(op, out primitive!)) return true;
+        if (!IsFleetPrefixed(op))
+        {
+            primitive = null!;
+            return false;
+        }
+        var (prefix, inner) = SplitFleetPrefix(op);
+        if (!Table.TryGetValue(inner, out var target))
+        {
+            primitive = null!;
+            return false;
+        }
+        primitive = new CampaignPrimitive(
+            op, $"切到 {prefix} 后执行 {inner}（上游 {prefix} 是返回 self 的 property）",
+            target.NeedsArguments,
+            (host, step) =>
+            {
+                int? index = FleetIndexFor(prefix, host.Config);
+                if (index is int value) host.EnsureFleet(value);
+                return target.Execute(host, step);
+            });
+        return true;
+    }
 
     /// <summary>把计划步骤的关键字实参解成选择条件（<c>scale</c> / <c>genre</c> / <c>preserve</c> 等）。</summary>
     private static CampaignTargetOptions DecodeOptions(CampaignPlanStep step)

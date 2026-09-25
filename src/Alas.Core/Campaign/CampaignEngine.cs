@@ -151,6 +151,7 @@ public static class CampaignPlanExecutor
     {
         var ops = new Dictionary<string, int>(StringComparer.Ordinal);
         int steps = 0, setup = 0, attempts = 0, fallbacks = 0, delegates = 0, conforming = 0, hooks = 0;
+        int implementedSteps = 0;
         foreach (var plan in plans)
         {
             foreach (var battle in plan.Header.Battles)
@@ -163,6 +164,7 @@ public static class CampaignPlanExecutor
                     foreach (var step in trace.Steps)
                     {
                         steps++;
+                        if (step.Implemented) implementedSteps++;
                         switch (step.Role)
                         {
                             case CampaignStepRole.Setup: setup++; break;
@@ -176,8 +178,8 @@ public static class CampaignPlanExecutor
                 }
             }
         }
-        return new CampaignExecutionSurface(chapter, hooks, conforming, steps, setup, attempts, fallbacks,
-                                            delegates, ops);
+        return new CampaignExecutionSurface(chapter, hooks, conforming, steps, implementedSteps, setup, attempts,
+                                            fallbacks, delegates, ops);
     }
 
     private static string Describe(CampaignPlanStep step)
@@ -204,12 +206,16 @@ public sealed record CampaignExecutionSurface(
     int Hooks,
     int ConformingHooks,
     int Steps,
+    int ImplementedSteps,
     int Setup,
     int Attempts,
     int Fallbacks,
     int Delegates,
     IReadOnlyDictionary<string, int> Ops)
 {
-    /// <summary>已实现的原语数（注册表交集的规模）。</summary>
+    /// <summary>已实现的原语数（注册表交集的规模，含舰队前缀组合）。</summary>
     public int ImplementedOps => Ops.Keys.Count(CampaignPrimitiveRegistry.IsImplemented);
+
+    /// <summary>按步骤计的覆盖率（原语是否有实现）。</summary>
+    public double StepCoverage => Steps == 0 ? 0 : (double)ImplementedSteps / Steps;
 }

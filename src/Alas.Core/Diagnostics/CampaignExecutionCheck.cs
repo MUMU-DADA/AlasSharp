@@ -68,8 +68,13 @@ internal static class CampaignExecutionCheck
                 MapHasSiren: testCase.Config?.MapHasSiren ?? false,
                 MapHasFortress: testCase.Config?.MapHasFortress ?? false,
                 Fleet2: testCase.Config?.Fleet2 ?? false,
+                FleetBoss: testCase.Config?.FleetBoss ?? false,
                 MapHasMovableNormalEnemy: testCase.Config?.MapHasMovableNormalEnemy ?? false);
-            var host = new RecordingCampaignHost(grids, config);
+            var host = new RecordingCampaignHost(grids, config)
+            {
+                FleetCurrentIndex = testCase.Config?.FleetCurrentIndex ?? 1,
+                BattleCount = testCase.Config?.BattleCount ?? 0,
+            };
             var execution = CampaignHookRunner.Run(plan, battle, host);
 
             results.Add(new JsonObject
@@ -139,6 +144,9 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("map_has_siren")] public bool? MapHasSiren { get; init; }
         [JsonPropertyName("map_has_fortress")] public bool? MapHasFortress { get; init; }
         [JsonPropertyName("fleet_2")] public bool? Fleet2 { get; init; }
+        [JsonPropertyName("fleet_boss")] public bool? FleetBoss { get; init; }
+        [JsonPropertyName("fleet_current_index")] public int? FleetCurrentIndex { get; init; }
+        [JsonPropertyName("battle_count")] public int? BattleCount { get; init; }
         [JsonPropertyName("map_has_movable_normal_enemy")] public bool? MapHasMovableNormalEnemy { get; init; }
     }
 

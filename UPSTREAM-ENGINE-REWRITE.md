@@ -247,6 +247,32 @@
   `roads` 参数——它们是 `RoadGrids([...])` 这类**地图对象**（引用具体格子），不是标量字面量，
   需要单独设计"地图对象实参"的导出表达，列入 P1 待办。
 
+#### P2-5 已完成：舰队前缀规则（一次解锁 685 步）（2026-09-25）
+
+- **上游语义**（读源码确认）：`Fleet.fleet_1` / `fleet_2` / `fleet_submarine` / `fleet_boss` 是
+  **返回 `self` 的 property**，只在当前舰队不同时才 `fleet_ensure(index)`（`fleet_boss` 的索引按上游
+  `fleet_boss_index`：`FLEET_BOSS == 2 and FLEET_2` 时取 2，否则 1）。因此
+  `self.fleet_boss.clear_boss()` ≡ "必要时切到 boss 舰队 + `clear_boss()`"，`fleet_1.clear_boss` 同理。
+- **实现**：注册表按**前缀规则**解析（`fleet_1` / `fleet_2` / `fleet_submarine` / `fleet_boss` + 已登记原语），
+  宿主新增 `FleetCurrentIndex` 与 `EnsureFleet(index)`（与上游一致：索引相同则不记录切换）——
+  没有按关卡、按编号写任何特例。
+- **规模**：`fleet_boss.clear_boss` 671 步、`fleet_1.clear_boss` 13 步、`fleet_boss.clear_potential_boss` 1 步
+  直接转为可执行；`fleet_boss.brute_clear_boss`(9) 与 `fleet_boss.capture_clear_boss`(12) 仍待实现。
+- **对拍**：`verify_r5_execution.py` 扩到 **16 个用例**（新增：`fleet_boss.clear_boss` 正常执行、
+  `FLEET_BOSS+FLEET_2` 时先记录 `fleet_ensure(2)`、已在目标舰队时不重复切换），全部通过。
+- **新增进度指标**：`r5-plan` 现在输出**按步骤计的覆盖率**——全库
+  **步覆盖 5456/5694（95.8%）**（步骤指向已实现原语；仍可能被未求值实参或未移植分支挡住，
+  详见下一节的诚实边界）。
+
+**当前状态一览**（全库 3019 个钩子 / 5694 步）：
+
+| 指标 | 数值 |
+| --- | --- |
+| 步骤指向已实现原语 | 5456 / 5694（95.8%） |
+| 涉及原语 | 31 个（含舰队前缀组合其中 9 个已实现） |
+| 计划形状符合契约 | 3006 / 3019 |
+| 实参完整（无 `<expr>`） | 5555 / 5694（97.6%） |
+
 #### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
 
 | 新增原语 | 对应上游 | 关键语义 |
