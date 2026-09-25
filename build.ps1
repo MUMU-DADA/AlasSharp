@@ -1,27 +1,35 @@
 #requires -Version 7.0
 <#
-根目录增量构建脚本。只构建，不启动窗口、不访问设备、不发布。
+根目录增量构建脚本。构建完会直接列出可运行程序的路径；不启动窗口、不访问设备。
 
   ./build.ps1                                      # 增量构建主解决方案 Alas.sln（Release）
-  ./build.ps1 -Configuration Debug                 # 换构建配置
   ./build.ps1 -Project src/Alas.DataTool/Alas.DataTool.csproj   # 只构建单个项目（内循环最快）
   ./build.ps1 -Ui                                  # 追加构建共享 UI 解决方案 Alas.UI.slnx
+  ./build.ps1 -Publish                             # 追加发布可运行目录到 .runtime/publish/<程序名>/
+  ./build.ps1 -Publish -SelfContained              # 发布成不依赖本机运行时的目录（win-x64）
   ./build.ps1 -Restore                             # 强制还原
   ./build.ps1 -Clean                               # 非增量：先清理再重建
+
+可运行程序由各入口项目自己生成（OutputType=Exe/WinExe）：
+  alashub.exe          CLI 与本地控制台，构建后位于 src/Alas.DataTool/bin/<配置>/net10.0/
+  Alas.Server.exe      独立服务端，位于 src/Alas.Server/bin/<配置>/net10.0/
+  Alas.UI.Desktop.exe  桌面界面（需 -Ui），位于 src/Alas.UI.Desktop/bin/<配置>/net10.0/
+这些 exe 是框架依赖的 apphost，运行时需要机器上有 .NET 10 运行时；要脱离运行时就用 -Publish -SelfContained。
 
 为什么默认是增量的（重复构建只花几秒）：
   1. 不清理任何输出，交给 MSBuild 自己的最新检查，没改动的项目不重编；
   2. 显式保留 MSBuild 节点复用与 Roslyn 编译器服务，省掉重复的进程启动与 JIT；
   3. 还原只在真有项目缺少或过期 obj/project.assets.json 时才执行，其余情况走 --no-restore。
 
-发布与验收不在本脚本范围内：共享 UI 的发布与 Headless 验收用 tools/build_ui.ps1，
-服务端发布用 tools/publish_server.ps1。
+共享 UI 的发布与 Headless 验收仍在 tools/build_ui.ps1，服务端发布仍在 tools/publish_server.ps1。
 #>
 [CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [string] $Project = '',
     [switch] $Ui,
+    [switch] $Publish,
+    [switch] $SelfContained,
     [switch] $Clean,
     [switch] $Restore
 )
@@ -83,6 +91,18 @@ function Test-RestoreUpToDate([string[]] $Projects, [string] $NuGetConfig) {
         if ($inputTime -and $assetsTime -lt $inputTime) { return $false }
     }
     return $true
+}
+
+# 可运行程序：只认声明了 Exe/WinExe 的入口项目，按 SDK 的命名规则拼出 apphost 路径。
+function Get-RunnableEntry([string] $Project, [string] $ConfigurationValue) {
+    $text = Get-Content -LiteralPath $Project -Raw
+    $outputType = [regex]::Match($text, '<OutputType>\s*([^<]+?)\s*</OutputType>').Groups[1].Value.Trim()
+    if ($outputType -ne 'Exe' -and $outputType -ne 'WinExe') { return $null }
+    $assembly = [regex]::Match($text, '<AssemblyName>\s*([^<]+?)\s*</AssemblyName>').Groups[1].Value.Trim()
+    if (-not $assembly) { $assembly = [IO.Path]::GetFileNameWithoutExtension($Project) }
+    $path = Join-Path (Split-Path -Parent $Project) "bin/$ConfigurationValue/net10.0/$assembly.exe"
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+    return [pscustomobject]@{ Name = "$assembly.exe"; Path = $path; Project = $Project }
 }
 
 Push-Location $repo
@@ -176,6 +196,49 @@ try {
     Write-Output ('完成：还原 {0}，构建 {1}（{2} 个目标）' -f (Format-Elapsed $restoreTime),
         (Format-Elapsed $buildTime), $targets.Count)
     Write-Output '未改动的项目按 MSBuild 最新检查跳过；需要全量重建时用 -Clean。'
+
+    # 构建只产出 dll 是不够用的：把这次涉及的可运行程序（OutputType=Exe/WinExe）找出来报到路径上。
+    $runnable = [Collections.Generic.List[object]]::new()
+    foreach ($target in $targets) {
+        foreach ($project in @(Get-TargetProjects $target)) {
+            $entry = Get-RunnableEntry $project $Configuration
+            if ($entry) { $runnable.Add($entry) }
+        }
+    }
+
+    if ($runnable.Count -gt 0) {
+        Write-Output ''
+        Write-Output "可运行程序（$Configuration）："
+        foreach ($entry in $runnable) {
+            Write-Output ('  {0,-22} {1}' -f $entry.Name, [IO.Path]::GetRelativePath($repo, $entry.Path))
+        }
+        $first = $runnable[0]
+        Write-Output ('  直接运行：& ''{0}''' -f [IO.Path]::GetRelativePath($repo, $first.Path))
+    }
+
+    if ($Publish) {
+        foreach ($entry in $runnable) {
+            $name = [IO.Path]::GetFileNameWithoutExtension($entry.Name)
+            $destination = Join-Path $repo ".runtime/publish/$name"
+            if ($SelfContained) {
+                # 自包含发布需要带 RID 的还原结果，先用同参数还原一次，再发布时跳过还原。
+                $restoreArguments = @('restore', $entry.Project, '-r', 'win-x64', '-p:SelfContained=true',
+                    '-p:NuGetAudit=false')
+                if ($nugetConfig) { $restoreArguments += @('--configfile', $nugetConfig) }
+                Invoke-Dotnet $restoreArguments
+            }
+            $publishArguments = @('publish', $entry.Project, '-c', $Configuration, '--no-restore',
+                '-o', $destination, '-p:DebugType=None', '-p:DebugSymbols=false')
+            if ($SelfContained) { $publishArguments += @('-r', 'win-x64', '--self-contained', 'true') }
+            Write-Output "[$name] 发布可运行目录…"
+            Invoke-Dotnet $publishArguments
+            Write-Output ('  已发布：{0}（运行 {1}）' -f [IO.Path]::GetRelativePath($repo, $destination),
+                [IO.Path]::GetRelativePath($repo, (Join-Path $destination $entry.Name)))
+        }
+    }
+    elseif ($runnable.Count -gt 0) {
+        Write-Output '  需要独立可运行目录（可拷贝、可自包含）时加 -Publish。'
+    }
 }
 finally {
     foreach ($name in $environmentNames) {
