@@ -48,6 +48,7 @@
 | 寻路成本场 + 路线 | 1370 关 × **3 种配置** / **275,934 格** / **32,877 条路线** | 无伏击配置**成本差异 0**；有伏击配置 52 处全部是「上游偏大」（C# 已 relax 到不动点，**不可能更贵**，更贵即硬失败）；连接差异 990 处全为等代价择向；路线完全相同 32,739、等代价择向 138、**不合法 0** | [寻路扫描](archive/reports/r5-path-sweep.md) |
 | 宿主调用翻译 | 全库 5694 步 | **5694/5694 可翻译，0 不支持** | `verify_r5_calls.py` |
 | 目标选择（过滤 DSL） | 200 个随机状态 × 2166 例 | 与上游 `Filter` **不一致 0**（真实过滤器串 + 两个优先级预设 + preserve） | [选择扫描](archive/reports/r5-selection-sweep.md) |
+| 目标选择（分支） | 120 个随机状态 × 1680 例 | 与上游 `Map.select_grids` **不一致 0**（`nearby`/`is_accessible`/`scale`·`genre` 无序 vs 有序/`strongest`/`weakest`/`sort` 多键） | [分支扫描](archive/reports/r5-selectgrids-sweep.md) |
 | 历史运行日志 | 4 段 / 17 轮出击 | 决策层一致 17/17 | [日志扫描](archive/reports/r5-log-sweep.md) |
 | 真机帧 | 6 帧（4 帧可识别） | 识别 → 状态 → 循环 → 两宿主序列一致 | [帧扫描](archive/reports/r5-frame-sweep.md) |
 
