@@ -405,6 +405,71 @@
       }
     },
     {
+      "name": "c2 battle_0：fleet_2.switch_to（上游是 pass）仍按前缀切舰队，随后 clear_enemy 命中",
+      "chapter": "event_20200227_cn",
+      "level": "c2",
+      "hook": "battle_0",
+      "config": { "fleet_2": true, "fleet_current_index": 1 },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 5 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "fleet_ensure(2)",
+        "log_contains": "上游 Fleet.switch_to() 是 pass",
+        "actions_exclude": "goto("
+      }
+    },
+    {
+      "name": "th1 battle_6：clear_map_items 按 cost 升序逐个 goto，随后 fleet_boss.clear_boss",
+      "chapter": "event_20221124_cn",
+      "level": "th1",
+      "hook": "battle_6",
+      "config": { "fleet_boss": true, "fleet_2": true, "fleet_current_index": 2 },
+      "grids": [
+        { "location": "F1", "weight": 10, "cost": 8 },
+        { "location": "I1", "weight": 10, "cost": 3 },
+        { "location": "C3", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 20, "cost": 6 }
+      ],
+      "expect": {
+        "completed": true,
+        "return": false,
+        "action_contains": "goto(I1)",
+        "log_contains": "Clear map item on F1"
+      }
+    },
+    {
+      "name": "sp1 battle_0：clear_mechanism 清机关后抛 MapEnemyMoved，执行器如实报阻塞",
+      "chapter": "event_20200903_en",
+      "level": "sp1",
+      "hook": "battle_0",
+      "config": { "map_has_land_based": true },
+      "grids": [
+        { "location": "D4", "is_mechanism_trigger": true, "weight": 10, "cost": 5 }
+      ],
+      "expect": {
+        "completed": false,
+        "blocked_contains": "MapEnemyMoved",
+        "action_contains": "goto(D4)"
+      }
+    },
+    {
+      "name": "b2 battle_3：terminal battle_0 是跨钩子调用（递归执行同关卡的 battle_0）",
+      "chapter": "war_archives_20190321_en",
+      "level": "b2",
+      "hook": "battle_3",
+      "config": { "fleet_2": false },
+      "grids": [
+        { "location": "D6", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 5 },
+        { "location": "G4", "weight": 20, "cost": 7 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "clear_chosen_enemy(D6",
+        "steps_contains": "battle_0: 跨钩子调用 → 真"
+      }
+    },
+    {
       "name": "campaign_1_1 handle_boss_appear_refocus：super_delegate → 委托父类，不执行也不阻塞",
       "chapter": "campaign_main",
       "level": "campaign_1_1",

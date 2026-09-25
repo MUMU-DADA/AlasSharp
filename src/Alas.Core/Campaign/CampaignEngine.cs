@@ -136,8 +136,10 @@ public static class CampaignPlanExecutor
                 "super_delegate" => CampaignStepRole.Delegate,
                 _ => CampaignStepRole.Setup,
             };
-            steps.Add(new CampaignExecutionStep(role, step.Op, CampaignPrimitiveRegistry.IsImplemented(step.Op),
-                                                Describe(step)));
+            // 跨钩子调用（`self.battle_0()`）：op 与同关卡另一个钩子同名，执行器会递归执行它。
+            bool implemented = CampaignPrimitiveRegistry.IsImplemented(step.Op)
+                               || plan.Header.Battles.Any(item => item.Method == step.Op);
+            steps.Add(new CampaignExecutionStep(role, step.Op, implemented, Describe(step)));
         }
         return new CampaignExecutionTrace(plan.Chapter, plan.Level, battle.Method, steps);
     }

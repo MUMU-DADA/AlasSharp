@@ -70,6 +70,7 @@ internal static class CampaignExecutionCheck
                 Fleet2: testCase.Config?.Fleet2 ?? false,
                 FleetBoss: testCase.Config?.FleetBoss ?? false,
                 MapHasMovableEnemy: testCase.Config?.MapHasMovableEnemy ?? false,
+                MapHasLandBased: testCase.Config?.MapHasLandBased ?? false,
                 MapHasMovableNormalEnemy: testCase.Config?.MapHasMovableNormalEnemy ?? false);
             var host = new RecordingCampaignHost(grids, config)
             {
@@ -116,6 +117,8 @@ internal static class CampaignExecutionCheck
         MayBoss: grid.MayBoss,
         MayAmmo: grid.MayAmmo,
         IsLand: grid.IsLand,
+        IsMechanismTrigger: grid.IsMechanismTrigger,
+        IsMechanismBlock: grid.IsMechanismBlock,
         IsCaughtBySiren: grid.IsCaughtBySiren,
         IsFleet: grid.IsFleet,
         IsCleared: grid.IsCleared,
@@ -159,6 +162,7 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("fleet_1_location")] public string? Fleet1Location { get; init; }
         [JsonPropertyName("fleet_2_location")] public string? Fleet2Location { get; init; }
         [JsonPropertyName("map_has_movable_enemy")] public bool? MapHasMovableEnemy { get; init; }
+        [JsonPropertyName("map_has_land_based")] public bool? MapHasLandBased { get; init; }
         [JsonPropertyName("battle_count")] public int? BattleCount { get; init; }
         [JsonPropertyName("ammo_count")] public int? AmmoCount { get; init; }
         [JsonPropertyName("fleet_ammo")] public int? FleetAmmo { get; init; }
@@ -177,6 +181,8 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("may_boss")] public bool MayBoss { get; init; }
         [JsonPropertyName("may_ammo")] public bool MayAmmo { get; init; }
         [JsonPropertyName("is_land")] public bool IsLand { get; init; }
+        [JsonPropertyName("is_mechanism_trigger")] public bool IsMechanismTrigger { get; init; }
+        [JsonPropertyName("is_mechanism_block")] public bool IsMechanismBlock { get; init; }
         [JsonPropertyName("is_caught_by_siren")] public bool IsCaughtBySiren { get; init; }
         [JsonPropertyName("is_fleet")] public bool IsFleet { get; init; }
         [JsonPropertyName("is_cleared")] public bool IsCleared { get; init; }

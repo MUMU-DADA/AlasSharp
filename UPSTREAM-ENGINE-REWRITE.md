@@ -371,6 +371,35 @@
 `clear_map_items` 5、`fleet_2_rescue` 4（寻路）、`clear_mechanism` 4、`battle_0` 2、
 `fleet_1.switch_to` / `fleet_2.switch_to` 各 1、`clear_chosen_enemy` 1、`fleet_boss.clear_potential_boss` 1。
 
+#### P2-9 已完成：收尾易做 op + 跨钩子调用（步覆盖 98.8% → 99.1%）（2026-09-25）
+
+| 新增原语 | 对应上游 | 关键语义 |
+| --- | --- | --- |
+| `switch_to` | `Fleet.switch_to()` | **上游实现就是 `pass`**（空方法）——切舰队发生在 `fleet_1`/`fleet_2` 取值时，因此这里也只是"记日志 + 返回假"，切舰队仍由前缀规则完成 |
+| `clear_potential_boss` | `Map.clear_potential_boss()` | 单独注册（此前只被 `clear_boss` 内部调用），覆盖 `fleet_boss.clear_potential_boss` 这类直接调用 |
+| `clear_chosen_enemy` | `Map.clear_chosen_enemy(grid, expected='')` | 打**指定格子**的动作入口（从 `__grid__` 实参解码，设备动作交给宿主） |
+| `clear_map_items` | **关卡基类**（`event_20221124_cn/campaign_base.py`） | 按 `cost` 升序逐个 `goto`；上游无 return（为假） |
+| `clear_mechanism` | `Map.clear_mechanism(grids=None)` | 无 `MAP_HAS_LAND_BASED` 返回假；选可触发且未被阻挡的机关格 → `goto` → **上游在此 `raise MapEnemyMoved`** |
+
+配套：格子增加 `is_mechanism_trigger` / `is_mechanism_block` 与过滤条件；配置增加 `MAP_HAS_LAND_BASED`；
+**新增控制流信号类型** `CampaignControlFlowSignal`——上游用异常做控制流（`MapEnemyMoved` 由战役循环捕获后重新识别），
+执行器**如实转成阻塞原因**，不假装继续往下跑。
+
+**跨钩子调用**：上游存在 `self.battle_0()` 这种"调用同关卡其它钩子"的写法，执行器现在会递归执行该钩子
+（限深 3 层；被阻塞时向上传播原因），并且这类步骤也计入覆盖率。
+
+**对拍**：`verify_r5_execution.py` 扩到 **32 个用例**（新增：`fleet_2.switch_to` 仍是空操作但按前缀切舰队、
+`clear_map_items` 按 cost 升序 goto 后接 boss 清理、`clear_mechanism` 抛 `MapEnemyMoved` 如实阻塞、
+`terminal battle_0` 跨钩子递归执行），全部通过；注册原语 **21 个**（含舰队前缀组合 25 个已实现）。
+
+**剩余 54 步（已收敛到三类）**：
+
+| 类别 | 步骤 | 说明 |
+| --- | --- | --- |
+| 依赖寻路 | **35** | `brute_clear_boss` 11 + `fleet_boss.brute_clear_boss` 9 + `fleet_2_rescue` 4 + `fleet_2_step_on` 11——都需要 `brute_find_roadblocks` / `find_path_initial`（独立的大块，属寻路域迁移） |
+| 导出缺口 | **12** | `clear_bouncing_enemy`：需要导出 `MAP.bouncing_enemy_data`（当前 `map` 段没有这个声明） |
+| 设计上不执行 | **7** | `super().handle_boss_appear_refocus`（委托父类，本层不执行） |
+
 #### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
 
 | 新增原语 | 对应上游 | 关键语义 |

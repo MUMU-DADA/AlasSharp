@@ -10,6 +10,7 @@ public sealed record CampaignRuntimeConfig(
     bool MapHasFortress = false,
     bool Fleet2 = false,
     bool FleetBoss = false,
+    bool MapHasLandBased = false,
     bool MapHasMovableEnemy = false,
     bool MapHasMovableNormalEnemy = false)
 {
@@ -569,6 +570,66 @@ public static class CampaignPrimitives
         return false;
     }
 
+    /// <summary>上游 <c>clear_chosen_enemy(grid, expected='')</c>：打指定格子（设备侧动作交给宿主）。</summary>
+    public static bool ClearChosenEnemy(ICampaignPrimitiveHost host, CampaignGrid grid, string expected = "")
+    {
+        host.Log($"clear_chosen_enemy：targetEnemyScale={host.Config.EnemyPriority}，格子 {grid.Location}");
+        return host.ClearChosenEnemy(grid, expected);
+    }
+
+    /// <summary>
+    /// 上游 <c>Fleet.switch_to()</c>：**上游实现就是 <c>pass</c>**（空方法）——切舰队发生在
+    /// <c>fleet_1</c> / <c>fleet_2</c> 这些 property 的取值上，因此这里也只是一个返回假的空操作，
+    /// 前缀切舰队由注册表的舰队前缀规则完成。
+    /// </summary>
+    public static bool SwitchTo(ICampaignPrimitiveHost host, string fleet)
+    {
+        host.Log($"switch_to：上游 Fleet.switch_to() 是 pass（切舰队已由 {fleet} 前缀完成）");
+        return false;
+    }
+
+    /// <summary>
+    /// 上游关卡基类里的 <c>clear_map_items(grids)</c>（如 `campaign/event_20221124_cn/campaign_base.py`）：
+    /// 按 <c>cost</c> 升序逐个走过去；上游没有 return（落到末尾为假）。
+    /// </summary>
+    public static bool ClearMapItems(ICampaignPrimitiveHost host, IReadOnlyList<CampaignGrid> grids)
+    {
+        var ordered = grids.OrderBy(grid => grid.Cost).ToArray();
+        foreach (var grid in ordered)
+        {
+            host.Log($"clear_map_items：Clear map item on {grid.Location}");
+            host.Goto(grid);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 上游 <c>Map.clear_mechanism(grids=None)</c>：无 <c>MAP_HAS_LAND_BASED</c> 直接返回假；
+    /// 选中可触发且未被阻挡的机关格 → 走过去 → **上游在这里 <c>raise MapEnemyMoved</c>**。
+    /// 该异常由尚未迁移的战役循环处理，这里如实转成控制流信号。
+    /// </summary>
+    public static bool ClearMechanism(ICampaignPrimitiveHost host, IReadOnlyList<CampaignGrid>? grids = null)
+    {
+        if (!host.Config.MapHasLandBased) return false;
+
+        var pool = grids is null ? new CampaignGridSet(host.Grids) : new CampaignGridSet(grids);
+        var selected = CampaignTargetSelector.SelectGrids(
+            pool.Select(new CampaignGridFilter(IsMechanismTrigger: true, IsMechanismBlock: false)),
+            new CampaignTargetOptions { Sort = ["weight", "cost"] });
+        if (selected.IsEmpty)
+        {
+            host.Log("clear_mechanism：Mechanism all cleared");
+            return false;
+        }
+
+        var target = selected[0];
+        host.Log($"clear_mechanism：Clear mechanism: {target.Location}");
+        host.Goto(target);
+        host.Log($"clear_mechanism：trigger={target.IsMechanismTrigger}，block={target.IsMechanismBlock}");
+        throw new CampaignControlFlowSignal("MapEnemyMoved",
+            "清除机关后上游抛 MapEnemyMoved（战役循环需要重新识别地图）——该控制流尚未迁移");
+    }
+
     /// <summary>上游 <c>CampaignBase.battle_default()</c>。</summary>
     public static bool BattleDefault(ICampaignPrimitiveHost host)
     {
@@ -612,6 +673,16 @@ public static class CampaignPrimitives
     }
 }
 
+/// <summary>
+/// 上游用异常做控制流的信号（如 <c>clear_mechanism</c> 结尾的 <c>raise MapEnemyMoved</c>）。
+/// 战役循环（尚未迁移）会捕获它并重新识别地图——在那之前，执行器把它转成**阻塞原因**如实报出，
+/// 而不是假装继续往下跑。
+/// </summary>
+public sealed class CampaignControlFlowSignal(string kind, string message) : Exception(message)
+{
+    public string Kind { get; } = kind;
+}
+
 /// <summary>一次钩子执行的结果：返回值、逐步记录、干跑动作与日志；被阻塞时给出原因。</summary>
 public sealed record CampaignHookExecution(
     string Chapter,
@@ -635,7 +706,15 @@ public sealed record CampaignHookExecution(
 /// </summary>
 public static class CampaignHookRunner
 {
-    public static CampaignHookExecution Run(CampaignPlan plan, CampaignPlanBattle battle, ICampaignPrimitiveHost host)
+    /// <summary>跨钩子调用的最大递归深度（上游存在 `self.battle_0()` 这种调用同关卡其它钩子的写法）。</summary>
+    private const int MaxCallDepth = 3;
+
+    public static CampaignHookExecution Run(CampaignPlan plan, CampaignPlanBattle battle,
+                                            ICampaignPrimitiveHost host) =>
+        Run(plan, battle, host, depth: 0);
+
+    private static CampaignHookExecution Run(CampaignPlan plan, CampaignPlanBattle battle,
+                                             ICampaignPrimitiveHost host, int depth)
     {
         var stepLog = new List<string>();
         var actions = new List<string>();
@@ -662,6 +741,34 @@ public static class CampaignHookRunner
                 return Result(plan, battle, null, $"实参未求值：{argument}", stepLog, host, actionsBefore, actions);
             }
 
+            // 跨钩子调用：`self.battle_0()` 这类步骤（上游确实存在），在本关卡内递归执行那个钩子。
+            var nested = plan.Header.Battles.FirstOrDefault(item => item.Method == step.Op);
+            if (nested is not null && !CampaignPrimitiveRegistry.IsImplemented(step.Op))
+            {
+                if (depth >= MaxCallDepth)
+                {
+                    stepLog.Add($"{step.Op}: 跨钩子调用超过 {MaxCallDepth} 层，停止执行");
+                    return Result(plan, battle, null, $"跨钩子调用超过 {MaxCallDepth} 层",
+                                  stepLog, host, actionsBefore, actions);
+                }
+                var inner = Run(plan, nested, host, depth + 1);
+                stepLog.Add($"{step.Op}: 跨钩子调用 → {(inner.ReturnValue is null ? "未完成" : inner.ReturnValue.Value ? "真" : "假")}");
+                if (inner.BlockedReason is not null)
+                {
+                    return Result(plan, battle, null, $"跨钩子 {step.Op} 被阻塞：{inner.BlockedReason}",
+                                  stepLog, host, actionsBefore, actions);
+                }
+                if (role == CampaignStepRole.Attempt && inner.ReturnValue == true)
+                {
+                    return Result(plan, battle, true, null, stepLog, host, actionsBefore, actions);
+                }
+                if (role == CampaignStepRole.Fallback)
+                {
+                    return Result(plan, battle, inner.ReturnValue, null, stepLog, host, actionsBefore, actions);
+                }
+                continue;
+            }
+
             if (!CampaignPrimitiveRegistry.TryGet(step.Op, out var primitive))
             {
                 stepLog.Add($"{step.Op}: 原语未实现，停止执行");
@@ -677,6 +784,11 @@ public static class CampaignHookRunner
             {
                 stepLog.Add($"{step.Op}: {error.Message}");
                 return Result(plan, battle, null, error.Message, stepLog, host, actionsBefore, actions);
+            }
+            catch (CampaignControlFlowSignal signal)
+            {
+                stepLog.Add($"{step.Op}: 控制流信号 {signal.Kind}");
+                return Result(plan, battle, null, signal.Message, stepLog, host, actionsBefore, actions);
             }
 
             stepLog.Add($"{step.Op}: {(executed ? "真" : "假")}（{Role(role)}）");
@@ -802,6 +914,21 @@ public static class CampaignPrimitiveRegistry
         ["fleet_2_protect"] = new CampaignPrimitive(
             "fleet_2_protect", "道中队游走清靠近的塞壬/敌人（上游 Map.fleet_2_protect）", false,
             (host, _) => CampaignPrimitives.Fleet2Protect(host)),
+        ["clear_potential_boss"] = new CampaignPrimitive(
+            "clear_potential_boss", "依次踩可达 may_boss 格子（上游 Map.clear_potential_boss）", false,
+            (host, _) => CampaignPrimitives.ClearPotentialBoss(host)),
+        ["clear_chosen_enemy"] = new CampaignPrimitive(
+            "clear_chosen_enemy", "打指定格子（上游 Map.clear_chosen_enemy 的动作入口）", NeedsArguments: true,
+            (host, step) => CampaignPrimitives.ClearChosenEnemy(host, RequireGrid(host, step))),
+        ["switch_to"] = new CampaignPrimitive(
+            "switch_to", "上游 Fleet.switch_to() 是 pass（切舰队由前缀完成）", false,
+            (host, step) => CampaignPrimitives.SwitchTo(host, CampaignPrimitiveRegistry.SplitFleetPrefix(step.Op).Prefix)),
+        ["clear_map_items"] = new CampaignPrimitive(
+            "clear_map_items", "按 cost 升序清掉指定格子上的物资（上游关卡基类 helper）", NeedsArguments: true,
+            (host, step) => CampaignPrimitives.ClearMapItems(host, RequireGrids(host, step))),
+        ["clear_mechanism"] = new CampaignPrimitive(
+            "clear_mechanism", "清机关并抛 MapEnemyMoved 信号（上游 Map.clear_mechanism）", false,
+            (host, step) => CampaignPrimitives.ClearMechanism(host, OptionalGrids(host, step))),
     };
 
     /// <summary>已实现的原语名（排序返回，便于输出与对拍）。不含舰队前缀组合。</summary>
@@ -951,6 +1078,36 @@ public static class CampaignPrimitiveRegistry
     private static CampaignGrid RequireGrid(ICampaignPrimitiveHost host, CampaignPlanStep step) =>
         DecodeGrid(host, step) ?? throw new NotSupportedException(
             $"{step.Op} 的格子实参在导出里不是 __grid__ 结构——需要导出器解析格子符号后才能执行");
+
+    /// <summary>解码 `{"__grids__": [[x, y], …]}` 多格实参（`clear_map_items([F1, I1])`），并查回真实格子。</summary>
+    private static IReadOnlyList<CampaignGrid>? DecodeGrids(ICampaignPrimitiveHost host, CampaignPlanStep step)
+    {
+        foreach (var value in step.Args?.Positional ?? [])
+        {
+            if (value is not JsonObject payload || payload["__grids__"] is not JsonArray cells) continue;
+            var grids = new List<CampaignGrid>();
+            foreach (var cell in cells.OfType<JsonArray>())
+            {
+                string location = CampaignLocations.ToNode(cell[0]!.GetValue<int>(), cell[1]!.GetValue<int>());
+                grids.Add(host.Grids.FirstOrDefault(item => item.Location == location)
+                          ?? throw new NotSupportedException($"{step.Op} 的格子 {location} 不在当前地图状态里"));
+            }
+            return grids;
+        }
+        return null;
+    }
+
+    private static IReadOnlyList<CampaignGrid> RequireGrids(ICampaignPrimitiveHost host, CampaignPlanStep step) =>
+        DecodeGrids(host, step) ?? throw new NotSupportedException(
+            $"{step.Op} 的格子表实参在导出里不是 __grids__ 结构——需要导出器解析格子符号后才能执行");
+
+    /// <summary>`clear_mechanism(grids=None)` 允许不传格子；传了但不是符号表时如实报错。</summary>
+    private static IReadOnlyList<CampaignGrid>? OptionalGrids(ICampaignPrimitiveHost host, CampaignPlanStep step)
+    {
+        if (step.Args?.Positional is not { Count: > 0 }) return null;
+        return DecodeGrids(host, step) ?? throw new NotSupportedException(
+            $"{step.Op} 的格子表实参在导出里不是 __grids__ 结构——需要导出器解析格子符号后才能执行");
+    }
 
     /// <summary>
     /// 解码路段实参：导出器把 `road_main = RoadGrids([[H3, B6, C5]])` 这类模块级路段解析成

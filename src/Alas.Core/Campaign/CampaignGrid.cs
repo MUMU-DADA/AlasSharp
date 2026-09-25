@@ -26,6 +26,8 @@ public sealed record CampaignGrid(
     bool IsFleet = false,
     bool IsCleared = false,
     bool IsLand = false,
+    bool IsMechanismTrigger = false,
+    bool IsMechanismBlock = false,
     int EnemyScale = 0,
     string? EnemyGenre = null,
     int Weight = 0,
@@ -140,6 +142,8 @@ public sealed record CampaignGridFilter(
     bool? IsFleet = null,
     bool? IsCleared = null,
     bool? IsLand = null,
+    bool? IsMechanismTrigger = null,
+    bool? IsMechanismBlock = null,
     bool? IsSea = null,
     bool? IsAccessible = null,
     bool? IsAccessible1 = null,
@@ -161,6 +165,8 @@ public sealed record CampaignGridFilter(
         (IsFleet is null || grid.IsFleet == IsFleet) &&
         (IsCleared is null || grid.IsCleared == IsCleared) &&
         (IsLand is null || grid.IsLand == IsLand) &&
+        (IsMechanismTrigger is null || grid.IsMechanismTrigger == IsMechanismTrigger) &&
+        (IsMechanismBlock is null || grid.IsMechanismBlock == IsMechanismBlock) &&
         (IsSea is null || grid.IsSea == IsSea) &&
         (IsAccessible is null || grid.IsAccessible == IsAccessible) &&
         (IsAccessible1 is null || grid.IsAccessible1 == IsAccessible1) &&
