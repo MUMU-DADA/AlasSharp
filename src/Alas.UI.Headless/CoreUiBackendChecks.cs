@@ -217,11 +217,13 @@ internal static class CoreUiBackendChecks
     {
         public Func<Task<DeploySettingsResponse>>? DeployRead;
         public DeploySettingsPatchRequest? DeployPatch;
+        public Func<DeploySettingsPatchRequest, Task<DeploySettingsPatchResponse>>? DeployPatchHandler;
         public Task<DeploySettingsResponse> ReadDeploySettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
             => DeployRead?.Invoke() ?? Task.FromException<DeploySettingsResponse>(new NotSupportedException());
         public Task<DeploySettingsPatchResponse> PatchDeploySettingsAsync(DeploySettingsPatchRequest request, CancellationToken cancellationToken = default)
         {
             DeployPatch = request;
+            if (DeployPatchHandler is not null) return DeployPatchHandler(request);
             return Task.FromResult(new DeploySettingsPatchResponse { Updated = request.Values.Select(item => item.Key).ToArray() });
         }
         public Task<StartupRunResponse> ReadStartupRunAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<StartupRunResponse>(new NotSupportedException());

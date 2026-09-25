@@ -469,6 +469,7 @@ public sealed class DeploySettingsSession : INotifyPropertyChanged
             StorageError = Edits.StorageError;
             Notify(nameof(Edits));
         };
+        StorageError = Edits.StorageError;
     }
 
     /// <summary>切换读取函数（外壳换后端时与提交通道一起更新）。</summary>

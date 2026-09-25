@@ -31,7 +31,8 @@ public partial class MainView : UserControl
     }
 
     public MainView(Theming.IThemeStore themeStore, IAlasUiBackend? backend = null, Platform.IUiFiles? files = null,
-        Overview.IResourceSelectionStore? resourceStore = null)
+        Overview.IResourceSelectionStore? resourceStore = null,
+        DeploySettings.IDeployDraftStore? deployDraftStore = null)
     {
         InitializeComponent();
         files ??= new Platform.UiFiles(() => TopLevel.GetTopLevel(this)?.StorageProvider);
@@ -47,7 +48,8 @@ public partial class MainView : UserControl
                     Remote = new DeploySettings.DeployRemoteStatus(null, false, string.Empty,
                         "远程连接服务尚未接通；下方设置可保存，保存不会启动远程服务。"),
                 };
-            });
+            }, Model.IsUiOnly ? new DeploySettings.MemoryDeployDraftStore()
+                : deployDraftStore ?? new DeploySettings.MemoryDeployDraftStore());
         SettingsPage = new Settings.SettingsView(Model.SettingsBackend, deploySession);
         RemotePage = new RemoteAccess.RemoteAccessView(
             RemoteAccess.DisconnectedRemoteAccessBackend.Instance, SettingsPage.Session, async address =>

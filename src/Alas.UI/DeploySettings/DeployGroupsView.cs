@@ -130,16 +130,26 @@ public static class DeployGroupsView
             }
         });
 
+        DeployEdit? previousEdit = null;
+        string? previousConfigured = null;
+        bool? previousReady = null;
         void Refresh()
         {
             var edit = edits.Edit(field.Key);
+            var currentConfigured = session.CurrentValue(field.Key);
+            var ready = edits.Ready;
+            if (previousReady == ready && Equals(previousEdit, edit) && previousConfigured == currentConfigured)
+                return;
+            previousEdit = edit;
+            previousConfigured = currentConfigured;
+            previousReady = ready;
             if (control is not null && !control.IsKeyboardFocusWithin)
             {
                 updating = true;
                 try
                 {
                     DeployFieldFactory.UpdateValue(control, field,
-                        DeployFieldFactory.DisplayValue(field, edits, session.CurrentValue(field.Key)));
+                        DeployFieldFactory.DisplayValue(field, edits, currentConfigured));
                 }
                 finally { updating = false; }
             }

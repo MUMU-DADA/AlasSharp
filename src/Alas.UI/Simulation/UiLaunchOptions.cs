@@ -1,3 +1,4 @@
+using Alas.UI.DeploySettings;
 using Alas.UI.Overview;
 using Alas.UI.Theming;
 using Alas.UI.ViewModels;
@@ -18,4 +19,7 @@ public sealed record UiLaunchOptions(bool UiOnly = false)
 
     public IResourceSelectionStore CreateResourceStore(Func<IResourceSelectionStore> liveFactory)
         => UiOnly ? new MemoryResourceSelectionStore() : liveFactory();
+
+    public IDeployDraftStore CreateDeployDraftStore(Func<IDeployDraftStore> liveFactory)
+        => UiOnly ? new MemoryDeployDraftStore() : liveFactory();
 }

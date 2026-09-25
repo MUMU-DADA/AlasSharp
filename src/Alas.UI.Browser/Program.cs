@@ -14,6 +14,7 @@ internal static class Program
         var options = UiLaunchOptions.Parse(args);
         App.ThemeStoreFactory = () => options.CreateThemeStore(static () => new BrowserThemeStore());
         App.ResourceStoreFactory = () => options.CreateResourceStore(static () => new BrowserResourceSelectionStore());
+        App.DeployDraftStoreFactory = () => options.CreateDeployDraftStore(static () => new BrowserDeployDraftStore());
         App.BackendFactory = () => options.CreateBackend(static () => new BrowserControlBackend());
         return AppBuilder.Configure<App>()
             .StartBrowserAppAsync("out");
