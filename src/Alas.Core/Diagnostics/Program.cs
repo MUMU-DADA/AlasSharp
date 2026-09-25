@@ -410,6 +410,19 @@ public static class DiagnosticCommands
                 }
                 return CampaignLoopCheck.Run(dataDir, loopFixture);
             }
+            if (command == "r5-actions")
+            {
+                // 原语级动作轨迹：把上游运行日志的动作行映射回原语名，并对照 C# 已实现集合（只读）。
+                string? actionChapter = null, actionLevel = null, actionLog = null;
+                bool actionJson = args.Contains("--json");
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--chapter") actionChapter = args[i + 1];
+                    if (args[i] == "--level") actionLevel = args[i + 1];
+                    if (args[i] == "--log") actionLog = args[i + 1];
+                }
+                return CampaignActionCheck.Run(dataDir, actionChapter, actionLevel, actionLog, actionJson);
+            }
             if (command == "r5-shadow")
             {
                 // 影子模式：读上游运行日志，比对 C# 引擎在同一 battle_count 下会选哪个钩子（只算不执行）。
@@ -536,7 +549,7 @@ public static class DiagnosticCommands
                 _ => Fail($"未知命令: {command}"
                            + "（可用: verify / list / show / imaging / matching / vision / campaign / "
                            + "map / map-ir / capture / device / queue / plan-queue / report / runs / run / goto / "
-                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow）"),
+                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions）"),
             };
         }
         catch (Exception ex)

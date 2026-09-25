@@ -709,6 +709,30 @@ Alas.Server queue --file .runtime/device-probe/campaign-1-1-queue.json --run --a
 > 说明：运行内这条路径的**端到端**要等下一次授权的真机运行才会首次产出 `shadow-*.json`
 > （本轮只做了离线可验证的部分：映射、解析、比对、落盘与日志；设备动作没有重复执行）。
 
+#### P2-18 已完成：原语级动作轨迹（真机口径的覆盖对照）（2026-09-26）
+
+`src/Alas.Core/Campaign/CampaignActionTrace.cs` + 命令 `Alas.Server r5-actions --log <日志> [--chapter --level]`：
+
+| 组成 | 做什么 |
+| --- | --- |
+| `UpstreamActionParser` | 把上游日志行的**动作标记**映射回我们的原语名：`<<< CLEAR FILTER ENEMY >>>`→`clear_filter_enemy`、`Clear enemy: F1`→`clear_chosen_enemy(F1)`、`Pick up ammo: B2`→`pick_up_ammo(B2)`、`Fleet_2 step on C3`→`fleet_2_step_on(C3)`、`Brute clear BOSS`/`Enemy roadblock: D2`→`brute_clear_boss`、`Clear mechanism:`/`Mechanism all cleared`→`clear_mechanism` 等；表里没有的行若"像动作"则收进**认不出的动作行**供人工核对（不猜、不编造） |
+| 覆盖对照 | 输出"本次运行用到的原语"里 C# **已实现 / 未实现**的清单——这是**真机口径**的缺口，离线干跑发现不了（干跑只覆盖计划里出现的算子） |
+| 计划对照 | 给了关卡时，对照该关计划的算子集合，列出"计划里有、这次运行没走到"的部分（例如 1-1 的 `battle_default`：`clear_boss` 成功了就没走到兜底） |
+
+**真实 1-1 运行的结果**（本轮实测）：
+
+```
+[动作轨迹] 共 4 次原语级动作，涉及 3 个原语
+  clear_enemy / clear_chosen_enemy(F1) / clear_boss / clear_chosen_enemy(G1)
+[C# 覆盖] 已实现 3 / 未实现 0
+[计划对照] 该关计划算子 2 个，本次运行没走到的 1 个：battle_default
+```
+
+**对拍**：新增 `tools/diagnostics/verify_r5_actions.py`（夹具日志按上游真实格式写，覆盖 10 次动作 /
+8 个原语，并特意放一条"表里没有但像动作"的 `BOSS not detected, …` 来验证"认不出的动作行"这条路），
+已登记进 `verify_all.py`。噪声修复：`[Emotion fleet_2]`、`Hard satisfied: Fleet_1` 这类属性行
+一度被误当成动作，已用收窄后的"像动作"特征排除。
+
 ### P4 收口
 
 `IVisionEngine` 只保留识图相关方法；上游目录只剩规则文件与识图组件；文档同步（`docs/architecture-roadmap.md`、本文件、[架构梳理](ARCHITECTURE-NOTES.md)）。
