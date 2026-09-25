@@ -14,7 +14,7 @@ namespace Alas.Tasks;
 /// 本类传参、校验响应、把结果翻译成任务结论并写入证据；
 /// **不重算 NextRun**（那是上游调度器的逻辑）。
 ///
-/// 输入（`Input`）：`{ "only_enabled": true, "limit": 30 }`
+/// 输入（`Input`）：`{ "only_enabled": true, "limit": 30, "instance": "alas" }`。
 /// 结论：跑通即 `Succeeded`；**读不到配置是环境问题 → `Failed`（不是 skipped）** ——
 /// 这个语义由宿主 op 定好，本类不另判一套。
 /// </summary>
@@ -22,7 +22,7 @@ public sealed class TaskScheduleTask : ITaskRunner
 {
     private static readonly HashSet<string> InputFields = new(StringComparer.Ordinal)
     {
-        "only_enabled", "limit", "config_path",
+        "only_enabled", "limit", "instance",
     };
 
     public string Kind => "task_schedule";
@@ -48,12 +48,22 @@ public sealed class TaskScheduleTask : ITaskRunner
                 problems.Add($"input.limit 必须是 1 到 {int.MaxValue} 的整数数值");
         }
 
-        if (request.Input?.ContainsKey("config_path") == true
-            && request.Input["config_path"] is not null
-            && (request.Input["config_path"] is not JsonValue configPath
-                || !configPath.TryGetValue<string>(out var path)
-                || string.IsNullOrWhiteSpace(path)))
-            problems.Add("input.config_path 必须是非空字符串或 null");
+        if (request.Input?.ContainsKey("instance") == true)
+        {
+            if (request.Input["instance"] is not JsonValue value
+                || !value.TryGetValue<string>(out var instance)
+                || string.IsNullOrWhiteSpace(instance))
+                problems.Add("input.instance 必须是非空实例名");
+            else
+            {
+                try
+                {
+                    if (ConfigWorkspace.ValidateName(instance) != instance)
+                        problems.Add("input.instance 必须使用规范实例名");
+                }
+                catch (ArgumentException) { problems.Add("input.instance 实例名无效"); }
+            }
+        }
 
         // 配置缺失属环境问题，由 op 报错 → Failed；这里不把它误标为 skipped。
         return problems;
@@ -75,8 +85,7 @@ public sealed class TaskScheduleTask : ITaskRunner
                 {
                     only_enabled = onlyEnabled,
                     limit,
-                    // 显式配置路径（多份账号配置 / 边界验收用假配置）；不给则用标准位置。
-                    config_path = request.Input?["config_path"]?.GetValue<string>(),
+                    instance = request.Input?["instance"]?.GetValue<string>() ?? "alas",
                 });
             result.Evidence = new JsonObject { ["host_response"] = response.DeepClone() };
             TaskScheduleResult schedule;
@@ -97,6 +106,8 @@ public sealed class TaskScheduleTask : ITaskRunner
                 result.Error = schedule.Error;
                 return result;
             }
+            if (schedule.Instance != (request.Input?["instance"]?.GetValue<string>() ?? "alas"))
+                throw new AlasRuntimeException(RuntimeErrorKind.ContractViolation, "调度快照实例身份不一致");
             ValidateSnapshot(schedule, onlyEnabled, limit);
             var listed = new JsonArray();
             foreach (var entry in schedule.Tasks!)
@@ -109,6 +120,7 @@ public sealed class TaskScheduleTask : ITaskRunner
                 });
             result.Evidence = new JsonObject
             {
+                ["instance"] = schedule.Instance,
                 ["semantics"] = schedule.Semantics,
                 ["task_source"] = schedule.TaskSource,
                 ["config_source"] = schedule.ConfigSource,
@@ -180,6 +192,7 @@ public sealed class TaskScheduleTask : ITaskRunner
 /// <summary>宿主 `task_schedule` 的返回（只读快照）。</summary>
 public sealed class TaskScheduleResult
 {
+    [JsonPropertyName("instance")] public string? Instance { get; set; }
     [JsonPropertyName("semantics")] public string? Semantics { get; set; }
     [JsonPropertyName("task_source")] public string? TaskSource { get; set; }
     [JsonPropertyName("config_source")] public string? ConfigSource { get; set; }

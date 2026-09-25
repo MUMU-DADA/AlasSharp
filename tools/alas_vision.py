@@ -823,12 +823,30 @@ def op_task_catalog(args):
     }
 
 
+def _instance_config_file(args):
+    from module.api.config_service import validate_name
+
+    instance = args.get('instance', 'alas')
+    try:
+        normalized = validate_name(instance)
+    except Exception:
+        return None, None, '实例名无效'
+    if normalized != instance:
+        return None, None, '实例名必须使用规范名称'
+    config_root = (Path(FORK) / 'config').resolve()
+    path = config_root / (instance + '.json')
+    if (not path.is_file() or path.is_symlink()
+            or path.resolve().parent != config_root):
+        return None, None, f'读不到账号配置实例: {instance}'
+    return instance, path, None
+
+
 def op_task_schedule(args):
     """周期任务的存盘 Scheduler 快照；不是原生有效配置或实际运行计划。
 
     数据来源是两个**别混为一谈**的东西（第七节已查实）：
       * `module/config/argument/args.json` —— 任务表（扁平清单，以它为准）；
-      * 账号配置 `config/alas.json` 每个任务下的 `Scheduler` 段（`Enable` / `NextRun` …）。
+      * 所选实例配置每个任务下的 `Scheduler` 段（`Enable` / `NextRun` …）。
 
     **只读纪律**：不写配置、不触发任务、**不重算 NextRun**（那是上游调度器的逻辑，
     含 `ServerUpdate` 语义；自己实现一版等于养第二份真相）。
@@ -842,9 +860,10 @@ def op_task_schedule(args):
             or not 1 <= limit <= 2147483647 or limit != int(limit)):
         return {**out, 'error': 'limit 必须是 1 到 2147483647 的整数数值'}
     limit = int(limit)
-    requested_path = args.get('config_path')
-    if requested_path is not None and (not isinstance(requested_path, str) or not requested_path.strip()):
-        return {**out, 'error': 'config_path 必须是非空字符串或 null'}
+    instance, config_path, error = _instance_config_file(args)
+    if error is not None:
+        return {**out, 'error': error}
+    out['instance'] = instance
     args_json = os.path.join(FORK, 'module', 'config', 'argument', 'args.json')
     try:
         with open(args_json, encoding='utf-8') as stream:
@@ -855,23 +874,10 @@ def op_task_schedule(args):
         out['error'] = f'读不到任务表: {type(e).__name__}: {e}'
         return out
 
-    config_path = None
-    # 允许显式指定配置路径：既支持多份账号配置，也让**边界验收**能用构造的假配置
-    # （全禁用 / 全启用 / 缺 Scheduler 段）去跑同一条代码路径，而不是只测真配置。
-    candidates = ([args['config_path']] if args.get('config_path')
-                  else [os.path.join(FORK, 'config', 'alas.json'), './config/alas.json'])
-    for candidate in candidates:
-        if os.path.exists(candidate):
-            config_path = candidate
-            break
-    if config_path is None:
-        out['error'] = ('读不到账号配置 config/alas.json —— 前置条件不满足；'
-                        '这属于环境问题（Failed），不是"没跑"（skipped）')
-        return out
     try:
         with open(config_path, encoding='utf-8') as stream:
             config = json.load(stream)
-        out['config_source'] = config_path
+        out['config_source'] = str(config_path)
     except Exception as e:
         out['error'] = f'账号配置读不出来: {type(e).__name__}: {e}'
         return out
@@ -1083,19 +1089,9 @@ def op_config_get(args):
     keys = args.get('keys') or []
     if not isinstance(keys, list) or not keys:
         return {'error': '缺少 keys（点分路径列表，如 ["Dorm.BuyFurniture.Enable"]）'}
-    from module.api.config_service import validate_name
-    instance = args.get('instance', 'alas')
-    try:
-        normalized = validate_name(instance)
-    except Exception:
-        return {'error': '实例名无效'}
-    if normalized != instance:
-        return {'error': '实例名必须使用规范名称'}
-    config_root = (Path(FORK) / 'config').resolve()
-    path = config_root / (instance + '.json')
-    if (not path.is_file() or path.is_symlink()
-            or path.resolve().parent != config_root):
-        return {'error': f'读不到账号配置实例: {instance}',
+    instance, path, error = _instance_config_file(args)
+    if error is not None:
+        return {'error': error,
                 'note': '这属于环境问题（Failed），不是"没跑"（skipped）'}
     try:
         with open(path, encoding='utf-8') as stream:

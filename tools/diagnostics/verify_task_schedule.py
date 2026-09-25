@@ -25,6 +25,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -40,13 +41,13 @@ except Exception:
     pass
 
 
-def run_task(config_path: str, only_enabled: bool = False,
+def run_task(instance: str, only_enabled: bool = False,
              input_value: dict | None = None) -> dict:
     """跑一次队列任务，返回它的 evidence（或错误信息）。"""
     with tempfile.TemporaryDirectory(prefix='alas-sched-') as tmp:
         task_input = (dict(input_value) if input_value is not None else {
             'only_enabled': only_enabled, 'limit': 200,
-            'config_path': config_path,
+            'instance': instance,
         })
         queue_file = Path(tmp) / 'queue.json'
         queue_file.write_text(json.dumps({'tasks': [{
@@ -84,15 +85,15 @@ def verify_host_validation() -> None:
 
     def read(path, **kwargs):
         reads.append(path)
-        return io.StringIO(json.dumps({'Alas': {}, 'Main': {}} if path.endswith('args.json') else payload))
+        return io.StringIO(json.dumps({'Alas': {}, 'Main': {}} if str(path).endswith('args.json') else payload))
 
     environment = dict(json=json, FORK='fixture', open=read,
-                       os=SimpleNamespace(path=SimpleNamespace(join=os.path.join, exists=lambda _: True)))
+                       os=SimpleNamespace(path=SimpleNamespace(join=os.path.join)),
+                       _instance_config_file=lambda _: ('alas', Path('fixture/config/alas.json'), None))
     exec(compile(ast.Module(body=[operation], type_ignores=[]), 'task_schedule_fixture', 'exec'), environment)
     operation = environment['op_task_schedule']
     invalid_inputs = [dict(only_enabled=value) for value in ('false', 0, 1, None, [], {})]
     invalid_inputs += [dict(limit=value) for value in (0, -1, 1.5, True, '1', None, float('inf'))]
-    invalid_inputs += [dict(config_path=value) for value in ('', ' ', 7)]
     for arguments in invalid_inputs:
         result = operation(arguments)
         assert result.get('error') and not reads, (arguments, result, reads)
@@ -110,7 +111,7 @@ def verify_host_validation() -> None:
 
 def verify_response_contract() -> None:
     """Exercise Core's real queue and resume state with inert host responses."""
-    base = dict(semantics='stored_config', task_count=1, enabled_count=1,
+    base = dict(instance='alas', semantics='stored_config', task_count=1, enabled_count=1,
                 no_scheduler_count=0, listed_count=1,
                 tasks=[dict(task='Main', enable=True, scheduler_present=True, next_run=None)])
     variants = [('enabled', base, True)]
@@ -136,6 +137,7 @@ def verify_response_contract() -> None:
         changed = copy.deepcopy(base)
         del changed[field]
         variants.append((f'absent-{field}', changed, False))
+    variants.append(('wrong-instance', {**copy.deepcopy(base), 'instance': 'other'}, False))
     for label, counts in (('row-count-conflict', dict(enabled_count=0)),
                           ('scheduler-count-conflict', dict(enabled_count=0, no_scheduler_count=1)),
                           ('count-overflow', dict(task_count=2147483647, enabled_count=2147483647,
@@ -203,7 +205,7 @@ def main() -> int:
                                            and isinstance(config[t].get('Scheduler'), dict)))
 
     before = sha256(CONFIG)
-    real = run_task(str(CONFIG), only_enabled=True)
+    real = run_task('alas', only_enabled=True)
     after = sha256(CONFIG)
 
     print('=== 与独立读数对拍（真配置）===')
@@ -220,6 +222,7 @@ def main() -> int:
          f"listed={real.get('listed')[:3]}"),
         ('只读：配置字节不变', before == after, f'{before[:12]} → {after[:12]}'),
         ('明确标注存储快照', real.get('semantics') == 'stored_config', '不能表示为原生有效调度'),
+        ('默认实例身份', real.get('instance') == 'alas', f"instance={real.get('instance')}"),
         ('CLI 打出 [任务证据] 行（键名改掉会静默消失）', '[任务证据]' in real.get('_stdout', '') and '启用=' in real.get('_stdout', ''), 'stdout 里没有 [任务证据] 或 启用='),
     ]
     for name, ok, detail in checks:
@@ -229,18 +232,19 @@ def main() -> int:
 
     invalid_inputs = {
         'unknown-field': {'only_enabled': True, 'limit': 200,
-                          'config_path': str(CONFIG), 'extra': True},
+                          'instance': 'alas', 'extra': True},
         'only-enabled-type': {'only_enabled': 'true', 'limit': 200,
-                              'config_path': str(CONFIG)},
+                              'instance': 'alas'},
         'limit-zero': {'only_enabled': True, 'limit': 0,
-                       'config_path': str(CONFIG)},
+                       'instance': 'alas'},
         'limit-fraction': {'only_enabled': True, 'limit': 1.5,
-                           'config_path': str(CONFIG)},
-        'config-path-type': {'only_enabled': True, 'limit': 200,
-                             'config_path': 7},
+                           'instance': 'alas'},
+        'instance-type': {'only_enabled': True, 'limit': 200, 'instance': 7},
+        'instance-path': {'only_enabled': True, 'limit': 200, 'instance': '../alas'},
+        'instance-noncanonical': {'only_enabled': True, 'limit': 200, 'instance': 'alas.'},
     }
     for name, input_value in invalid_inputs.items():
-        invalid = run_task(str(CONFIG), input_value=input_value)
+        invalid = run_task('alas', input_value=input_value)
         ok = (invalid.get('_outcome') == 'skipped'
               and invalid.get('_error_kind') == 'none'
               and bool(invalid.get('_unmet_preconditions'))
@@ -253,8 +257,9 @@ def main() -> int:
     # ---- 边界：用构造的假配置走同一条代码路径
     print()
     print('=== 边界情形（构造的假配置）===')
-    with tempfile.TemporaryDirectory(prefix='alas-sched-fixtures-') as tmp:
-        tmpdir = Path(tmp)
+    nonce = uuid.uuid4().hex[:12]
+    created = []
+    try:
         fixtures = {
             'all-disabled': {t: {'Scheduler': {'Enable': False}} for t in tasks},
             'all-enabled': {t: {'Scheduler': {'Enable': True, 'NextRun': '2026-01-01 00:00:00'}}
@@ -265,10 +270,13 @@ def main() -> int:
                               'Tactical': {'Scheduler': {}}},
         }
         for name, payload in fixtures.items():
-            path = tmpdir / f'{name}.json'
-            path.write_text(json.dumps(payload), encoding='utf-8')
+            instance = f'codex_sched_{nonce}_{name.replace("-", "_")}'
+            path = CONFIG.parent / f'{instance}.json'
+            with path.open('x', encoding='utf-8') as stream:
+                json.dump(payload, stream)
+            created.append(path)
             fixture_hash = sha256(path)
-            evidence = run_task(str(path), only_enabled=name != 'stored-values')
+            evidence = run_task(instance, only_enabled=name != 'stored-values')
             if name == 'all-disabled':
                 # 断言用**任务证据里真实存在的字段**（listed），不要用宿主 op 的 listed_count ——
                 # 任务类没有把它抄进证据，那是它自己的取舍；测试不该假设它存在。
@@ -289,7 +297,9 @@ def main() -> int:
                       and entries.get('Tactical', {}).get('enable') is None
                       and entries.get('Tactical', {}).get('scheduler_present') is True
                       and evidence.get('enabled_count') == 0)
-            ok = ok and sha256(path) == fixture_hash and evidence.get('semantics') == 'stored_config'
+            ok = (ok and sha256(path) == fixture_hash
+                  and evidence.get('semantics') == 'stored_config'
+                  and evidence.get('instance') == instance)
             print(f"  {'ok  ' if ok else 'FAIL'} {name}: enabled={evidence.get('enabled_count')} "
                   f"no_scheduler={evidence.get('no_scheduler_count')} "
                   f"outcome={evidence.get('_outcome')}")
@@ -300,10 +310,13 @@ def main() -> int:
         # Reject the entire snapshot even when an invalid row would be filtered.
         invalid_values = ('false', 'true', '', 0, 1, None, [], {}, [False])
         for index, value in enumerate(invalid_values):
-            path = tmpdir / f'invalid-enable-{index}.json'
-            path.write_text(json.dumps({'Main': {'Scheduler': {'Enable': value}}}), encoding='utf-8')
+            instance = f'codex_sched_{nonce}_invalid_enable_{index}'
+            path = CONFIG.parent / f'{instance}.json'
+            with path.open('x', encoding='utf-8') as stream:
+                json.dump({'Main': {'Scheduler': {'Enable': value}}}, stream)
+            created.append(path)
             before = sha256(path)
-            evidence = run_task(str(path), only_enabled=True)
+            evidence = run_task(instance, only_enabled=True)
             ok = (evidence.get('_outcome') == 'failed'
                   and 'Main.Scheduler.Enable' in str(evidence.get('_error'))
                   and not evidence.get('listed') and sha256(path) == before)
@@ -311,12 +324,15 @@ def main() -> int:
             if not ok:
                 failures.append(f'非法 Enable {value!r}: {evidence}')
 
-        missing = run_task(str(tmpdir / 'not-exists.json'), only_enabled=True)
+        missing = run_task(f'codex_sched_{nonce}_not_exists', only_enabled=True)
         ok = missing.get('_outcome') == 'failed' and '读不到' in str(missing.get('_error') or '')
         print(f"  {'ok  ' if ok else 'FAIL'} 配置不存在: outcome={missing.get('_outcome')} "
               f"error={str(missing.get('_error'))[:60]}")
         if not ok:
             failures.append(f"配置不存在时应 Failed 且给出原因，实为 {missing}")
+    finally:
+        for path in created:
+            path.unlink(missing_ok=True)
 
     print()
     if failures:

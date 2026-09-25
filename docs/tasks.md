@@ -47,7 +47,7 @@ Alas.Server queue --file queue.json --run --allow-actions --serial <设备> --sc
 | `os_action` | `task` 为上游 `opsi_*` 绑定任务，另需 `confirm`、`allow_actions` | 动作会话，原生调度 |
 | `event_state` | `folder_prefix`、`only_complete`、`limit`，读取导出章节目录 | 离线清点，不代表已通关 |
 | `task_catalog` | 从上游 `args.json` 枚举周期任务与分组 | 只读 |
-| `task_schedule` | 读取存盘任务启用值和下次时间 | 只读快照，未应用上游默认、锁定字段或迁移，不是有效调度计划 |
+| `task_schedule` | 读取所选 `instance` 的存盘任务启用值和下次时间（默认 `alas`） | 只读快照，未应用上游默认、锁定字段或迁移，不是有效调度计划 |
 | `config_get` | 读取指定 `keys`，可用 `instance` 选择配置实例（默认 `alas`） | 只读，不能提交本地账号配置 |
 | `periodic_plan` | `task/tasks`，勘察上游命令与原生方法绑定 | 只读，不构造设备业务对象 |
 | `periodic_preflight` | `task`、`confirm`、`allow_actions`，检查计划与放行条件 | `executes=false`，放行不等于执行 |
