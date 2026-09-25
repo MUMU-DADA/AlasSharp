@@ -86,6 +86,20 @@ internal static class CampaignPathCheck
                 route = new JsonArray(CampaignPathfinder.FindPath(field, testCase.Destination)
                     .Select(item => (JsonNode)item!).ToArray());
             }
+            // `destinations`：一次算多条路线（路线全库对拍用，省得为每个目标建一个用例）。
+            JsonNode? routes = null;
+            if (testCase.Destinations is { Count: > 0 })
+            {
+                var map = new JsonObject();
+                foreach (string destination in testCase.Destinations)
+                {
+                    var path = CampaignPathfinder.FindPath(field, destination);
+                    map[destination] = path.Count == 0
+                        ? null
+                        : new JsonArray(path.Select(item => (JsonNode)item!).ToArray());
+                }
+                routes = map;
+            }
 
             results.Add(new JsonObject
             {
@@ -98,6 +112,7 @@ internal static class CampaignPathCheck
                 ["costs"] = costs,
                 ["connections"] = connections,
                 ["route"] = route,
+                ["routes"] = routes,
             });
         }
 
@@ -166,6 +181,9 @@ internal static class CampaignPathCheck
         [JsonPropertyName("rows")] public List<string>? Rows { get; init; }
         [JsonPropertyName("start")] public string Start { get; init; } = "A1";
         [JsonPropertyName("destination")] public string? Destination { get; init; }
+
+        /// <summary>一次算多条路线（`destination` 的复数形式）；每条是"从起点到该格"的节点序列。</summary>
+        [JsonPropertyName("destinations")] public List<string>? Destinations { get; init; }
         [JsonPropertyName("has_ambush")] public bool HasAmbush { get; init; }
         [JsonPropertyName("has_enemy")] public bool HasEnemy { get; init; } = true;
         [JsonPropertyName("cells")] public List<PathCell>? Cells { get; init; }

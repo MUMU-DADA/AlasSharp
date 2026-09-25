@@ -27,6 +27,15 @@ public sealed record CampaignCostField(
 ///
 /// `may_ambush` 按上游 <c>GridInfo.decode()</c> 的规则：令牌不是 <c>ME/MB/MM/MA</c> 之一就为真。
 /// 只做地图上的算术，**不连设备、不读识别结果**。
+///
+/// **一处有意的偏离（已文档化）**：上游用"前沿不再增长就停"（`len(new) == len(visited)`）作为终止条件，
+/// 而它的 `visited` / `grid_connection` 都是 `set`（对象身份哈希）→ 收敛到哪个不动点取决于迭代序，
+/// 会出现"某个格的 cost 比它的 connection 链还贵"这种自身不自洽（实测：`campaign_13_2` 上
+/// G4=42 而链路只值 33）。本实现改成**relax 到不动点**：每轮都对所有已发现格 relax，
+/// 直到"没有新的更小代价、也没有新格子"才停。代价规则与 tie-break 与上游完全一致，
+/// 差别只在"更充分"——因此 C# 的 cost 场恒为真正的最短距离，且与自己的 connection 链自洽。
+/// 全库对拍（1370 关 × 3 配置 / 275,934 格）显示：无伏击配置逐格完全相同，有伏击配置的差异
+/// 全部是"上游偏大"这一方向。
 /// </summary>
 public static class CampaignPathfinder
 {
@@ -52,6 +61,7 @@ public static class CampaignPathfinder
         while (true)
         {
             var next = new HashSet<string>(visited, StringComparer.Ordinal);
+            bool improved = false;
             foreach (string location in visited)
             {
                 foreach (string neighbour in Neighbours(location, byLocation))
@@ -63,6 +73,7 @@ public static class CampaignPathfinder
                     {
                         costs[neighbour] = cost;
                         connections[neighbour] = location;
+                        improved = true;
                     }
                     else if (cost == costs[neighbour]
                              && Math.Abs(Column(neighbour) - Column(location)) == 1)
@@ -72,7 +83,10 @@ public static class CampaignPathfinder
                     if (grid.IsSea || !hasEnemy) next.Add(neighbour);
                 }
             }
-            if (next.Count == visited.Count) break;
+            // **relax 到不动点**：只有"没有更小代价、也没有新格子"才停。
+            // 上游只判断"前沿不再增长"，因此可能在代价还没传播完时就停（见类注释的偏离说明）。
+            // tie-break 只改 connection 不改代价，不会让这个循环打转。
+            if (!improved && next.Count == visited.Count) break;
             visited = next;
         }
 

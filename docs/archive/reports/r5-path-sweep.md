@@ -8,36 +8,37 @@
 - 用例数：**4110**（关卡 × 配置；配置见下表）
 - 逐格比较：**275934** 格
 - **成本场不一致（无伏击配置）**：**0** 处（硬指标：这类配置下 cost 与迭代序无关）
-- 有伏击配置的**收敛伪影**：**38** 处（上游前沿终止 + set 迭代序；方向不定，不是移植错误）
-- 连接差异：**992** 处（**只允许等代价的多个最优前驱之间**；上游的择向依赖它自己 
+- 有伏击配置的**收敛伪影**：**52** 处（**全部是「上游偏大」**：C# relax 到不动点，给出的是真正最短距离，不可能比上游更贵；更贵会被判为硬失败）
+- 连接差异：**990** 处（**只允许等代价的多个最优前驱之间**；上游的择向依赖它自己 
   `set` 的迭代序、用对象身份哈希，本来就不保证跨实现一致）
 - 路线最优性检查：两侧回溯代价都等于 cost（通过）
-- 用时：C# 侧 1.9s（含进程启动）/ 上游侧 15.2s
+- **路线对拍**（C# `FindPath` vs 上游 `_find_path`）：比较 **32877** 条 —— 完全相同 32739，等代价择向不同但**两侧都最优** 138，不合法 0
+- 用时：C# 侧 2.1s（含进程启动）/ 上游侧 15.5s
 
 ## 有伏击配置的收敛伪影（前 20 条，信息项）
 
 | 用例 | 位置 | 上游 | C# |
 | --- | --- | --- | --- |
-| campaign_main\campaign_13_2#有伏击 | cost@G3 | `34` | `43` |
-| campaign_main\campaign_13_2#有伏击 | cost@H3 | `44` | `49` |
-| campaign_main\campaign_13_2#有伏击 | cost@I3 | `45` | `50` |
-| campaign_main\campaign_13_2#有伏击 | cost@G4 | `33` | `42` |
-| campaign_main\campaign_13_2#有伏击 | cost@H4 | `43` | `52` |
-| campaign_main\campaign_13_2#有伏击 | cost@I4 | `44` | `51` |
+| campaign_main\campaign_13_2#有伏击 | cost@F3 | `50` | `44` |
+| campaign_main\campaign_13_2#有伏击 | cost@H3 | `44` | `35` |
+| campaign_main\campaign_13_2#有伏击 | cost@I3 | `45` | `36` |
+| campaign_main\campaign_13_2#有伏击 | cost@I4 | `44` | `35` |
 | campaign_main\campaign_13_2#有伏击 | cost@I5 | `43` | `34` |
 | campaign_main\campaign_13_3#有伏击 | cost@F1 | `32` | `23` |
-| campaign_main\campaign_13_3#有伏击 | cost@H1 | `43` | `44` |
-| campaign_main\campaign_15_3#有伏击 | cost@J2 | `35` | `40` |
-| campaign_main\campaign_15_3#有伏击 | cost@I3 | `35` | `40` |
-| campaign_main\campaign_4_1#有伏击 | cost@F5 | `45` | `52` |
-| campaign_main\campaign_5_1#有伏击 | cost@H2 | `31` | `40` |
-| event_20210225_tw\a1#有伏击 | cost@J3 | `85` | `90` |
-| event_20210225_tw\c1#有伏击 | cost@J3 | `85` | `90` |
-| event_20210415_tw\sp2#有伏击 | cost@G1 | `51` | `54` |
-| event_20210415_tw\sp2#有伏击 | cost@H1 | `50` | `55` |
-| event_20210415_tw\sp2#有伏击 | cost@I1 | `51` | `56` |
+| campaign_main\campaign_13_3#有伏击 | cost@G1 | `42` | `33` |
+| campaign_main\campaign_13_3#有伏击 | cost@H1 | `43` | `34` |
+| campaign_main\campaign_13_3#有伏击 | cost@F2 | `31` | `24` |
+| campaign_main\campaign_15_3#有伏击 | cost@J1 | `41` | `36` |
+| campaign_main\campaign_4_2#有伏击 | cost@C5 | `24` | `19` |
+| campaign_main\campaign_5_1#有伏击 | cost@G2 | `44` | `41` |
+| campaign_main\campaign_6_2#有伏击 | cost@F6 | `45` | `40` |
+| event_20200326_cn\b1#有伏击 | cost@A5 | `64` | `59` |
+| event_20201029_cn\sp3#有伏击 | cost@H6 | `83` | `76` |
+| event_20210325_cn\a3#有伏击 | cost@I8 | `80` | `66` |
+| event_20210325_cn\c3#有伏击 | cost@I8 | `80` | `73` |
+| event_20210527_tw\b1#有伏击 | cost@A5 | `64` | `59` |
+| event_20210527_tw\d1#有伏击 | cost@A5 | `64` | `59` |
 | event_20210624_tw\a1#有伏击 | cost@H3 | `44` | `37` |
-| event_20210624_tw\a1#有伏击 | cost@H4 | `45` | `38` |
 
 ## 连接差异（前 20 条，均为等代价择向）
 
@@ -69,16 +70,16 @@
 | 配置 | 逐格比较 | 差异 |
 | --- | --- | --- |
 | 不考虑敌人 | 91978 | 412 |
-| 有伏击 | 91978 | 206 |
+| 有伏击 | 91978 | 218 |
 | 默认 | 91978 | 412 |
 
 ## 每关差异分布
 
 | 差异数 | 关卡数 |
 | --- | --- |
-| 0 | 3225 |
-| 1 | 767 |
-| 2 | 98 |
-| 3 | 17 |
-| 4 | 2 |
-| 8 | 1 |
+| 0 | 3216 |
+| 1 | 779 |
+| 2 | 91 |
+| 3 | 16 |
+| 4 | 7 |
+| 5 | 1 |

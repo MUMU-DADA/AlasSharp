@@ -55,6 +55,10 @@ def collect(limit: int) -> list[dict]:
                 break
         if start is None:
             continue
+        # 路线对拍用的目标：均匀取若干个格（含最后一个），控制用例体积又不漏掉远端。
+        nodes = [f"{chr(ord('A') + x)}{y + 1}" for y, row in enumerate(rows) for x, _ in enumerate(row.split())]
+        step = max(len(nodes) // 8, 1)
+        destinations = nodes[::step][:8] or nodes[:1]
         # 三种配置都跑：上游 `find_path_initial(location, has_ambush, has_enemy)` 的这两个开关
         # 会改变代价与扩散规则（伏击格代价 10 / `not has_enemy` 时敌人格也继续扩散），
         # 所以它们各自是一块真实的算法面。
@@ -67,6 +71,7 @@ def collect(limit: int) -> list[dict]:
                 "start": start,
                 "has_ambush": has_ambush,
                 "has_enemy": has_enemy,
+                "destinations": destinations,
             })
         if limit and len(cases) >= limit:
             break
@@ -88,7 +93,8 @@ def csharp_field(cases: list[dict]) -> dict[str, dict]:
     return {case["name"]: case for case in payload["cases"]}
 
 
-def upstream_field(case: dict) -> tuple[dict, dict]:
+def upstream_field(case: dict) -> tuple[dict, dict, dict]:
+    """上游侧：成本场 + 连接 + **路线**（对 `destinations` 逐个调上游自己的 `_find_path`）。"""
     sys.path.insert(0, str(UPSTREAM))
     from module.base.utils import location2node, node2location  # noqa: PLC0415
     from module.map.map_base import CampaignMap  # noqa: PLC0415
@@ -101,12 +107,24 @@ def upstream_field(case: dict) -> tuple[dict, dict]:
     campaign_map.grid_connection_initial(wall=True)
     campaign_map.find_path_initial(tuple(node2location(case["start"])),
                                    has_ambush=case["has_ambush"], has_enemy=case["has_enemy"])
-    costs, connections = {}, {}
+    costs, connections, ambush = {}, {}, {}
     for grid in campaign_map:
         node = location2node(grid.location)
         costs[node] = grid.cost
         connections[node] = location2node(grid.connection) if grid.connection is not None else None
-    return costs, connections
+        ambush[node] = bool(grid.may_ambush)
+    routes: dict[str, list[str] | None] = {}
+    for destination in case.get("destinations") or []:
+        route = campaign_map._find_path(tuple(node2location(destination)))
+        routes[destination] = None if route is None else [location2node(item) for item in route]
+    return costs, connections, routes, ambush
+
+
+def neighbours_of(node: str) -> set[str]:
+    """四邻接（与上游 `grid_connection_initial` 同一套）：用来校验路线每一步都相邻。"""
+    x, y = ord(node[0]) - 65, int(node[1:]) - 1
+    return {f"{chr(65 + nx)}{ny + 1}" for nx, ny in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y))
+            if nx >= 0 and ny >= 0}
 
 
 def route_cost(connections: dict, costs: dict, target: str, start: str) -> int | None:
@@ -148,13 +166,16 @@ def main() -> int:
     artifacts: list[tuple[str, str, object, object]] = []        # 有伏击配置下的收敛伪影（信息项）
     connection_diffs: list[tuple[str, str, object, object]] = []
     route_problems: list[str] = []
+    route_compared = route_identical = route_tiebreak = 0
+    route_examples: list[tuple[str, str, str, str]] = []
+    route_artifacts: list[str] = []          # 上游自身的路线/代价自相矛盾（伪影，信息项）
     per_level: list[tuple[str, int, int]] = []
     per_config: dict[str, list[int]] = {}
     upstream_seconds = 0.0
     for case in cases:
         began = time.perf_counter()
         try:
-            costs, connections = upstream_field(case)
+            costs, connections, upstream_routes, upstream_ambush = upstream_field(case)
         except Exception as error:                     # noqa: BLE001 —— 上游跑不动就如实记，不算通过
             cost_diffs.append((case["name"], "上游执行失败", type(error).__name__, str(error)[:80]))
             continue
@@ -169,9 +190,11 @@ def main() -> int:
                 # 上游 `find_path_initial` 用**前沿终止**（`len(new) == len(visited)` 就停），而它的
                 # `visited` / `grid_connection` 都是 set（对象身份哈希）→ 收敛到哪个不动点依赖迭代序。
                 #   * `has_ambush=False`：每步代价都是 1，等于 BFS，cost 与顺序无关 → 差异就是**硬失败**；
-                #   * `has_ambush=True`：伏击格代价 10，可能出现"某格还差一次 relax 就停"的残差，
-                #     方向不定（C# 也可能比上游贵）。这是上游实现的伪影，不是移植错误 —— 单列为信息项。
-                if case.get("has_ambush"):
+                #   * `has_ambush=True`：C# 侧已改成 **relax 到不动点**（见 CampaignPathfinder 的偏离说明），
+                #     所以它给出的是真正最短距离，**不可能比上游更贵**——若更贵就是硬失败（信号：C# 少 relax 了）；
+                #     比上游便宜则是上游提前终止的伪影，单列为信息项。
+                if case.get("has_ambush") and isinstance(actual, int) and isinstance(expected, int) \
+                        and actual < expected:
                     artifacts.append((case["name"], f"cost@{node}", expected, actual))
                 else:
                     cost_diffs.append((case["name"], f"cost@{node}", expected, actual))
@@ -198,6 +221,47 @@ def main() -> int:
         bucket[0] += len(costs)
         bucket[1] += level_diffs
 
+        # ---- 路线对拍：C# `FindPath` vs 上游 `_find_path` ----
+        csharp_routes = result.get("routes") or {}
+        for destination, expected_route in (upstream_routes or {}).items():
+            actual_route = csharp_routes.get(destination)
+            route_compared += 1
+            if actual_route == expected_route:
+                route_identical += 1
+                continue
+            # 不同：允许（等代价择向）。校验分两级：
+            #   * **自身自洽**：路线首尾正确、每步相邻、按伏击代价累计 == **该侧自己的** cost 场。
+            #     两侧都要满足；C# 不自洽是**真问题**，上游不自洽是它的伪影
+            #     （它的择向分支会在代价还没收敛时就改写 connection，实测有这种自相矛盾的格）。
+            problems_here, artifact_here = [], []
+            for label, route, own_costs in (("上游", expected_route, costs), ("C#", actual_route, csharp_costs)):
+                if route is None:
+                    (problems_here if label == "C#" else artifact_here).append(f"{label} 无路线")
+                    continue
+                if route[0] != case["start"] and own_costs.get(route[0]) != 0:
+                    problems_here.append(f"{label} 起点不是 {case['start']}（{route[0]}）")
+                if route[-1] != destination:
+                    problems_here.append(f"{label} 终点不是 {destination}（{route[-1]}）")
+                total = 0
+                for previous, current in zip(route, route[1:]):
+                    if current not in neighbours_of(previous):
+                        problems_here.append(f"{label} 步 {previous}→{current} 不相邻")
+                        break
+                    total += 10 if case["has_ambush"] and upstream_ambush.get(current) else 1
+                else:
+                    if total != own_costs.get(destination):
+                        message = (f"{label} 路线代价 {total} ≠ 自己的 cost {own_costs.get(destination)}")
+                        (problems_here if label == "C#" else artifact_here).append(message)
+            if problems_here:
+                route_problems.append(f"{case['name']} → {destination}：{'；'.join(problems_here)}")
+            else:
+                route_tiebreak += 1
+                if artifact_here:
+                    route_artifacts.append(f"{case['name']} → {destination}：{'；'.join(artifact_here)}")
+                if len(route_examples) < 10:
+                    route_examples.append((case["name"], destination,
+                                           "/".join(expected_route or []), "/".join(actual_route or [])))
+
     lines = ["# R5 寻路全库对拍（C# 移植 vs 上游）", "",
              "> 本报告由 `tools/diagnostics/r5_path_sweep.py` 重建，不手写。",
              "> 口径：同一份**声明地图**，每种地图跑**三种配置**（默认 `has_ambush=False,has_enemy=True`、",
@@ -206,10 +270,13 @@ def main() -> int:
              f"- 用例数：**{len(per_level)}**（关卡 × 配置；配置见下表）",
              f"- 逐格比较：**{compared}** 格",
              f"- **成本场不一致（无伏击配置）**：**{len(cost_diffs)}** 处（硬指标：这类配置下 cost 与迭代序无关）",
-             f"- 有伏击配置的**收敛伪影**：**{len(artifacts)}** 处（上游前沿终止 + set 迭代序；方向不定，不是移植错误）",
+             f"- 有伏击配置的**收敛伪影**：**{len(artifacts)}** 处（**全部是「上游偏大」**：C# relax 到不动点，"
+             f"给出的是真正最短距离，不可能比上游更贵；更贵会被判为硬失败）",
              f"- 连接差异：**{len(connection_diffs)}** 处（**只允许等代价的多个最优前驱之间**；上游的择向依赖它自己 ",
              "  `set` 的迭代序、用对象身份哈希，本来就不保证跨实现一致）",
              f"- 路线最优性检查：{'**有** ' + str(len(route_problems)) + ' 处不满足' if route_problems else '两侧回溯代价都等于 cost（通过）'}",
+             f"- **路线对拍**（C# `FindPath` vs 上游 `_find_path`）：比较 **{route_compared}** 条 —— "
+             f"完全相同 {route_identical}，等代价择向不同但**两侧都最优** {route_tiebreak}，不合法 {len(route_problems)}",
              f"- 用时：C# 侧 {csharp_seconds:.1f}s（含进程启动）/ 上游侧 {upstream_seconds:.1f}s", ""]
     if artifacts:
         lines += ["## 有伏击配置的收敛伪影（前 20 条，信息项）", "", "| 用例 | 位置 | 上游 | C# |", "| --- | --- | --- | --- |"]
@@ -223,8 +290,12 @@ def main() -> int:
         lines += ["## 连接差异（前 20 条，均为等代价择向）", "", "| 关卡 | 位置 | 上游 | C# |", "| --- | --- | --- | --- |"]
         lines += [f"| {name} | {where} | `{expected}` | `{actual}` |" for name, where, expected, actual in connection_diffs[:20]]
         lines.append("")
+    if route_artifacts:
+        lines += ["## 上游自身的路线/代价不自洽（前 20 条，伪影）", ""]
+        lines += [f"- {item}" for item in route_artifacts[:20]]
+        lines.append("")
     if route_problems:
-        lines += ["## 路线最优性问题", ""] + [f"- {item}" for item in route_problems[:20]] + [""]
+        lines += ["## 路线问题（C# 侧不自洽或不合法）", ""] + [f"- {item}" for item in route_problems[:20]] + [""]
     lines += ["## 每种配置的结果", "", "| 配置 | 逐格比较 | 差异 |", "| --- | --- | --- |"]
     for config, (grids, diffs) in sorted(per_config.items()):
         lines.append(f"| {config} | {grids} | {diffs} |")
