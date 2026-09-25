@@ -110,6 +110,7 @@ STEPS = [
     ('verify_r5_host_seam.py', 'R5 宿主外驱 seam（s3_campaign_init/call/info：联锁、引用、结束分类）', False, 180),
     ('verify_r5_calls.py', 'R5 宿主调用翻译（全库步骤 → 上游方法 + 参数引用形式）', False, 600),
     ('verify_r5_device.py', 'R5 设备宿主（真机宿主 vs 录制宿主发出同样的原语序列）', False, 600),
+    ('verify_r5_coverage.py', 'R5 原语覆盖（29 个已登记原语是否都被夹具执行过）', False, 600),
     ('verify_os_state.py', 'R2 大世界/海域只读探针（存盘帧；capture 前置条件口径）', False, 600),
     ('verify_os_action.py', 'R2 大世界动作入口（真实 CLI dry-run 拒绝动作并留工件）', False, 300),
     ('verify_os_combat_reentry.py', 'R2 大世界自动寻敌跳过准备画面后重新接管战斗', False, 120),

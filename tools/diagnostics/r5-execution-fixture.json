@@ -1469,6 +1469,263 @@
         "log_contains": "Refocus to previous camera position.",
         "action_contains": "focus_to(D4)"
       }
+    },
+    {
+      "name": "event_20200611_en a3 battle_4：clear_potential_boss（按可能 boss 出生点推进）",
+      "chapter": "event_20200611_en",
+      "level": "a3",
+      "hook": "battle_4",
+      "grids": [
+        {
+          "location": "A1",
+          "is_fleet": true,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "may_boss": true,
+          "cost": 1
+        },
+        {
+          "location": "C1",
+          "cost": 2
+        }
+      ],
+      "expect": {}
+    },
+    {
+      "name": "campaign_8_3 battle_0：clear_first_roadblocks（状态由该关声明地图生成，引用格都在）",
+      "chapter": "campaign_main",
+      "level": "campaign_8_3",
+      "hook": "battle_0",
+      "grids": [
+        {
+          "location": "A1",
+          "cost": 0,
+          "may_boss": true
+        },
+        {
+          "location": "B1",
+          "cost": 1
+        },
+        {
+          "location": "C1",
+          "cost": 2,
+          "may_enemy": true
+        },
+        {
+          "location": "D1",
+          "cost": 3,
+          "may_enemy": true
+        },
+        {
+          "location": "E1",
+          "cost": 4,
+          "may_enemy": true
+        },
+        {
+          "location": "F1",
+          "cost": 5,
+          "may_enemy": true
+        },
+        {
+          "location": "G1",
+          "cost": 6
+        },
+        {
+          "location": "H1",
+          "cost": 7,
+          "may_boss": true
+        },
+        {
+          "location": "A2",
+          "cost": 8
+        },
+        {
+          "location": "B2",
+          "cost": 9,
+          "may_enemy": true
+        },
+        {
+          "location": "C2",
+          "cost": 10,
+          "is_mystery": true
+        },
+        {
+          "location": "D2",
+          "cost": 11,
+          "is_land": true
+        },
+        {
+          "location": "E2",
+          "cost": 12,
+          "is_land": true
+        },
+        {
+          "location": "F2",
+          "cost": 13
+        },
+        {
+          "location": "G2",
+          "cost": 14,
+          "may_enemy": true
+        },
+        {
+          "location": "H2",
+          "cost": 15
+        },
+        {
+          "location": "A3",
+          "cost": 16,
+          "may_enemy": true
+        },
+        {
+          "location": "B3",
+          "cost": 17,
+          "is_land": true
+        },
+        {
+          "location": "C3",
+          "cost": 18,
+          "is_land": true
+        },
+        {
+          "location": "D3",
+          "cost": 19
+        },
+        {
+          "location": "E3",
+          "cost": 20
+        },
+        {
+          "location": "F3",
+          "cost": 21,
+          "may_enemy": true
+        },
+        {
+          "location": "G3",
+          "cost": 22
+        },
+        {
+          "location": "H3",
+          "cost": 23,
+          "may_enemy": true
+        },
+        {
+          "location": "A4",
+          "cost": 24,
+          "may_enemy": true
+        },
+        {
+          "location": "B4",
+          "cost": 25
+        },
+        {
+          "location": "C4",
+          "cost": 26,
+          "is_land": true
+        },
+        {
+          "location": "D4",
+          "cost": 27
+        },
+        {
+          "location": "E4",
+          "cost": 28
+        },
+        {
+          "location": "F4",
+          "cost": 29,
+          "is_land": true
+        },
+        {
+          "location": "G4",
+          "cost": 30,
+          "may_enemy": true
+        },
+        {
+          "location": "H4",
+          "cost": 31,
+          "may_enemy": true
+        },
+        {
+          "location": "A5",
+          "cost": 32,
+          "is_mystery": true
+        },
+        {
+          "location": "B5",
+          "cost": 33,
+          "may_enemy": true
+        },
+        {
+          "location": "C5",
+          "cost": 34
+        },
+        {
+          "location": "D5",
+          "cost": 35,
+          "may_enemy": true
+        },
+        {
+          "location": "E5",
+          "cost": 36,
+          "is_land": true
+        },
+        {
+          "location": "F5",
+          "cost": 37,
+          "is_land": true
+        },
+        {
+          "location": "G5",
+          "cost": 38,
+          "may_enemy": true
+        },
+        {
+          "location": "H5",
+          "cost": 39
+        },
+        {
+          "location": "A6",
+          "cost": 40,
+          "may_boss": true
+        },
+        {
+          "location": "B6",
+          "cost": 41
+        },
+        {
+          "location": "C6",
+          "cost": 42,
+          "may_enemy": true
+        },
+        {
+          "location": "D6",
+          "cost": 43,
+          "may_enemy": true
+        },
+        {
+          "location": "E6",
+          "cost": 44,
+          "may_enemy": true
+        },
+        {
+          "location": "F6",
+          "cost": 45,
+          "may_enemy": true
+        },
+        {
+          "location": "G6",
+          "cost": 46
+        },
+        {
+          "location": "H6",
+          "cost": 47,
+          "may_boss": true
+        }
+      ],
+      "expect": {}
     }
   ]
 }

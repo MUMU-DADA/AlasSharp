@@ -688,6 +688,19 @@ C# 侧新增 `CampaignCallTranslator`（纯函数）：把计划步骤翻成"上
 `verify_r5_host_seam.py`（联锁、`@`/`#` 引用还原成上游对象、kwargs 按关键字传、`CampaignEnd` 走合同分类、
 `info` 只读）；均已登记进 `verify_all.py`（R5 检查现共 **13** 个）。
 
+#### 原语覆盖：29/29 都被夹具执行过（`r5-coverage`）
+
+`tools/diagnostics/verify_r5_coverage.py` 汇总 `r5-exec`（钩子级 42 例）与 `r5-loop`（循环/变体 9 例）
+**实际执行到**的步骤、动作与日志标记，与已登记原语对照：
+
+* **覆盖率 29/29（100%）**——本轮补齐了 `clear_first_roadblocks`（状态按该关声明地图生成，避免手写漏格）、
+  `clear_potential_boss`、`battle_boss`（clear_all 无剩余敌人）、`fleet_2_break_siren_caught`（2 队被抓）、
+  `brute_fleet_meet`（两队之间与 boss 路上各一个敌人）五条路径；
+* 有些原语是**被别的原语内部调用**的（`battle_boss`、`fleet_2_break_siren_caught`、`brute_fleet_meet`），
+  不发设备动作、只留日志——所以覆盖统计里有一张**显式的"日志标记 → 原语"表**（标记就是原语里的原话，
+  改原语时同步改表）；未覆盖的原语必须在脚本的 `ALLOWED_GAPS` 里**写明原因**，否则检查失败——
+  缺口是"被声明的"，不是悄悄漏掉的。
+
 #### 设备宿主：`DeviceCampaignHost`（路线 a 的 C# 侧）
 
 `src/Alas.Core/Campaign/DeviceCampaignHost.cs`：实现 `ICampaignPrimitiveHost`，把每个成员翻成对上游方法的

@@ -763,10 +763,21 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>Map.brute_fleet_meet()</c>：为会合清掉两支舰队之间的路障。</summary>
     public static bool BruteFleetMeet(ICampaignPrimitiveHost host)
     {
-        if (host.Config.FleetBossIndex != 2 || string.IsNullOrEmpty(host.Fleet2Location)) return false;
+        if (host.Config.FleetBossIndex != 2 || string.IsNullOrEmpty(host.Fleet2Location))
+        {
+            // 说明为什么跳过：这两个条件任一不满足时，上游同样不会走会合清障这条路。
+            host.Log($"brute_fleet_meet：跳过（fleet_boss_index={host.Config.FleetBossIndex}，" +
+                     $"fleet_2 位置「{host.Fleet2Location}」）");
+            return false;
+        }
         var search = CampaignBruteFinder.FindRoadblocks(host.Grids, host.Fleet2Location,
             FleetStart(host, 1), host.Config.MapHasAmbush);
-        if (!search.Found) return false;
+        if (!search.Found)
+        {
+            host.Log($"brute_fleet_meet：两队之间未找到路障（{FleetStart(host, 1)} → {host.Fleet2Location}，" +
+                     (search.AlreadyAccessible ? "目标已可达" : "枚举未命中") + "）");
+            return false;
+        }
         host.Log("Brute clear roadblocks between fleets.");
         var sorted = new CampaignGridSet(search.Roadblocks).Sort("weight", "cost");
         host.Log($"brute_fleet_meet：打 {sorted[0].Location}");
