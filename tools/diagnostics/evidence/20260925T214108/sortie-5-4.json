@@ -1,0 +1,196 @@
+{
+  "chapter": "campaign.campaign_main.campaign_5_4",
+  "stage": "5-4",
+  "cleared": true,
+  "failed": false,
+  "skipped": false,
+  "elapsed_s": 366.3,
+  "error_kind": "none",
+  "error": null,
+  "contract_violations": [],
+  "result": {
+    "requested_mode": "normal",
+    "campaign_mode": "normal",
+    "tier": "C",
+    "plan_steps": [
+      "battle_0",
+      "battle_4"
+    ],
+    "semantic_trace": [
+      "clear_roadblocks",
+      "clear_potential_roadblocks",
+      "battle_default",
+      "map.select",
+      "fleet_boss.clear_boss",
+      "check_accessibility",
+      "clear_roadblocks",
+      "clear_potential_roadblocks"
+    ],
+    "config_present": true,
+    "config_complete": true,
+    "config_count": 9,
+    "config_origins": {
+      "EDGE_LINES_FIND_PEAKS_PARAMETERS": {
+        "module": "campaign.campaign_main.campaign_5_1",
+        "class": "Config",
+        "line": 52,
+        "expression": "{'height': (255 - 49, 255), 'prominence': 10, 'distance': 50, 'wlen': 1000}"
+      },
+      "EDGE_LINES_HOUGHLINES_THRESHOLD": {
+        "module": "campaign.campaign_main.campaign_5_4",
+        "class": "Config",
+        "line": 46,
+        "expression": "40"
+      },
+      "FLEET_BOSS": {
+        "module": "campaign.campaign_main.campaign_5_1",
+        "class": "Config",
+        "line": 43,
+        "expression": "1"
+      },
+      "HOMO_CANNY_THRESHOLD": {
+        "module": "campaign.campaign_main.campaign_5_1",
+        "class": "Config",
+        "line": 58,
+        "expression": "(75, 100)"
+      },
+      "HOMO_EDGE_COLOR_RANGE": {
+        "module": "campaign.campaign_main.campaign_5_1",
+        "class": "Config",
+        "line": 59,
+        "expression": "(0, 49)"
+      },
+      "HOMO_EDGE_HOUGHLINES_THRESHOLD": {
+        "module": "campaign.campaign_main.campaign_5_4",
+        "class": "Config",
+        "line": 47,
+        "expression": "210"
+      },
+      "INTERNAL_LINES_FIND_PEAKS_PARAMETERS": {
+        "module": "campaign.campaign_main.campaign_5_1",
+        "class": "Config",
+        "line": 46,
+        "expression": "{'height': (120, 255 - 49), 'width': (1.5, 10), 'prominence': 10, 'distance': 35}"
+      },
+      "INTERNAL_LINES_HOUGHLINES_THRESHOLD": {
+        "module": "campaign.campaign_main.campaign_5_4",
+        "class": "Config",
+        "line": 45,
+        "expression": "40"
+      },
+      "MAP_MYSTERY_HAS_CARRIER": {
+        "module": "campaign.campaign_main.campaign_5_4",
+        "class": "Config",
+        "line": 44,
+        "expression": "False"
+      }
+    },
+    "config_sources": [
+      "campaign.campaign_main.campaign_5_1.Config",
+      "campaign.campaign_main.campaign_5_4.Config"
+    ],
+    "runtime_config_source": "campaign.campaign_main.campaign_5_4.Config",
+    "execution": "upstream_run",
+    "upstream_returned": true,
+    "contract": "sortie-result/1",
+    "chapter": "campaign.campaign_main.campaign_5_4",
+    "stage": "5-4",
+    "dry_run": false,
+    "outcome": "cleared",
+    "cleared": true,
+    "campaign_end": true,
+    "end_reason": "In stage.",
+    "stop_reason": "cleared",
+    "reason": null,
+    "error": null,
+    "refused": null,
+    "stopped_early": false,
+    "elapsed_s": 362.8,
+    "end_evidence": {
+      "battle_rank": "S",
+      "rank_source": "BATTLE_STATUS_",
+      "combat_status": true,
+      "stage_observed": true,
+      "expected_end": "in_stage",
+      "withdrawn": false,
+      "call_path": [
+        "s3_campaign_execution.observed",
+        "module.campaign.campaign_base.execute_a_battle",
+        "module.base.decorator.wrapper",
+        "module.campaign.campaign_base.battle_function",
+        "campaign.campaign_main.campaign_5_4.battle_4",
+        "module.map.map.clear_boss",
+        "module.map.map.clear_chosen_enemy",
+        "module.map.fleet.goto",
+        "module.map.fleet._goto",
+        "module.combat.combat.combat",
+        "module.combat.combat.combat_status",
+        "module.handler.enemy_searching.handle_in_stage"
+      ]
+    },
+    "failure": null,
+    "failure_frames": null,
+    "contract_violations": null,
+    "steps": [
+      {
+        "step": "prepare_campaign_navigation",
+        "withdrew_previous_sortie": false
+      },
+      {
+        "step": "ensure_campaign_ui",
+        "ms": 218.8,
+        "error": null
+      },
+      {
+        "step": "prepare_campaign_run"
+      },
+      {
+        "step": "enter_map",
+        "ms": 6594.5
+      },
+      {
+        "step": "handle_map_fleet_lock",
+        "ms": 5.5
+      },
+      {
+        "step": "map_init",
+        "ms": 1958.3
+      },
+      {
+        "step": "execute_a_battle",
+        "round": 1,
+        "ms": 55999.6,
+        "battle_count": 1
+      },
+      {
+        "step": "execute_a_battle",
+        "round": 2,
+        "ms": 63109.9,
+        "battle_count": 2
+      },
+      {
+        "step": "execute_a_battle",
+        "round": 3,
+        "ms": 70561.3,
+        "battle_count": 3
+      },
+      {
+        "step": "execute_a_battle",
+        "round": 4,
+        "ms": 64658.2,
+        "battle_count": 4
+      },
+      {
+        "step": "execute_a_battle",
+        "round": 5,
+        "campaign_end": true,
+        "completed": true,
+        "cleared": true,
+        "outcome": "cleared",
+        "reason": "In stage.",
+        "ms": 99707.8,
+        "battle_count": 4
+      }
+    ]
+  }
+}

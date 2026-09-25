@@ -67,6 +67,7 @@
 | `tools/diagnostics/evidence/20260925T210907/sortie-5-1.json` | 2026-09-25T21:14:58.484+08:00 | cleared, cleared=True | — | 已核验 | 一致 |
 | `tools/diagnostics/evidence/20260925T211754/sortie-5-2.json` | 2026-09-25T21:24:10.086+08:00 | cleared, cleared=True | — | 已核验 | 一致 |
 | `tools/diagnostics/evidence/20260925T213335/sortie-5-3.json` | 2026-09-25T21:39:22.051+08:00 | cleared, cleared=True | — | 已核验 | 一致 |
+| `tools/diagnostics/evidence/20260925T214108/sortie-5-4.json` | 2026-09-25T21:47:14.567+08:00 | cleared, cleared=True | — | 已核验 | 一致 |
 
 ## 门槛与缺口
 

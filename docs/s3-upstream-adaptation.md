@@ -325,6 +325,12 @@ Core/DataTool/Server Release 构建 0 警告/0 错误，架构检查通过。真
 同队列后续实时抓帧确认 `page_campaign`、`in_map=false`。账号配置 SHA-256 前后相同，
 脱敏归档 `tools/diagnostics/evidence/20260925T213335/` 经结果审计通过；未验关卡仍保留缺口。
 
+普通模式 5-4 合并 5-1 与自身的九项章节 Config，由上游处理道路阻塞、潜在阻塞、BOSS 可达性及相机恢复。
+五场战斗后取得 S 级成功结算，`sortie-result/1` 为 `cleared` 且 0 违例；
+同队列后续实时抓帧确认 `page_campaign`、`in_map=false`。账号配置 SHA-256 前后相同，
+脱敏归档 `tools/diagnostics/evidence/20260925T214108/` 经结果审计通过。同轮船坞容量处理只有执行痕迹，
+不据此独立断言退役结果；未验关卡仍保留缺口。
+
 ## 只读地图观测的章节配置
 
 `observe` 原先只向 `map_detect` 传 main/os，遗漏宿主已支持的章节参数；需要章节 Config 的画面因此可能按通用参数识别。
