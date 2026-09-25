@@ -240,6 +240,19 @@ Core/DataTool/Server Release 构建 0 警告/0 错误，架构检查通过。真
 随后同队列实时抓帧确认 `page_campaign`、`in_map=false`。批次 80.8 秒，完整队列 81.4 秒。
 这是特定章节困难模式正样本，不代表每日困难周回已验证，也不外推到所有困难章节；之前两个失败记录原样保留。
 
+2026-09-25 的普通模式 1-2、1-3 分别经通用 `campaign_batch`、上游 `CampaignRun.load_campaign()` 与原生 `Campaign.run()`
+取得 S 级成功结算，`sortie-result/1` 均为 `cleared` 且无违例。1-2 的 `battle_2`/`clear_boss` 与
+1-3 继承的章节 Config、`battle_0`/`battle_2` 均按上游原样执行；每条队列的后续独立实时抓帧都确认
+`page_campaign`、`in_map=false`，账号配置字节哈希运行前后相同。原件位于本地忽略目录，脱敏归档为
+`tools/diagnostics/evidence/20260925T155652/` 与 `tools/diagnostics/evidence/20260925T194930/`，
+由 `audit_real_records.py` 重新核对工件引用、合同和返页。这些是两个关卡的现场正样本，不证明其他关卡、
+每日周回或所有界面操作已经验收。
+
+同日普通模式 2-3 使用相同入口完成四场原生战斗，继承 2-1 的 Config 和章节 CampaignBase，
+上游 BOSS 可达性与战后相机恢复均在真实路径出现。S 级结算后 `sortie-result/1` 给出 `cleared`、
+0 违例，紧接的 `device_capture` 为 `page_campaign`、`in_map=false`，账号配置 SHA-256 前后相同。
+脱敏归档 `tools/diagnostics/evidence/20260925T195405/` 经相同审计通过；不据此推断 2-4 或所有章节成功。
+
 ## 只读地图观测的章节配置
 
 `observe` 原先只向 `map_detect` 传 main/os，遗漏宿主已支持的章节参数；需要章节 Config 的画面因此可能按通用参数识别。
