@@ -40,9 +40,10 @@ internal static class CampaignPathCheck
         ["MS"] = "may_siren",
     };
 
-    public static int Run(string fixturePath)
+    public static int Run(string fixturePath, int repeat = 1)
     {
         if (!File.Exists(fixturePath)) return Fail($"找不到夹具：{fixturePath}");
+        if (repeat < 1) return Fail("--repeat 必须 >= 1");
         PathFixture fixture;
         try
         {
@@ -58,8 +59,16 @@ internal static class CampaignPathCheck
         foreach (var testCase in fixture.Cases)
         {
             var grids = BuildGrids(testCase);
-            var field = CampaignPathfinder.FindPathInitial(grids, testCase.Start,
+            CampaignCostField field = null!;
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            for (int iteration = 0; iteration < repeat; iteration++)
+            {
+                field = CampaignPathfinder.FindPathInitial(grids, testCase.Start,
                                                            testCase.HasAmbush, testCase.HasEnemy);
+            }
+            stopwatch.Stop();
+            double perOperationMs = stopwatch.Elapsed.TotalMilliseconds / repeat;
+
             var costs = new JsonObject();
             foreach (var (location, cost) in field.Costs.OrderBy(pair => pair.Key, StringComparer.Ordinal))
             {
@@ -82,6 +91,10 @@ internal static class CampaignPathCheck
             {
                 ["name"] = testCase.Name,
                 ["start"] = testCase.Start,
+                ["grids"] = grids.Count,
+                ["repeat"] = repeat,
+                ["elapsed_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 3),
+                ["per_operation_ms"] = Math.Round(perOperationMs, 4),
                 ["costs"] = costs,
                 ["connections"] = connections,
                 ["route"] = route,

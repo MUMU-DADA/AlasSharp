@@ -414,11 +414,13 @@ public static class DiagnosticCommands
             {
                 // 寻路成本场（离线）：按上游 find_path_initial 语义算成本与连接，供逐格对拍。
                 string pathFixture = Path.Combine(paths.ToolsDirectory, "diagnostics", "r5-path-fixture.json");
+                int pathRepeat = 1;
                 for (int i = 1; i < args.Length - 1; i++)
                 {
                     if (args[i] == "--fixture") pathFixture = args[i + 1];
+                    if (args[i] == "--repeat" && int.TryParse(args[i + 1], out int parsed)) pathRepeat = parsed;
                 }
-                return CampaignPathCheck.Run(pathFixture);
+                return CampaignPathCheck.Run(pathFixture, pathRepeat);
             }
             if (command == "r5-exec")
             {
