@@ -315,3 +315,47 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | MAP 字段 | 读取次数 |
 | --- | --- |
 
+## E. 导出的可执行计划（DSL 面）
+
+- `campaign.battles[].steps` 非空的钩子 **2795/3019（92.6%）**，共 **5694 步**；
+- 步骤类型 **4 种**，原语 **32 个**（C# 引擎的执行面）：
+
+| 步骤类型 | 次数 |
+| --- | --- |
+| `conditional` | 2814 |
+| `terminal` | 2772 |
+| `call` | 101 |
+| `super_delegate` | 7 |
+
+| 原语 | 出现次数 |
+| --- | --- |
+| `battle_default` | 1489 |
+| `clear_siren` | 1284 |
+| `clear_filter_enemy` | 978 |
+| `fleet_boss.clear_boss` | 671 |
+| `clear_boss` | 575 |
+| `clear_enemy` | 402 |
+| `clear_roadblocks` | 48 |
+| `clear_all_mystery` | 36 |
+| `clear_potential_roadblocks` | 35 |
+| `fleet_2_protect` | 26 |
+| `fleet_2_push_forward` | 22 |
+| `fleet_1.clear_boss` | 13 |
+| `fleet_boss.capture_clear_boss` | 12 |
+| `clear_bouncing_enemy` | 12 |
+| `fleet_2_step_on` | 11 |
+| `brute_clear_boss` | 11 |
+| `pick_up_light_house` | 10 |
+| `fleet_boss.brute_clear_boss` | 9 |
+| `clear_any_enemy` | 8 |
+| `super().handle_boss_appear_refocus` | 7 |
+
+实参形态（`positional`）：
+
+| 取值 | 次数 |
+| --- | --- |
+| `<expr>` | 1103 |
+| `1L > 1M > 2L > 2M > 3L > 2E > 3E > 2C > 3C > 3M` | 8 |
+
+> C# 侧读取这一层的产品代码：`src/Alas.Core/Campaign/CampaignPlan.cs` + 只读命令 `Alas.Server r5-plan`（统计口径与本报告一致，可跨语言对拍）。
+

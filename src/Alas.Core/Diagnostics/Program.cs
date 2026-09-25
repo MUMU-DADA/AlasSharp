@@ -400,6 +400,18 @@ public static class DiagnosticCommands
                 return MapCheck.Run(fixture, repoDir, toolsDir4, mapAdb, mapSerial,
                     mapChapter, dataDir, mapMode);
             }
+            if (command == "r5-plan")
+            {
+                // 只读导出规则：不执行关卡、不导入游戏代码、不连设备（见 CampaignPlanCheck）。
+                string? planChapter = target;
+                string? planLevel = null;
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--chapter") planChapter = args[i + 1];
+                    if (args[i] == "--level") planLevel = args[i + 1];
+                }
+                return CampaignPlanCheck.Run(dataDir, planChapter, planLevel);
+            }
             if (command == "device")
             {
                 fixture ??= Path.Combine(dataDir, "fixtures", "imaging.json");
@@ -462,7 +474,8 @@ public static class DiagnosticCommands
                 "campaign" => CampaignCheck.Run(catalog, target),
                 _ => Fail($"未知命令: {command}"
                            + "（可用: verify / list / show / imaging / matching / vision / campaign / "
-                           + "map / map-ir / capture / device / queue / contract）"),
+                           + "map / map-ir / capture / device / queue / plan-queue / report / runs / run / goto / "
+                           + "contract / selftest-runtime / r5-plan）"),
             };
         }
         catch (Exception ex)

@@ -334,12 +334,40 @@ def audit_export_coverage(engine: pathlib.Path) -> dict:
     }
 
 
+def audit_plan_dsl() -> dict:
+    """导出里的可执行计划（campaign.battles[].steps）面：步骤类型、原语集合、实参形态。"""
+    data_root = ROOT / "data" / "campaign"
+    kinds: collections.Counter = collections.Counter()
+    ops: collections.Counter = collections.Counter()
+    positional: collections.Counter = collections.Counter()
+    battles = with_steps = steps = 0
+    for path in data_root.rglob("*.json") if data_root.is_dir() else []:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        for entry in ((payload.get("campaign") or {}).get("battles")) or []:
+            battles += 1
+            plan = entry.get("steps") or []
+            if plan:
+                with_steps += 1
+            for step in plan:
+                steps += 1
+                kinds[step.get("kind")] += 1
+                ops[step.get("op")] += 1
+                for value in ((step.get("args") or {}).get("positional")) or []:
+                    positional[str(value)] += 1
+    return {"battles": battles, "with_steps": with_steps, "steps": steps,
+            "kinds": kinds, "ops": ops, "positional": positional}
+
+
 def render(engine: pathlib.Path) -> str:
     campaign = audit_campaign(engine)
     primitives = audit_primitives(engine, set(campaign["helper_calls"]))
     methods, calls = audit_vision()
     lib_totals, lib_subs = audit_libraries(engine)
     exported = audit_export_coverage(engine)
+    dsl = audit_plan_dsl()
 
     out: list[str] = []
     add = out.append
@@ -527,6 +555,37 @@ def render(engine: pathlib.Path) -> str:
     add("| --- | --- |")
     for name, count in exported["map_fields"].most_common(10):
         add(f"| `{name}` | {count} |")
+    add("")
+
+    add("## E. 导出的可执行计划（DSL 面）")
+    add("")
+    if not dsl["battles"]:
+        add("未找到 `data/campaign/**` 导出；先运行 `tools/export_upstream_data.py`。")
+        add("")
+        return "\n".join(out)
+    add(f"- `campaign.battles[].steps` 非空的钩子 **{dsl['with_steps']}/{dsl['battles']}"
+        f"（{dsl['with_steps'] / dsl['battles']:.1%}）**，共 **{dsl['steps']} 步**；")
+    add(f"- 步骤类型 **{len(dsl['kinds'])} 种**，原语 **{len(dsl['ops'])} 个**（C# 引擎的执行面）：")
+    add("")
+    add("| 步骤类型 | 次数 |")
+    add("| --- | --- |")
+    for kind, count in dsl["kinds"].most_common():
+        add(f"| `{kind}` | {count} |")
+    add("")
+    add("| 原语 | 出现次数 |")
+    add("| --- | --- |")
+    for op, count in dsl["ops"].most_common(20):
+        add(f"| `{op}` | {count} |")
+    add("")
+    add("实参形态（`positional`）：")
+    add("")
+    add("| 取值 | 次数 |")
+    add("| --- | --- |")
+    for value, count in dsl["positional"].most_common(6):
+        add(f"| `{value}` | {count} |")
+    add("")
+    add("> C# 侧读取这一层的产品代码：`src/Alas.Core/Campaign/CampaignPlan.cs` + 只读命令 "
+        "`Alas.Server r5-plan`（统计口径与本报告一致，可跨语言对拍）。")
     add("")
     return "\n".join(out)
 

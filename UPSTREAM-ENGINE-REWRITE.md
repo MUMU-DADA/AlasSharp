@@ -141,7 +141,32 @@
 3. 173 个非 `battles` 钩子——确认覆盖或补导出；
 4. 上述三项完成后重跑 `tools/diagnostics/r5_upstream_audit.py` 复核。
 
+#### P1 关键发现：导出的 `steps` 就是可执行计划（DSL 面已具备）
+
+导出器除了 `calls`（原语名列表）还输出 **`steps`：结构化步骤**，字段为
+`{ kind, op, args{positional, keyword} }`。实测（报告 E 节）：
+
+| 指标 | 数值 |
+| --- | --- |
+| 带 `steps` 的钩子 | **2795 / 3019（92.6%）** |
+| 步骤总数 | **5694 步** |
+| 步骤类型 | **4 种**：`conditional` 2814、`terminal` 2772、`call` 101、`super_delegate` 7 |
+| 原语（`op`） | **32 个**（`battle_default` 1489、`clear_siren` 1284、`clear_filter_enemy` 978、`fleet_boss.clear_boss` 671、`clear_boss` 575、`clear_enemy` 402…） |
+| 实参 | 绝大多数是 `"<expr>"` 占位（导出器未求值的表达式），仅 8 处字面量 |
+
+**含义**：C# 引擎的执行面只有 **32 个原语 × 4 种步骤类型**；"关卡层数据化"不是待办，而是**已经完成 92.6%**。
+
 ### P2 逐域迁移（每个切片独立交付）
+
+#### P2-0 已完成：C# 只读计划层（第一个切片，不切换生产路径）
+
+| 项 | 内容 |
+| --- | --- |
+| 代码 | `src/Alas.Core/Campaign/CampaignPlan.cs`（关卡计划模型 + 读取器 + 统计）、`src/Alas.Core/Diagnostics/CampaignPlanCheck.cs`（只读命令） |
+| 命令 | `Alas.Server r5-plan`（全部章节概览）/ `r5-plan <章节>`（章节明细 + DSL 统计）/ `r5-plan <章节> --level <关卡>`（单关卡计划，逐步骤列出 `kind`/`op`/实参） |
+| 只读保证 | 不执行关卡、不导入游戏代码、不连设备；生产战役仍走上游 `CampaignRun.load_campaign()` + 原生 `Campaign.run()` |
+| 对拍证据 | C# 统计与 Python 审计完全一致：**1437 个关卡导出 / 3019 个钩子 / 可表达 2795（92.6%）**，且无读取失败 |
+| 构建 | `dotnet build Alas.sln -c Release`：0 警告 0 错误 |
 
 每个切片必须齐四样，缺一不算完成：
 
