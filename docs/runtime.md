@@ -127,6 +127,8 @@ CLI 的 `[任务证据]` 摘要属于 `queue` 入口，单批 `campaign` 使用�
 服务重启后需重新读取状态获取令牌。普通 JSON 请求有覆盖响应头与正文的 30 秒期限，可在构造客户端时调整；超时不重发写请求。
 当前没有幂等请求键。浏览器 UI 通过该客户端调用 Core；桌面在同一进程直接调用 Core。
 
+实例配置 PATCH 由 `Alas.Core/Runtime/ConfigWorkspace` 按上游 `args.json` 描述符校验：严格区分布尔、整数、浮点和选项类型，日期采用上游的 `YYYY-MM-DD HH:mm:ss` 语义，支持多选、数值范围、正则及 YAML 映射字段；存储字段只允许显式清空。`tools/diagnostics/verify_config_api.py` 使用同一份上游 `ConfigService.validate` 对拍，并确认拒绝写入不会改变配置文件。
+
 部署设置由 `DeploySettingsWorkspace` 直接读写执行根目录的 `config/deploy.yaml`，不等待或启动 Python 宿主。
 `tools/export_deploy_settings.py` 从 AzurPilot 声明、Windows/Unix 模板和五种翻译生成嵌入资源；`--check` 检查来源哈希和内容漂移，不读取个人部署文件。
 8 个分组与字段类型沿用上游；密码只写不读，空密码保留原值，普通保存忽略 `Run`，启动运行通过独立接口修改。整批校验后按最新文件合并，原子替换；演示模式拒绝修改。

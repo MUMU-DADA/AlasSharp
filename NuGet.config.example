@@ -10,7 +10,7 @@
       dotnet build src/Alas.Server/Alas.Server.csproj -c Release
 
   能正常连通 nuget.org 的机器不需要这个文件，正常还原仍写入项目缓存。
-  ImageSharp 2.1.8 是公开包，注意它的 2.x 才是 Apache-2.0（3.x 起改为 Split License）。
+  ImageSharp 2.1.8 和 YamlDotNet 13.7.1 是公开包；ImageSharp 的 2.x 是 Apache-2.0（3.x 起改为 Split License）。
 -->
 <configuration>
   <packageSources>

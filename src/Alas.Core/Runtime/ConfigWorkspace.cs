@@ -1,8 +1,12 @@
 using System.Security.Cryptography;
+using System.Globalization;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using YamlDotNet.Core;
+using YamlDotNet.Serialization;
 
 namespace Alas.Runtime;
 
@@ -16,6 +20,9 @@ public sealed class ConfigWorkspace
 {
     private static readonly Regex NamePattern = new(
         @"^[\p{L}\p{N}][\p{L}\p{N}_. \-]{0,63}$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex DateTimePattern = new(
+        @"\A\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\z",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -319,28 +326,128 @@ public sealed class ConfigWorkspace
     {
         string? display = descriptor["display"]?.GetValue<string>();
         string? kind = descriptor["type"]?.GetValue<string>();
+        if (kind == "storage" && display != "hide" && value is JsonObject { Count: 0 }) return;
         if (display is "hide" or "disabled" or "readonly" || kind is "storage" or "stored" or "state" or "lock")
             throw new ConfigWorkspaceException("READ_ONLY", "参数不允许修改：" + path);
         JsonArray? options = descriptor["option"] as JsonArray;
-        if (options is not null && (value is null || !options.Any(item => JsonNode.DeepEquals(item, value))))
+        if (kind == "multiselect")
+        {
+            if (value is not JsonArray selected || options is null || selected.Count > options.Count ||
+                selected.Any(item => !options.Any(option => SameOption(option, item))) ||
+                selected.DistinctBy(OptionText).Count() != selected.Count)
+                throw new ArgumentException("多选参数包含无效或重复选项：" + path);
+            return;
+        }
+        if (options is { Count: > 0 } && !options.Any(item => SameOption(item, value)))
             throw new ArgumentException("请选择有效选项：" + path);
         JsonNode? defaultValue = descriptor["value"];
-        string? valueType = descriptor["valuetype"]?.GetValue<string>();
-        if (valueType == "str" && (value is null || value.GetValueKind() != JsonValueKind.String))
-            throw new ArgumentException("参数类型不正确：" + path);
-        if (valueType == "int" && (value is not JsonValue number ||
-                                     number.GetValueKind() != JsonValueKind.Number ||
-                                     !number.TryGetValue<int>(out _)))
-            throw new ArgumentException("参数类型不正确：" + path);
-        if (kind == "checkbox" || defaultValue?.GetValueKind() == JsonValueKind.True || defaultValue?.GetValueKind() == JsonValueKind.False)
+        bool valid = kind == "checkbox" || defaultValue?.GetValueKind() is JsonValueKind.True or JsonValueKind.False
+            ? value?.GetValueKind() is JsonValueKind.True or JsonValueKind.False
+            : defaultValue?.GetValueKind() == JsonValueKind.Number
+                ? value?.GetValueKind() == JsonValueKind.Number &&
+                  (IsFloating(defaultValue) || options is { Count: > 0 } ? IsFiniteNumber(value) : IsInteger(value))
+                : value?.GetValueKind() == JsonValueKind.String || defaultValue is null && value is null;
+        if (!valid || value?.GetValueKind() == JsonValueKind.String && value.GetValue<string>().Length > 20000)
+            throw new ArgumentException("参数类型或长度不正确：" + path);
+        JsonNode? rule = descriptor["validate"];
+        if (rule?.GetValueKind() == JsonValueKind.String && rule.GetValue<string>() == "datetime" || kind == "datetime")
         {
-            if (value?.GetValueKind() is not JsonValueKind.True and not JsonValueKind.False)
-                throw new ArgumentException("参数类型不正确：" + path);
+            if (value is null || value.GetValueKind() != JsonValueKind.String ||
+                !DateTimePattern.IsMatch(value.GetValue<string>()) ||
+                !DateTime.TryParseExact(value.GetValue<string>(), "yyyy-MM-dd HH:mm:ss",
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                throw new ArgumentException("日期格式应为 YYYY-MM-DD HH:mm:ss：" + path);
         }
-        else if (defaultValue?.GetValueKind() == JsonValueKind.Number && value?.GetValueKind() != JsonValueKind.Number)
-            throw new ArgumentException("参数类型不正确：" + path);
-        else if (value is JsonValue stringValue && stringValue.TryGetValue<string>(out string? text) && text.Length > 20000)
-            throw new ArgumentException("参数长度超过限制：" + path);
+        else if (rule is JsonArray range && range.Count == 2)
+        {
+            if (!TryFiniteDouble(value, out double number) ||
+                !TryFiniteDouble(range[0], out double minimum) ||
+                !TryFiniteDouble(range[1], out double maximum) || number < minimum || number > maximum)
+                throw new ArgumentException("参数超出允许范围：" + path);
+        }
+        else if (rule?.GetValueKind() == JsonValueKind.String && value?.GetValueKind() is JsonValueKind.String or JsonValueKind.Number)
+        {
+            string pattern = rule.GetValue<string>();
+            Regex validator;
+            try
+            {
+                validator = new Regex($"\\A(?:{pattern})\\z", RegexOptions.CultureInvariant,
+                    TimeSpan.FromSeconds(1));
+            }
+            catch (ArgumentException error)
+            {
+                throw new ArgumentException("参数校验规则无效：" + path, error);
+            }
+            try
+            {
+                string candidate = value is JsonValue jsonValue && jsonValue.GetValueKind() == JsonValueKind.String
+                    ? jsonValue.GetValue<string>()
+                    : value!.ToJsonString();
+                if (!validator.IsMatch(candidate)) throw new ArgumentException("参数格式不正确：" + path);
+            }
+            catch (RegexMatchTimeoutException error)
+            {
+                throw new ArgumentException("参数校验超时：" + path, error);
+            }
+        }
+        if (descriptor["mode"]?.GetValueKind() == JsonValueKind.String && descriptor["mode"]!.GetValue<string>() == "yaml")
+            ValidateYaml(value, path);
+    }
+
+    private static bool SameOption(JsonNode? option, JsonNode? value)
+        => option?.GetValueKind() == value?.GetValueKind() &&
+           (option?.GetValueKind() != JsonValueKind.Number || IsInteger(option) == IsInteger(value)) &&
+           JsonNode.DeepEquals(option, value);
+
+    private static string OptionText(JsonNode? value) => value?.GetValueKind() switch
+    {
+        null or JsonValueKind.Null => "None",
+        JsonValueKind.String => value.GetValue<string>(),
+        JsonValueKind.True => "True",
+        JsonValueKind.False => "False",
+        _ => value.ToJsonString(),
+    };
+
+    private static bool IsInteger(JsonNode? value)
+    {
+        if (value?.GetValueKind() != JsonValueKind.Number) return false;
+        using var document = JsonDocument.Parse(value.ToJsonString());
+        return document.RootElement.GetRawText().IndexOfAny(['.', 'e', 'E']) < 0;
+    }
+
+    private static bool IsFloating(JsonNode value)
+        => value.GetValueKind() == JsonValueKind.Number && !IsInteger(value);
+
+    private static bool IsFiniteNumber(JsonNode? value)
+    {
+        if (value?.GetValueKind() != JsonValueKind.Number) return false;
+        using var document = JsonDocument.Parse(value.ToJsonString());
+        return document.RootElement.TryGetDouble(out double parsed) && double.IsFinite(parsed);
+    }
+
+    private static bool TryFiniteDouble(JsonNode? value, out double result)
+    {
+        result = 0;
+        if (value?.GetValueKind() != JsonValueKind.Number) return false;
+        using var document = JsonDocument.Parse(value.ToJsonString());
+        return document.RootElement.TryGetDouble(out result) && double.IsFinite(result);
+    }
+
+    private static void ValidateYaml(JsonNode? value, string path)
+    {
+        if (value?.GetValueKind() != JsonValueKind.String)
+            throw new ArgumentException("YAML 必须是文本：" + path);
+        try
+        {
+            using var reader = new StringReader(value.GetValue<string>());
+            object? parsed = new DeserializerBuilder().Build().Deserialize<object>(reader);
+            if (parsed is not null && parsed is not IDictionary<object, object>)
+                throw new ArgumentException("YAML 顶层必须是键值映射：" + path);
+        }
+        catch (YamlException error)
+        {
+            throw new ArgumentException("YAML 格式不正确：" + path, error);
+        }
     }
 
     private static void SetPath(JsonObject root, string path, JsonNode? value)

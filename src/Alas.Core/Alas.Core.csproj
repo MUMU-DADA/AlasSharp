@@ -17,5 +17,6 @@
       性能敏感的运行时路径以后可以换成 SkiaSharp/OpenCvSharp，届时用本层的对拍基准验收。
     -->
     <PackageReference Include="SixLabors.ImageSharp" Version="2.1.8" />
+    <PackageReference Include="YamlDotNet" Version="13.7.1" />
   </ItemGroup>
 </Project>

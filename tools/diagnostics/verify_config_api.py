@@ -7,6 +7,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -98,6 +99,80 @@ def main() -> int:
                 "changes": [{"path": path, "value": 1}],
             }, token)
             assert bad_status >= 400
+            sys.path.insert(0, str(ROOT / '.runtime' / 'engine'))
+            from module.api.config_service import ConfigService
+            from module.api.protocol import ApiError
+            native = ConfigService(repo)
+            validation_cases = [
+                ('Restart.Scheduler.NextRun', '2026-02-28 09:10:11', True),
+                ('Restart.Scheduler.NextRun', '2026-02-30 09:10:11', False),
+                ('Restart.Scheduler.NextRun', '2026-2-28 09:10:11', False),
+                ('Main.StopCondition.RunCount', 2, True),
+                ('Main.StopCondition.RunCount', 2.5, False),
+                ('Alas.Optimization.ScreenshotInterval', 0.3, True),
+                ('Alas.Optimization.ScreenshotInterval', '0.3', False),
+                ('Main.Storage.Storage', {}, True),
+                ('Main.Storage.Storage', {'unexpected': 1}, False),
+                ('Alas.Error.OnePushConfig', 'provider: null', True),
+                ('Alas.Error.OnePushConfig', '', True),
+                ('Alas.Error.OnePushConfig', 'null', True),
+                ('Alas.Error.OnePushConfig', '[]', False),
+                ('Alas.Error.OnePushConfig', 'provider: [1, 2', False),
+                ('Alas.Error.OnePushConfig', '---\na: 1\n---\nb: 2', False),
+            ]
+            instance_file = repo / 'config' / 'alas.json'
+            for field, value, accepted in validation_cases:
+                try:
+                    native.validate(field, value)
+                    native_accepted = True
+                except ApiError:
+                    native_accepted = False
+                assert native_accepted == accepted, (field, value, native_accepted)
+                before = instance_file.read_bytes()
+                status, result = request(base, '/api/config/alas', 'PATCH', {
+                    'changes': [{'path': field, 'value': value}],
+                }, token)
+                assert (status == 200) == native_accepted, (field, value, status, result)
+                if not accepted:
+                    assert instance_file.read_bytes() == before, field
+            mixed_status, mixed_result = request(base, '/api/config/alas', 'PATCH', {
+                'changes': [{'path': 'IslandProductionPlanner.IslandProductionPlanner.FieldsEfficiency',
+                             'value': 0.04}],
+            }, token)
+            assert mixed_status == 200, mixed_result
+            assert mixed_result['values']['IslandProductionPlanner']['IslandProductionPlanner']['FieldsEfficiency'] == 0.04
+            args_file = repo / 'module/config/argument/args.json'
+            synthetic_args = json.loads(args_file.read_text(encoding='utf-8'))
+            synthetic_args['Alas']['Optimization'].update({
+                'SyntheticRange': {'type': 'input', 'value': 0, 'validate': [1, 5]},
+                'SyntheticPattern': {'type': 'input', 'value': '', 'validate': '[A-Z]{2}[0-9]{2}'},
+                'SyntheticMulti': {'type': 'multiselect', 'value': [], 'option': ['1', 1, True]},
+            })
+            args_file.write_text(json.dumps(synthetic_args), encoding='utf-8')
+            native = ConfigService(repo)
+            for field, value, accepted in [
+                ('Alas.Optimization.SyntheticRange', 3, True),
+                ('Alas.Optimization.SyntheticRange', 6, False),
+                ('Alas.Optimization.SyntheticRange', 3.5, False),
+                ('Alas.Optimization.SyntheticPattern', 'AB12', True),
+                ('Alas.Optimization.SyntheticPattern', 'ab12', False),
+                ('Alas.Optimization.SyntheticMulti', [1, True], True),
+                ('Alas.Optimization.SyntheticMulti', ['1', 1], False),
+                ('Alas.Optimization.SyntheticMulti', [1, 1], False),
+            ]:
+                try:
+                    native.validate(field, value)
+                    native_accepted = True
+                except ApiError:
+                    native_accepted = False
+                assert native_accepted == accepted, (field, value, native_accepted)
+                before = instance_file.read_bytes()
+                status, result = request(base, '/api/config/alas', 'PATCH', {
+                    'changes': [{'path': field, 'value': value}],
+                }, token)
+                assert (status == 200) == native_accepted, (field, value, status, result)
+                if not accepted:
+                    assert instance_file.read_bytes() == before, field
             assert request(base, '/api/instances/importable')[1] == {'sources': []}
             upload = {'name': 'import-fixture', 'content': json.dumps(template)}
             assert request(base, '/api/instances/import', 'POST', upload)[0] == 403
@@ -127,7 +202,7 @@ def main() -> int:
             assert len(backups) == 1 and json.loads(backups[0].read_text())['Alas'] == template['Alas']
             assert not (repo / 'config/fixture-created.json').exists()
             assert (repo / 'config/alas.json').is_file(), 'another instance is preserved'
-            print("PASS: synthetic instances/schema/config, typed patch, import validation/staging/create, revision deletion/backup; no accounts or device")
+            print("PASS: native descriptor/date/numeric/storage/YAML patch parity and mixed options, rejected writes unchanged, import/create/delete; no accounts or device")
             return 0
         finally:
             process.terminate()
