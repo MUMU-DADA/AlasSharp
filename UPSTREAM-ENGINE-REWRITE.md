@@ -400,6 +400,36 @@
 | 导出缺口 | **12** | `clear_bouncing_enemy`：需要导出 `MAP.bouncing_enemy_data`（当前 `map` 段没有这个声明） |
 | 设计上不执行 | **7** | `super().handle_boss_appear_refocus`（委托父类，本层不执行） |
 
+#### P2-10 已完成：关卡循环（run / execute_a_battle / battle_function）（2026-09-25）
+
+`src/Alas.Core/Campaign/CampaignBattleLoop.cs`，逐条对应上游 `module/campaign/campaign_base.py`：
+
+| 上游 | C# 移植 | 关键语义 |
+| --- | --- | --- |
+| `run()` | `CampaignBattleLoop.Run` | 最多 **20 轮**出击；收到 `CampaignEnd` 即成功结束；否则记 `Battle function exhausted.`，再按 `Error_HandleError` 决定撤退或 `ScriptError` |
+| `execute_a_battle()` | `ExecuteABattle` | 最多 **10 次尝试**；`MapEnemyMoved` → 期间 `battle_count` 增长即算成功，否则重试；没打成时记 `No combat executed.` |
+| `battle_function()`（默认变体） | `SelectHook` | 从 `battle_{battle_count}` 往回找最多 **10** 个已定义钩子，找不到就用 `battle_default` |
+| 变体 `clear_all` / `battle_with_poor_map_data` | `BattleFunctionVariant` | **明确阻塞**并给出原因（需要 `fleet_2_break_siren_caught` / `brute_clear_boss` / `clear_bouncing_enemy`），绝不按默认策略静默跑错 |
+
+**本轮发现的结构问题（已修）**：`battle_default` / `battle_boss` / `battle_function` 定义在**基类**
+`CampaignBase` 里——因此 `battle_count` 超过 10 的回看窗口后，上游 `hasattr(self, 'battle_default')` 会命中
+基类实现。第一版只看关卡自身导出，误报"没有钩子 battle_default"；现在按 MRO 语义落到已移植的
+`CampaignPrimitives.BattleDefault`。
+
+**关卡循环的对拍**：新增只读命令 `Alas.Server r5-loop --fixture tools/diagnostics/r5-loop-fixture.json`
+（输出每轮选的钩子、结果、动作与日志）+ 检查脚本 `tools/diagnostics/verify_r5_loop.py`
+（5 个用例、**44 轮**用上游钩子选择规则独立算出应选钩子后逐轮比对），已登记进 `verify_all.py`。
+用例覆盖：打不成 → 默认 `Error_HandleError` 下撤退结束；`Error_HandleError=false` → `ScriptError` 不撤退；
+每轮都打成 → 20 轮耗尽；耗尽后默认配置会撤退结束；`MAP_CLEAR_ALL_THIS_TIME=true` → 变体未迁移即阻塞。
+
+**干跑口径的一处调整**：录制宿主在"真的打了一场"（`ClearChosenEnemy`）时让 `battle_count` 增长，
+这样循环才能推进、"第 N 轮选哪个钩子"才能被夹具验证；这与上游"打完一场战斗后 battle_count 增长"一致，
+但**真机以战斗结果为准**。
+
+> 待真机确认：标准流程里 `CampaignEnd` 由 `MapOperation.withdraw()` 在检测到已回到章节页时抛出
+> （`module/map/map_operation.py:410`）。干跑把"撤退 ⇒ 本关结束"当作近似；**成功通关时的结束时机**
+> 仍需模拟器验证（这是 P2 硬要求里剩下的关键一项）。
+
 #### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
 
 | 新增原语 | 对应上游 | 关键语义 |

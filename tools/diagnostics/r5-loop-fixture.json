@@ -1,0 +1,85 @@
+{
+  "note": "R5 关卡循环夹具：供 `Alas.Server r5-loop --fixture <本文件>` 与 tools/diagnostics/verify_r5_loop.py 使用。关卡取自静态导出，地图状态与运行时配置由本夹具给出；循环只做决策与干跑记录，不连设备。",
+  "cases": [
+    {
+      "name": "campaign_1_1：第 1 轮按 battle_count=0 选 battle_0 并打成；第 2 轮 battle_1 打不成 → 默认 Error_HandleError 下撤退结束",
+      "chapter": "campaign_main",
+      "level": "campaign_1_1",
+      "config": { "battle_count": 0 },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 5 }
+      ],
+      "expect": {
+        "outcome": "Ended",
+        "detail": "Withdraw",
+        "variant": "default_hooks",
+        "rounds": 2,
+        "hooks": ["battle_0", "battle_1"],
+        "action_contains": "withdraw()"
+      }
+    },
+    {
+      "name": "campaign_1_1：Error_HandleError=false 时打不成直接 ScriptError，不撤退",
+      "chapter": "campaign_main",
+      "level": "campaign_1_1",
+      "config": { "battle_count": 0, "error_handle_error": false },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 5 }
+      ],
+      "expect": {
+        "outcome": "ScriptError",
+        "detail": "No combat executed.",
+        "rounds": 2,
+        "actions_exclude": "withdraw()"
+      }
+    },
+    {
+      "name": "campaign_1_1：每轮都能打成（有 boss + may_boss）→ 20 轮打完记为 exhausted",
+      "chapter": "campaign_main",
+      "level": "campaign_1_1",
+      "config": { "battle_count": 0, "error_handle_error": false },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 5 },
+        { "location": "C3", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 20, "cost": 6 },
+        { "location": "D4", "may_boss": true, "weight": 30, "cost": 7 }
+      ],
+      "expect": {
+        "outcome": "Exhausted",
+        "detail": "Battle function exhausted.",
+        "rounds": 20,
+        "log_contains": "Battle function exhausted."
+      }
+    },
+    {
+      "name": "campaign_1_1：同样 20 轮，但默认 Error_HandleError 会在耗尽后撤退结束",
+      "chapter": "campaign_main",
+      "level": "campaign_1_1",
+      "config": { "battle_count": 0 },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 5 },
+        { "location": "C3", "is_boss": true, "is_enemy": true, "enemy_scale": 3, "enemy_genre": "Main", "weight": 20, "cost": 6 },
+        { "location": "D4", "may_boss": true, "weight": 30, "cost": 7 }
+      ],
+      "expect": {
+        "outcome": "Ended",
+        "rounds": 20,
+        "action_contains": "withdraw()",
+        "log_contains": "Battle function exhausted, Withdrawing"
+      }
+    },
+    {
+      "name": "MAP_CLEAR_ALL_THIS_TIME=true：battle_function 变体未迁移 → 明确阻塞，不按默认策略跑",
+      "chapter": "campaign_main",
+      "level": "campaign_1_1",
+      "config": { "map_clear_all_this_time": true },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 5 }
+      ],
+      "expect": {
+        "outcome": "Blocked",
+        "blocked_contains": "clear_all",
+        "rounds": 1
+      }
+    }
+  ]
+}

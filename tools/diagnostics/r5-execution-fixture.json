@@ -63,7 +63,7 @@
       "expect": {
         "completed": true,
         "action_contains": "clear_chosen_enemy(C3, expected=boss, fleet=boss)",
-        "log_contains": "Boss guessing incorrect."
+        "log_contains": "Boss guessing correct."
       }
     },
     {

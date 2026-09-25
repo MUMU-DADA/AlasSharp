@@ -12,7 +12,9 @@ public sealed record CampaignRuntimeConfig(
     bool FleetBoss = false,
     bool MapHasLandBased = false,
     bool MapHasMovableEnemy = false,
-    bool MapHasMovableNormalEnemy = false)
+    bool MapHasMovableNormalEnemy = false,
+    bool PoorMapData = false,
+    bool ErrorHandleError = true)
 {
     /// <summary>上游 <c>fleet_boss_index</c>：<c>FLEET_BOSS == 2 and FLEET_2</c> 时是 2，否则 1。</summary>
     public int FleetBossIndex => FleetBoss && Fleet2 ? 2 : 1;
@@ -82,6 +84,15 @@ public interface ICampaignPrimitiveHost
     /// <summary>撤退（上游 <c>MapOperation.withdraw()</c>，如 <c>capture_clear_boss</c> 结尾会撤退）。</summary>
     void Withdraw();
 
+    /// <summary>
+    /// 是否已请求结束本关——对应上游 <c>withdraw()</c> 检测到"已回到章节页"时抛出的 <c>CampaignEnd</c>
+    /// （`module/map/map_operation.py:410`）。干跑宿主在 <see cref="Withdraw"/> 时置位，属**近似**：
+    /// 真机上"何时算回到章节页"要用识别确认。
+    /// </summary>
+    bool EndRequested { get; }
+
+    string? EndReason { get; }
+
     /// <summary>上游关卡基类里的 <c>picked_light_house</c> / <c>picked_flare</c> 记账表。</summary>
     ISet<string> PickedLightHouse { get; }
 
@@ -128,6 +139,9 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
     {
         string suffix = string.IsNullOrEmpty(fleet) ? "" : $", fleet={fleet}";
         Actions.Add($"clear_chosen_enemy({grid.Location}, expected={expected}{suffix})");
+        // 上游：打完一场战斗后 battle_count 增长（由 map_operation 维护）。干跑用它推进关卡循环，
+        // 让"第 N 轮选哪个钩子"能被夹具验证；真机以战斗结果为准。
+        BattleCount++;
         return true;
     }
 
@@ -171,7 +185,24 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
         Grids.FirstOrDefault(grid => grid.Location == location)
         ?? throw new NotSupportedException($"地图状态里没有格子 {location}（识别结果可能未覆盖）");
 
-    public void Withdraw() => Actions.Add("withdraw()");
+    public void Withdraw()
+    {
+        Actions.Add("withdraw()");
+        // 上游 withdraw() 在检测到已回到章节页时 raise CampaignEnd；干跑以"撤退即结束"近似。
+        EndRequested = true;
+        EndReason ??= "Withdraw";
+    }
+
+    /// <summary>上游 <c>withdraw()</c> 抛 <c>CampaignEnd</c> 的干跑近似（见接口注释）。</summary>
+    public bool EndRequested { get; private set; }
+
+    public string? EndReason { get; private set; }
+
+    public void RequestEnd(string reason)
+    {
+        EndRequested = true;
+        EndReason ??= reason;
+    }
 
     public void Log(string message) => Logs.Add(message);
 }
