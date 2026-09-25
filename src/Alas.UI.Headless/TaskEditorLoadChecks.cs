@@ -121,6 +121,9 @@ internal static class TaskEditorLoadChecks
                 pages.Add(task, page);
                 watch.Stop();
                 var reads = backend.Reads;
+                if (reads.Schema != (pages.Count == 1 ? 1 : 0) || reads.Config != 1)
+                    throw new InvalidOperationException(
+                        $"首次打开 {task} 的读取次数不符合会话 schema 缓存：schema={reads.Schema}, config={reads.Config}。");
                 firstOpen[task] = new Dictionary<string, object?>
                 {
                     ["ms"] = Round(watch.Elapsed.TotalMilliseconds),

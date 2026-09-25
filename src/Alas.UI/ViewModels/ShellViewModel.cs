@@ -34,6 +34,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public const double CompactBreakpoint = 480;
 
     private readonly Dictionary<(string Instance, string Task), TaskEditorViewModel> _editors = new();
+    private Task<SchemaResponse>? _taskSchema;
     private long _editorLoadVersion;
     private bool _stateRefreshInFlight;
     private long _instanceVersion;
@@ -562,7 +563,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     {
         try
         {
-            var schema = await _backend.ReadSchemaAsync(cancellationToken: default).ConfigureAwait(true);
+            var schema = await ReadTaskSchemaAsync().ConfigureAwait(true);
             var config = await _backend.ReadConfigAsync(instance).ConfigureAwait(true);
             if (_editorLoadVersion != version || !IsTaskEditorActive || InstanceName != instance) return;
             editor.Load(instance, task.Key, new JsonObject
@@ -580,6 +581,21 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         catch (Exception error)
         {
             if (_editorLoadVersion == version) editor.SetLoadError(error.Message);
+        }
+    }
+
+    private async Task<SchemaResponse> ReadTaskSchemaAsync()
+    {
+        // All task forms in one backend session use the same upstream argument schema.
+        Task<SchemaResponse> task = _taskSchema ??= _backend.ReadSchemaAsync(cancellationToken: default);
+        try
+        {
+            return await task.ConfigureAwait(true);
+        }
+        catch
+        {
+            if (ReferenceEquals(_taskSchema, task)) _taskSchema = null;
+            throw;
         }
     }
 
