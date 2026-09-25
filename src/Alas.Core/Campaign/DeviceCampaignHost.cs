@@ -227,30 +227,45 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
 
     private static JsonNode? Node(string value) => JsonValue.Create(value);
 
+    /// <summary>
+    /// 读上游的整数值。**取不到或类型不对时会记日志**：这两个方法的调用方拿它做决策，
+    /// 静默用兜底值等于把"上游版本漂移/字段改名"藏起来（这类静默正是本项目反复踩到的坑）。
+    /// </summary>
     private int ReadInt(string name, int fallback = 0)
     {
         var value = _channel.Read(name);
-        if (value is null) return fallback;
+        if (value is null)
+        {
+            Log($"读取上游字段 {name}：没有这个字段，用兜底值 {fallback}");
+            return fallback;
+        }
         try
         {
             return value.GetValue<int>();
         }
         catch (Exception error) when (error is InvalidOperationException or FormatException)
         {
+            Log($"读取上游字段 {name}：类型不是整数（{error.GetType().Name}），用兜底值 {fallback}");
             return fallback;
         }
     }
 
+    /// <summary>读上游的字符串值；取不到或类型不对时同样**记日志**（理由见 <see cref="ReadInt"/>）。</summary>
     private string ReadString(string name, string fallback = "")
     {
         var value = _channel.Read(name);
-        if (value is null) return fallback;
+        if (value is null)
+        {
+            Log($"读取上游字段 {name}：没有这个字段，用兜底值 \"{fallback}\"");
+            return fallback;
+        }
         try
         {
             return value.GetValue<string>() ?? fallback;
         }
         catch (InvalidOperationException)
         {
+            Log($"读取上游字段 {name}：类型不是字符串，用兜底值 \"{fallback}\"");
             return fallback;
         }
     }

@@ -99,6 +99,7 @@ STEPS = [
     ('r5_state_mutation_audit.py', 'R5 状态写入审计（上游会改状态的方法 vs C# 替换的原语）', False, 300),
     ('r5_incomplete_hooks.py', 'R5 不完整钩子普查（成因分类 + 棘轮基线）', False, 300),
     ('verify_r5_selection_sweep.py', 'R5 目标选择扫描新鲜度（重跑扫描 + 不一致数棘轮）', False, 900),
+    ('r5_silent_fallback_audit.py', 'R5 静默兜底审计（catch 块里悄悄用兜底值的必须登记）', False, 120),
     ('verify_r5_selection.py', 'R5 目标选择对拍（C# 移植 vs 上游 Filter，离线无设备）', False, 180),
     ('verify_r5_execution.py', 'R5 计划→原语→动作闭环（干跑记录 vs 上游选敌规则）', False, 180),
     ('verify_r5_loop.py', 'R5 关卡循环（run/execute_a_battle/battle_function vs 上游钩子选择规则）', False, 180),

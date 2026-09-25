@@ -55,6 +55,7 @@
 | 真机帧 | 6 帧（4 帧可识别） | 识别 → 状态 → 循环 → 两宿主序列一致 | [帧扫描](archive/reports/r5-frame-sweep.md) |
 | 不完整钩子普查 | 3019 个钩子条目 / **163** 个"有真实语句但不完整"（`battle_*` **118**） | 按 `if` 形态分类 + **棘轮基线 118**（只许下降） | [不完整钩子](archive/reports/r5-incomplete-hooks.md) |
 | 状态写入审计 | 30 个原语（上游方法体静态扫描） | 检测到状态写入的 **3 条全部核对**（`is_flare` / `is_caught_by_siren` / `may_bouncing_enemy`），**待确认 0** | [状态审计](archive/reports/r5-state-mutation-audit.md) |
+| 静默兜底审计 | `src/Alas.Core/Campaign/**/*.cs` 的 `catch` 块 | 既不上报也不重抛的返回 **2 处，均已登记理由**（`TryLoad` 读导出失败→调用方跳过；`SortieResult` 冻结合同的宽松返回）。顺带修掉一处真静默：`DeviceCampaignHost.ReadInt/ReadString` 取不到字段或类型不符时**现在会写日志**，不再悄悄用兜底值 | `r5_silent_fallback_audit.py` |
 
 各自的口径与"不覆盖什么"写在报告里，不在这里重复。
 
