@@ -15,7 +15,8 @@ namespace Alas.Tasks;
 /// **缺失 ≠ false**：配置里没显式设置会走上游默认值，本任务如实分成三类报出
 /// （true / false / missing），不把缺失当成 false。
 ///
-/// 输入（`Input`）：`{ "keys": ["Dorm.BuyFurniture.Enable", "Meowfficer.BuyAmount"] }`
+/// 输入（`Input`）：`{ "keys": ["Dorm.BuyFurniture.Enable"], "instance": "alas" }`；
+/// 不指定实例时读取 `alas`。
 /// 结论：读到配置即 `Succeeded`（哪怕某些键缺失——缺失是**信息**，不是失败）；
 /// 配置读不出来 → `Failed`（环境问题）。
 /// </summary>
@@ -23,7 +24,7 @@ public sealed class ConfigGetTask : ITaskRunner
 {
     private static readonly HashSet<string> InputFields = new(StringComparer.Ordinal)
     {
-        "keys",
+        "keys", "instance",
     };
 
     public string Kind => "config_get";
@@ -48,6 +49,22 @@ public sealed class ConfigGetTask : ITaskRunner
                 || !value.TryGetValue<string>(out var key)
                 || string.IsNullOrWhiteSpace(key))
                 problems.Add($"input.keys[{index}] 必须是非空字符串");
+        if (request.Input?.ContainsKey("instance") == true)
+        {
+            if (request.Input["instance"] is not JsonValue value
+                || !value.TryGetValue<string>(out var instance)
+                || string.IsNullOrWhiteSpace(instance))
+                problems.Add("input.instance 必须是非空实例名");
+            else
+            {
+                try
+                {
+                    if (ConfigWorkspace.ValidateName(instance) != instance)
+                        problems.Add("input.instance 必须使用规范实例名");
+                }
+                catch (ArgumentException) { problems.Add("input.instance 实例名无效"); }
+            }
+        }
         return problems;
     }
 
@@ -59,7 +76,7 @@ public sealed class ConfigGetTask : ITaskRunner
         try
         {
             var read = context.Session.Vision.CallTyped<ConfigGetResult>(
-                "config_get", new { keys });
+                "config_get", new { keys, instance = request.Input?["instance"]?.GetValue<string>() ?? "alas" });
             if (read.Error is not null)
             {
                 result.Outcome = TaskOutcome.Failed;
@@ -86,6 +103,7 @@ public sealed class ConfigGetTask : ITaskRunner
             }
             result.Evidence = new JsonObject
             {
+                ["instance"] = read.Instance,
                 ["config_source"] = read.ConfigSource,
                 ["checked"] = read.Checked,
                 ["values"] = values,
@@ -116,6 +134,7 @@ public sealed class ConfigGetTask : ITaskRunner
 /// <summary>宿主 `config_get` 的返回。</summary>
 public sealed class ConfigGetResult
 {
+    [JsonPropertyName("instance")] public string? Instance { get; set; }
     [JsonPropertyName("config_source")] public string? ConfigSource { get; set; }
     [JsonPropertyName("values")] public Dictionary<string, JsonNode?>? Values { get; set; }
     [JsonPropertyName("missing")] public List<string>? Missing { get; set; }

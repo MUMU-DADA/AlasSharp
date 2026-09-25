@@ -1083,9 +1083,19 @@ def op_config_get(args):
     keys = args.get('keys') or []
     if not isinstance(keys, list) or not keys:
         return {'error': '缺少 keys（点分路径列表，如 ["Dorm.BuyFurniture.Enable"]）'}
-    path = os.path.join(FORK, 'config', 'alas.json')
-    if not os.path.exists(path):
-        return {'error': f'读不到账号配置: {path}',
+    from module.api.config_service import validate_name
+    instance = args.get('instance', 'alas')
+    try:
+        normalized = validate_name(instance)
+    except Exception:
+        return {'error': '实例名无效'}
+    if normalized != instance:
+        return {'error': '实例名必须使用规范名称'}
+    config_root = (Path(FORK) / 'config').resolve()
+    path = config_root / (instance + '.json')
+    if (not path.is_file() or path.is_symlink()
+            or path.resolve().parent != config_root):
+        return {'error': f'读不到账号配置实例: {instance}',
                 'note': '这属于环境问题（Failed），不是"没跑"（skipped）'}
     try:
         with open(path, encoding='utf-8') as stream:
@@ -1102,7 +1112,8 @@ def op_config_get(args):
 
     values = {str(key): walk(config, str(key).split('.')) for key in keys}
     return {
-        'config_source': path,
+        'instance': instance,
+        'config_source': str(path),
         'values': values,
         'missing': [k for k, v in values.items() if v is None],
         'note': 'missing 表示**配置里没显式设置**（缺省走上游默认值），不等于 false/0',

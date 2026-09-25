@@ -9,6 +9,7 @@
    **并且不在** `false_keys` 里 —— 这条是该域存在的理由（授权前判"会不会花钱"时，
    把"没设置"误当成"关掉了"就是错的）。
 3. **边界**：空 `keys` → 前置条件不满足记 `skipped`（不是 failed、也不该去读配置）；不存在的深层路径 → missing。
+4. **实例隔离**：两份临时合成配置同键异值，产品队列必须按 `instance` 读取，结束后删除合成文件。
 
 用法：
     python tools/diagnostics/verify_config_get.py
@@ -20,6 +21,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,13 +35,16 @@ except Exception:
     pass
 
 
-def run_task(keys, timeout=300, *, input_value=None):
+def run_task(keys, timeout=300, *, input_value=None, instance=None):
     """跑一次队列任务，返回 (outcome, evidence, error)。"""
     with tempfile.TemporaryDirectory(prefix='alas-config-') as tmp:
         queue_file = Path(tmp) / 'queue.json'
+        task_input = {'keys': keys} if input_value is None else input_value
+        if instance is not None:
+            task_input['instance'] = instance
         queue_file.write_text(json.dumps({'tasks': [
             {'id': 'cfg', 'kind': 'config_get',
-             'input': {'keys': keys} if input_value is None else input_value}]},
+             'input': task_input}]},
             ensure_ascii=False), encoding='utf-8')
         artifacts = Path(tmp) / 'artifacts'
         proc = subprocess.run([str(EXE), 'queue', '--file', str(queue_file),
@@ -64,13 +69,50 @@ def walk(config, dotted):
     return node
 
 
+def verify_instances(failures):
+    print('=== 双实例离线隔离 ===')
+    nonce = uuid.uuid4().hex[:12]
+    first = f'codex_config_probe_a_{nonce}'
+    second = f'codex_config_probe_b_{nonce}'
+    files = [CONFIG.parent / f'{name}.json' for name in (first, second)]
+    try:
+        for file, flag in zip(files, (True, False)):
+            with file.open('x', encoding='utf-8') as stream:
+                json.dump({'Probe': {'Flag': flag, 'Count': 3}}, stream)
+        probe_keys = ['Probe.Flag', 'Probe.Count', 'Probe.Absent']
+        for name, flag in ((first, True), (second, False)):
+            selected, observed, selected_error = run_task(probe_keys, instance=name)
+            ok = (selected == 'succeeded' and observed.get('instance') == name
+                  and Path(observed.get('config_source') or '').name == f'{name}.json'
+                  and observed.get('values') == {'Probe.Flag': flag,
+                                                  'Probe.Count': 3,
+                                                  'Probe.Absent': None}
+                  and observed.get('true_keys') == (['Probe.Flag'] if flag else [])
+                  and observed.get('false_keys') == ([] if flag else ['Probe.Flag'])
+                  and observed.get('missing_keys') == ['Probe.Absent'])
+            print(f"  {'ok  ' if ok else 'FAIL'} {name} 独立读数")
+            if not ok:
+                failures.append(f'{name} 独立读数: outcome={selected} '
+                                f'evidence={observed} error={selected_error}')
+        absent, _, absent_error = run_task(probe_keys, instance=f'codex_config_probe_missing_{nonce}')
+        ok = absent == 'failed' and bool(absent_error)
+        print(f"  {'ok  ' if ok else 'FAIL'} 不存在实例记 failed")
+        if not ok:
+            failures.append(f'不存在实例: outcome={absent} error={absent_error}')
+    finally:
+        for file in files:
+            file.unlink(missing_ok=True)
+
+
 def main() -> int:
     if not EXE.is_file():
         print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先 dotnet build）')
         return 1
     if not CONFIG.is_file():
-        print('[跳过] 没有账号配置 config/alas.json；本验收未跑。')
-        return 0
+        print('[跳过] 没有账号配置 config/alas.json；仅运行合成双实例验收。')
+        failures: list[str] = []
+        verify_instances(failures)
+        return 1 if failures else 0
 
     failures: list[str] = []
     config = json.loads(CONFIG.read_text(encoding='utf-8'))
@@ -145,6 +187,10 @@ def main() -> int:
         'empty-entry': {'keys': [' ']},
         'mixed-entry': {'keys': ['Dorm.BuyFurniture.Enable', False]},
         'unknown-field': {'keys': ['Dorm.BuyFurniture.Enable'], 'extra': True},
+        'invalid-instance-type': {'keys': ['Probe.Flag'], 'instance': 7},
+        'empty-instance': {'keys': ['Probe.Flag'], 'instance': ''},
+        'noncanonical-instance': {'keys': ['Probe.Flag'], 'instance': 'alas.'},
+        'path-instance': {'keys': ['Probe.Flag'], 'instance': '../alas'},
     }
     for name, task_input in invalid_inputs.items():
         invalid_outcome, invalid_evidence, invalid_error = run_task(
@@ -155,6 +201,9 @@ def main() -> int:
         print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ('' if ok else f'  ← {detail}'))
         if not ok:
             failures.append(f'{name}: {detail}')
+
+    print()
+    verify_instances(failures)
 
     print()
     if failures:
