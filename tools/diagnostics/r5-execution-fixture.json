@@ -2,6 +2,46 @@
   "note": "R5 原语执行对拍夹具：供 `Alas.Server r5-exec --fixture <本文件>` 与 tools/diagnostics/verify_r5_execution.py 使用。关卡/钩子取自静态导出（data/campaign/**），地图状态与运行时配置由本夹具给出，动作只被干跑宿主记录。",
   "cases": [
     {
+      "name": "event_20230914_cn sp battle_0：`if self.fleet_at(A2): self._is_a2 = True`——舰队位置判断 + 实例属性写入（跨钩子状态）",
+      "chapter": "event_20230914_cn",
+      "level": "sp",
+      "hook": "battle_0",
+      "config": {
+        "fleet_boss": true,
+        "fleet_2": true,
+        "fleet_1_location": "A2",
+        "fleet_2_location": "B1"
+      },
+      "grids": [
+        {
+          "location": "A2",
+          "weight": 5,
+          "cost": 0
+        },
+        {
+          "location": "B1",
+          "is_fleet": true,
+          "weight": 5,
+          "cost": 1
+        },
+        {
+          "location": "B3",
+          "weight": 10,
+          "cost": 2
+        },
+        {
+          "location": "C3",
+          "is_enemy": true,
+          "weight": 20,
+          "cost": 3
+        }
+      ],
+      "expect": {
+        "completed": true,
+        "steps_contains": "state_set：self._is_a2 = 真"
+      }
+    },
+    {
       "name": "campaign_16_4 battle_1：`if not self.map_has_mob_move:` 而该属性**没有初值**（默认值在基类，本模块拿不到）→ 必须阻塞报原因，不许当成假",
       "chapter": "campaign_main",
       "level": "campaign_16_4",

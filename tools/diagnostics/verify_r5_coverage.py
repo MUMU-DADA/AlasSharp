@@ -35,6 +35,10 @@ ALLOWED_GAPS: dict[str, str] = {
     # 它只出现在目前 `plan_complete=false` 的钩子体里（需要导出器支持"局部变量 + 条件"后才会进计划），
     # 所以这里的"夹具覆盖"统计到不了它。写明原因，而不是悄悄漏掉。
     "check_accessibility": "只在 plan_complete=false 的钩子体里出现；已由复合原语扫描对拍，等结构建模后进计划",
+    # 同上：已实现（`host.EnsureFleet`），但全库计划里唯一一次调用带的是**未求值实参**
+    # （`fleet_ensure(index=<expr>)`），执行器在"实参未求值"那一步就阻塞，走不到原语，夹具统计不到。
+    "ensure_fleet": "计划里唯一一次调用带未求值实参（`index=<expr>`），执行器进入原语前就阻塞；等该表达式可求值后补夹具",
+    "fleet_ensure": "上游名别名，同上（唯一调用点带未求值实参）",
 }
 
 # 日志标记 → 原语：有些原语是**被别的原语内部调用**的（`battle_boss` 由 clear_all 变体在无剩余敌人时调、
@@ -86,6 +90,10 @@ def main() -> int:
             note(step.split("：")[0].split(":")[0], f"r5-exec/{case['name'][:28]}")
         for action in case.get("actions") or []:
             note(action.split("(")[0], f"r5-exec/{case['name'][:28]}")
+        # C# 侧**实际调用过**的原语（诊断宿主记录）：静态扫描夹具文本认不出
+        # "由夹具钩子的计划间接执行"的原语（实测 `fleet_at` 就漏了）。
+        for op in case.get("invoked_ops") or []:
+            note(op, f"r5-exec/{case['name'][:28]}（执行记录）")
     for case in run("r5-loop", LOOP_FIXTURE)["cases"]:
         for round_ in case.get("rounds") or []:
             note(round_.get("hook") or "", f"r5-loop/{case['name'][:28]}")

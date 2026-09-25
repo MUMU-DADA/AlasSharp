@@ -109,8 +109,11 @@ public sealed class CampaignPlanStep
     /// <summary>`kind=return` 时返回的**字面量**（上游 `return True` / `return False`；缺省即 None）。</summary>
     [JsonPropertyName("value")] public JsonNode? Value { get; init; }
 
-    /// <summary>`kind=state_set` 的值表达式；属性名用 <see cref="Target"/>。</summary>
+    /// <summary>`kind=state_set` 的值表达式；属性名见 <see cref="Name"/>。</summary>
     [JsonPropertyName("expr")] public JsonNode? Expr { get; init; }
+
+    /// <summary>`kind=state_set` 时写入的**关卡实例属性名**（导出器写 `name`）。</summary>
+    [JsonPropertyName("name")] public string? Name { get; init; }
 
     /// <summary>`kind=map_set` 时给**所有格子**设置的布尔标志名（上游 `grid.may_siren = True`）。</summary>
     [JsonPropertyName("flag")] public string? Flag { get; init; }

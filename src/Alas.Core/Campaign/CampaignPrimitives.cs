@@ -292,6 +292,12 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
         EndReason = reason;
     }
 
+    /// <summary>
+    /// **诊断侧**记录：执行器实际调用过的原语名（覆盖率检查用它精确统计"夹具跑到了哪些原语"，
+    /// 不再靠静态扫描夹具文本去猜）。生产路径不读它。
+    /// </summary>
+    public List<string> InvokedOps { get; } = new();
+
     public void SetGridFlag(CampaignGrid grid, string flag, bool value)
     {
         // 只改模型，不产生设备动作（上游那几个 helper 也是直接改 `GridInfo`）。
@@ -985,6 +991,22 @@ public static class CampaignPrimitives
         return LiveCostFor(host, grid, index) < CampaignPathfinder.Unreachable;
     }
 
+    /// <summary>
+    /// 上游 <c>Fleet.fleet_at(grid, fleet=None)</c>：舰队是不是就在这一格。
+    /// `fleet` 为空看当前舰队；1/2 看对应舰队。纯状态判断，没有设备动作。
+    /// </summary>
+    public static bool FleetAt(ICampaignPrimitiveHost host, CampaignGrid grid, string? fleet = null)
+    {
+        string location = fleet switch
+        {
+            "1" => host.Fleet1Location,
+            "2" => host.Fleet2Location,
+            null or "" => host.FleetCurrentIndex == 2 ? host.Fleet2Location : host.Fleet1Location,
+            _ => throw new NotSupportedException($"fleet_at 的 fleet 只支持 1/2/空，收到 {fleet}"),
+        };
+        return string.Equals(location, grid.Location, StringComparison.Ordinal);
+    }
+
     /// <summary>按舰队索引取该舰队所在格（上游 <c>find_path_initial()</c> 用 <c>fleet_current</c> 作起点）。</summary>
     private static string FleetStart(ICampaignPrimitiveHost host, int fleetIndex) =>
         fleetIndex == 2 ? host.Fleet2Location : host.Fleet1Location;
@@ -1441,6 +1463,7 @@ public static class CampaignHookRunner
             }
             try
             {
+                if (host is RecordingCampaignHost recording4) recording4.InvokedOps.Add(call.Op);
                 value = primitive.Execute(host, resolved);
             }
             catch (NotSupportedException error)
@@ -1717,7 +1740,7 @@ public static class CampaignHookRunner
             // `state_set`：上游 `self.<属性> = …` —— 关卡实例属性（跨钩子存在，与局部变量不同）。
             if (step.Kind == "state_set")
             {
-                if (step.Target is not { Length: > 0 } stateName)
+                if (step.Name is not { Length: > 0 } stateName)
                 {
                     return Result(plan, battle, null, "state_set 缺少属性名", stepLog, host, actionsBefore, actions);
                 }
@@ -1804,6 +1827,7 @@ public static class CampaignHookRunner
                 bool assignedValue;
                 try
                 {
+                    if (host is RecordingCampaignHost recording3) recording3.InvokedOps.Add(step.Op);
                     assignedValue = assigned.Execute(host, step);
                 }
                 catch (NotSupportedException error)
@@ -1906,6 +1930,7 @@ public static class CampaignHookRunner
             bool executed;
             try
             {
+                if (host is RecordingCampaignHost recording2) recording2.InvokedOps.Add(step.Op);
                 executed = primitive.Execute(host, step);
             }
             catch (NotSupportedException error)
@@ -2114,6 +2139,15 @@ public static class CampaignPrimitiveRegistry
             NeedsArguments: true,
             (host, step) => CampaignPrimitives.CheckAccessibility(
                 host, RequireGrid(host, step), OptionalFleet(step))),
+        ["ensure_fleet"] = new CampaignPrimitive(
+            "ensure_fleet", "切换舰队（上游 Fleet.fleet_ensure(index)）", NeedsArguments: true,
+            (host, step) => { host.EnsureFleet(DecodeFleetIndex(step)); return true; }),
+        ["fleet_ensure"] = new CampaignPrimitive(
+            "fleet_ensure", "上游名别名 → ensure_fleet", NeedsArguments: true,
+            (host, step) => { host.EnsureFleet(DecodeFleetIndex(step)); return true; }),
+        ["fleet_at"] = new CampaignPrimitive(
+            "fleet_at", "舰队是否在该格（上游 Fleet.fleet_at；纯状态判断）", NeedsArguments: true,
+            (host, step) => CampaignPrimitives.FleetAt(host, RequireGrid(host, step), OptionalFleet(step))),
         ["goto"] = new CampaignPrimitive(
             "goto", "走到指定格（上游 Fleet.goto；移动本身由宿主执行）", NeedsArguments: true,
             (host, step) => host.Goto(RequireGrid(host, step), OptionalExpected(step))),
@@ -2283,6 +2317,24 @@ public static class CampaignPrimitiveRegistry
     /// 否则会把不可达格子当成可达（实测踩过：fixture 里 cost=9999 的 A9 被判成可拾取）。
     /// 地图状态里没有这个格子时如实报错，不用默认值糊过去。
     /// </summary>
+    /// <summary>
+    /// 解 `fleet_ensure(index)` / `ensure_fleet(index)` 的舰队序号：关键字 `index` 优先，
+    /// 其次位置实参；都拿不到就报错（**实参是 `<expr>` 时执行器早一步就挡住了**，不会走到这里）。
+    /// </summary>
+    private static int DecodeFleetIndex(CampaignPlanStep step)
+    {
+        if (step.Args?.Keyword.TryGetValue("index", out var node) == true
+            && node is JsonValue value && value.TryGetValue<int>(out int index))
+        {
+            return index;
+        }
+        foreach (var item in step.Args?.Positional ?? [])
+        {
+            if (item is JsonValue positional && positional.TryGetValue<int>(out int parsed)) return parsed;
+        }
+        throw new NotSupportedException($"{step.Op} 的舰队序号解不出来（需要 index 整数实参）");
+    }
+
     /// <summary>取 `goto(grid, expected='…')` 的 `expected` 关键字（没有就空串）。</summary>
     private static string OptionalExpected(CampaignPlanStep step)
     {

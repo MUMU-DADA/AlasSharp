@@ -94,6 +94,12 @@ internal static class CampaignExecutionCheck
                 ["hook"] = execution.Method,
                 ["return"] = execution.ReturnValue,
                 ["completed"] = execution.Completed,
+                // 这个用例实际调用过的原语（诊断宿主记录；覆盖率检查据此精确统计）
+                ["invoked_ops"] = new JsonArray(
+                    (host is RecordingCampaignHost recorder
+                        ? recorder.InvokedOps.Distinct(StringComparer.Ordinal)
+                        : Enumerable.Empty<string>())
+                    .Select(name => (JsonNode)name!).ToArray()),
                 ["blocked"] = execution.BlockedReason,
                 ["steps"] = new JsonArray(execution.StepLog.Select(text => (JsonNode)text!).ToArray()),
                 ["actions"] = new JsonArray(execution.Actions.Select(text => (JsonNode)text!).ToArray()),

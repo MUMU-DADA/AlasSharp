@@ -4,9 +4,9 @@
 > 用途：C# 逐条替换了上游原语，而上游有些方法**顺手写状态**；替换掉就丢了那些写入。
 > 只做静态扫描（`inspect.getsource` + 写入模式匹配），不执行游戏动作。
 
-- 注册表原语：**31** 个
-- 检测到**状态写入**的条目：**3**（已核对 **3**）
-- **待确认**：**0**
+- 注册表原语：**34** 个
+- 检测到**状态写入**的条目：**4**（已核对 **3**）
+- **待确认**：**2**
 
 | 原语 | 写入类型 | 上游源码行 | 结论 |
 | --- | --- | --- | --- |
@@ -30,11 +30,14 @@
 | `clear_potential_roadblocks` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `clear_roadblocks` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `clear_siren` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
+| `ensure_fleet` | 未在上游定位到同名方法 |  | 需要人工确认：可能名字不同或未接线 |
 | `fleet_2_break_siren_caught` | 格子标志赋值（module/map/map.py:Map） | `grid.is_caught_by_siren = False` | `grid.is_caught_by_siren = False`：C# `ClearCaughtBySirenFlags` 覆盖（两宿主都改自己模型） |
 | `fleet_2_protect` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `fleet_2_push_forward` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `fleet_2_rescue` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `fleet_2_step_on` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
+| `fleet_at` | 舰队位置赋值（module/map/map.py:Map） | `return self.fleet_1_location == grid.location` | **待确认** |
+| `fleet_ensure` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `goto` | 设备侧（仍由上游执行） |  | 不需要 C# 镜像 |
 | `handle_boss_appear_refocus` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `pick_up_ammo` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
