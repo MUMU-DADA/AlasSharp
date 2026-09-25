@@ -723,6 +723,23 @@ C# 侧新增 `CampaignCallTranslator`（纯函数）：把计划步骤翻成"上
 需要：① `loop=csharp` + 闸门；② 把渠道换成真机实现（`s3_campaign_call`，`allow_actions=true`）；
 ③ 一次授权运行并做三层对照。
 
+#### 帧扫描：本地能识别的帧都跑一遍（`docs/archive/reports/r5-frame-sweep.md`）
+
+`tools/diagnostics/r5_frame_sweep.py`（报告由脚本重建）把 `data/fixtures/` 里**能推断出关卡**的帧逐个跑
+"识别 → 状态 → 关卡循环"，并比两个宿主的原语序列：
+
+| 帧 | 关卡 | 识别 | 轮数 | 两宿主一致 |
+| --- | --- | --- | --- | --- |
+| `inmap_2-2.png` | `campaign_2_2` | 35 格 | 4 | 是 |
+| `inmap_3-1.png` | `campaign_3_1` | 28 格 | 4 | 是 |
+| `inmap_3-2.png` | `campaign_3_2` | 32 格 | 4 | 是 |
+| `map_hard_1_4.png` | `campaign_1_4` | 21 格 | 20 | 是 |
+| `inmap_7-1.png` | `campaign_7_1` | **识别失败**（`warpPerspective` 报错） | — | — |
+| `map_2_1.png` | `campaign_2_1` | **识别失败**（No vertical line detected） | — | — |
+
+口径与 `verify_r5_device` 相同（比"干跑序列去掉收尾撤退"这个前缀）；**只证明这些帧**，不代表整类地图；
+两帧识别失败的原因如实列在表里，没有当成"通过"。
+
 #### `loop` 域切成 csharp 需要什么（前置清单）
 
 | 项 | 要求 | 现状 |
