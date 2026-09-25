@@ -650,6 +650,45 @@ C# 影子选择与上游实际 `Using function:` **4/4 完全一致**——包�
 - **真实日志**：`campaign_2_1` 的 `clear_all` 运行，声明 `--variant clear_all` 后 **7/7 一致**；
 - 注册原语 **28 个**；执行面/步覆盖不变（5687/5694，99.9%），全库干跑仍 3019/3019 无阻塞。
 
+#### P2-16 真实路径证据（决策层）：模拟器实跑 1-1 + 影子比对 2/2 一致（2026-09-26）
+
+**授权**：用户确认"有模拟器可以进行测试验证流程"，并在本轮明确同意跑一次最小关卡。
+
+**运行**（动作会话，串行执行，仅此一次）：
+
+```powershell
+# 只读探测先确认设备与当前页面
+Alas.Server queue --file .runtime/device-probe/observe-queue.json --run --read-only-device `
+  --serial <模拟器> --screenshot adb --control ADB --adb <adb>
+# 观测结果：pages=["page_main","page_main_white"]，ticks=3 errors=0
+
+# 真机跑一次 1-1（动作会话）
+Alas.Server queue --file .runtime/device-probe/campaign-1-1-queue.json --run --allow-actions `
+  --serial <模拟器> --screenshot adb --control ADB --adb <adb> --artifacts .runtime/device-probe/artifacts-1-1
+```
+
+**结果**（原始日志与工件保留在本机忽略目录 `.runtime/device-probe/`，**不入库**——日志含本机绝对路径）：
+
+| 证据 | 值 |
+| --- | --- |
+| 设备 | 本机模拟器（`127.0.0.1:<port>`，包名 `com.bilibili.azurlane`，server=cn） |
+| 队列结论 | `outcome=succeeded tasks=1 failed=0 skipped=0 elapsed_s=72` |
+| 批次结论 | **`cleared=true`**、`stages=1`（走 `sortie-result/1`，成功结算） |
+| 上游实际出击 | `BATTLE_0 → Using function: battle_0`；`BATTLE_1 → Using function: battle_1`；`<<< CAMPAIGN END >>>` |
+| **影子比对** | `r5-shadow --chapter campaign_main --level campaign_1_1 --log <本次运行日志>` → **一致 2 / 不一致 0 / 跳过 0** |
+
+**这证明了什么**：C# 引擎的**关卡循环决策**（按 `battle_count` 选钩子 + 基类回退）在一次**真实设备运行**上
+与上游逐步一致——这是离线干跑与历史日志都给不了的那一层证据（历史日志只能证明"过去的运行"，
+这次是"当前引擎面对当前上游版本"）。
+
+**这还不能证明什么**（如实记录）：
+- **没有**证明原语在真机上的动作与上游一致——本次运行是**上游**在驱动设备，C# 只做了影子计算；
+- `capture_clear_boss` 结尾撤退、`fleet_2_protect` 的 20 轮循环、`CampaignEnd` 的成功时机，仍未经真机对照；
+- 只覆盖 1-1 这一关，不能外推到其他关卡、其他 `battle_function` 变体或困难/活动图。
+
+**下一步（真机口径）**：把影子模式接进真实运行（同一次运行里既跑上游又记录 C# 决策），
+并对 `fleet_2_protect` 这类有内部循环的原语做真机对照；在拿到这些证据前，域级开关保持关闭。
+
 ### P4 收口
 
 `IVisionEngine` 只保留识图相关方法；上游目录只剩规则文件与识图组件；文档同步（`docs/architecture-roadmap.md`、本文件、[架构梳理](ARCHITECTURE-NOTES.md)）。
