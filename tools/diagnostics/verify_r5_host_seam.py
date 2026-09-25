@@ -62,6 +62,42 @@ def main() -> int:
     if seen.get('value') is not instance.ENTRANCE:
         problems.append(f"`@ENTRANCE` 应解析成实例上的对象，实际 {seen.get('value')!r}")
 
+    # 3b) 格参数引用：`#<节点>` / `#grids:[...]` / `#roads:[[...]]` 都要用**上游自己的对象类型**。
+    # 用**真实 `CampaignMap`**（离线 load_map_data）而不是假字典：`RoadGrids` 会按格子的属性做匹配，
+    # 假对象（哪怕是字符串）过不了它自己的校验——实测踩过。
+    from module.map.map_base import CampaignMap  # noqa: PLC0415
+    from module.map.map_grids import RoadGrids, SelectedGrids  # noqa: PLC0415
+
+    campaign_map = CampaignMap('probe')
+    campaign_map.shape = 'G1'
+    campaign_map.map_data = 'SP -- -- -- -- ME MB'
+    campaign_map.load_map_data()
+    instance.map = campaign_map
+    resolved: dict[str, object] = {}
+    instance.record_grid = lambda value, roadblocks=None: resolved.update(value=value, roads=roadblocks)
+    av.op_s3_campaign_call({'name': 'record_grid', 'args': ['#C1']})
+    if str(resolved.get('value')) != 'C1':   # `location` 是元组坐标，`str(grid)` 才是节点名
+        problems.append(f"`#C1` 应经 node2location 取到 C1 格，实际 {resolved.get('value')!r}")
+    av.op_s3_campaign_call({'name': 'record_grid', 'args': ['#grids:[C1,D1]']})
+    if not isinstance(resolved.get('value'), SelectedGrids) or len(resolved['value']) != 2:
+        problems.append(f"`#grids:[C1,D1]` 应构造 SelectedGrids，实际 {resolved.get('value')!r}")
+    av.op_s3_campaign_call({
+        'name': 'record_grid',
+        'args': ['#C1'],
+        # 道路这一段宿主按 JSON 解析，节点名带引号；层级是"道路 → block → 格子"
+        # （`[[["C1","D1"]]]` = 一条道路、一个 block、两个格子）
+        'kwargs': {'roadblocks': '#roads:[[["C1","D1"]]]'},
+    })
+    roads = resolved.get('roads')
+    if not (isinstance(roads, list) and roads and isinstance(roads[0], RoadGrids)):
+        problems.append(f"道路参数应构造 list[RoadGrids]，实际 {roads!r}")
+    # kwargs 必须按关键字传（不折算成位置参数）
+    captured: dict[str, object] = {}
+    instance.record_kwargs = lambda **kwargs: captured.update(kwargs)
+    av.op_s3_campaign_call({'name': 'record_kwargs', 'kwargs': {'preserve': 1}})
+    if captured.get('preserve') != 1:
+        problems.append(f"kwargs 应按关键字传递，实际 {captured}")
+
     # 4) CampaignEnd 走结果合同分类（替身这次出击会抛 CampaignEnd）
     ended = av.op_s3_campaign_call({'name': 'execute_a_battle', 'allow_actions': True})
     contract_fields = {'cleared', 'withdrawn', 'outcome'}

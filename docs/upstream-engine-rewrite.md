@@ -662,6 +662,32 @@ seam**——重复维护两套外驱机制违反项目纪律，**自建模块与
 **这还不能证明什么**：以上都是离线核对。真机动作层证据仍然要跑一局（而且只有 `loop=csharp` + 闸门
 才会走到这条路径）。
 
+#### 宿主调用翻译：计划步骤 → `s3_campaign_call`（`r5-calls`）
+
+C# 侧新增 `CampaignCallTranslator`（纯函数）：把计划步骤翻成"上游方法名 + 参数引用形式"，
+宿主侧对应扩展了 `s3_campaign_call` 的参数通道：
+
+| 计划里的实参 | 宿主收到的形式 | 宿主如何还原 |
+| --- | --- | --- |
+| `__grid__ {location: "C1"}` | `"#C1"` | `node2location("C1")` → `inst.map[(2, 0)]` |
+| `__grids__ [...]` | `"#grids:[C1,D1]"` | `SelectedGrids([...])` |
+| `__roads__ [[…]]` | `"#roads:[[[\"C1\",\"D1\"]], …]"` | `RoadGrids([[grid,…], …])` 组成 `list[RoadGrids]` |
+| 关键字实参（`preserve` / `scale` / `sort` / `strongest` …） | `kwargs` | **按关键字传**（不折算成位置参数） |
+| `super().X(...)` | 方法名 `X`（前缀丢弃） | 直接调基类实现 |
+
+**覆盖**：全库 **5694/5694 个步骤都能翻译，0 不支持**，涉及 **27 个上游方法**（`battle_default` 1489、
+`clear_boss` 1259、`clear_filter_enemy` 978、`clear_enemy` 402 …）。
+
+**实现过程中踩到并写进注释的四个坑**（都是实测暴露的）：
+① `JsonNode.GetValue<object>()` 报 "An element of type 'String' cannot be converted to a 'System.Object'" → 标量用 `DeepClone()`；
+② 道路参数若按 `[[C1,D1]]` 这种**非合法 JSON** 编码，宿主 `json.loads` 直接失败 → 节点名必须带引号；
+③ 层级少一层会被宿主当成字符串逐字符遍历（`invalid literal for int() with base 10: ''`）→ 明确规定"道路 → block → 格子"三层；
+④ 给 `RoadGrids` 传 `SelectedGrids` 包装会被它自己的 matched 过滤器当成格子对象报错 → 必须传**普通列表**（与上游关卡写法一致）。
+
+**对拍**：`tools/diagnostics/verify_r5_calls.py`（全库翻译零不支持 + 编码形式抽查）与
+`verify_r5_host_seam.py`（联锁、`@`/`#` 引用还原成上游对象、kwargs 按关键字传、`CampaignEnd` 走合同分类、
+`info` 只读）；均已登记进 `verify_all.py`（R5 检查现共 **13** 个）。
+
 #### `loop` 域切成 csharp 需要什么（前置清单）
 
 | 项 | 要求 | 现状 |

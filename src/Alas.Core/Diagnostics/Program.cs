@@ -414,6 +414,18 @@ public static class DiagnosticCommands
                 }
                 return CampaignLoopCheck.Run(dataDir, loopFixture);
             }
+            if (command == "r5-calls")
+            {
+                // 计划步骤 → 宿主调用（上游方法名 + 参数引用形式）的翻译核对（只读）。
+                string? callsChapter = null, callsLevel = null;
+                bool callsJson = args.Contains("--json");
+                for (int i = 1; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "--chapter") callsChapter = args[i + 1];
+                    if (args[i] == "--level") callsLevel = args[i + 1];
+                }
+                return CampaignCallCheck.Run(dataDir, callsChapter, callsLevel, callsJson);
+            }
             if (command == "r5-switch")
             {
                 // 域级开关自检：只看当前配置，不连设备、不改行为。
@@ -685,7 +697,7 @@ public static class DiagnosticCommands
                 _ => Fail($"未知命令: {command}"
                            + "（可用: verify / list / show / imaging / matching / vision / campaign / "
                            + "map / map-ir / capture / device / queue / plan-queue / report / runs / run / goto / "
-                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state / r5-run / r5-diff / r5-switch）"),
+                           + "contract / selftest-runtime / r5-plan / r5-select / r5-exec / r5-loop / r5-path / r5-shadow / r5-actions / r5-state / r5-run / r5-diff / r5-switch / r5-calls）"),
             };
         }
         catch (Exception ex)

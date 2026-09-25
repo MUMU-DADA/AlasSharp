@@ -2454,6 +2454,37 @@ def op_s3_campaign_init(args):
             'mro': [c.__name__ for c in type(inst).__mro__[:8]]}
 
 
+def _campaign_arg(instance, value):
+    """把 `s3_campaign_call` 的参数引用解析成上游对象（见调用处的三种形式）。
+
+    只用**上游自己的类**做"数据 → 对象"的构造：格子走 `instance.map[...]`，
+    多格走 `SelectedGrids`，道路走 `RoadGrids`。这里不判断地图/路线语义，那属于上游方法。
+    """
+    if not isinstance(value, str) or not value.startswith(('#', '@')):
+        return value
+    if value.startswith('@'):
+        return getattr(instance, value[1:])
+    from module.base.utils import node2location      # 上游把 `C1` 转成 `(2, 0)`；`map[...]` 只认元组
+    from module.map.map_grids import RoadGrids, SelectedGrids
+
+    def grid_of(node):
+        return instance.map[node2location(str(node).strip())]
+
+    body = value[1:]
+    if body.startswith('grids:'):
+        nodes = [item for item in body[len('grids:'):].strip('[]').split(',') if item.strip()]
+        return SelectedGrids([grid_of(node) for node in nodes])
+    if body.startswith('roads:'):
+        payload = json.loads(body[len('roads:'):])
+        roads = []
+        for road in payload:
+            # 每个 block 用**普通列表**（上游关卡里就是 `RoadGrids([[A2, B1], [B3, C4]])` 这种写法；
+            # 传 `SelectedGrids` 包装会被 `RoadGrids` 的 matched 过滤器当成格子对象而报错——实测踩过）
+            roads.append(RoadGrids([[grid_of(node) for node in block] for block in road]))
+        return roads
+    return grid_of(body)
+
+
 def op_s3_campaign_info(args):
     """报告当前 Campaign 实例的状态（只读，不碰游戏状态）。"""
     inst = _CAMPAIGN.get('obj')
@@ -2539,20 +2570,31 @@ def op_s3_campaign_call(args):
         return {'error': f'取不到 {name}: {type(e).__name__}: {e}'}
     if not callable(fn):
         return {'name': name, 'callable': False, 'value': json_default(fn)}
-    # `@name` 形式的参数解析成实例属性（例如 enter_map 需要 self.ENTRANCE 这种对象，
-    # JSON 传不过来）。这是给"调用上游方法"留的必要通道，不做任何游戏状态改写。
+    # 参数引用通道（JSON 传不过来的对象靠这三种形式表达，全部只做"数据 → 上游对象"的构造，
+    # 不改写游戏状态、也不复制上游逻辑）：
+    #   `@name`             → 实例属性（如 `@ENTRANCE`）
+    #   `#<节点>`           → 地图上的格子对象（如 `#C1`）
+    #   `#grids:[...]`      → `SelectedGrids`（如 `#grids:[C1,C2]`）
+    #   `#roads:[[..],[..]]`→ `RoadGrids`（每个内层列表是一个 block；上游 `clear_roadblocks` 要的是
+    #                         `list[RoadGrids]`，用上游自己的类重建，不在宿主里另写一份道路语义）
     raw_args = args.get('args') or []
+    raw_kwargs = args.get('kwargs') or {}
     call_args = []
-    for a in raw_args:
-        if isinstance(a, str) and a.startswith('@'):
-            call_args.append(getattr(inst, a[1:]))
-        else:
-            call_args.append(a)
+    call_kwargs = {}
+    try:
+        for a in raw_args:
+            call_args.append(_campaign_arg(inst, a))
+        # 关键字实参**按关键字传**（Python 调用语义本来就是关键字）：不折算成位置参数，
+        # 否则等于替上游假设参数顺序。
+        for key, value in raw_kwargs.items():
+            call_kwargs[str(key)] = _campaign_arg(inst, value)
+    except Exception as e:
+        return {'error': f'参数引用解析失败: {type(e).__name__}: {e}', 'stage': 'resolve_args'}
     t0 = time.time()
     from s3_campaign_outcome import observe_battle_result, classify_campaign_end
     try:
         with observe_battle_result(inst) as _result_evidence:
-            value = fn(*call_args)
+            value = fn(*call_args, **call_kwargs)
     except Exception as e:
         # CampaignEnd also comes from withdraw() -> handle_in_stage(). Preserve
         # its execution source; returning to the stage page alone is not a win.
