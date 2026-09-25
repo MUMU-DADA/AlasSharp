@@ -139,7 +139,9 @@
 1. 224 条未完整表达的覆写——需决定扩展导出器（把条件/赋值也数据化）还是在 C# 侧用"原语 + 条件表达式"实现；
 2. 6 个缺失配置字段——逐个确认来源：`SERVER`、`Campaign_Name` 属运行时/派生；`override` 需确认是否方法名误判；
 3. 173 个非 `battles` 钩子——确认覆盖或补导出；
-4. 上述三项完成后重跑 `tools/diagnostics/r5_upstream_audit.py` 复核。
+4. **导出器 `dead_code` 未记录死代码调用**：`event_20211028_tw/c3.json` 与 `d1.json` 的 `battle_0` 里重复的
+   `return self.battle_default()` 被 `calls` 收了两次（`steps` 正确只保留一次），导致轨迹对拍出现 2 个例外；
+5. 上述四项完成后重跑 `tools/diagnostics/r5_upstream_audit.py` 复核。
 
 #### P1 关键发现：导出的 `steps` 就是可执行计划（DSL 面已具备）
 
@@ -162,10 +164,13 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 代码 | `src/Alas.Core/Campaign/CampaignPlan.cs`（关卡计划模型 + 读取器 + 统计）、`src/Alas.Core/Diagnostics/CampaignPlanCheck.cs`（只读命令） |
-| 命令 | `Alas.Server r5-plan`（全部章节概览）/ `r5-plan <章节>`（章节明细 + DSL 统计）/ `r5-plan <章节> --level <关卡>`（单关卡计划，逐步骤列出 `kind`/`op`/实参） |
+| 代码 | `src/Alas.Core/Campaign/CampaignPlan.cs`（关卡计划模型 + 读取器 + 统计 + **计划解释器**）、`src/Alas.Core/Diagnostics/CampaignPlanCheck.cs`（只读命令） |
+| 命令 | `Alas.Server r5-plan`（全部章节概览 + 全库轨迹对拍）/ `r5-plan <章节>`（章节明细、DSL 统计、轨迹对拍）/ `r5-plan <章节> --level <关卡>`（单关卡逐步骤计划，`kind`/`op`/实参 + 与 `calls` 的一致性标记） |
+| 解释器 | `CampaignPlanInterpreter`：把 `steps` 按类型分流为**无条件**（`terminal`/`call`，C# 可直接执行）、**条件**（`conditional`，待条件求值）、**委托**（`super_delegate`，由父类承担），并标记未求值实参（`"<expr>"`） |
+| 对拍不变量 | 除 `super_delegate` 外，`steps.op` 序列应等于导出器的 `calls`：实测 **一致 2793 / 不一致 2 / steps 为空 224**（合计 3019） |
+| 例外根因 | 那 2 个例外来自上游源码里的死代码（重复的 `return self.battle_default()`）：`calls` 收了两次、`steps` 正确地只保留一次；导出器的 `dead_code` 字段未记录该处 → 已列入 P1 待办 |
 | 只读保证 | 不执行关卡、不导入游戏代码、不连设备；生产战役仍走上游 `CampaignRun.load_campaign()` + 原生 `Campaign.run()` |
-| 对拍证据 | C# 统计与 Python 审计完全一致：**1437 个关卡导出 / 3019 个钩子 / 可表达 2795（92.6%）**，且无读取失败 |
+| 跨语言对拍 | C# 与 Python 审计一致：**1437 个关卡导出 / 3019 个钩子 / 可表达 2795（92.6%）**，无读取失败 |
 | 构建 | `dotnet build Alas.sln -c Release`：0 警告 0 错误 |
 
 每个切片必须齐四样，缺一不算完成：

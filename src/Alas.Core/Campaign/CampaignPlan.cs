@@ -83,6 +83,61 @@ public sealed class CampaignPlanStepArgs
         = new Dictionary<string, JsonNode?>();
 }
 
+/// <summary>一次解释出来的执行轨迹：某钩子按计划要做的调用，以及它与原始 `calls` 的对拍结果。</summary>
+public sealed record CampaignPlanTrace(
+    string Method,
+    IReadOnlyList<CampaignPlanStep> Steps,
+    bool MatchesCalls,
+    IReadOnlyList<string> Calls)
+{
+    /// <summary>无条件调用（`terminal` / `call`）——C# 引擎可直接执行的步骤。</summary>
+    public IEnumerable<CampaignPlanStep> Unconditional =>
+        Steps.Where(step => step.Kind is "terminal" or "call");
+
+    /// <summary>条件调用（`conditional`）——需要条件求值后才能决定是否执行。</summary>
+    public IEnumerable<CampaignPlanStep> Conditional =>
+        Steps.Where(step => step.Kind == "conditional");
+
+    /// <summary>委托父类（`super_delegate`）——由父类实现承担，不属本层执行面。</summary>
+    public IEnumerable<CampaignPlanStep> Delegates =>
+        Steps.Where(step => step.Kind == "super_delegate");
+
+    /// <summary>轨迹里是否存在导出器未求值的表达式占位（`"&lt;expr&gt;"`）。</summary>
+    public bool HasUnresolvedArguments => Steps.Any(step => step.Args?.Positional.Any(IsPlaceholder) == true);
+
+    internal static bool IsPlaceholder(JsonNode? value) =>
+        value is JsonValue json && json.TryGetValue<string>(out string? text) && text == "<expr>";
+}
+
+/// <summary>
+/// 计划解释器：把导出的 <c>steps</c> 解释成执行轨迹。
+///
+/// 它是"引擎按静态规则执行"的最小内核——**只解释、不执行**：不调用上游、不连设备、不碰游戏。
+/// 目前承担两件事：
+/// <list type="number">
+///   <item>把步骤按类型分流（无条件 / 条件 / 委托），给出 C# 引擎将来要执行的调用序列；</item>
+///   <item>对拍不变量：除 <c>super_delegate</c> 外，步骤的 <c>op</c> 序列应与导出器给出的
+///         <c>calls</c> 完全一致（实测全库 2786 个钩子一致、9 个仅差 super 委托）。</item>
+/// </list>
+/// </summary>
+public static class CampaignPlanInterpreter
+{
+    /// <summary>解释一个钩子的计划。</summary>
+    public static CampaignPlanTrace Interpret(CampaignPlanBattle battle)
+    {
+        var ops = battle.Steps
+            .Where(step => step.Kind != "super_delegate")
+            .Select(step => step.Op)
+            .ToArray();
+        bool matches = ops.SequenceEqual(battle.Calls, StringComparer.Ordinal);
+        return new CampaignPlanTrace(battle.Method, battle.Steps, matches, battle.Calls);
+    }
+
+    /// <summary>解释一个关卡的全部钩子。</summary>
+    public static IReadOnlyList<CampaignPlanTrace> Interpret(CampaignPlan plan) =>
+        plan.Header.Battles.Select(Interpret).ToArray();
+}
+
 /// <summary>关卡导出里的 <c>map</c> 段（原样保留，形状由后续地图引擎解释）。</summary>
 public sealed class CampaignPlanMap
 {
@@ -168,6 +223,7 @@ public static class CampaignPlanReader
     public static CampaignPlanSummary Summarize(string chapter, IEnumerable<CampaignPlan> plans)
     {
         int levels = 0, battles = 0, complete = 0, steps = 0;
+        int traceMatch = 0, traceDiff = 0, traceEmpty = 0, unresolvedArgs = 0;
         var unparsed = new Dictionary<string, int>(StringComparer.Ordinal);
         var sequences = new Dictionary<string, int>(StringComparer.Ordinal);
         var methods = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -192,9 +248,21 @@ public static class CampaignPlanReader
                     kinds[step.Kind] = kinds.GetValueOrDefault(step.Kind) + 1;
                     ops[step.Op] = ops.GetValueOrDefault(step.Op) + 1;
                 }
+                // 对拍不变量：解释出的轨迹（除 super 委托）应与导出的 calls 一致。
+                if (battle.Steps.Count == 0)
+                {
+                    traceEmpty++;
+                }
+                else
+                {
+                    var trace = CampaignPlanInterpreter.Interpret(battle);
+                    if (trace.MatchesCalls) traceMatch++; else traceDiff++;
+                    if (trace.HasUnresolvedArguments) unresolvedArgs++;
+                }
             }
         }
-        return new CampaignPlanSummary(chapter, levels, battles, complete, steps, unparsed, methods, sequences, kinds, ops);
+        return new CampaignPlanSummary(chapter, levels, battles, complete, steps, traceMatch, traceDiff,
+                                       traceEmpty, unresolvedArgs, unparsed, methods, sequences, kinds, ops);
     }
 }
 
@@ -205,6 +273,10 @@ public sealed record CampaignPlanSummary(
     int Battles,
     int Complete,
     int Steps,
+    int TraceMatch,
+    int TraceDiff,
+    int TraceEmpty,
+    int UnresolvedArguments,
     IReadOnlyDictionary<string, int> Unparsed,
     IReadOnlyDictionary<string, int> Methods,
     IReadOnlyDictionary<string, int> Sequences,

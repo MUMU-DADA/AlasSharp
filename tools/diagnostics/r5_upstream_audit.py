@@ -335,12 +335,13 @@ def audit_export_coverage(engine: pathlib.Path) -> dict:
 
 
 def audit_plan_dsl() -> dict:
-    """导出里的可执行计划（campaign.battles[].steps）面：步骤类型、原语集合、实参形态。"""
+    """导出里的可执行计划（campaign.battles[].steps）面：步骤类型、原语集合、实参形态、轨迹对拍。"""
     data_root = ROOT / "data" / "campaign"
     kinds: collections.Counter = collections.Counter()
     ops: collections.Counter = collections.Counter()
     positional: collections.Counter = collections.Counter()
-    battles = with_steps = steps = 0
+    battles = with_steps = steps = trace_match = trace_diff = 0
+    exceptions: list[str] = []
     for path in data_root.rglob("*.json") if data_root.is_dir() else []:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -351,14 +352,27 @@ def audit_plan_dsl() -> dict:
             plan = entry.get("steps") or []
             if plan:
                 with_steps += 1
+            else:
+                continue
             for step in plan:
                 steps += 1
                 kinds[step.get("kind")] += 1
                 ops[step.get("op")] += 1
                 for value in ((step.get("args") or {}).get("positional")) or []:
                     positional[str(value)] += 1
+            # 对拍不变量：除 super_delegate 外，步骤 op 序列应与导出的 calls 一致。
+            plan_ops = [step.get("op") for step in plan if step.get("kind") != "super_delegate"]
+            if plan_ops == list(entry.get("calls") or []):
+                trace_match += 1
+            else:
+                trace_diff += 1
+                if len(exceptions) < 5:
+                    exceptions.append(
+                        f"{path.relative_to(data_root)}::{entry.get('method')} "
+                        f"calls={entry.get('calls')} steps={plan_ops}")
     return {"battles": battles, "with_steps": with_steps, "steps": steps,
-            "kinds": kinds, "ops": ops, "positional": positional}
+            "kinds": kinds, "ops": ops, "positional": positional,
+            "trace_match": trace_match, "trace_diff": trace_diff, "exceptions": exceptions}
 
 
 def render(engine: pathlib.Path) -> str:
@@ -586,6 +600,19 @@ def render(engine: pathlib.Path) -> str:
     add("")
     add("> C# 侧读取这一层的产品代码：`src/Alas.Core/Campaign/CampaignPlan.cs` + 只读命令 "
         "`Alas.Server r5-plan`（统计口径与本报告一致，可跨语言对拍）。")
+    add("")
+    add("### 轨迹对拍（计划 vs 原始调用列表）")
+    add("")
+    add(f"不变量：除 `super_delegate` 外，`steps.op` 序列应等于导出器给出的 `calls`。")
+    add(f"实测 **一致 {dsl['trace_match']} / 不一致 {dsl['trace_diff']} / steps 为空 "
+        f"{dsl['battles'] - dsl['with_steps']}**（合计 {dsl['battles']}）。")
+    if dsl["exceptions"]:
+        add("")
+        add("例外（上游源码里的死代码：重复的 `return self.battle_default()`——`calls` 收了两次，")
+        add("`steps` 正确地只保留一次；导出器的 `dead_code` 字段未记录该处）：")
+        add("")
+        for item in dsl["exceptions"]:
+            add(f"- `{item}`")
     add("")
     return "\n".join(out)
 

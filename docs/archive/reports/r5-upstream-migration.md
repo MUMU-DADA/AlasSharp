@@ -359,3 +359,14 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 
 > C# 侧读取这一层的产品代码：`src/Alas.Core/Campaign/CampaignPlan.cs` + 只读命令 `Alas.Server r5-plan`（统计口径与本报告一致，可跨语言对拍）。
 
+### 轨迹对拍（计划 vs 原始调用列表）
+
+不变量：除 `super_delegate` 外，`steps.op` 序列应等于导出器给出的 `calls`。
+实测 **一致 2793 / 不一致 2 / steps 为空 224**（合计 3019）。
+
+例外（上游源码里的死代码：重复的 `return self.battle_default()`——`calls` 收了两次，
+`steps` 正确地只保留一次；导出器的 `dead_code` 字段未记录该处）：
+
+- `event_20211028_tw\c3.json::battle_0 calls=['clear_siren', 'clear_enemy', 'battle_default', 'battle_default'] steps=['clear_siren', 'clear_enemy', 'battle_default']`
+- `event_20211028_tw\d1.json::battle_0 calls=['clear_siren', 'clear_enemy', 'battle_default', 'battle_default'] steps=['clear_siren', 'clear_enemy', 'battle_default']`
+

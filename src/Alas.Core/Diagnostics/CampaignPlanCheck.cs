@@ -40,7 +40,7 @@ internal static class CampaignPlanCheck
             Console.WriteLine($"[口径   ] plan_complete = 该钩子能完整表达为静态调用序列");
             Console.WriteLine();
             Console.WriteLine($"{"章节",-26}{"关卡",-6}{"钩子",-6}{"可表达",-8}{"未表达",-8}可表达率");
-            int levels = 0, battles = 0, complete = 0;
+            int levels = 0, battles = 0, complete = 0, traceMatch = 0, traceDiff = 0, traceEmpty = 0;
             var allFailures = new List<string>();
             foreach (string name in chapters)
             {
@@ -51,12 +51,17 @@ internal static class CampaignPlanCheck
                 levels += summary.Levels;
                 battles += summary.Battles;
                 complete += summary.Complete;
+                traceMatch += summary.TraceMatch;
+                traceDiff += summary.TraceDiff;
+                traceEmpty += summary.TraceEmpty;
                 Console.WriteLine($"{summary.Chapter,-26}{summary.Levels,-6}{summary.Battles,-6}" +
                                   $"{summary.Complete,-8}{summary.Battles - summary.Complete,-8}{summary.CompleteRate:P1}");
             }
             Console.WriteLine();
             Console.WriteLine($"[合计   ] {chapters.Count} 章 / {levels} 关卡导出 / {battles} 个钩子，" +
                               $"可表达 {complete}（{(battles == 0 ? 1 : (double)complete / battles):P1}）");
+            Console.WriteLine($"[轨迹对拍] 与 calls 一致 {traceMatch} / 不一致 {traceDiff} / " +
+                              $"steps 为空 {traceEmpty}（合计 {traceMatch + traceDiff + traceEmpty}）");
             if (allFailures.Count > 0)
             {
                 Console.WriteLine($"[警告   ] {allFailures.Count} 个关卡导出读不出，前 3 条：");
@@ -90,14 +95,24 @@ internal static class CampaignPlanCheck
             Console.WriteLine($"[完整性 ] 类级 plan_complete = {plan.Header.PlanComplete}，" +
                               $"钩子 {plan.Header.Battles.Count} 个，Config 键 {plan.Config.Count} 个");
             Console.WriteLine();
-            foreach (var battle in plan.Header.Battles)
+            var traces = CampaignPlanInterpreter.Interpret(plan);
+            Console.WriteLine($"[轨迹   ] {traces.Count} 个钩子，" +
+                              $"与 calls 一致 {traces.Count(trace => trace.MatchesCalls && trace.Steps.Count > 0)}，" +
+                              $"steps 为空 {traces.Count(trace => trace.Steps.Count == 0)}");
+            foreach (var trace in traces)
             {
+                var battle = plan.Header.Battles.First(item => item.Method == trace.Method);
                 string state = battle.PlanComplete ? "可表达" : "未表达";
+                string mark = trace.Steps.Count == 0 ? "—" : trace.MatchesCalls ? "✓" : "✗";
                 string calls = battle.Calls.Count == 0 ? "（无原语调用）" : string.Join(" → ", battle.Calls);
-                Console.WriteLine($"  {battle.Method,-22}{state,-8}语句 {battle.StatementCount,-4}{calls}");
+                string counts = trace.Steps.Count == 0
+                    ? ""
+                    : $"  无条件 {trace.Unconditional.Count()} / 条件 {trace.Conditional.Count()} / " +
+                      $"委托 {trace.Delegates.Count()}";
+                Console.WriteLine($"  {mark} {battle.Method,-22}{state,-8}语句 {battle.StatementCount,-4}{calls}{counts}");
                 if (battle.Unparsed.Count > 0)
                 {
-                    Console.WriteLine($"  {"",-22}{"",-8}未表达原因：{string.Join(", ", battle.Unparsed)}");
+                    Console.WriteLine($"  {"",-2}{"",-22}{"",-8}未表达原因：{string.Join(", ", battle.Unparsed)}");
                 }
                 foreach (var step in battle.Steps)
                 {
@@ -117,6 +132,9 @@ internal static class CampaignPlanCheck
         Console.WriteLine();
         Console.WriteLine($"[计划步 ] {chapterSummary.Steps} 步 / {chapterSummary.Ops.Count} 个原语 / " +
                           $"{chapterSummary.Kinds.Count} 种步骤类型");
+        Console.WriteLine($"[轨迹对拍] 与 calls 一致 {chapterSummary.TraceMatch} / " +
+                          $"不一致 {chapterSummary.TraceDiff} / steps 为空 {chapterSummary.TraceEmpty} / " +
+                          $"含未求值实参 {chapterSummary.UnresolvedArguments}");
         Console.WriteLine("[步骤类型]");
         foreach (var (kind, count) in chapterSummary.Kinds.OrderByDescending(pair => pair.Value))
         {
