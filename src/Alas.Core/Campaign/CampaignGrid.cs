@@ -244,6 +244,7 @@ public sealed record CampaignGridFilter(
     bool? IsSubmarine = null,
     bool? IsCurrentFleet = null,
     bool? IsFlare = null,
+    bool? MayAmbush = null,
     bool? IsCaughtBySiren = null,
     bool? IsFleet = null,
     bool? IsCleared = null,
@@ -275,6 +276,7 @@ public sealed record CampaignGridFilter(
         (IsSubmarine is null || grid.IsSubmarine == IsSubmarine) &&
         (IsCurrentFleet is null || grid.IsCurrentFleet == IsCurrentFleet) &&
         (IsFlare is null || grid.IsFlare == IsFlare) &&
+        (MayAmbush is null || grid.MayAmbush == MayAmbush) &&
         (IsCaughtBySiren is null || grid.IsCaughtBySiren == IsCaughtBySiren) &&
         (IsFleet is null || grid.IsFleet == IsFleet) &&
         (IsCleared is null || grid.IsCleared == IsCleared) &&

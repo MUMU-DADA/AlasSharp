@@ -43,7 +43,7 @@ PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss",
               "clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks",
               "pick_up_ammo", "fleet_2_push_forward", "fleet_2_protect", "brute_clear_boss",
               "brute_fleet_meet", "clear_potential_boss", "clear_filter_enemy",
-              "pick_up_flare", "check_accessibility"]
+              "pick_up_flare", "check_accessibility", "map_select"]
 
 # 曾经把 `brute_clear_boss` 当成"已知差异"排除在外，理由是"路障子集选择不同"。**那是误判**：
 # 真正的原因是诊断命令缺 `primitive_brute_clear_boss` 分派，静默落进了"选一个敌人"的默认分支。
@@ -52,6 +52,22 @@ KNOWN_DIVERGENCE: list[str] = []      # 13 种原语现已全部纳入；曾误�
 ROADBLOCK_PRIMITIVES = {"clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks"}
 # 收**一个格子参数**的原语（`pick_up_flare(grid)` / `fleet_2_rescue(grid)`）：对拍时两侧用同一个目标格
 GRID_ARGUMENT_PRIMITIVES = {"pick_up_flare", "fleet_2_rescue", "check_accessibility"}
+# `map.select(**flags)` 的返回值是**格子集合**，没有设备动作：对拍时比整份集合，而不是"第一个动作"
+MAP_SELECT_PRIMITIVES = {"map_select"}
+MAP_SELECT_FLAGS = [
+    {"is_enemy": True},
+    {"is_boss": True},
+    {"may_boss": True},
+    {"is_siren": True},
+    {"is_ammo": True},
+    {"is_enemy": False},
+    {"is_land": True},
+    {"is_cleared": True},
+    {"is_fleet": True},
+    {"may_ambush": True},
+    {"is_land": True, "is_cleared": True},
+    {"is_boss": True, "is_siren": True},
+]
 
 # **默认不跑的原语**：`fleet_2_rescue` 会走 `brute_find_roadblocks`，而上游那套枚举**没有上限**
 # （`itertools.product` 按敌人数指数增长），在敌人多的随机状态上能把扫描拖到分钟级甚至更久。
@@ -95,6 +111,9 @@ def build_cases(states: int, seed: int, primitives: list[str] | None = None) -> 
                     "is_fortress": rng.random() < 0.1,
                     "is_caught_by_siren": rng.random() < 0.1,
                     "may_ammo": rng.random() < 0.25,
+                    # 上游地图数据全是 `--`：`decode()` 后 may_* 全假、`may_ambush = not(...) = 真`。
+                    # 夹具必须镜像这个推导结果，否则 `map.select(may_ambush=True)` 这类对拍会假红（实测踩过）。
+                    "may_ambush": True,
                     "enemy_scale": rng.choice([1, 2, 3]),
                     "enemy_genre": rng.choice(GENRES),
                     "weight": rng.choice([0, 10, 20, 30, 40, 50, 60, 70, 80, 90]),
@@ -121,6 +140,9 @@ def build_cases(states: int, seed: int, primitives: list[str] | None = None) -> 
                     "fleet_current_index": 1,
                     **config,
                 }
+                if kind in MAP_SELECT_PRIMITIVES:
+                    # 每种配置换一组筛选标志（覆盖 True/False、单键/多键）
+                    case["flags"] = MAP_SELECT_FLAGS[config_index % len(MAP_SELECT_FLAGS)]
                 if kind == "check_accessibility":
                     case["target"] = max(grids, key=lambda item: (item["weight"], item["location"]))["location"]
                     case["fleet"] = ["", "1", "2", "boss"][config_index % 4]
@@ -291,6 +313,10 @@ class RecordingStub:
         return self.fleet_2_location if self.fleet_current_index == 2 else self.fleet_1_location
 
 
+# `map_select` 的上游选中集合（用例名 → 位置列表）：它没有设备动作，比的是整份集合
+upstream_selection: dict[str, list[str]] = {}
+
+
 def upstream_target(case: dict) -> tuple[str | None, bool | None]:
     if str(UPSTREAM) not in sys.path:
         sys.path.insert(0, str(UPSTREAM))
@@ -369,6 +395,14 @@ def upstream_target(case: dict) -> tuple[str | None, bool | None]:
     for grid in case["grids"]:
         info = campaign_map[tuple((ord(grid["location"][0]) - 65, int(grid["location"][1:]) - 1))]
         costs[grid["location"]] = (int(info.cost), int(info.cost_1), int(info.cost_2))
+    # `map_select` 不是 `Map`/关卡基类上的方法（它是 `CampaignMap.select`），单独处理，放在取方法之前
+    if case["kind"].replace("primitive_", "") in MAP_SELECT_PRIMITIVES:
+        selected = stub.map.select(**case["flags"])
+        upstream_selection[case["name"]] = sorted(str(grid) for grid in selected)
+        target = next((location for name, location in stub.calls
+                       if name in ("clear_chosen_enemy", "goto")), None)
+        return target, bool(selected), costs, normalize_upstream(stub.calls)
+
     method = getattr(Map, case["kind"].replace("primitive_", ""), None)
     if method is None:
         # 少数原语是**关卡基类 helper**（不在 `Map` 上）：`pick_up_flare` / `pick_up_light_house`
@@ -394,6 +428,10 @@ def upstream_target(case: dict) -> tuple[str | None, bool | None]:
             result = method(stub, grid, case.get("fleet") or None)
         else:
             result = method(stub, grid)
+    elif case["kind"].replace("primitive_", "") in MAP_SELECT_PRIMITIVES:
+        selected = stub.map.select(**case["flags"])
+        upstream_selection[case["name"]] = sorted(str(grid) for grid in selected)
+        result = bool(selected)
     elif case["kind"] == "primitive_clear_filter_enemy":
         # 上游 `clear_filter_enemy(string, preserve=0)`：过滤器串用库里的真实用法（最常见那条），
         # preserve 由用例给出（0/1 各半），把"保留最弱若干个"这条路径也覆盖到。
@@ -551,6 +589,7 @@ def main() -> int:
     set_order: list[tuple[str, str, str]] = []
     compared = 0
     sequence_compared = sequence_identical = 0
+    selection_compared = selection_identical = 0
     for case in cases:
         result = results.get(case["name"])
         if result is None:
@@ -560,6 +599,18 @@ def main() -> int:
             continue                                   # 上游侧跳过过，如实计入 skipped
         expected, expected_sequence = expected_by_name[case["name"]]
         compared += 1
+
+        # `map_select`：比**整份选中集合**（它没有设备动作，比不了"动作序列"）
+        if case["kind"].replace("primitive_", "") in MAP_SELECT_PRIMITIVES:
+            want = upstream_selection.get(case["name"]) or []
+            got = sorted(result.get("selected_all") or [])
+            selection_compared += 1
+            if got == want:
+                selection_identical += 1
+            else:
+                mismatches.append((case["name"], f"map.select({case.get('flags')})",
+                                   f"C# {got} vs 上游 {want}"))
+            continue
 
         # **整条动作序列**对拍（比"只看第一个目标"强：能抓到"打完又去踩 may_boss"这类后续动作）。
         actual_sequence = normalize_csharp(result.get("actions"))
@@ -610,6 +661,7 @@ def main() -> int:
              f"- 状态数：**{options.states}**（seed={options.seed}，每种状态 × {len(PRIMITIVES)} 原语 × {len(CONFIGS)} 配置）",
              f"- 用例数：**{len(cases)}**；实际比较 **{compared}**",
              f"- 不一致：**{len(mismatches)}**",
+             f"- **`map.select` 集合对拍**：比较 {selection_compared} 条，完全相同 {selection_identical}",
              f"- **动作序列对拍**：比较 {sequence_compared} 条，完全相同 {sequence_identical}；"
              f"干跑前缀（有意偏离）{len(dry_run_prefix)} 条；"
              f"集合序伪影（只在 `submarine_move_near_boss` 实参上不同）{len(set_order)} 条；"

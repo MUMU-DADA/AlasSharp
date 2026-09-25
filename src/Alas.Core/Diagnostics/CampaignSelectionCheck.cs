@@ -93,6 +93,7 @@ internal static class CampaignSelectionCheck
                 case "primitive_pick_up_flare":
                 case "primitive_fleet_2_rescue":
                 case "primitive_check_accessibility":
+                case "primitive_map_select":
                     var config = new CampaignRuntimeConfig(
                         EnemyPriority: testCase.EnemyPriority,
                         MapClearAllThisTime: testCase.MapClearAllThisTime,
@@ -116,6 +117,7 @@ internal static class CampaignSelectionCheck
                         "primitive_pick_up_ammo" => CampaignPrimitives.PickUpAmmo(host),
                         "primitive_fleet_2_push_forward" => CampaignPrimitives.Fleet2PushForward(host),
                         "primitive_fleet_2_protect" => CampaignPrimitives.Fleet2Protect(host),
+                        "primitive_map_select" => RunMapSelect(host, testCase, grids),
                         "primitive_check_accessibility" =>
                             CampaignPrimitives.CheckAccessibility(host, TargetGrid(grids, testCase),
                                                                   testCase.Fleet),
@@ -166,6 +168,9 @@ internal static class CampaignSelectionCheck
                 ["selected_str"] = decision.Target?.FilterKey,
                 ["actions"] = actions,
                 ["logs"] = logs,
+                ["selected_all"] = TestCaseSelection.TryGetValue(testCase.Name, out var all) && all.Count > 0
+                    ? new JsonArray(all.Select(item => (JsonNode)item!).ToArray())
+                    : null,
                 ["unsupported"] = decision.Unsupported,
             });
             }
@@ -206,6 +211,22 @@ internal static class CampaignSelectionCheck
         return grids.Grids.FirstOrDefault(grid => grid.Location == testCase.Target)
                ?? throw new ArgumentException($"用例 {testCase.Name} 的 target {testCase.Target} 不在 grids 里");
     }
+
+    /// <summary>
+    /// `map_select`：跑 C# 的 `MapSelect`（上游 `CampaignMap.select(**kwargs)` 的移植），
+    /// 把**整份选中集合**作为结论报出（这类原语没有设备动作，比不了"动作序列"）。
+    /// </summary>
+    private static bool RunMapSelect(RecordingCampaignHost host, SelectionCase testCase, CampaignGridSet grids)
+    {
+        var flags = (testCase.Flags ?? new Dictionary<string, bool>())
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        var selected = CampaignPrimitives.MapSelect(host, flags);
+        TestCaseSelection[testCase.Name] = selected.Grids.Select(grid => grid.Location).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        return !selected.IsEmpty;
+    }
+
+    /// <summary>`map_select` 的选中集合（用例名 → 位置列表），输出时一并带上。</summary>
+    private static readonly Dictionary<string, IReadOnlyList<string>> TestCaseSelection = new(StringComparer.Ordinal);
 
     private static CampaignGrid Grid(SelectionGrid grid) => new(
         grid.Location ?? "",
@@ -283,6 +304,9 @@ internal static class CampaignSelectionCheck
 
         /// <summary>`check_accessibility(grid, fleet=…)` 的 fleet（空 / "1" / "2" / "boss"）。</summary>
         [JsonPropertyName("fleet")] public string? Fleet { get; init; }
+
+        /// <summary>`map_select` 的筛选标志（如 `{"is_boss": true}`），对应上游 `map.select(**kwargs)`。</summary>
+        [JsonPropertyName("flags")] public Dictionary<string, bool>? Flags { get; init; }
 
         /// <summary>路段：`roads[road][block] = [节点名…]`（与上游 `RoadGrids` 同构）。</summary>
         [JsonPropertyName("roads")] public List<List<List<string>>>? Roads { get; init; }

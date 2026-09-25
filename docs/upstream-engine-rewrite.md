@@ -50,7 +50,7 @@
 | 宿主调用翻译 | 全库 **5796** 步（含新分支体） | **5796/5796 可翻译，0 不支持**；7 条实参是**运行期解析**（`__local__`/`__param__`，执行器调用前替换） | `verify_r5_calls.py` |
 | 目标选择（过滤 DSL） | 200 个随机状态 × 2166 例 | 与上游 `Filter` **不一致 0**（真实过滤器串 + 两个优先级预设 + preserve） | [选择扫描](archive/reports/r5-selection-sweep.md) |
 | 目标选择（分支） | 120 个随机状态 × 1680 例 | 与上游 `Map.select_grids` **不一致 0**（`nearby`/`is_accessible`/`scale`·`genre` 无序 vs 有序/`strongest`/`weakest`/`sort` 多键） | [分支扫描](archive/reports/r5-selectgrids-sweep.md) |
-| 复合原语（**动作序列级**） | 20 个随机状态 × **16 原语** × 12 配置 / 3821 例 | 与上游**真实方法**（清敌/过滤敌/movable 委托/塞壬/boss/`brute_clear_boss`/`brute_fleet_meet`/`clear_potential_boss`/路段三变体/弹药/2 队推进与护航）**不一致 0**；序列完全相同 3265、干跑前缀 4（有意偏离）、集合序伪影 44 + 等价位 6、切舰队记录时机差异 28；19 处跳过是上游自身越界 | [复合扫描](archive/reports/r5-composite-sweep.md) |
+| 复合原语（**动作序列级**） | 20 个随机状态 × **17 原语** × 12 配置 / 4061 例 | 与上游**真实方法**（清敌/过滤敌/movable 委托/塞壬/boss/**`map.select` 集合**/`brute_clear_boss`/`brute_fleet_meet`/`clear_potential_boss`/路段三变体/弹药/2 队推进与护航）**不一致 0**；序列完全相同 3265、干跑前缀 4（有意偏离）、集合序伪影 44 + 等价位 6、切舰队记录时机差异 28；19 处跳过是上游自身越界 | [复合扫描](archive/reports/r5-composite-sweep.md) |
 | 历史运行日志 | 4 段 / 17 轮出击 | 决策层一致 17/17 | [日志扫描](archive/reports/r5-log-sweep.md) |
 | 真机帧 | 6 帧（4 帧可识别） | 识别 → 状态 → 循环 → 两宿主序列一致 | [帧扫描](archive/reports/r5-frame-sweep.md) |
 | 不完整钩子普查 | 3019 个钩子条目 / **171** 个"有真实语句但不完整"（`battle_*` **122**） | 按 `if` 形态分类 + **棘轮基线 122**（只许下降） | [不完整钩子](archive/reports/r5-incomplete-hooks.md) |

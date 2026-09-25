@@ -332,10 +332,20 @@ public static class CampaignPrimitives
     /// </summary>
     public static CampaignGridSet MapSelect(ICampaignPrimitiveHost host, CampaignPlanStep step)
     {
-        var filter = new CampaignGridFilter();
+        var flags = new Dictionary<string, bool>(StringComparer.Ordinal);
         foreach (var (key, value) in step.Args?.Keyword ?? new Dictionary<string, JsonNode?>())
         {
-            bool expected = value is JsonValue json && json.TryGetValue<bool>(out bool parsed) && parsed;
+            flags[key] = value is JsonValue json && json.TryGetValue<bool>(out bool parsed) && parsed;
+        }
+        return MapSelect(host, flags);
+    }
+
+    /// <summary>同上，但直接吃"标志 → 真假"的字典（诊断命令与对拍用）。</summary>
+    public static CampaignGridSet MapSelect(ICampaignPrimitiveHost host, IReadOnlyDictionary<string, bool> flags)
+    {
+        var filter = new CampaignGridFilter();
+        foreach (var (key, expected) in flags)
+        {
             filter = key switch
             {
                 "is_enemy" => filter with { IsEnemy = expected },
@@ -355,6 +365,10 @@ public static class CampaignPrimitives
                 "may_siren" => filter with { MaySiren = expected },
                 "may_mystery" => filter with { MayMystery = expected },
                 "may_ammo" => filter with { MayAmmo = expected },
+                "may_ambush" => filter with { MayAmbush = expected },
+                "may_bouncing_enemy" => filter with { MayBouncingEnemy = expected },
+                "is_land" => filter with { IsLand = expected },
+                "is_mechanism_block" => filter with { IsMechanismBlock = expected },
                 _ => throw new NotSupportedException(
                     $"map.select 的键 {key} 不在已移植白名单里（上游支持任意属性）——要支持时在这里显式加"),
             };
