@@ -1,0 +1,26 @@
+{
+  "contract": "sortie-result/1",
+  "dry_run": false,
+  "requested_stages": 1,
+  "outcome": "cleared",
+  "cleared": true,
+  "error_kind": "none",
+  "stopped_early": false,
+  "stop_reason": null,
+  "elapsed_s": 346.7,
+  "host_start_count": 1,
+  "device_configure_count": 1,
+  "stages": [
+    {
+      "chapter": "campaign.campaign_main.campaign_5_3",
+      "stage": "5-3",
+      "outcome": "cleared",
+      "cleared": true,
+      "failed": false,
+      "skipped": false,
+      "error_kind": "none",
+      "error": null,
+      "artifact": "<project>/.runtime/verification/live-20260925/sortie-5-3/20260925T213335/sortie-5-3.json"
+    }
+  ]
+}

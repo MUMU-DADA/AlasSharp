@@ -1,0 +1,53 @@
+{
+  "id": "sortie-5-3",
+  "kind": "campaign_batch",
+  "required": true,
+  "input": {
+    "chapters": [
+      "campaign.campaign_main.campaign_5_3"
+    ],
+    "mode": "normal",
+    "max_seconds": 600,
+    "max_rounds": 14,
+    "clear_all": false,
+    "fleet1": 1,
+    "fleet2": 2,
+    "submarine": 0
+  },
+  "outcome": "succeeded",
+  "error_kind": "none",
+  "error": null,
+  "stop_reason": null,
+  "elapsed_s": 346.7,
+  "boundary_state": {
+    "available": false,
+    "frame_source": "device_cached",
+    "server": "cn",
+    "pages": null,
+    "in_map": null,
+    "note": "常驻设备没有缓存画面；未创建设备或抓帧"
+  },
+  "unmet_preconditions": [],
+  "evidence": {
+    "batch_outcome": "cleared",
+    "cleared": true,
+    "stopped_early": false,
+    "index_artifact": "<project>/.runtime/verification/live-20260925/sortie-5-3/20260925T213335/index.json",
+    "stages": [
+      {
+        "chapter": "campaign.campaign_main.campaign_5_3",
+        "stage": "5-3",
+        "requested_mode": "normal",
+        "campaign_mode": "normal",
+        "outcome": "cleared",
+        "cleared": true,
+        "failed": false,
+        "skipped": false,
+        "error_kind": "none",
+        "error": null,
+        "contract_violations": [],
+        "artifact": "<project>/.runtime/verification/live-20260925/sortie-5-3/20260925T213335/sortie-5-3.json"
+      }
+    ]
+  }
+}
