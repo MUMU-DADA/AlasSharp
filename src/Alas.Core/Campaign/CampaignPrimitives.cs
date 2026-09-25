@@ -50,8 +50,25 @@ public interface ICampaignPrimitiveHost
     /// <summary>捡走选中格子上的神秘物资（上游 <c>clear_chosen_mystery</c>）。</summary>
     bool ClearChosenMystery(CampaignGrid grid);
 
-    /// <summary>把潜艇移到 boss 附近（上游 <c>Fleet.submarine_move_near_boss</c>，属设备侧机动）。</summary>
+    /// <summary>上游 <c>Fleet.submarine_move_near_boss</c>（属设备侧机动）。</summary>
     bool SubmarineMoveNearBoss(CampaignGrid grid);
+
+    /// <summary>走到指定格子（上游 <c>Fleet.goto(grid, expected=…)</c>）。</summary>
+    bool Goto(CampaignGrid grid, string expected = "");
+
+    /// <summary>关掉可能弹出的信息条（上游 <c>ensure_no_info_bar()</c>）。</summary>
+    void EnsureNoInfoBar();
+
+    /// <summary>上游 <c>self.ammo_count</c>（可用于拾取弹药）。</summary>
+    int AmmoCount { get; set; }
+
+    /// <summary>上游 <c>self.fleet_ammo</c>（当前舰队剩余弹药）。</summary>
+    int FleetAmmo { get; set; }
+
+    /// <summary>上游关卡基类里的 <c>picked_light_house</c> / <c>picked_flare</c> 记账表。</summary>
+    ISet<string> PickedLightHouse { get; }
+
+    ISet<string> PickedFlare { get; }
 
     void Log(string message);
 }
@@ -108,6 +125,25 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
         Actions.Add($"submarine_move_near_boss({grid.Location})");
         return true;
     }
+
+    public bool Goto(CampaignGrid grid, string expected = "")
+    {
+        string suffix = string.IsNullOrEmpty(expected) ? "" : $", expected={expected}";
+        Actions.Add($"goto({grid.Location}{suffix})");
+        return true;
+    }
+
+    public void EnsureNoInfoBar() => Actions.Add("ensure_no_info_bar()");
+
+    /// <summary>干跑时的弹药计数（真机由战斗结果刷新）。</summary>
+    public int AmmoCount { get; set; } = 3;
+
+    /// <summary>干跑时的舰队弹药（真机由战斗结果刷新）。</summary>
+    public int FleetAmmo { get; set; } = 5;
+
+    public ISet<string> PickedLightHouse { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+    public ISet<string> PickedFlare { get; } = new HashSet<string>(StringComparer.Ordinal);
 
     public void Log(string message) => Logs.Add(message);
 }
@@ -304,6 +340,89 @@ public static class CampaignPrimitives
         }
         host.Log($"{label}：选中 {selected[0].Location}");
         return host.ClearChosenEnemy(selected[0], "");
+    }
+
+    /// <summary>
+    /// 上游 <c>Map.pick_up_ammo(grid=None)</c>：没指定格子时自动找 <c>may_ammo</c>；
+    /// 只在"有弹药且格子可达"时走过去并回收弹药。上游结尾**没有** return True（落到方法末尾返回 None），
+    /// 这里按"是否真的拾取"返回布尔，并在日志里标明上游的真实返回值语义。
+    /// </summary>
+    public static bool PickUpAmmo(ICampaignPrimitiveHost host, CampaignGrid? grid = null)
+    {
+        var all = new CampaignGridSet(host.Grids);
+        if (grid is null)
+        {
+            var candidates = all.Select(new CampaignGridFilter(MayAmmo: true));
+            if (candidates.IsEmpty)
+            {
+                host.Log("pick_up_ammo：Map has no ammo.");
+                return false;
+            }
+            grid = candidates[0];
+        }
+
+        if (host.AmmoCount > 0 && grid.IsAccessible)
+        {
+            host.Log($"pick_up_ammo：Pick up ammo: {grid.Location}");
+            host.Goto(grid);
+            host.EnsureNoInfoBar();
+            int recover = 5 - host.FleetAmmo;
+            recover = recover > 3 ? 3 : recover;
+            host.Log($"pick_up_ammo：Got ammo {recover}");
+            host.AmmoCount -= recover;
+            host.FleetAmmo += recover;
+            return true;
+        }
+        host.Log($"pick_up_ammo：跳过（ammo_count={host.AmmoCount}，accessible={grid.IsAccessible}）");
+        return false;
+    }
+
+    /// <summary>
+    /// 上游**关卡基类**里的 <c>pick_up_light_house(grid)</c>（如
+    /// `campaign/campaign_main/campaign_14_base.py`）：已拾取过就跳过，否则走过去并记账，**恒返回假**。
+    /// 注意：这个原语定义在关卡树而不是 `module/` 里——属"关卡侧 helper"，迁移方向见文档 P2-7。
+    /// </summary>
+    public static bool PickUpLightHouse(ICampaignPrimitiveHost host, CampaignGrid grid)
+    {
+        if (host.PickedLightHouse.Contains(grid.Location))
+        {
+            host.Log($"pick_up_light_house：{grid.Location} already picked up");
+        }
+        else if (grid.IsAccessible)
+        {
+            host.Log($"pick_up_light_house：Pick up light house on {grid.Location}");
+            host.Goto(grid);
+            host.PickedLightHouse.Add(grid.Location);
+            host.EnsureNoInfoBar();
+        }
+        else
+        {
+            host.Log($"pick_up_light_house：{grid.Location} not accessible, will check in next battle");
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 上游**关卡基类**里的 <c>pick_up_flare(grid)</c>：会把该格子标记成 flare，已拾取过就跳过，
+    /// 否则走过去并记账，**恒返回假**（来源同 <see cref="PickUpLightHouse"/>）。
+    /// </summary>
+    public static bool PickUpFlare(ICampaignPrimitiveHost host, CampaignGrid grid)
+    {
+        if (host.PickedFlare.Contains(grid.Location))
+        {
+            host.Log($"pick_up_flare：Flares {grid.Location} already picked up");
+        }
+        else if (grid.IsAccessible)
+        {
+            host.Log($"pick_up_flare：Pick up flares on {grid.Location}");
+            host.Goto(grid);
+            host.PickedFlare.Add(grid.Location);
+        }
+        else
+        {
+            host.Log($"pick_up_flare：Flares {grid.Location} not accessible, will check in next battle");
+        }
+        return false;
     }
 
     /// <summary>上游 <c>CampaignBase.battle_default()</c>。</summary>
@@ -521,6 +640,15 @@ public static class CampaignPrimitiveRegistry
             "clear_first_roadblocks", "保证每个路障块有一个已清格子（上游 Map.clear_first_roadblocks）",
             NeedsArguments: true,
             (host, step) => CampaignPrimitives.ClearFirstRoadblocks(host, DecodeRoads(step), DecodeOptions(step))),
+        ["pick_up_ammo"] = new CampaignPrimitive(
+            "pick_up_ammo", "捡弹药（上游 Map.pick_up_ammo）", false,
+            (host, step) => CampaignPrimitives.PickUpAmmo(host, DecodeGrid(host, step))),
+        ["pick_up_light_house"] = new CampaignPrimitive(
+            "pick_up_light_house", "捡灯塔（上游关卡基类 helper，恒返回假）", NeedsArguments: true,
+            (host, step) => CampaignPrimitives.PickUpLightHouse(host, RequireGrid(host, step))),
+        ["pick_up_flare"] = new CampaignPrimitive(
+            "pick_up_flare", "捡信号弹（上游关卡基类 helper，恒返回假）", NeedsArguments: true,
+            (host, step) => CampaignPrimitives.PickUpFlare(host, RequireGrid(host, step))),
     };
 
     /// <summary>已实现的原语名（排序返回，便于输出与对拍）。不含舰队前缀组合。</summary>
@@ -642,6 +770,34 @@ public static class CampaignPrimitiveRegistry
         }
         return options;
     }
+
+    /// <summary>
+    /// 解码 `{"__grid__": [x, y]}` 单格实参，并**在宿主的地图状态里查回真实格子**——
+    /// 上游传的是 `GridInfo` 对象（带 cost/可达性等属性），绝不能拿一个"默认 cost=0"的空壳去判断，
+    /// 否则会把不可达格子当成可达（实测踩过：fixture 里 cost=9999 的 A9 被判成可拾取）。
+    /// 地图状态里没有这个格子时如实报错，不用默认值糊过去。
+    /// </summary>
+    private static CampaignGrid? DecodeGrid(ICampaignPrimitiveHost host, CampaignPlanStep step)
+    {
+        foreach (var value in step.Args?.Positional ?? [])
+        {
+            if (value is not JsonObject payload || payload["__grid__"] is not JsonArray cell) continue;
+            string location = CampaignLocations.ToNode(cell[0]!.GetValue<int>(), cell[1]!.GetValue<int>());
+            var grid = host.Grids.FirstOrDefault(item => item.Location == location);
+            if (grid is null)
+            {
+                throw new NotSupportedException(
+                    $"{step.Op} 的格子实参 {location} 不在当前地图状态里（识别结果可能没覆盖该格子）");
+            }
+            return grid;
+        }
+        return null;
+    }
+
+    /// <summary>要求必须有单格实参（`pick_up_light_house` / `pick_up_flare` 都是显式传格子）。</summary>
+    private static CampaignGrid RequireGrid(ICampaignPrimitiveHost host, CampaignPlanStep step) =>
+        DecodeGrid(host, step) ?? throw new NotSupportedException(
+            $"{step.Op} 的格子实参在导出里不是 __grid__ 结构——需要导出器解析格子符号后才能执行");
 
     /// <summary>
     /// 解码路段实参：导出器把 `road_main = RoadGrids([[H3, B6, C5]])` 这类模块级路段解析成

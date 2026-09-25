@@ -26,7 +26,8 @@ FIXTURE = ROOT / "tools" / "diagnostics" / "r5-execution-fixture.json"
 SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
 EXPECTED_PRIMITIVES = ["battle_default", "clear_all_mystery", "clear_any_enemy", "clear_boss", "clear_enemy",
                        "clear_filter_enemy", "clear_first_roadblocks", "clear_potential_roadblocks",
-                       "clear_roadblocks", "clear_siren"]
+                       "clear_roadblocks", "clear_siren", "pick_up_ammo", "pick_up_flare",
+                       "pick_up_light_house"]
 
 
 def upstream_root() -> pathlib.Path:

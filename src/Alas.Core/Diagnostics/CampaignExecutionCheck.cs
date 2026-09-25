@@ -74,6 +74,8 @@ internal static class CampaignExecutionCheck
             {
                 FleetCurrentIndex = testCase.Config?.FleetCurrentIndex ?? 1,
                 BattleCount = testCase.Config?.BattleCount ?? 0,
+                AmmoCount = testCase.Config?.AmmoCount ?? 3,
+                FleetAmmo = testCase.Config?.FleetAmmo ?? 5,
             };
             var execution = CampaignHookRunner.Run(plan, battle, host);
 
@@ -109,6 +111,7 @@ internal static class CampaignExecutionCheck
         IsAmmo: grid.IsAmmo,
         IsFortress: grid.IsFortress,
         MayBoss: grid.MayBoss,
+        MayAmmo: grid.MayAmmo,
         IsCaughtBySiren: grid.IsCaughtBySiren,
         IsFleet: grid.IsFleet,
         IsCleared: grid.IsCleared,
@@ -149,6 +152,8 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("fleet_boss")] public bool? FleetBoss { get; init; }
         [JsonPropertyName("fleet_current_index")] public int? FleetCurrentIndex { get; init; }
         [JsonPropertyName("battle_count")] public int? BattleCount { get; init; }
+        [JsonPropertyName("ammo_count")] public int? AmmoCount { get; init; }
+        [JsonPropertyName("fleet_ammo")] public int? FleetAmmo { get; init; }
         [JsonPropertyName("map_has_movable_normal_enemy")] public bool? MapHasMovableNormalEnemy { get; init; }
     }
 
@@ -162,6 +167,7 @@ internal static class CampaignExecutionCheck
         [JsonPropertyName("is_ammo")] public bool IsAmmo { get; init; }
         [JsonPropertyName("is_fortress")] public bool IsFortress { get; init; }
         [JsonPropertyName("may_boss")] public bool MayBoss { get; init; }
+        [JsonPropertyName("may_ammo")] public bool MayAmmo { get; init; }
         [JsonPropertyName("is_caught_by_siren")] public bool IsCaughtBySiren { get; init; }
         [JsonPropertyName("is_fleet")] public bool IsFleet { get; init; }
         [JsonPropertyName("is_cleared")] public bool IsCleared { get; init; }

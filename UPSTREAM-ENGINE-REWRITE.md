@@ -268,10 +268,10 @@
 
 | 指标 | 数值 |
 | --- | --- |
-| 步骤指向已实现原语 | 5541 / 5694（**97.3%**） |
-| 涉及原语 | 31 个（其中 12 个已实现，含舰队前缀组合） |
+| 步骤指向已实现原语 | 5565 / 5694（**97.7%**） |
+| 涉及原语 | 31 个（其中 16 个已实现，含舰队前缀组合） |
 | 计划形状符合契约 | 3006 / 3019 |
-| 实参完整（无 `<expr>`） | 5633 / 5694（**98.9%**） |
+| 实参完整（无 `<expr>`） | 5661 / 5694（**99.4%**） |
 
 #### P1-2 已完成：路段（`RoadGrids`）实参导出（`<expr>` 139 → 61）（2026-09-25）
 
@@ -306,6 +306,43 @@
 **对拍**：`verify_r5_execution.py` 扩到 **19 个用例**（新增：单格 block 全敌人 → `clear_roadblocks` 命中；
 多格 block 只剩一格非敌人 → `clear_potential_roadblocks` 命中；block 含舰队 → potential 跳过并交给
 `battle_default`），全部通过；注册原语 **10 个**（含舰队前缀组合共 12 个已实现）。
+
+#### P1-3 已完成：格子符号实参导出（`<expr>` 61 → 33）（2026-09-25）
+
+- **根因**：`pick_up_flare(H9)`、`fleet_2_rescue(G2)`、`clear_map_items([F1, I1])` 这类实参传的是
+  **具体格子符号**（由 `A1, B1, … = MAP.flatten()` 绑定），标量字面量表达不了。
+- **改动**：导出器抽出统一的 `campaign_symbol_locations()`（符号 → `[x, y]`，行优先，带形状自校验），
+  `campaign_road_table()` 复用它；新增 `symbol_argument_resolver()` 产出
+  `{"__grid__": [x, y]}` / `{"__grids__": [[x, y], …]}`。导出器版本 2.4.0 → 2.5.0。
+- **结果**：`<expr>` 61 → **33**；结构化实参 **106** 个（78 路段 + 28 格子/格子表）；
+  `verify_export` 的 `plan_issues = 0`。
+- **剩余 33 个 `<expr>`**：`fleet_2_step_on` 11（实参是**方法内局部变量** `step_on`）、
+  `super().handle_boss_appear_refocus` 7（委托父类，本就不执行）、`clear_filter_enemy` 6、
+  `clear_roadblocks` / `clear_potential_roadblocks` / `clear_first_roadblocks` 共 7（局部路段变量）、
+  `clear_mechanism` 2 —— 都需要"方法内数据流"才能解析，属下一阶段。
+
+#### P2-7 已完成：拾取类原语（步覆盖 97.3% → 97.7%）（2026-09-25）
+
+| 新增原语 | 定义位置 | 关键语义 |
+| --- | --- | --- |
+| `pick_up_ammo` | `module/map/map.py:49` | 未指定格子时自动找 `may_ammo`；有弹药且可达 → `goto` + `ensure_no_info_bar` + 回收弹药（`recover = min(3, 5 - fleet_ammo)`）；上游结尾**没有** return True |
+| `pick_up_light_house` | **关卡基类**（如 `campaign_14_base.py`） | 已拾取则跳过，否则 `goto` + 记账 + 关信息条；**恒返回假** |
+| `pick_up_flare` | **关卡基类**（同上） | 同上，并会把格子标记为 flare；**恒返回假** |
+
+配套：宿主增加 `Goto` / `EnsureNoInfoBar` / `AmmoCount` / `FleetAmmo` / `PickedLightHouse` / `PickedFlare`；
+格子模型增加 `may_ammo`；导出器新实参形态 `__grid__` 的解码（`DecodeGrid`）。
+
+**修掉一个保真 bug**：格子实参最初被我构造成"裸格子"（默认 `cost = 0`），于是 fixture 里 `cost = 9999`
+的不可达格子被误判成可拾取。现在 `DecodeGrid` 必须**在宿主的地图状态里查回真实格子**，查不到就如实报错，
+不用默认值糊过去（对拍用例当场抓到了这个错误）。
+
+**对拍**：`verify_r5_execution.py` 扩到 **23 个用例**（新增：`pick_up_ammo` 自动找 `may_ammo` 并回收弹药、
+没有 `may_ammo` 时记 `Map has no ammo.`、三连拾取后路段原语短路、灯塔不可达 + filter 串仍是 `<expr>`
+时诚实阻塞），全部通过；注册原语 **13 个**（含舰队前缀组合共 16 个已实现）。
+
+> 注：`pick_up_light_house` / `pick_up_flare` 定义在**关卡树**（`campaign/**`）而不是 `module/**`——
+> 这是"关卡侧 helper"这一类需要迁移的代码，属 P2 逐域迁移范围；它们的语义务必与上游逐字对齐，
+> 不能因为"看起来只是 goto"就简化。
 
 #### P2-4 已完成：原语扩到 7 个（含 boss/siren/any_enemy）（2026-09-25）
 

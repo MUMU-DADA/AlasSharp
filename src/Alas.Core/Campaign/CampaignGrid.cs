@@ -21,6 +21,7 @@ public sealed record CampaignGrid(
     bool IsAmmo = false,
     bool IsFortress = false,
     bool MayBoss = false,
+    bool MayAmmo = false,
     bool IsCaughtBySiren = false,
     bool IsFleet = false,
     bool IsCleared = false,
@@ -126,6 +127,7 @@ public sealed record CampaignGridFilter(
     bool? IsFortress = null,
     bool? IsMystery = null,
     bool? MayBoss = null,
+    bool? MayAmmo = null,
     bool? IsCaughtBySiren = null,
     bool? IsFleet = null,
     bool? IsCleared = null,
@@ -141,6 +143,7 @@ public sealed record CampaignGridFilter(
         (IsFortress is null || grid.IsFortress == IsFortress) &&
         (IsMystery is null || grid.IsMystery == IsMystery) &&
         (MayBoss is null || grid.MayBoss == MayBoss) &&
+        (MayAmmo is null || grid.MayAmmo == MayAmmo) &&
         (IsCaughtBySiren is null || grid.IsCaughtBySiren == IsCaughtBySiren) &&
         (IsFleet is null || grid.IsFleet == IsFleet) &&
         (IsCleared is null || grid.IsCleared == IsCleared) &&

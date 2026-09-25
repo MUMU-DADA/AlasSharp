@@ -261,6 +261,68 @@
       }
     },
     {
+      "name": "campaign_13_4 battle_3：pick_up_ammo 自动找 may_ammo 并回收弹药，随后 clear_filter_enemy 命中",
+      "chapter": "campaign_main",
+      "level": "campaign_13_4",
+      "hook": "battle_3",
+      "config": { "ammo_count": 3, "fleet_ammo": 2 },
+      "grids": [
+        { "location": "A1", "may_ammo": true, "weight": 10, "cost": 5 },
+        { "location": "B1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Light", "weight": 20, "cost": 6 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "goto(A1)",
+        "log_contains": "pick_up_ammo：Got ammo 3",
+        "steps_contains": "pick_up_ammo: 真（前置）"
+      }
+    },
+    {
+      "name": "campaign_13_4 battle_3：没有 may_ammo 格子 → 记 Map has no ammo 并继续",
+      "chapter": "campaign_main",
+      "level": "campaign_13_4",
+      "hook": "battle_3",
+      "grids": [
+        { "location": "B1", "is_enemy": true, "enemy_scale": 1, "enemy_genre": "Light", "weight": 20, "cost": 6 }
+      ],
+      "expect": { "return": true, "log_contains": "Map has no ammo." }
+    },
+    {
+      "name": "campaign_14_4 battle_3：灯塔/弹药/信号弹三个拾取，随后路段原语短路返回真",
+      "chapter": "campaign_hard",
+      "level": "campaign_14_4",
+      "hook": "battle_3",
+      "config": { "ammo_count": 3, "fleet_ammo": 5 },
+      "grids": [
+        { "location": "A9", "weight": 10, "cost": 5 },
+        { "location": "H9", "weight": 11, "cost": 6 },
+        { "location": "B8", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 20, "cost": 7 }
+      ],
+      "expect": {
+        "return": true,
+        "action_contains": "goto(A9)",
+        "log_contains": "pick_up_flare：Pick up flares on H9",
+        "steps_contains": "clear_roadblocks: 真（尝试）"
+      }
+    },
+    {
+      "name": "campaign_14_4 battle_3：灯塔不可达 → 记日志继续；filter 串仍是 <expr> → 诚实阻塞",
+      "chapter": "campaign_hard",
+      "level": "campaign_14_4",
+      "hook": "battle_3",
+      "config": { "ammo_count": 3, "fleet_ammo": 5 },
+      "grids": [
+        { "location": "A9", "weight": 10, "cost": 9999 },
+        { "location": "H9", "weight": 11, "cost": 6 },
+        { "location": "E5", "may_ammo": true, "weight": 12, "cost": 4 }
+      ],
+      "expect": {
+        "completed": false,
+        "blocked_contains": "实参未求值",
+        "log_contains": "not accessible, will check in next battle"
+      }
+    },
+    {
       "name": "campaign_1_1 handle_boss_appear_refocus：super_delegate → 委托父类，不执行也不阻塞",
       "chapter": "campaign_main",
       "level": "campaign_1_1",

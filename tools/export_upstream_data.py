@@ -45,7 +45,7 @@ except ImportError:
     from upstream_map_export import MapResolver
     from upstream_campaign_export import CampaignResolver
 
-EXPORTER_VERSION = '2.4.0'
+EXPORTER_VERSION = '2.5.0'
 SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
@@ -257,16 +257,11 @@ def campaign_map_shape(tree) -> str:
     return ''
 
 
-def campaign_road_table(tree) -> dict:
-    """模块级 `road_x = RoadGrids([...])` → `{road_x: [[[x, y], ...], ...]}`。
+def campaign_symbol_locations(tree) -> dict:
+    """`A1, B1, … = MAP.flatten()` 的符号 → `[x, y]` 表（带形状自校验，不通过就返回空表）。
 
-    上游关卡用 `A1, B1, … = MAP.flatten()` 绑定格子符号，再用
-    `road_main = RoadGrids([[H3, B6, C5]])` 声明路段（每个元素是一个 block：单格或格组）。
-    `clear_roadblocks([road_main])` 这类调用的实参就是这些路段对象——标量字面量表达不了，
-    于是原先只能记 `<expr>`（全库 83 个 `clear_roadblocks` / `clear_potential_roadblocks` 步骤被阻塞）。
-
-    这里把路段解析成坐标数组。**只做形状自校验通过的解析**：符号数必须等于
-    `列数 × 行数`（形状如 `K9` → A..K 共 11 列、9 行），否则整表作废、实参照旧记 `<expr>`，不猜。
+    上游关卡用这一行元组解包绑定全部格子符号；形状（`MAP.shape = 'K9'`）决定列数与行数，
+    符号顺序是行优先。**只做形状自校验通过的解析**：符号数必须等于 `列数 × 行数`，否则整表作废。
     """
     symbols = []
     for node in tree.body:
@@ -283,12 +278,41 @@ def campaign_road_table(tree) -> dict:
     columns, rows = ord(letters.upper()) - ord('A') + 1, int(digits)
     if columns * rows != len(symbols):
         return {}
+    return {name: [index % columns, index // columns] for index, name in enumerate(symbols)}
 
-    index_of = {name: index for index, name in enumerate(symbols)}
 
-    def location(name):
-        index = index_of[name]
-        return [index % columns, index // columns]
+def symbol_argument_resolver(locations: dict):
+    """裸格子符号 / 符号列表实参 → `{'__grid__': [x, y]}` / `{'__grids__': [[x, y], …]}`。
+
+    上游关卡里 `pick_up_flare(H9)`、`fleet_2_rescue(G2)`、`clear_map_items([F1, I1])` 这类实参
+    传的是具体格子（原本只能记 `<expr>`）。解析不出时返回哨兵，照旧记 `<expr>`。
+    """
+    def resolve(node):
+        if not locations:
+            return _UNRESOLVED
+        if isinstance(node, ast.Name) and node.id in locations:
+            return {'__grid__': locations[node.id]}
+        if isinstance(node, ast.List) and node.elts and all(
+                isinstance(item, ast.Name) and item.id in locations for item in node.elts):
+            return {'__grids__': [locations[item.id] for item in node.elts]}
+        return _UNRESOLVED
+    return resolve
+
+
+def campaign_road_table(tree) -> dict:
+    """模块级 `road_x = RoadGrids([...])` → `{road_x: [[[x, y], ...], ...]}`。
+
+    上游关卡用 `A1, B1, … = MAP.flatten()` 绑定格子符号，再用
+    `road_main = RoadGrids([[H3, B6, C5]])` 声明路段（每个元素是一个 block：单格或格组）。
+    `clear_roadblocks([road_main])` 这类调用的实参就是这些路段对象——标量字面量表达不了，
+    于是原先只能记 `<expr>`（全库 83 个 `clear_roadblocks` / `clear_potential_roadblocks` 步骤被阻塞）。
+
+    这里把路段解析成坐标数组。**只做形状自校验通过的解析**：符号数必须等于
+    `列数 × 行数`（形状如 `K9` → A..K 共 11 列、9 行），否则整表作废、实参照旧记 `<expr>`，不猜。
+    """
+    locations = campaign_symbol_locations(tree)
+    if not locations:
+        return {}
 
     roads = {}
     for node in tree.body:
@@ -300,11 +324,11 @@ def campaign_road_table(tree) -> dict:
             continue
         blocks, valid = [], True
         for element in call.args[0].elts:
-            if isinstance(element, ast.Name) and element.id in index_of:
-                blocks.append([location(element.id)])
+            if isinstance(element, ast.Name) and element.id in locations:
+                blocks.append([locations[element.id]])
             elif isinstance(element, ast.List) and element.elts and all(
-                    isinstance(item, ast.Name) and item.id in index_of for item in element.elts):
-                blocks.append([location(item.id) for item in element.elts])
+                    isinstance(item, ast.Name) and item.id in locations for item in element.elts):
+                blocks.append([locations[item.id] for item in element.elts])
             else:
                 valid = False
                 break
@@ -575,10 +599,14 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
         # 用于解析 self.<NAME> / [road_*] 实参；解析不出的实参仍记 '<expr>'，不猜值。
         literal_resolver = attribute_literal_resolver(campaign_literal_attributes(tree, module, root))
         road_resolver = road_argument_resolver(campaign_road_table(tree))
+        symbol_resolver = symbol_argument_resolver(campaign_symbol_locations(tree))
 
-        def resolve_argument(node, _literal=literal_resolver, _road=road_resolver):
+        def resolve_argument(node, _literal=literal_resolver, _road=road_resolver, _symbol=symbol_resolver):
             value = _literal(node)
-            return value if value is not _UNRESOLVED else _road(node)
+            if value is not _UNRESOLVED:
+                return value
+            value = _road(node)
+            return value if value is not _UNRESOLVED else _symbol(node)
         ir = {'source': rel, 'name': None, '_name_source': None, 'map': {}, 'config': {},
               'config_meta': {}, 'campaign': {'battles': [], 'attributes': {}},
               'unresolved': []}
