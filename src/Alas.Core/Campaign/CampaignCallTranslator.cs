@@ -156,6 +156,9 @@ public static class CampaignCallTranslator
     }
 
     /// <summary>`{"location": "C1"}` → `C1`。</summary>
+    /// <summary>\{"__grid__": [x, y]}\ → 格名（条件里的格子属性等调用方也用）。</summary>
+    public static string LocationOf(JsonNode? node) => Location(node) ?? "";
+
     private static string? Location(JsonNode? node) =>
         node is JsonObject payload && payload.TryGetPropertyValue("location", out var location)
             ? location?.GetValue<string>()

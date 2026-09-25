@@ -103,6 +103,9 @@ public sealed class CampaignPlanStep
 
     /// <summary>`kind=return` 时返回的**字面量**（上游 `return True` / `return False`；缺省即 None）。</summary>
     [JsonPropertyName("value")] public JsonNode? Value { get; init; }
+
+    /// <summary>`kind=raise` 时抛出的**控制流信号**（上游 `raise CampaignEnd()` / `MapEnemyMoved()`）。</summary>
+    [JsonPropertyName("signal")] public string? Signal { get; init; }
 }
 
 /// <summary>`branch` 的条件：要么看局部变量（`{"local": "boss"}`），要么调一次原语（`{"call": …}`）。</summary>
@@ -112,6 +115,10 @@ public sealed class CampaignPlanStepTest
 
     /// <summary>`self.config.<KEY>` 这类**配置读取**（如 `MAP_HAS_MOVABLE_ENEMY`）→ C# 的运行时配置字段。</summary>
     [JsonPropertyName("config")] public string? Config { get; init; }
+
+    /// <summary>`<GRID>.is_xxx` 这类**格子属性**条件（裸格名是模块级 `= MAP.flatten()` 的绑定）。</summary>
+    [JsonPropertyName("grid")] public JsonNode? Grid { get; init; }
+    [JsonPropertyName("attr")] public string? Attribute { get; init; }
 
     [JsonPropertyName("call")] public CampaignPlanStepTestCall? Call { get; init; }
     [JsonPropertyName("negate")] public bool Negate { get; init; }

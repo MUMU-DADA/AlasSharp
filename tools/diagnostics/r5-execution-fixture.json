@@ -2,6 +2,37 @@
   "note": "R5 原语执行对拍夹具：供 `Alas.Server r5-exec --fixture <本文件>` 与 tools/diagnostics/verify_r5_execution.py 使用。关卡/钩子取自静态导出（data/campaign/**），地图状态与运行时配置由本夹具给出，动作只被干跑宿主记录。",
   "cases": [
     {
+      "name": "event_20200917_cn hts2 battle_0：连续 `goto(..., expected='story')` + `raise CampaignEnd()`——信号结束本关，不发设备动作",
+      "chapter": "event_20200917_cn",
+      "level": "hts2",
+      "hook": "battle_0",
+      "grids": [
+        {
+          "location": "A8",
+          "weight": 10,
+          "cost": 1
+        },
+        {
+          "location": "E7",
+          "weight": 10,
+          "cost": 2
+        },
+        {
+          "location": "B1",
+          "weight": 10,
+          "cost": 3
+        },
+        {
+          "location": "G8",
+          "weight": 10,
+          "cost": 4
+        }
+      ],
+      "expect": {
+        "completed": true
+      }
+    },
+    {
       "name": "event_20200820_cn b3 battle_0：`if self.config.MAP_HAS_MOVABLE_ENEMY:` 分支（配置条件）→ 先推 2 队，再打塞壬",
       "chapter": "event_20200820_cn",
       "level": "b3",

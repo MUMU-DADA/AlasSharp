@@ -25,7 +25,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tools" / "diagnostics" / "r5-execution-fixture.json"
 SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
 EXPECTED_PRIMITIVES = ["battle_boss", "battle_default", "brute_clear_boss", "brute_fleet_meet",
-                       "capture_clear_boss", "check_accessibility", "clear_all_mystery", "clear_any_enemy",
+                       "capture_clear_boss", "check_accessibility", "goto", "clear_all_mystery", "clear_any_enemy",
                        "clear_boss",
                        "clear_bouncing_enemy", "clear_chosen_enemy", "clear_enemy", "clear_filter_enemy",
                        "clear_first_roadblocks", "clear_map_items", "clear_mechanism",
@@ -123,8 +123,12 @@ def main() -> int:
     results = {item["name"]: item for item in payload["cases"]}
 
     problems: list[str] = []
-    if payload["implemented_primitives"] != EXPECTED_PRIMITIVES:
-        problems.append(f"已登记原语 {payload['implemented_primitives']}，期望 {EXPECTED_PRIMITIVES}")
+    # 按**集合**比：注册表的顺序不是契约，列表逐位比会因插入位置不同而假失败（实测踩过）。
+    if set(payload["implemented_primitives"]) != set(EXPECTED_PRIMITIVES):
+        registered = set(payload["implemented_primitives"])
+        problems.append("已登记原语与期望不一致："
+                        f"多 {sorted(registered - set(EXPECTED_PRIMITIVES))}，"
+                        f"少 {sorted(set(EXPECTED_PRIMITIVES) - registered)}")
 
     checked = cross_checked = 0
     for case in fixture["cases"]:

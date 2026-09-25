@@ -691,6 +691,12 @@ def derive_plan(body: list, where: str, resolve=None):
         local = _local_reference(node, locals_)
         if local is not None:
             return {'local': local['__local__'], 'negate': negate}
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            # `<GRID>.is_xxx`：裸格名是模块级 `A1, B1, ... = MAP.flatten()` 绑定的格子对象
+            # （`campaign_15_1.py:40` 那一片）。用**已有的符号解析**把格名换成坐标，再带属性名。
+            resolved = resolve(node.value)
+            if isinstance(resolved, dict) and '__grid__' in resolved and node.attr.startswith('is_'):
+                return {'grid': resolved, 'attr': node.attr, 'negate': negate}
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) \
                 and isinstance(node.value.value, ast.Name) and node.value.value.id == 'self' \
                 and node.value.attr == 'config':
@@ -781,7 +787,16 @@ def derive_plan(body: list, where: str, resolve=None):
             elif isinstance(stmt, ast.Pass):
                 continue
             else:
-                unparsed.append(type(stmt).__name__)
+                if isinstance(stmt, ast.Raise) and isinstance(stmt.exc, ast.Call) \
+                        and isinstance(stmt.exc.func, ast.Name) \
+                        and stmt.exc.func.id in ('CampaignEnd', 'MapEnemyMoved'):
+                    # 上游用异常做控制流：`raise CampaignEnd()` 结束本关、`raise MapEnemyMoved()` 让
+                    # `execute_a_battle` 重新识别地图并重试。两者语义不同，都按**信号步骤**记下来，
+                    # 由执行器抛对应的控制流信号（不当作一次调用）。
+                    steps.append({'kind': 'raise', 'signal': stmt.exc.func.id})
+                    terminated = True
+                else:
+                    unparsed.append(type(stmt).__name__)
 
         return steps, unparsed, dead, terminated
 

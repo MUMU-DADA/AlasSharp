@@ -4,7 +4,7 @@
 > 用途：C# 逐条替换了上游原语，而上游有些方法**顺手写状态**；替换掉就丢了那些写入。
 > 只做静态扫描（`inspect.getsource` + 写入模式匹配），不执行游戏动作。
 
-- 注册表原语：**30** 个
+- 注册表原语：**31** 个
 - 检测到**状态写入**的条目：**3**（已核对 **3**）
 - **待确认**：**0**
 
@@ -35,6 +35,7 @@
 | `fleet_2_push_forward` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `fleet_2_rescue` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `fleet_2_step_on` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
+| `goto` | 设备侧（仍由上游执行） |  | 不需要 C# 镜像 |
 | `handle_boss_appear_refocus` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `pick_up_ammo` | 无状态写入（module/map/map.py:Map） |  | 无需处理 |
 | `pick_up_flare` | 格子标志赋值（campaign.campaign_main.campaign_14_base:CampaignBase） | `grid.is_flare = True` | `grid.is_flare = True`：C# 走宿主 `SetGridFlag` → 渠道 `set` 同步（r5-device 自检） |

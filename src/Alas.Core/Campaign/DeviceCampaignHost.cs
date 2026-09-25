@@ -161,6 +161,16 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
         return true;
     }
 
+    /// <summary>
+    /// 上游 `raise CampaignEnd()`（钩子里的控制流信号）→ 结束本关。**不发设备动作**：
+    /// 上游那个异常只是让 `run()` 返回，不是点撤退（点撤退的是 `withdraw()`）。
+    /// </summary>
+    public void RequestCampaignEnd(string reason)
+    {
+        EndRequested = true;
+        EndReason = reason;
+    }
+
     public void SetGridFlag(CampaignGrid grid, string flag, bool value)
     {
         // 改自己的模型 + **同步到上游地图对象**：这些标志会被上游自己的代码读到

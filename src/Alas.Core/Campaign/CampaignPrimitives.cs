@@ -109,6 +109,12 @@ public interface ICampaignPrimitiveHost
     /// `clear_bouncing_enemy` 成功后的 `may_bouncing_enemy = False`；不写回去就会与上游状态分叉。
     /// 白名单只允许模型里有的标志名，拼错直接报错，不静默当作没发生。
     /// </summary>
+    /// <summary>
+    /// 请求**结束本关**（上游钩子里 `raise CampaignEnd()` 的语义：`run()` 捕获后正常返回）。
+    /// 与 <see cref="Withdraw"/> 不同：这是**控制流信号**，不点撤退、不发设备动作。
+    /// </summary>
+    void RequestCampaignEnd(string reason);
+
     void SetGridFlag(CampaignGrid grid, string flag, bool value);
 
     /// <summary>撤退（上游 <c>MapOperation.withdraw()</c>，如 <c>capture_clear_boss</c> 结尾会撤退）。</summary>
@@ -263,6 +269,12 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
         {
             if (_grids[i].IsCaughtBySiren) _grids[i] = _grids[i] with { IsCaughtBySiren = false };
         }
+    }
+
+    public void RequestCampaignEnd(string reason)
+    {
+        EndRequested = true;
+        EndReason = reason;
     }
 
     public void SetGridFlag(CampaignGrid grid, string flag, bool value)
@@ -1285,6 +1297,32 @@ public static class CampaignHookRunner
             value = Truthy(bound);
             why = $"局部变量 {name} = {Describe(bound)}";
         }
+        else if (test.Grid is { } gridNode && test.Attribute is { Length: > 0 } attribute)
+        {
+            // `<GRID>.is_xxx`：从**当前地图状态**取那个格子，再看属性（白名单外显式报错）
+            string location = CampaignCallTranslator.LocationOf(gridNode);
+            var grid = host.Grids.FirstOrDefault(item => item.Location == location);
+            if (grid is null) return (null, $"条件里的格子 {location} 不在当前地图状态里");
+            value = attribute switch
+            {
+                "is_accessible" => grid.IsAccessible,
+                "is_enemy" => grid.IsEnemy,
+                "is_boss" => grid.IsBoss,
+                "is_siren" => grid.IsSiren,
+                "is_fortress" => grid.IsFortress,
+                "is_mystery" => grid.IsMystery,
+                "is_ammo" => grid.IsAmmo,
+                "is_land" => grid.IsLand,
+                "is_cleared" => grid.IsCleared,
+                "is_fleet" => grid.IsFleet,
+                "may_enemy" => grid.MayEnemy,
+                "may_boss" => grid.MayBoss,
+                "may_siren" => grid.MaySiren,
+                "may_ambush" => grid.MayAmbush,
+                _ => throw new NotSupportedException($"branch 条件里的格子属性 {attribute} 还没映射"),
+            };
+            why = $"{location}.{attribute} = {value}";
+        }
         else if (test.Config is { Length: > 0 } configKey)
         {
             // `self.config.<KEY>`：映射到 `CampaignRuntimeConfig` 的字段。没映射的键**显式报错**——
@@ -1475,6 +1513,27 @@ public static class CampaignHookRunner
                     return Result(plan, battle, branchRun.ReturnValue, null, stepLog, host, actionsBefore, actions);
                 }
                 continue;
+            }
+
+            // `raise <Signal>()`：上游用异常做控制流。
+            //   * `CampaignEnd` → 请求结束本关（**不发设备动作**），循环在检查点收尾；
+            //   * `MapEnemyMoved` → 抛控制流信号，由 `execute_a_battle` 那层按 battle_count 判定重试。
+            if (step.Kind == "raise")
+            {
+                string signal = step.Signal ?? "";
+                if (signal == "CampaignEnd")
+                {
+                    host.Log("raise CampaignEnd：结束本关（控制流信号，不发设备动作）");
+                    host.RequestCampaignEnd("CampaignEnd");
+                    return Result(plan, battle, null, null, stepLog, host, actionsBefore, actions);
+                }
+                if (signal == "MapEnemyMoved")
+                {
+                    stepLog.Add("raise MapEnemyMoved");
+                    throw new CampaignControlFlowSignal("MapEnemyMoved", "raise MapEnemyMoved");
+                }
+                stepLog.Add($"raise {signal}：未知信号，停止执行");
+                return Result(plan, battle, null, $"未知的 raise 信号 {signal}", stepLog, host, actionsBefore, actions);
             }
 
             // `return <字面量>`：上游不少钩子以 `return True` 收尾（`self.X(); return True`）。
@@ -1816,6 +1875,9 @@ public static class CampaignPrimitiveRegistry
             NeedsArguments: true,
             (host, step) => CampaignPrimitives.CheckAccessibility(
                 host, RequireGrid(host, step), OptionalFleet(step))),
+        ["goto"] = new CampaignPrimitive(
+            "goto", "走到指定格（上游 Fleet.goto；移动本身由宿主执行）", NeedsArguments: true,
+            (host, step) => host.Goto(RequireGrid(host, step), OptionalExpected(step))),
         ["clear_chosen_enemy"] = new CampaignPrimitive(
             "clear_chosen_enemy", "打指定格子（上游 Map.clear_chosen_enemy 的动作入口）", NeedsArguments: true,
             (host, step) => CampaignPrimitives.ClearChosenEnemy(host, RequireGrid(host, step))),
@@ -1982,6 +2044,13 @@ public static class CampaignPrimitiveRegistry
     /// 否则会把不可达格子当成可达（实测踩过：fixture 里 cost=9999 的 A9 被判成可拾取）。
     /// 地图状态里没有这个格子时如实报错，不用默认值糊过去。
     /// </summary>
+    /// <summary>取 `goto(grid, expected='…')` 的 `expected` 关键字（没有就空串）。</summary>
+    private static string OptionalExpected(CampaignPlanStep step)
+    {
+        if (step.Args?.Keyword.TryGetValue("expected", out var node) != true || node is null) return "";
+        return node is JsonValue value && value.TryGetValue<string>(out string? text) ? text : "";
+    }
+
     /// <summary>取步骤里声明的 `fleet` 关键字实参（`check_accessibility(grid, fleet=…)` 用）。</summary>
     private static string? OptionalFleet(CampaignPlanStep step)
     {
