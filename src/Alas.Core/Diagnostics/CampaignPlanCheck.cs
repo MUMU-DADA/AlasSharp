@@ -41,6 +41,9 @@ internal static class CampaignPlanCheck
             Console.WriteLine();
             Console.WriteLine($"{"章节",-26}{"关卡",-6}{"钩子",-6}{"可表达",-8}{"未表达",-8}可表达率");
             int levels = 0, battles = 0, complete = 0, traceMatch = 0, traceDiff = 0, traceEmpty = 0;
+            int surfaceSteps = 0, surfaceHooks = 0, surfaceConforming = 0;
+            int surfaceSetup = 0, surfaceAttempts = 0, surfaceFallbacks = 0, surfaceDelegates = 0;
+            var surfaceOps = new HashSet<string>(StringComparer.Ordinal);
             var allFailures = new List<string>();
             foreach (string name in chapters)
             {
@@ -54,6 +57,15 @@ internal static class CampaignPlanCheck
                 traceMatch += summary.TraceMatch;
                 traceDiff += summary.TraceDiff;
                 traceEmpty += summary.TraceEmpty;
+                var chapterSurface = CampaignPlanExecutor.Summarize(name, plans);
+                surfaceSteps += chapterSurface.Steps;
+                surfaceHooks += chapterSurface.Hooks;
+                surfaceConforming += chapterSurface.ConformingHooks;
+                surfaceSetup += chapterSurface.Setup;
+                surfaceAttempts += chapterSurface.Attempts;
+                surfaceFallbacks += chapterSurface.Fallbacks;
+                surfaceDelegates += chapterSurface.Delegates;
+                surfaceOps.UnionWith(chapterSurface.Ops.Keys);
                 Console.WriteLine($"{summary.Chapter,-26}{summary.Levels,-6}{summary.Battles,-6}" +
                                   $"{summary.Complete,-8}{summary.Battles - summary.Complete,-8}{summary.CompleteRate:P1}");
             }
@@ -62,6 +74,10 @@ internal static class CampaignPlanCheck
                               $"可表达 {complete}（{(battles == 0 ? 1 : (double)complete / battles):P1}）");
             Console.WriteLine($"[轨迹对拍] 与 calls 一致 {traceMatch} / 不一致 {traceDiff} / " +
                               $"steps 为空 {traceEmpty}（合计 {traceMatch + traceDiff + traceEmpty}）");
+            Console.WriteLine($"[执行面 ] {surfaceHooks} 个钩子（形状符合契约 {surfaceConforming}），" +
+                              $"{surfaceSteps} 步涉及 {surfaceOps.Count} 个原语、已实现 " +
+                              $"{surfaceOps.Count(CampaignPrimitiveRegistry.IsImplemented)} 个；" +
+                              $"角色：前置 {surfaceSetup} / 尝试 {surfaceAttempts} / 兜底 {surfaceFallbacks} / 委托 {surfaceDelegates}");
             if (allFailures.Count > 0)
             {
                 Console.WriteLine($"[警告   ] {allFailures.Count} 个关卡导出读不出，前 3 条：");
@@ -102,14 +118,17 @@ internal static class CampaignPlanCheck
             foreach (var trace in traces)
             {
                 var battle = plan.Header.Battles.First(item => item.Method == trace.Method);
+                var execution = CampaignPlanExecutor.DryRun(plan, battle);
+                var shape = CampaignPlanExecutor.Validate(battle);
                 string state = battle.PlanComplete ? "可表达" : "未表达";
                 string mark = trace.Steps.Count == 0 ? "—" : trace.MatchesCalls ? "✓" : "✗";
+                string contract = battle.Steps.Count == 0 ? "" : shape.Conforms ? "，形状符合契约" : $"，形状 {shape.Pattern}（交错）";
                 string calls = battle.Calls.Count == 0 ? "（无原语调用）" : string.Join(" → ", battle.Calls);
                 string counts = trace.Steps.Count == 0
                     ? ""
-                    : $"  无条件 {trace.Unconditional.Count()} / 条件 {trace.Conditional.Count()} / " +
-                      $"委托 {trace.Delegates.Count()}";
-                Console.WriteLine($"  {mark} {battle.Method,-22}{state,-8}语句 {battle.StatementCount,-4}{calls}{counts}");
+                    : $"  前置 {execution.Setup} / 尝试 {execution.Attempts} / 兜底 {(execution.HasFallback ? 1 : 0)} / " +
+                      $"委托 {execution.Delegated}";
+                Console.WriteLine($"  {mark} {battle.Method,-22}{state,-8}语句 {battle.StatementCount,-4}{calls}{counts}{contract}");
                 if (battle.Unparsed.Count > 0)
                 {
                     Console.WriteLine($"  {"",-2}{"",-22}{"",-8}未表达原因：{string.Join(", ", battle.Unparsed)}");
@@ -117,7 +136,7 @@ internal static class CampaignPlanCheck
                 foreach (var step in battle.Steps)
                 {
                     string arguments = FormatArguments(step.Args);
-                    Console.WriteLine($"      {step.Kind,-16}{step.Op}{arguments}");
+                    Console.WriteLine($"      {step.Kind,-16}{step.Op}{arguments}{StatusNote(step)}");
                 }
             }
             return 0;
@@ -135,6 +154,10 @@ internal static class CampaignPlanCheck
         Console.WriteLine($"[轨迹对拍] 与 calls 一致 {chapterSummary.TraceMatch} / " +
                           $"不一致 {chapterSummary.TraceDiff} / steps 为空 {chapterSummary.TraceEmpty} / " +
                           $"含未求值实参 {chapterSummary.UnresolvedArguments}");
+        var surface = CampaignPlanExecutor.Summarize(chapter, chapterPlans);
+        Console.WriteLine($"[执行面 ] {surface.Hooks} 个钩子（形状符合契约 {surface.ConformingHooks}），" +
+                          $"涉及原语 {surface.Ops.Count} 个、已实现 {surface.ImplementedOps} 个；" +
+                          $"角色：前置 {surface.Setup} / 尝试 {surface.Attempts} / 兜底 {surface.Fallbacks} / 委托 {surface.Delegates}");
         Console.WriteLine("[步骤类型]");
         foreach (var (kind, count) in chapterSummary.Kinds.OrderByDescending(pair => pair.Value))
         {
@@ -171,6 +194,13 @@ internal static class CampaignPlanCheck
     {
         Console.Error.WriteLine($"[错误   ] {message}");
         return 1;
+    }
+
+    /// <summary>步骤的执行侧状态标记（干跑判定，不执行任何东西）。</summary>
+    private static string StatusNote(CampaignPlanStep step)
+    {
+        if (step.Kind == "super_delegate") return "    [委托父类]";
+        return CampaignPrimitiveRegistry.IsImplemented(step.Op) ? "    [可执行]" : "    [原语未实现]";
     }
 
     /// <summary>把步骤实参排成一行；`"&lt;expr&gt;"` 是导出器未求值的表达式占位。</summary>

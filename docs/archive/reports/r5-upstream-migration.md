@@ -358,6 +358,8 @@ Core 内调用点分布（按接口方法名 + 视觉宿主接收者统计，含
 | `1L > 1M > 2L > 2M > 3L > 2E > 3E > 2C > 3C > 3M` | 8 |
 
 > C# 侧读取这一层的产品代码：`src/Alas.Core/Campaign/CampaignPlan.cs` + 只读命令 `Alas.Server r5-plan`（统计口径与本报告一致，可跨语言对拍）。
+> 执行侧骨架（角色划分、形状契约校验、原语注册表、干跑）见 `src/Alas.Core/Campaign/CampaignEngine.cs`：
+> 全库 `r5-plan` 概览输出 3019 个钩子（形状符合契约 3006）、5694 步 / 31 个原语 / 已实现 0。
 
 ### 轨迹对拍（计划 vs 原始调用列表）
 
