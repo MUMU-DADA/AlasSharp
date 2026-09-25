@@ -6,7 +6,7 @@ using Alas.Runtime;
 namespace Alas.Tasks;
 
 /// <summary>
-/// 活动域（R2 第四域）的第一刀：**清点可跑的活动章节**（纯离线，不需要设备）。
+/// 清点导出结构中具备 Campaign 和 MAP 的活动候选（纯离线，不需要设备）。
 ///
 /// 它回答的是跑活动之前必须先知道的事："现在导出的数据里有哪些活动章节、各自
 /// 计划完整度如何"。数据来源是 S0 冻结的上游导出契约（`data/campaign/**`），
@@ -134,6 +134,9 @@ public sealed class EventStateTask : ITaskRunner
             token.ThrowIfCancellationRequested();
             total++;
             if (!Folder(entry.Source).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            // The index also preserves Config/base modules for provenance.
+            // They are not native campaign entries, regardless of plan tier.
+            if (!entry.CampaignPresent || !entry.MapPresent) continue;
             if (onlyComplete && !entry.PlanComplete) continue;
             matched.Add(entry);
         }

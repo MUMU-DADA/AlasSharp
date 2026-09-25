@@ -72,7 +72,8 @@ def main() -> int:
         return 0
 
     chapters = load_index_chapters()
-    expected = [c for c in chapters if folder(c.get('source', '')).lower().startswith(PREFIX)]
+    candidates = [c for c in chapters if folder(c.get('source', '')).lower().startswith(PREFIX)]
+    expected = [c for c in candidates if c.get('campaign_present') is True and c.get('map_present') is True]
     expected_complete = [c for c in expected if c.get('plan_complete') is True]
     expected_tiers = {}
     for chapter in expected:
@@ -170,6 +171,22 @@ def main() -> int:
         # ---- plan-queue：清点 → 生成队列（生成物必须是**普通队列文件**，且能直接跑）
         print()
         print('=== 清点 → 生成队列 ===')
+        full_plan = tmpdir / 'all-planned.json'
+        all_planned = subprocess.run([str(EXE), 'plan-queue', '--out', str(full_plan),
+                                      '--limit', str(len(chapters))],
+                                     capture_output=True, text=True, encoding='utf-8',
+                                     errors='replace', timeout=120)
+        if all_planned.returncode != 0 or not full_plan.is_file():
+            failures.append('默认活动队列生成失败')
+        else:
+            full_document = json.loads(full_plan.read_text(encoding='utf-8'))
+            actual_modules = [task['input']['chapters'][0] for task in full_document['tasks']]
+            expected_modules = [c['source'].replace('/', '.').removesuffix('.py')
+                                for c in sorted(expected, key=lambda c: c['source'])]
+            if actual_modules != expected_modules:
+                failures.append(f'默认活动队列必须仅含 Campaign/MAP 入口: 实际 {len(actual_modules)}、期望 {len(expected_modules)}')
+            else:
+                print(f'  ok   默认计划保留 {len(expected)} 个入口，排除 {len(candidates)-len(expected)} 个辅助模块')
         plan_out = tmpdir / 'planned.json'
         planned = subprocess.run([str(EXE), 'plan-queue', '--out', str(plan_out),
                                   '--only-complete', '--limit', '5'],

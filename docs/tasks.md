@@ -94,6 +94,10 @@ Core 将取消写成当前任务独享的 `stop.request`，由上游循环、等
 
 ## 战役与活动
 
+活动清点与队列生成共用结构筛选：条目须同时具有导出的 `CampaignPresent` 和 `MapPresent`。
+辅助 Config/基类模块保留在导出索引用于溯源，但不能生成出击任务；`only_complete` 是此后另加的计划完整度筛选。
+候选结构正确不代表活动当前开放、账号可达或缺失的上游依赖已恢复，运行仍交给原生加载器判定。
+
 ```json
 {"tasks":[{"id":"sortie","kind":"campaign_batch","required":true,
   "input":{"chapters":["campaign.campaign_main.campaign_1_1"],
