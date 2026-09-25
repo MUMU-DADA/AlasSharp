@@ -35,7 +35,39 @@ import alas_vision as av  # noqa: E402
 from module.campaign.campaign_base import CampaignBase  # noqa: E402
 from s3_stub_campaign import NativeRunCampaign  # noqa: E402
 
-REQUIRED_OPS = ("s3_campaign_init", "s3_campaign_call", "s3_campaign_info")
+REQUIRED_OPS = ("s3_campaign_init", "s3_campaign_call", "s3_campaign_info", "s3_campaign_grids")
+
+
+class _StubGrid:
+    """给 `s3_campaign_grids` 用的最小格子替身（只带该 op 会读的属性）。"""
+
+    def __init__(self, is_enemy=False, cost=9999):
+        for flag in ('is_land', 'is_boss', 'is_siren', 'is_fortress', 'is_mystery', 'is_ammo',
+                     'is_fleet', 'is_current_fleet', 'is_submarine', 'is_missile_attack',
+                     'is_cleared', 'is_caught_by_siren', 'is_mechanism_block', 'is_spawn_point',
+                     'may_enemy', 'may_boss', 'may_mystery', 'may_ammo', 'may_siren',
+                     'may_bouncing_enemy'):
+            setattr(self, flag, False)
+        self.is_enemy = is_enemy
+        self.may_ambush = True
+        self.weight = 10
+        self.enemy_scale = 2
+        self.enemy_genre = "Main"
+        self.cost = cost
+        self.cost_1 = cost
+        self.cost_2 = cost
+
+    @property
+    def str(self):
+        return "2M" if self.is_enemy else "--"
+
+
+class _StubMap:
+    """给 `s3_campaign_grids` 用的最小地图替身：两个格子 + shape。"""
+
+    def __init__(self):
+        self.grids = {(0, 0): _StubGrid(is_enemy=True, cost=1), (1, 0): _StubGrid(cost=9999)}
+        self.shape = (1, 0)
 
 
 def main() -> int:
@@ -110,6 +142,21 @@ def main() -> int:
         problems.append(f"info 应报告 initialized=True，实际 {info}")
     elif 'map_clear_percentage' not in (info.get('map_progress') or {}):
         problems.append(f"info 应包含关卡进度字段（map_progress.map_clear_percentage），实际 {sorted(info)}")
+
+    # 5b) 地图状态导出（`s3_campaign_grids`，只读）：没有 map 时明确报错；有 map 时给出
+    #     "每格 loca/flags/cost*"的契约（C# 侧 `DeviceCampaignHost.RefreshFromUpstream` 靠它刷新状态）。
+    real_map = getattr(instance, 'map', None)
+    instance.map = None
+    no_map = av.op_s3_campaign_grids({})
+    if 'error' not in no_map:
+        problems.append(f"实例没有 map 时 s3_campaign_grids 应返回 error，实际 {sorted(no_map)}")
+    instance.map = real_map
+    exported = av.op_s3_campaign_grids({})
+    grids = exported.get('grids') or []
+    if not grids or 'flags' not in grids[0] or 'cost' not in grids[0] or 'loca' not in grids[0]:
+        problems.append(f"s3_campaign_grids 应给出每格的 loca/flags/cost*，实际 {exported}")
+    elif exported.get('count') != len(grids) or not exported.get('shape'):
+        problems.append(f"s3_campaign_grids 应给出 count 与 shape，实际 {sorted(exported)}")
 
     # 6) 调用的是上游自己的方法（防"手工复刻"）
     bound = getattr(instance, 'execute_a_battle')

@@ -141,6 +141,26 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
     /// 所以这里只改宿主自己持有的地图模型（等价于上游改 `GridInfo` 对象），**不调用渠道**；
     /// 真机上下一次识别会把实际状态盖回来。
     /// </summary>
+    /// <summary>
+    /// 从**上游地图**重新取一次状态（只读 op `s3_campaign_grids`）。
+    /// 上游的移动/识别会改它自己的 `CampaignMap`（`Fleet.goto` 结尾的 `wipe_out()` 与 `is_fleet` 重设、
+    /// `find_path_initial` 重写成本场），所以每次设备动作之后都要刷新，否则后续决策基于过期状态。
+    /// 取不到（空列表）时**保持原状态**并记一条日志，不把模型清空。
+    /// </summary>
+    public bool RefreshFromUpstream()
+    {
+        var refreshed = _channel.ReadGrids();
+        if (refreshed.Count == 0)
+        {
+            _logs.Add("refresh_from_upstream：上游没给出地图状态，保持原状态");
+            return false;
+        }
+        _grids.Clear();
+        _grids.AddRange(refreshed);
+        _logs.Add($"refresh_from_upstream：{_grids.Count} 格");
+        return true;
+    }
+
     public void MarkFlare(CampaignGrid grid)
     {
         // 改自己的模型 + **同步到上游地图对象**：`pick_up_flare` 设的这个标记会被

@@ -2542,6 +2542,52 @@ def op_s3_campaign_info(args):
     return out
 
 
+def op_s3_campaign_grids(args):
+    """导出**上游地图的实时状态**（只读）：每格的标志与成本场。
+
+    为什么要它：上游的移动与识别会把状态写在**它自己的 `CampaignMap`** 上——例如 `Fleet.goto`
+    结尾会 `self.map[self.fleet_current].is_fleet = False`、`self.map[location].wipe_out()`、
+    再标 `is_fleet = True`，`find_path_initial` 也会重写 `cost`/`cost_1`/`cost_2`。C# 宿主持有的
+    是自己的一份模型，**每次设备动作之后必须重新取一次**，否则后续决策基于过期状态。
+    这是 `loop=csharp` 接线的硬前置（见 docs/upstream-engine-rewrite.md 的 P3 步骤 2）。
+
+    只读：不改状态、不发设备动作、不需要 allow_actions。
+    """
+    inst = _CAMPAIGN.get('obj')
+    if inst is None:
+        return {'error': '尚未初始化，先调 s3_campaign_init'}
+    grid_map = getattr(inst, 'map', None)
+    if grid_map is None:
+        return {'error': '实例上没有 map（上游方法假定已 enter_map/map_init）'}
+    flags = ('is_land', 'is_enemy', 'is_boss', 'is_siren', 'is_fortress', 'is_mystery',
+             'is_ammo', 'is_fleet', 'is_current_fleet', 'is_submarine', 'is_missile_attack',
+             'is_cleared', 'is_caught_by_siren', 'is_mechanism_block', 'is_spawn_point',
+             'may_enemy', 'may_boss', 'may_mystery', 'may_ammo', 'may_siren', 'may_ambush',
+             'may_bouncing_enemy')
+    grids = []
+    try:
+        items = list(grid_map.grids.items())
+    except Exception as e:
+        return {'error': f'取 map.grids 失败: {type(e).__name__}: {e}'}
+    for loca, grid in items:
+        item = {'loca': [int(loca[0]), int(loca[1])],
+                'str': str(grid.str),
+                'flags': [name for name in flags if bool(getattr(grid, name, False))],
+                'weight': int(getattr(grid, 'weight', 0)),
+                'enemy_scale': int(getattr(grid, 'enemy_scale', 0) or 0),
+                'enemy_genre': str(getattr(grid, 'enemy_genre', '') or '')}
+        for key in ('cost', 'cost_1', 'cost_2'):
+            try:
+                item[key] = int(getattr(grid, key))
+            except Exception:
+                pass
+        grids.append(item)
+    shape = getattr(grid_map, 'shape', None)
+    return {'grids': grids,
+            'shape': [int(shape[0]) + 1, int(shape[1]) + 1] if shape else None,
+            'count': len(grids)}
+
+
 def op_s3_campaign_call(args):
     """调用 Campaign 实例上的方法（支持点号路径，如 `device.screenshot`）。
 
@@ -3805,6 +3851,7 @@ OPS = {
     's3_campaign_init': op_s3_campaign_init,
     's3_campaign_info': op_s3_campaign_info,
     's3_campaign_call': op_s3_campaign_call,
+    's3_campaign_grids': op_s3_campaign_grids,
     's3_probe_view': op_s3_probe_view,
     'device_capture_set': op_device_capture_set,
     'device_configure': op_device_configure,

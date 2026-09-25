@@ -696,6 +696,15 @@ seam**——重复维护两套外驱机制违反项目纪律，**自建模块与
 | `s3_campaign_init` | 构造 Campaign 实例（复用上游 `CampaignRun.load_campaign` 的配置合并路径）+ **种一帧**（上游方法假定 `device.image` 已存在） | 实例与 loader 记在宿主 `_CAMPAIGN` 里，供后续逐步调用 |
 | `s3_campaign_call` | 调用实例上任意方法（支持点号路径与 `@属性` 引用）；带 `set` 时给点号路径的**最后一个属性赋值**（如 `map.C1.is_flare`） | **危险前缀联锁**（`battle*`/`clear*`/`enter_map`/`run`/`goto`/`map_*`/`execute`/`full_scan` … 必须显式 `allow_actions`）；**`set` 同样要求 `allow_actions`**（写入会改变后续调用读到的状态）；`CampaignEnd` 走**结果合同**分类（返回 `cleared`/`withdrawn`/`outcome`，不是裸异常）；内部报错带调用栈尾部 |
 | `s3_campaign_info` | 只读状态 | 关卡进度字段（`map_progress`：`map_clear_percentage`、星级条件、`MAP_CLEAR_ALL_THIS_TIME` 等），并注明"进度来自游戏自己的面板读数" |
+| `s3_campaign_grids` | 只读：导出**上游地图的实时状态**（每格 `loca`/`flags`/`str`/`cost`/`cost_1`/`cost_2`/`weight`/`enemy_scale`/`enemy_genre` + `shape`/`count`） | 实例没有 `map` 时明确报错；C# 侧 `CampaignMapState.FromUpstream` 用与识别叠加**同一张标志表**解析，未知标志不静默丢 |
+
+**为什么需要 `s3_campaign_grids`（读上游源码才发现）**：上游的移动与识别把状态写在**它自己的
+`CampaignMap`** 上——`Fleet.goto` 结尾 `self.map[self.fleet_current].is_fleet = False`、
+`self.map[location].wipe_out()`、再 `is_fleet = True`（`module/map/fleet.py:446`），
+`find_path_initial` 还会重写 `cost`/`cost_1`/`cost_2`。C# 宿主持有的是自己的一份模型，
+所以**每次设备动作之后必须重新取一次**，否则后续决策基于过期状态。这是 `loop=csharp` 接线的硬前置，
+已在 P3 的接线步骤里写明；C# 侧由 `DeviceCampaignHost.RefreshFromUpstream()` 消费，
+`r5-device` 有自检（含"上游没给状态时不许清空模型"）。
 
 **`set` 形式的用途（实测驱动）**：上游部分 helper 会直接改地图对象的状态，而这些 helper 已经被
 C# 原语替换，状态就没人设了——例如 `campaign/campaign_main/campaign_14_base.py` 的
@@ -807,7 +816,7 @@ C# 侧新增 `CampaignCallTranslator`（纯函数）：把计划步骤翻成"上
 | 接线步骤 | 具体动作 | 需要的证据 |
 | --- | --- | --- |
 | 1 | `CampaignBatchRunner` 在 `AllowActions && LoopMode()==CSharp` 时改调新的 `CampaignEngineRun`（`Alas.Core/Runtime`） | 无（代码改动本身） |
-| 2 | `CampaignEngineRun` 依次：`s3_campaign_init` → 准备（`enter_map`/`handle_map_fleet_lock`/`map_init`，与上游 `run()` 同序）→ `map_detect` + 属性读取造状态 → `CampaignBattleLoop.Run(plan, DeviceCampaignHost)` | 一次真机运行 |
+| 2 | `CampaignEngineRun` 依次：`s3_campaign_init` → 准备（`enter_map`/`handle_map_fleet_lock`/`map_init`，与上游 `run()` 同序）→ `map_detect` + 属性读取造状态 → `CampaignBattleLoop.Run(plan, DeviceCampaignHost)`；**每个设备动作之后必须 `RefreshFromUpstream()`**（上游移动会 `wipe_out()`/重设 `is_fleet`/重写成本场，C# 模型不刷新就会用过期的状态决策） | 一次真机运行 |
 | 3 | 结束判定仍走**冻结合同的生产方**：`s3_campaign_call` 对 `CampaignEnd` 已经调用 `classify_campaign_end` 返回合同字段，C# 只做**消费**（`CampaignPlanResult`），不自己在 C# 里重新判定 | 真实成功结算样本 |
 | 4 | 打开 `ALAS_ENGINE_LOOP=csharp` 前跑三层对照（决策/动作/路线），并对 `capture_clear_boss` 撤退、`fleet_2_protect` 20 轮循环等做真机对照 | 同局真机日志 + 帧 |
 | 回退 | 开关置回 `shadow`（默认值）即可；`csharp` 需要两把钥匙，且 `verify_r5_switch.py` 有静态断言**禁止诊断入口引用真机渠道** | — |

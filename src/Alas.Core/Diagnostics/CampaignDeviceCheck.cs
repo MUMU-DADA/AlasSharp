@@ -79,6 +79,22 @@ internal static class CampaignDeviceCheck
                         $"（调用 {string.Join(", ", flareChannel.Calls.Select(c => c.Name))}）");
         }
 
+        // 状态刷新：设备宿主必须能从**上游地图**重新取状态（上游移动/识别会改它自己的 CampaignMap）。
+        // 录制渠道给一份"上游状态"，断言宿主模型被换成上游那份（而不是继续用旧快照）。
+        var refreshChannel = new RecordingCampaignCallChannel()
+            .WithGrids([new CampaignGrid("A1", IsEnemy: true, Cost: 3), new CampaignGrid("B1", Cost: 9999)]);
+        var refreshHost = new DeviceCampaignHost(refreshChannel, stateGrids);
+        bool refreshed = refreshHost.RefreshFromUpstream();
+        bool refreshApplied = refreshHost.Grids.Count == 2
+                              && refreshHost.Grids[0] is { Location: "A1", IsEnemy: true, Cost: 3 };
+        bool refreshKeeps = !new DeviceCampaignHost(new RecordingCampaignCallChannel(), stateGrids)
+            .RefreshFromUpstream();     // 上游没给状态时不许清空模型
+        if (!refreshed || !refreshApplied || !refreshKeeps)
+        {
+            return Fail($"RefreshFromUpstream 语义不符：刷新 {refreshed}，应用 {refreshApplied}，" +
+                        $"空状态时保持 {refreshKeeps}");
+        }
+
         if (asJson)
         {
             Console.WriteLine(new JsonObject

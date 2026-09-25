@@ -79,6 +79,76 @@ public static class CampaignMapState
     }
 
     /// <summary>
+    /// 把**上游地图的实时状态**（`s3_campaign_grids` 的返回）解析成 C# 的格子模型。
+    /// 每项形如 <c>{"loca": [x, y], "flags": [...], "cost": n, "cost_1": n, "cost_2": n, "weight": n,
+    /// "enemy_scale": n, "enemy_genre": "…"}</c>。标志走与识别叠加**同一张表**（未知标志收进
+    /// <paramref name="unknownFlags"/>，不静默丢）；成本场直接用上游的值，不重算。
+    /// </summary>
+    public static IReadOnlyList<CampaignGrid> FromUpstream(System.Text.Json.Nodes.JsonNode? payload,
+                                                           out IReadOnlyList<string> unknownFlags)
+    {
+        var unknown = new SortedSet<string>(StringComparer.Ordinal);
+        var grids = new List<CampaignGrid>();
+        if (payload is not System.Text.Json.Nodes.JsonObject root
+            || root["grids"] is not System.Text.Json.Nodes.JsonArray items)
+        {
+            unknownFlags = [];
+            return grids;
+        }
+
+        var flagMap = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var values = new Dictionary<string, (int Cost, int Cost1, int Cost2, int Weight, int Scale, string Genre)>(
+            StringComparer.Ordinal);
+        foreach (var item in items)
+        {
+            if (item is not System.Text.Json.Nodes.JsonObject entry
+                || entry["loca"] is not System.Text.Json.Nodes.JsonArray loca || loca.Count != 2)
+            {
+                continue;
+            }
+            int x = loca[0]!.GetValue<int>();
+            int y = loca[1]!.GetValue<int>();
+            if (!CampaignLocations.TryToNode(x, y, out string node)) continue;
+            var flags = new List<string>();
+            if (entry["flags"] is System.Text.Json.Nodes.JsonArray list)
+            {
+                foreach (var flag in list)
+                {
+                    string? text = flag?.GetValue<string>();
+                    if (text is not null) flags.Add(text);
+                }
+            }
+            flagMap[$"{x},{y}"] = flags;
+            values[node] = (
+                entry["cost"]?.GetValue<int>() ?? 9999,
+                entry["cost_1"]?.GetValue<int>() ?? 9999,
+                entry["cost_2"]?.GetValue<int>() ?? 9999,
+                entry["weight"]?.GetValue<int>() ?? 0,
+                entry["enemy_scale"]?.GetValue<int>() ?? 0,
+                entry["enemy_genre"]?.GetValue<string>() ?? "");
+        }
+
+        var baseGrids = values.Keys.Select(node => new CampaignGrid(node)).ToArray();
+        var overlaid = OverlayDetection(baseGrids, flagMap, out var overlayUnknown);
+        foreach (string flag in overlayUnknown) unknown.Add(flag);
+        foreach (var grid in overlaid)
+        {
+            var extra = values[grid.Location];
+            grids.Add(grid with
+            {
+                Cost = extra.Cost,
+                Cost1 = extra.Cost1,
+                Cost2 = extra.Cost2,
+                Weight = extra.Weight,
+                EnemyScale = extra.Scale,
+                EnemyGenre = extra.Genre,
+            });
+        }
+        unknownFlags = unknown.ToArray();
+        return grids;
+    }
+
+    /// <summary>
     /// 叠加地图识别的运行期标志（`MapDetectResult.GridFlags` 的形态：`"x,y"` → 标志名列表）。
     /// 认不出的标志名收进 <paramref name="unknownFlags"/>；认不出的格子坐标直接忽略。
     /// </summary>

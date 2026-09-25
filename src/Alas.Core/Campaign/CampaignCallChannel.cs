@@ -30,6 +30,14 @@ public interface ICampaignCallChannel
     /// 实现方必须与设备动作同一把锁（见 `tools/alas_vision.py` 的 `set` 分支）。
     /// </summary>
     void Set(string name, JsonNode? value);
+
+    /// <summary>
+    /// 取**上游地图的实时状态**（只读 op `s3_campaign_grids`）：每格的标志与成本场。
+    /// 上游的移动/识别会改它自己的 `CampaignMap`（`Fleet.goto` 的 `wipe_out()` 与 `is_fleet` 重设、
+    /// `find_path_initial` 重写 `cost*`），所以设备侧每次动作之后都要重新取一次，
+    /// 否则 C# 的决策基于过期状态。录制渠道返回构造时给的桩状态。
+    /// </summary>
+    IReadOnlyList<CampaignGrid> ReadGrids();
 }
 
 /// <summary>一次录制的调用。</summary>
@@ -43,9 +51,19 @@ public sealed record CampaignCallRecord(string Name, IReadOnlyList<string> Args,
 public sealed class RecordingCampaignCallChannel : ICampaignCallChannel
 {
     private readonly Dictionary<string, JsonNode?> _state;
+    private IReadOnlyList<CampaignGrid> _grids = [];
 
     public RecordingCampaignCallChannel(IReadOnlyDictionary<string, JsonNode?>? state = null) =>
         _state = state is null ? new Dictionary<string, JsonNode?>() : new Dictionary<string, JsonNode?>(state);
+
+    /// <summary>给 <see cref="ReadGrids"/> 用的桩状态（默认空：表示"没有上游地图状态可读"）。</summary>
+    public RecordingCampaignCallChannel WithGrids(IReadOnlyList<CampaignGrid> grids)
+    {
+        _grids = grids;
+        return this;
+    }
+
+    public IReadOnlyList<CampaignGrid> ReadGrids() => _grids;
 
     public List<CampaignCallRecord> Calls { get; } = [];
 

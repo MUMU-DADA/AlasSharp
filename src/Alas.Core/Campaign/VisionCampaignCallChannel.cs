@@ -62,4 +62,17 @@ public sealed class VisionCampaignCallChannel : ICampaignCallChannel
         };
         _vision.CallTyped<JsonNode>("s3_campaign_call", payload);
     }
+
+    /// <summary>取上游地图的实时状态（只读 op `s3_campaign_grids`）并解析成 C# 的格子模型。</summary>
+    public IReadOnlyList<CampaignGrid> ReadGrids()
+    {
+        var payload = _vision.CallTyped<JsonNode>("s3_campaign_grids", new JsonObject());
+        var grids = CampaignMapState.FromUpstream(payload, out var unknownFlags);
+        if (unknownFlags.Count > 0)
+        {
+            // 认不出的标志**不静默丢**：记在日志里，便于发现上游新增了标志而 C# 还没接
+            Console.Error.WriteLine($"[warn] s3_campaign_grids 里有 C# 不认识的格子标志: {string.Join(", ", unknownFlags)}");
+        }
+        return grids;
+    }
 }
