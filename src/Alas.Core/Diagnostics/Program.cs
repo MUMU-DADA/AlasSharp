@@ -1043,7 +1043,7 @@ public static class DiagnosticCommands
                     Console.WriteLine($"[任务证据] 任务={catalogCount} "
                                       + $"分组来源={task.Evidence["group_source"]} "
                                       + $"清单来源={task.Evidence["task_source"]}");                if (task.Evidence["enabled_count"] is System.Text.Json.Nodes.JsonNode enabled)
-                    Console.WriteLine($"[任务证据] 任务={task.Evidence["task_count"]} 启用={enabled} " +
+                    Console.WriteLine($"[任务证据] 任务={task.Evidence["task_count"]} 原始配置启用={enabled} " +
                                       $"无Scheduler={task.Evidence["no_scheduler_count"]} " +
                                       $"来源={task.Evidence["config_source"]}");
             }

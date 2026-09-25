@@ -824,10 +824,7 @@ def op_task_catalog(args):
 
 
 def op_task_schedule(args):
-    """周期任务的**调度状态**（只读）：哪些任务开着、下次什么时候跑。
-
-    为什么要有它（`docs/tasks.md` 的已注册任务）：周期任务的动作要真机，但"哪些任务开着、下次什么时候跑"
-    完全在配置里 —— R4 前端与"跑之前先知道会跑什么"都需要它，且零账号消耗。
+    """周期任务的存盘 Scheduler 快照；不是原生有效配置或实际运行计划。
 
     数据来源是两个**别混为一谈**的东西（第七节已查实）：
       * `module/config/argument/args.json` —— 任务表（扁平清单，以它为准）；
@@ -836,10 +833,18 @@ def op_task_schedule(args):
     **只读纪律**：不写配置、不触发任务、**不重算 NextRun**（那是上游调度器的逻辑，
     含 `ServerUpdate` 语义；自己实现一版等于养第二份真相）。
     """
-    only_enabled = bool(args.get('only_enabled', True))
-    limit = int(args.get('limit', 30))
-
-    out = {'only_enabled': only_enabled}
+    only_enabled = args.get('only_enabled', True)
+    limit = args.get('limit', 30)
+    out = {'semantics': 'stored_config', 'only_enabled': only_enabled}
+    if type(only_enabled) is not bool:
+        return {**out, 'error': 'only_enabled 必须是 JSON 布尔值'}
+    if (isinstance(limit, bool) or not isinstance(limit, (int, float))
+            or not 1 <= limit <= 2147483647 or limit != int(limit)):
+        return {**out, 'error': 'limit 必须是 1 到 2147483647 的整数数值'}
+    limit = int(limit)
+    requested_path = args.get('config_path')
+    if requested_path is not None and (not isinstance(requested_path, str) or not requested_path.strip()):
+        return {**out, 'error': 'config_path 必须是非空字符串或 null'}
     args_json = os.path.join(FORK, 'module', 'config', 'argument', 'args.json')
     try:
         with open(args_json, encoding='utf-8') as stream:
@@ -871,27 +876,38 @@ def op_task_schedule(args):
         out['error'] = f'账号配置读不出来: {type(e).__name__}: {e}'
         return out
 
+    if not isinstance(config, dict):
+        return {**out, 'error': '账号配置根节点必须是 JSON 对象'}
     entries, missing_scheduler = [], []
     for name in task_names:
-        section = config.get(name)
-        scheduler = section.get('Scheduler') if isinstance(section, dict) else None
-        if not isinstance(scheduler, dict):
+        section = config.get(name, {})
+        if not isinstance(section, dict):
+            return {**out, 'error': f'{name} 必须是 JSON 对象'}
+        if 'Scheduler' not in section:
             missing_scheduler.append(name)
             entries.append({'task': name, 'enable': None, 'next_run': None,
                             'scheduler_present': False})
             continue
+        scheduler = section['Scheduler']
+        if not isinstance(scheduler, dict):
+            return {**out, 'error': f'{name}.Scheduler 必须是 JSON 对象'}
+        if 'Enable' in scheduler and type(scheduler['Enable']) is not bool:
+            return {**out, 'error': f'{name}.Scheduler.Enable 必须是 JSON 布尔值'}
+        next_run = scheduler.get('NextRun')
+        if next_run is not None and not isinstance(next_run, str):
+            return {**out, 'error': f'{name}.Scheduler.NextRun 必须是字符串或 null'}
         entries.append({
             'task': name,
-            'enable': bool(scheduler.get('Enable')),
-            'next_run': scheduler.get('NextRun'),
+            'enable': scheduler.get('Enable'),
+            'next_run': next_run,
             'scheduler_present': True,
         })
-    enabled = [e for e in entries if e['enable']]
+    enabled = [e for e in entries if e['enable'] is True]
     out['enabled_count'] = len(enabled)
     out['no_scheduler_count'] = len(missing_scheduler)
     listed = enabled if only_enabled else entries
     out['listed_count'] = len(listed)
-    out['tasks'] = listed[:max(1, limit)]
+    out['tasks'] = listed[:limit]
     out['no_scheduler_sample'] = missing_scheduler[:5]
     return out
 

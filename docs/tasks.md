@@ -47,7 +47,7 @@ Alas.Server queue --file queue.json --run --allow-actions --serial <设备> --sc
 | `os_action` | `task` 为上游 `opsi_*` 绑定任务，另需 `confirm`、`allow_actions` | 动作会话，原生调度 |
 | `event_state` | `folder_prefix`、`only_complete`、`limit`，读取导出章节目录 | 离线清点，不代表已通关 |
 | `task_catalog` | 从上游 `args.json` 枚举周期任务与分组 | 只读 |
-| `task_schedule` | 读取任务启用状态和下次时间 | 只读，不自行重算上游调度 |
+| `task_schedule` | 读取存盘任务启用值和下次时间 | 只读快照，未应用上游默认、锁定字段或迁移，不是有效调度计划 |
 | `config_get` | 读取指定 `keys` | 只读，不能提交本地账号配置 |
 | `periodic_plan` | `task/tasks`，勘察上游命令与原生方法绑定 | 只读，不构造设备业务对象 |
 | `periodic_preflight` | `task`、`confirm`、`allow_actions`，检查计划与放行条件 | `executes=false`，放行不等于执行 |
@@ -58,6 +58,12 @@ Alas.Server queue --file queue.json --run --allow-actions --serial <设备> --sc
 具体字段与约束以各 `*Task.cs` 的输入校验和对应离线回归为准。
 `TaskEnd`、绑定、`opsi_*`、活动参数均由上游 `AzurLaneAutoScript.run()` 调度处理，
 不能通过“猜一个类然后调用 run”替代；`native_success=true` 只证明原生调度返回。
+
+`task_schedule` 工件以 `semantics=stored_config` 标识原始快照，`NextRun` 不重算。
+显式 `Scheduler.Enable` 只接受 JSON 布尔值；字符串、数字、显式 null 或容器使整个读取失败，并报告字段路径。
+缺任务、缺 Scheduler 或缺 Enable 时，enable 为未知 null；只有缺 Scheduler 才计入 `no_scheduler_count`。
+原始 false 即使对应上游锁定开关也保持 false，不能据此断言原生任务已禁用。过滤和截断前校验全部条目。
+Core 校验来源、必需字段、计数和条目一致性；矛盾响应保留 `host_response` 并记为合同失败，不进入断点完成列表。
 
 ## 周期任务授权边界
 

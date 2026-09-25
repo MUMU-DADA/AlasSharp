@@ -17,12 +17,16 @@
 from __future__ import annotations
 
 import hashlib
+import copy
+import ast
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / '.runtime' / 'engine'
@@ -70,10 +74,119 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def verify_host_validation() -> None:
+    """Unchanged production operation, in-memory JSON inputs, no host import."""
+    tree = ast.parse((ROOT / 'tools/alas_vision.py').read_text(encoding='utf-8'))
+    operation = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                     and node.name == 'op_task_schedule')
+    payload = {}
+    reads = []
+
+    def read(path, **kwargs):
+        reads.append(path)
+        return io.StringIO(json.dumps({'Alas': {}, 'Main': {}} if path.endswith('args.json') else payload))
+
+    environment = dict(json=json, FORK='fixture', open=read,
+                       os=SimpleNamespace(path=SimpleNamespace(join=os.path.join, exists=lambda _: True)))
+    exec(compile(ast.Module(body=[operation], type_ignores=[]), 'task_schedule_fixture', 'exec'), environment)
+    operation = environment['op_task_schedule']
+    invalid_inputs = [dict(only_enabled=value) for value in ('false', 0, 1, None, [], {})]
+    invalid_inputs += [dict(limit=value) for value in (0, -1, 1.5, True, '1', None, float('inf'))]
+    invalid_inputs += [dict(config_path=value) for value in ('', ' ', 7)]
+    for arguments in invalid_inputs:
+        result = operation(arguments)
+        assert result.get('error') and not reads, (arguments, result, reads)
+    structures = [(None, '根节点'), ([], '根节点'), ({'Main': None}, 'Main'),
+                  ({'Main': {'Scheduler': None}}, 'Main.Scheduler'),
+                  ({'Main': {'Scheduler': []}}, 'Main.Scheduler'),
+                  ({'Main': {'Scheduler': {'NextRun': 1}}}, 'Main.Scheduler.NextRun'),
+                  ({'Alas': {'Scheduler': {'Enable': True}},
+                    'Main': {'Scheduler': {'Enable': 'false'}}}, 'Main.Scheduler.Enable')]
+    for payload, path in structures:
+        result = operation(dict(only_enabled=True, limit=1))
+        assert path in result.get('error', '') and 'tasks' not in result, result
+    print(f'  OK {len(invalid_inputs) + len(structures)} 宿主输入/结构/截断外非法值拒绝场景')
+
+
+def verify_response_contract() -> None:
+    """Exercise Core's real queue and resume state with inert host responses."""
+    base = dict(semantics='stored_config', task_count=1, enabled_count=1,
+                no_scheduler_count=0, listed_count=1,
+                tasks=[dict(task='Main', enable=True, scheduler_present=True, next_run=None)])
+    variants = [('enabled', base, True)]
+    for label, flag, present in (('disabled', False, True), ('missing-enable', None, True),
+                                ('missing-scheduler', None, False)):
+        changed = copy.deepcopy(base)
+        changed.update(enabled_count=0, no_scheduler_count=int(not present))
+        changed['tasks'][0].update(enable=flag, scheduler_present=present)
+        variants.append((label, changed, True))
+    for flag in ('false', 0, 1, [], {}):
+        changed = copy.deepcopy(base)
+        changed['tasks'][0]['enable'] = flag
+        variants.append((f'invalid-enable-{type(flag).__name__}-{flag}', changed, False))
+    for field in ('enable', 'scheduler_present'):
+        changed = copy.deepcopy(base)
+        del changed['tasks'][0][field]
+        variants.append((f'absent-{field}', changed, False))
+    for present in (None, False):
+        changed = copy.deepcopy(base)
+        changed['tasks'][0]['scheduler_present'] = present
+        variants.append((f'contradictory-present-{present}', changed, False))
+    for field in ('semantics', 'tasks', 'task_count', 'enabled_count', 'no_scheduler_count', 'listed_count'):
+        changed = copy.deepcopy(base)
+        del changed[field]
+        variants.append((f'absent-{field}', changed, False))
+    for label, counts in (('row-count-conflict', dict(enabled_count=0)),
+                          ('scheduler-count-conflict', dict(enabled_count=0, no_scheduler_count=1)),
+                          ('count-overflow', dict(task_count=2147483647, enabled_count=2147483647,
+                                                 no_scheduler_count=2147483647, listed_count=2147483647))):
+        variants.append((label, {**copy.deepcopy(base), **counts}, False))
+    truncated = copy.deepcopy(base)
+    truncated.update(task_count=3, listed_count=3, enabled_count=1, no_scheduler_count=1)
+    truncated['tasks'][0]['enable'] = False
+    variants.append(('truncated-valid', truncated, True))
+    # The one visible disabled row leaves two places, which cannot hold three
+    # more rows counted as enabled or missing Scheduler.
+    variants.append(('truncated-capacity-conflict', {**copy.deepcopy(truncated), 'enabled_count': 2}, False))
+    cases = [dict(name=name, mode='queue', dry_run=True, artifacts=True,
+                  tasks=[dict(id='snapshot', kind='task_schedule', required=True,
+                              input=dict(only_enabled=False, limit=1))],
+                  stub_responses={'task_schedule': [dict(result=response)]},
+                  expect=dict(outcome='succeeded' if success else 'failed', cleared=False,
+                              tasks=[dict(id='snapshot', outcome='succeeded' if success else 'failed')]))
+             for name, response, success in variants]
+    with tempfile.TemporaryDirectory(prefix='alas-schedule-contract-') as temporary:
+        directory = Path(temporary)
+        fixture, verdicts = directory / 'fixture.json', directory / 'verdicts.json'
+        fixture.write_text(json.dumps(dict(cases=cases)), encoding='utf-8')
+        process = subprocess.run([str(EXE), 'selftest-runtime', '--fixture', str(fixture),
+                                  '--json', str(verdicts), '--workspace', str(directory / 'runs')],
+                                 cwd=ROOT, env=dict(os.environ, DOTNET_ROOT=str(ROOT / '.runtime/dotnet')),
+                                 capture_output=True, encoding='utf-8', errors='replace', timeout=90)
+        assert verdicts.is_file(), process.stdout + process.stderr
+        rows = json.loads(verdicts.read_text(encoding='utf-8'))['cases']
+        assert len(rows) == len(cases)
+        for (name, response, success), row in zip(variants, rows):
+            assert row['name'] == name and row['ok'], (name, row)
+            task = row['tasks'][0]
+            artifact = json.loads(Path(task['artifact']).read_text(encoding='utf-8'))
+            state = json.loads((Path(row['run_directory']) / 'state.json').read_text(encoding='utf-8'))
+            assert ('snapshot' in state['completed']) is success, name
+            if success:
+                assert artifact['evidence']['semantics'] == 'stored_config', name
+            else:
+                assert task['error_kind'] == 'contract_violation', (name, task)
+                assert artifact['evidence']['host_response'] == response, name
+        assert process.returncode in (0, 1), process.stdout + process.stderr
+    print(f'  OK {len(cases)} Core 调度快照响应/断点场景（无宿主或设备）')
+
+
 def main() -> int:
     if not EXE.is_file():
         print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先 dotnet build）')
         return 1
+    verify_host_validation()
+    verify_response_contract()
     if not ARGS_JSON.is_file() or not CONFIG.is_file():
         print('[跳过] 缺少上游 args.json 或账号配置 config/alas.json；本验收未跑。')
         return 0
@@ -84,7 +197,7 @@ def main() -> int:
     expected_enabled = sorted(t for t in tasks
                               if isinstance(config.get(t), dict)
                               and isinstance(config[t].get('Scheduler'), dict)
-                              and config[t]['Scheduler'].get('Enable'))
+                              and config[t]['Scheduler'].get('Enable') is True)
     expected_no_scheduler = sorted(t for t in tasks
                                    if not (isinstance(config.get(t), dict)
                                            and isinstance(config[t].get('Scheduler'), dict)))
@@ -106,6 +219,7 @@ def main() -> int:
         ('列出的都是启用项', all(e.get('enable') is True for e in real.get('listed') or []),
          f"listed={real.get('listed')[:3]}"),
         ('只读：配置字节不变', before == after, f'{before[:12]} → {after[:12]}'),
+        ('明确标注存储快照', real.get('semantics') == 'stored_config', '不能表示为原生有效调度'),
         ('CLI 打出 [任务证据] 行（键名改掉会静默消失）', '[任务证据]' in real.get('_stdout', '') and '启用=' in real.get('_stdout', ''), 'stdout 里没有 [任务证据] 或 启用='),
     ]
     for name, ok, detail in checks:
@@ -146,11 +260,15 @@ def main() -> int:
             'all-enabled': {t: {'Scheduler': {'Enable': True, 'NextRun': '2026-01-01 00:00:00'}}
                             for t in tasks},
             'no-scheduler': {t: {'Other': {}} for t in tasks},
+            'stored-values': {'Main': {'Scheduler': {'Enable': False}},
+                              'Commission': {'Scheduler': {'Enable': False}},
+                              'Tactical': {'Scheduler': {}}},
         }
         for name, payload in fixtures.items():
             path = tmpdir / f'{name}.json'
             path.write_text(json.dumps(payload), encoding='utf-8')
-            evidence = run_task(str(path), only_enabled=True)
+            fixture_hash = sha256(path)
+            evidence = run_task(str(path), only_enabled=name != 'stored-values')
             if name == 'all-disabled':
                 # 断言用**任务证据里真实存在的字段**（listed），不要用宿主 op 的 listed_count ——
                 # 任务类没有把它抄进证据，那是它自己的取舍；测试不该假设它存在。
@@ -159,15 +277,39 @@ def main() -> int:
             elif name == 'all-enabled':
                 ok = evidence.get('_outcome') == 'succeeded' \
                      and evidence.get('enabled_count') == len(tasks)
-            else:
+            elif name == 'no-scheduler':
                 ok = evidence.get('_outcome') == 'succeeded' \
                      and evidence.get('no_scheduler_count') == len(tasks) \
                      and evidence.get('enabled_count') == 0
+            else:
+                entries = {entry['task']: entry for entry in evidence.get('listed', [])}
+                ok = (evidence.get('_outcome') == 'succeeded'
+                      and entries.get('Commission', {}).get('enable') is False
+                      and entries.get('Main', {}).get('enable') is False
+                      and entries.get('Tactical', {}).get('enable') is None
+                      and entries.get('Tactical', {}).get('scheduler_present') is True
+                      and evidence.get('enabled_count') == 0)
+            ok = ok and sha256(path) == fixture_hash and evidence.get('semantics') == 'stored_config'
             print(f"  {'ok  ' if ok else 'FAIL'} {name}: enabled={evidence.get('enabled_count')} "
                   f"no_scheduler={evidence.get('no_scheduler_count')} "
                   f"outcome={evidence.get('_outcome')}")
             if not ok:
                 failures.append(f'{name}: {evidence}')
+
+        # These values used to become True/False through Python truthiness.
+        # Reject the entire snapshot even when an invalid row would be filtered.
+        invalid_values = ('false', 'true', '', 0, 1, None, [], {}, [False])
+        for index, value in enumerate(invalid_values):
+            path = tmpdir / f'invalid-enable-{index}.json'
+            path.write_text(json.dumps({'Main': {'Scheduler': {'Enable': value}}}), encoding='utf-8')
+            before = sha256(path)
+            evidence = run_task(str(path), only_enabled=True)
+            ok = (evidence.get('_outcome') == 'failed'
+                  and 'Main.Scheduler.Enable' in str(evidence.get('_error'))
+                  and not evidence.get('listed') and sha256(path) == before)
+            print(f"  {'ok  ' if ok else 'FAIL'} Enable type {type(value).__name__}: {value!r}")
+            if not ok:
+                failures.append(f'非法 Enable {value!r}: {evidence}')
 
         missing = run_task(str(tmpdir / 'not-exists.json'), only_enabled=True)
         ok = missing.get('_outcome') == 'failed' and '读不到' in str(missing.get('_error') or '')
@@ -182,7 +324,7 @@ def main() -> int:
         for item in failures:
             print(f'  - {item}')
         return 1
-    print('结果: OK（读数与独立计数一致、四种边界明确、跑完配置字节不变）')
+    print('结果: OK（存储快照、未知启用状态、严格布尔类型、只读保证通过）')
     return 0
 
 

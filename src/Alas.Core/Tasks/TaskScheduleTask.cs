@@ -2,17 +2,16 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Alas.Runtime;
+using Alas.Vision;
 
 namespace Alas.Tasks;
 
 /// <summary>
 /// 周期任务域（R2 第六域）的第一刀：**调度状态**（只读，零账号消耗）。
 ///
-/// 为什么先做它（`docs/tasks.md` 的已注册任务）：周期任务的动作要真机，但"哪些任务开着、
-/// 下次什么时候跑"完全在配置里 —— R4 前端与"跑之前先知道会跑什么"都需要它。
-///
 /// 数据来自宿主 op `task_schedule`（读上游 `args.json` 的扁平任务表 + 账号配置里的
-/// `Scheduler` 段）。本类只做三件事：传参、把结果翻译成任务结论、把关键数字写进证据；
+/// `Scheduler` 段），只表示存储快照，未应用上游默认、锁定字段和配置迁移。
+/// 本类传参、校验响应、把结果翻译成任务结论并写入证据；
 /// **不重算 NextRun**（那是上游调度器的逻辑）。
 ///
 /// 输入（`Input`）：`{ "only_enabled": true, "limit": 30 }`
@@ -71,7 +70,7 @@ public sealed class TaskScheduleTask : ITaskRunner
         var result = new TaskResult { Id = request.Id, Kind = Kind };
         try
         {
-            var schedule = context.Session.Vision.CallTyped<TaskScheduleResult>(
+            var response = context.Session.Vision.CallTyped<JsonObject>(
                 "task_schedule", new
                 {
                     only_enabled = onlyEnabled,
@@ -79,6 +78,18 @@ public sealed class TaskScheduleTask : ITaskRunner
                     // 显式配置路径（多份账号配置 / 边界验收用假配置）；不给则用标准位置。
                     config_path = request.Input?["config_path"]?.GetValue<string>(),
                 });
+            result.Evidence = new JsonObject { ["host_response"] = response.DeepClone() };
+            TaskScheduleResult schedule;
+            try
+            {
+                schedule = response.Deserialize<TaskScheduleResult>(VisionProtocol.Json)
+                    ?? throw new JsonException("调度快照为空");
+            }
+            catch (JsonException error)
+            {
+                throw new AlasRuntimeException(RuntimeErrorKind.ContractViolation,
+                    $"调度快照字段类型或必需字段不合法: {error.Message}", error);
+            }
             if (schedule.Error is not null)
             {
                 result.Outcome = TaskOutcome.Failed;
@@ -86,8 +97,9 @@ public sealed class TaskScheduleTask : ITaskRunner
                 result.Error = schedule.Error;
                 return result;
             }
+            ValidateSnapshot(schedule, onlyEnabled, limit);
             var listed = new JsonArray();
-            foreach (var entry in schedule.Tasks ?? new List<TaskScheduleEntry>())
+            foreach (var entry in schedule.Tasks!)
                 listed.Add(new JsonObject
                 {
                     ["task"] = entry.Task,
@@ -97,6 +109,7 @@ public sealed class TaskScheduleTask : ITaskRunner
                 });
             result.Evidence = new JsonObject
             {
+                ["semantics"] = schedule.Semantics,
                 ["task_source"] = schedule.TaskSource,
                 ["config_source"] = schedule.ConfigSource,
                 ["task_count"] = schedule.TaskCount,
@@ -126,6 +139,29 @@ public sealed class TaskScheduleTask : ITaskRunner
         return result;
     }
 
+    private static void ValidateSnapshot(TaskScheduleResult snapshot, bool onlyEnabled, int limit)
+    {
+        if (snapshot.Semantics != "stored_config" || snapshot.Tasks is null
+            || snapshot.TaskCount is not >= 0 || snapshot.EnabledCount is not >= 0
+            || snapshot.NoSchedulerCount is not >= 0 || snapshot.ListedCount is not >= 0
+            || (long)snapshot.EnabledCount.Value + snapshot.NoSchedulerCount.Value > snapshot.TaskCount
+            || snapshot.ListedCount != (onlyEnabled ? snapshot.EnabledCount : snapshot.TaskCount)
+            || snapshot.Tasks.Count != Math.Min(snapshot.ListedCount.Value, limit))
+            throw new AlasRuntimeException(RuntimeErrorKind.ContractViolation, "调度存储快照来源或计数不完整/矛盾");
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in snapshot.Tasks)
+            if (entry is null || string.IsNullOrWhiteSpace(entry.Task) || !names.Add(entry.Task)
+                || (!entry.SchedulerPresent && (entry.Enable is not null || entry.NextRun is not null))
+                || (onlyEnabled && entry.Enable is not true))
+                throw new AlasRuntimeException(RuntimeErrorKind.ContractViolation, "调度存储快照条目缺失或启用状态矛盾");
+        int visibleEnabled = snapshot.Tasks.Count(entry => entry.Enable is true);
+        int visibleMissing = snapshot.Tasks.Count(entry => !entry.SchedulerPresent);
+        if (visibleEnabled > snapshot.EnabledCount || visibleMissing > snapshot.NoSchedulerCount
+            || (long)snapshot.EnabledCount.Value - visibleEnabled + snapshot.NoSchedulerCount.Value - visibleMissing
+                > snapshot.TaskCount.Value - snapshot.Tasks.Count)
+            throw new AlasRuntimeException(RuntimeErrorKind.ContractViolation, "调度存储快照条目与计数矛盾");
+    }
+
     private static bool TryLimit(JsonNode node, out int limit)
     {
         limit = 0;
@@ -144,11 +180,13 @@ public sealed class TaskScheduleTask : ITaskRunner
 /// <summary>宿主 `task_schedule` 的返回（只读快照）。</summary>
 public sealed class TaskScheduleResult
 {
+    [JsonPropertyName("semantics")] public string? Semantics { get; set; }
     [JsonPropertyName("task_source")] public string? TaskSource { get; set; }
     [JsonPropertyName("config_source")] public string? ConfigSource { get; set; }
     [JsonPropertyName("task_count")] public int? TaskCount { get; set; }
     [JsonPropertyName("enabled_count")] public int? EnabledCount { get; set; }
     [JsonPropertyName("no_scheduler_count")] public int? NoSchedulerCount { get; set; }
+    [JsonPropertyName("listed_count")] public int? ListedCount { get; set; }
     [JsonPropertyName("tasks")] public List<TaskScheduleEntry>? Tasks { get; set; }
     [JsonPropertyName("no_scheduler_sample")] public List<string>? NoSchedulerSample { get; set; }
     [JsonPropertyName("error")] public string? Error { get; set; }
@@ -157,7 +195,7 @@ public sealed class TaskScheduleResult
 public sealed class TaskScheduleEntry
 {
     [JsonPropertyName("task")] public string? Task { get; set; }
-    [JsonPropertyName("enable")] public bool? Enable { get; set; }
+    [JsonPropertyName("enable"), JsonRequired] public bool? Enable { get; set; }
     [JsonPropertyName("next_run")] public string? NextRun { get; set; }
-    [JsonPropertyName("scheduler_present")] public bool? SchedulerPresent { get; set; }
+    [JsonPropertyName("scheduler_present"), JsonRequired] public bool SchedulerPresent { get; set; }
 }
