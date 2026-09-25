@@ -658,11 +658,38 @@ def _is_bare_return_true(body) -> bool:
             and s.value.value is True)
 
 
-def _state_expression(node, resolve):
+def _state_expression(node, resolve, locals_=None):
     """把 `self.X = …` 右值归一成值表达式；表示不了返回 None（调用方记未解析）。"""
     if isinstance(node, ast.Constant) and (node.value is True or node.value is False
                                            or node.value is None or isinstance(node.value, int)):
         return {'literal': node.value}
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+            and node.func.id == 'SelectedGrids' and len(node.args) == 1:
+        # `SelectedGrids([A2, H3])` —— 显式格列表（元素用已有的符号解析换坐标）
+        items = node.args[0]
+        if isinstance(items, (ast.List, ast.Tuple)):
+            cells = []
+            for element in items.elts:
+                resolved = resolve(element)
+                if isinstance(resolved, dict) and '__grid__' in resolved:
+                    cells.append(resolved)
+                else:
+                    return None
+            return {'grids': cells}
+    if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) \
+            and locals_ and node.value.id in locals_:
+        index = node.slice
+        if isinstance(index, ast.Constant) and isinstance(index.value, int):
+            # `boss = boss[0]` —— 局部集合取下标
+            return {'local_index': {'name': node.value.id, 'index': index.value}}
+    if isinstance(node, ast.Name):
+        # 局部名当值：`boss == A1` 里的 `boss`（局部集合取过下标后就是单个格子）
+        if locals_ and node.id in locals_:
+            return {'local': node.id}
+        resolved = resolve(node)
+        if isinstance(resolved, dict) and '__grid__' in resolved:
+            # 裸格名当值（`A1`）
+            return {'grid': resolved}
     if isinstance(node, ast.Compare) and len(node.ops) == 1 and len(node.comparators) == 1:
         # 比较也能作为**值表达式**：复合条件里要用
         # （`self.mystery_count < 1 and self.clear_roadblocks([road_MY])`）。与 `branch_test` 同一套编码。
@@ -754,8 +781,14 @@ def derive_plan(body: list, where: str, resolve=None):
     # 按 Python 语义向外层累积：外层绑定的名字在内层分支体里同样可见。
     locals_: set = set()
 
+    # 绑成**格子集合**的局部名（`ignore = SelectedGrids([...])`）：当实参传下去时要用 `__local_grids__`
+    locals_grids: set = set()
+
     def arg_resolve(node):
         """先看局部变量（含 `boss[0]` 这种下标），再走原来的字面量/路段/符号解析。"""
+        if isinstance(node, ast.Name) and node.id in locals_grids:
+            # 格子集合当实参：执行器换成 `{"__grids__": …}`（标量形状的 `__local__` 不适用）
+            return {"__local_grids__": node.id}
         local = _local_reference(node, locals_)
         return local if local is not None else resolve(node)
 
@@ -912,7 +945,7 @@ def derive_plan(body: list, where: str, resolve=None):
                     and isinstance(stmt.targets[0].value, ast.Name) \
                     and stmt.targets[0].value.id == 'self':
                 # `self.<属性> = <值表达式>` —— 关卡实例属性（跨钩子存在，属**状态**不是局部变量）
-                expression = _state_expression(stmt.value, resolve)
+                expression = _state_expression(stmt.value, resolve, locals_)
                 if expression is None:
                     unparsed.append(f'Assign@{stmt.lineno}: {_brief(stmt)}')
                 else:
@@ -927,6 +960,18 @@ def derive_plan(body: list, where: str, resolve=None):
                     # 记成局部变量：后面的 `if <name>:` / `<name>[0]` 才算得出来
                     locals_.add(target)
                 else:
+                    # 不是自身调用 → 试"局部名绑定值表达式"（`ignore = None` / `ignore = SelectedGrids([A2])` /
+                    # `boss = boss[0]`）。**必须放在这里**：上面那个"通用 Assign 分支"会先接住所有赋值，
+                    # 单独立一支会被它挡住（实测：`ignore = None` 一直被记 unparsed）。
+                    if len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+                        bind = stmt.targets[0].id
+                        expression = _state_expression(stmt.value, resolve, locals_)
+                        if expression is not None:
+                            steps.append({'kind': 'local_set', 'target': bind, 'expr': expression})
+                            locals_.add(bind)
+                            if 'grids' in expression or 'local_index' in expression:
+                                locals_grids.add(bind)
+                            continue
                     unparsed.append(f'Assign@{stmt.lineno}: {_brief(stmt)}')
             elif isinstance(stmt, ast.For):
                 # `for grid in self.map: grid.<flag> = <字面量>` —— 整图设一个布尔标志（识别提示）。

@@ -116,6 +116,10 @@ public static class CampaignCallTranslator
         {
             case null:
                 return null;
+            case JsonObject payload when payload.ContainsKey("__local_grids__"):
+                // 局部**格子集合**引用：执行器在调用前换成 `{"__grids__": …}`（`SubstituteLocals`）
+                runtimeOnly = true;
+                return JsonValue.Create("#runtime-local-grids");
             case JsonObject payload when payload.ContainsKey("__local__"):
                 // 局部变量引用：由**执行器**在运行期替换成 `{"__grid__": …}`（见 `SubstituteLocals`），
                 // 静态翻译到这里只能标记"运行期解析"，不能编造一个格子。

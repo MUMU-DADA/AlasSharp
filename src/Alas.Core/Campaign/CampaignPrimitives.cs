@@ -1530,15 +1530,18 @@ public static class CampaignHookRunner
     {
         if (expr is not JsonObject node) return (null, "值表达式不是对象");
 
-        if (node["literal"] is { } literal)
+        if (node.ContainsKey("literal"))
         {
+            // 注意 `{"literal": null}`（上游 `ignore = None`）：JSON null 用 `is { }` 匹配不到，
+            // 必须按 ContainsKey 判断，否则会掉到"形态不在白名单里"（实测踩过）。
+            if (node["literal"] is not { } literal) return (PythonNone, "literal None");
             if (literal is JsonValue value)
             {
                 if (value.TryGetValue<bool>(out bool flag)) return (flag, $"literal {flag}");
                 if (value.TryGetValue<int>(out int number)) return (number, $"literal {number}");
                 if (value.TryGetValue<string>(out string? text)) return (text, $"literal '{text}'");
             }
-            return (null, "literal 不是布尔/字符串");   // null 字面量在 Python 里是 None（假）
+            return (null, "literal 不是布尔/整数/字符串");
         }
         if (node["state"] is JsonValue stateNode && stateNode.TryGetValue<string>(out string? name))
         {
@@ -1609,6 +1612,50 @@ public static class CampaignHookRunner
                 return (null, signal.Message);
             }
         }
+        if (node["grids"] is JsonArray cells)
+        {
+            // `SelectedGrids([A2, H3])`：显式格列表 → 格子集合
+            var collected = new List<CampaignGrid>();
+            foreach (var cell in cells)
+            {
+                string location = GridLocationOf(cell);
+                if (location.Length == 0) return (null, "grids 值表达式里有解不出位置的格子");
+                var grid = host.Grids.FirstOrDefault(item => item.Location == location);
+                if (grid is null) return (null, $"值表达式里的格子 {location} 不在当前地图状态里");
+                collected.Add(grid);
+            }
+            return (new CampaignGridSet(collected), $"SelectedGrids([{string.Join(",", collected.Select(g => g.Location))}])");
+        }
+        if (node["local_index"] is JsonObject offset && offset["name"] is JsonValue localNameNode
+            && localNameNode.TryGetValue<string>(out string? localList)
+            && offset["index"] is JsonValue indexNode2 && indexNode2.TryGetValue<int>(out int offsetIndex))
+        {
+            // `boss = boss[0]`：局部集合取下标
+            if (!env.TryGetValue(localList!, out var bound) || bound is not CampaignGridSet list || list.IsEmpty)
+            {
+                return (null, $"局部名 {localList} 不是可用的格子集合（取下标失败）");
+            }
+            if (offsetIndex < 0 || offsetIndex >= list.Count)
+            {
+                return (null, $"局部名 {localList} 的下标 {offsetIndex} 越界（共 {list.Count} 格）");
+            }
+            return (list[offsetIndex], $"{localList}[{offsetIndex}] = {list[offsetIndex].Location}");
+        }
+        if (node["local"] is JsonValue localValueNode && localValueNode.TryGetValue<string>(out string? localRef))
+        {
+            if (!env.TryGetValue(localRef!, out var boundValue))
+            {
+                return (null, $"局部名 {localRef} 没有绑定值");
+            }
+            return (boundValue, $"{localRef} = {Describe(boundValue)}");
+        }
+        if (node["grid"] is { } gridValueNode)
+        {
+            string location = GridLocationOf(gridValueNode);
+            var grid = host.Grids.FirstOrDefault(item => item.Location == location);
+            if (grid is null) return (null, $"值表达式里的格子 {location} 不在当前地图状态里");
+            return (grid, location);
+        }
         if (node["host_value"] is JsonValue hostNode && hostNode.TryGetValue<string>(out string? hostName))
         {
             return hostName switch
@@ -1645,6 +1692,18 @@ public static class CampaignHookRunner
             var (right, rightWhy) = EvaluateExpr(compare["right"], host, state, env);
             if (right is null) return (null, rightWhy);
             // 只做**整数**比较（上游这些条件都是整数/枚举比较）；类型不对就报错，不做隐式转换
+            // 格子比较按位置（`boss == A1`）
+            if (left is CampaignGrid leftGrid && right is CampaignGrid rightGrid)
+            {
+                bool same = string.Equals(leftGrid.Location, rightGrid.Location, StringComparison.Ordinal);
+                bool gridResult = compareOp switch
+                {
+                    "==" => same,
+                    "!=" => !same,
+                    _ => throw new NotSupportedException($"格子只支持 == / != 比较，收到 {compareOp}"),
+                };
+                return (gridResult, $"{leftWhy} {compareOp} {rightWhy} → {gridResult}");
+            }
             if (left is not int leftNumber || right is not int rightNumber)
             {
                 return (null, $"比较 {leftWhy} {compareOp} {rightWhy} 不是整数，无法比较");
@@ -1700,6 +1759,7 @@ public static class CampaignHookRunner
     private static bool Truthy(object? value) => value switch
     {
         null => false,
+        _ when ReferenceEquals(value, PythonNone) => false,   // Python None 为假
         bool flag => flag,
         // Python 的真假：整数 0 为假
         int number => number != 0,
@@ -1707,9 +1767,16 @@ public static class CampaignHookRunner
         _ => true,
     };
 
+    /// <summary>
+    /// Python `None` 的表示。求值失败用 `null` 返回，**不能**用它表示 `None`
+    /// （否则 `ignore = None` 会被当成"求值失败"而阻塞）。
+    /// </summary>
+    private static readonly object PythonNone = new();
+
     private static string Describe(object? value) => value switch
     {
         null => "null",
+        _ when ReferenceEquals(value, PythonNone) => "None",
         bool flag => flag ? "真" : "假",
         CampaignGridSet set => $"{set.Count} 格",
         _ => value.ToString() ?? "?",
@@ -1727,6 +1794,32 @@ public static class CampaignHookRunner
 
         JsonNode? Replace(JsonNode? node)
         {
+            if (node is JsonObject gridsPayload && gridsPayload["__local_grids__"] is JsonValue gridsName
+                && gridsName.TryGetValue<string>(out string? listName))
+            {
+                // 局部**格子集合**当实参：换成既有的 `{"__grids__": [[x, y], …]}`
+                if (env.TryGetValue(listName!, out var noneBound) && ReferenceEquals(noneBound, PythonNone))
+                {
+                    // `ignore = None`（上游语义就是"不排除"）→ 换成 JSON null，由解码方当"没有"处理
+                    changed = true;
+                    return null!;
+                }
+                if (!env.TryGetValue(listName!, out var listBound) || listBound is not CampaignGridSet list)
+                {
+                    throw new NotSupportedException($"局部名 {listName} 不是格子集合（不能当实参）");
+                }
+                var cells = new JsonArray();
+                foreach (var item in list.Grids)
+                {
+                    if (!CampaignLocations.TryParse(item.Location, out int gx, out int gy))
+                    {
+                        throw new NotSupportedException($"格子 {item.Location} 解析不出坐标");
+                    }
+                    cells.Add(new JsonArray(gx, gy));
+                }
+                changed = true;
+                return new JsonObject { ["__grids__"] = cells };
+            }
             if (node is not JsonObject payload || payload["__local__"] is not JsonValue nameNode
                 || !nameNode.TryGetValue<string>(out string? name))
             {
@@ -1845,6 +1938,24 @@ public static class CampaignHookRunner
                 {
                     return Result(plan, battle, branchRun.ReturnValue, null, stepLog, host, actionsBefore, actions);
                 }
+                continue;
+            }
+
+            // `local_set`：把**值表达式**绑到局部名（`ignore = SelectedGrids([A2])` / `boss = boss[0]` /
+            // `ignore = None`）。与 `state_set` 的区别是作用域：局部名只在本次钩子执行里有效。
+            if (step.Kind == "local_set")
+            {
+                if (step.Target is not { Length: > 0 } localName)
+                {
+                    return Result(plan, battle, null, "local_set 缺少绑定名", stepLog, host, actionsBefore, actions);
+                }
+                var (localValue, localWhy) = EvaluateExpr(step.Expr, host, state, env);
+                if (localValue is null)
+                {
+                    return Result(plan, battle, null, localWhy, stepLog, host, actionsBefore, actions);
+                }
+                env[localName] = localValue;
+                stepLog.Add($"local_set：{localName} = {Describe(localValue)}（{localWhy}）");
                 continue;
             }
 
@@ -2200,7 +2311,10 @@ public static class CampaignPrimitiveRegistry
             (host, _) => CampaignPrimitives.BattleDefault(host)),
         ["clear_all_mystery"] = new CampaignPrimitive(
             "clear_all_mystery", "捡完所有神秘格子，恒返回假（上游 Map.clear_all_mystery）", false,
-            (host, _) => CampaignPrimitives.ClearAllMystery(host)),
+            // 上游这里把 kwargs 转发给 `select_grids`：关卡会传 `ignore=SelectedGrids([...])`
+            // 表示"这些格子别动"。不接的话会**静默忽略** ignore（比阻塞更糟）。
+            (host, step) => CampaignPrimitives.ClearAllMystery(
+                host, new CampaignTargetOptions(Ignore: OptionalIgnore(host, step)))),
         ["clear_filter_enemy"] = new CampaignPrimitive(
             "clear_filter_enemy", "按过滤串选敌人并清掉（上游 Map.clear_filter_enemy）", NeedsArguments: true,
             (host, step) => CampaignPrimitives.ClearFilterEnemy(host, DecodeFilter(step), DecodePreserve(step))),
@@ -2526,6 +2640,24 @@ public static class CampaignPrimitiveRegistry
             $"{step.Op} 的格子表实参在导出里不是 __grids__ 结构——需要导出器解析格子符号后才能执行");
 
     /// <summary>`clear_mechanism(grids=None)` 允许不传格子；传了但不是符号表时如实报错。</summary>
+    /// <summary>
+    /// 解 `clear_all_mystery(ignore=…)` 这个**关键字**实参（`{"__grids__": [[x, y], …]}`）。
+    /// 上游把 kwargs 原样转发给 `select_grids`，关卡用 `ignore` 表示"这些格子别动"。
+    /// </summary>
+    private static CampaignGridSet? OptionalIgnore(ICampaignPrimitiveHost host, CampaignPlanStep step)
+    {
+        if (step.Args?.Keyword.TryGetValue("ignore", out var node) != true || node is null) return null;
+        // 复用 `DecodeGrids`：它读的是位置实参，这里把关键字实参包成一个临时步骤（只有一处实参）。
+        var synthetic = new CampaignPlanStep
+        {
+            Kind = step.Kind,
+            Op = step.Op,
+            Args = new CampaignPlanStepArgs { Positional = [node] },
+        };
+        var grids = DecodeGrids(host, synthetic);
+        return grids is null ? null : new CampaignGridSet(grids);
+    }
+
     private static IReadOnlyList<CampaignGrid>? OptionalGrids(ICampaignPrimitiveHost host, CampaignPlanStep step)
     {
         if (step.Args?.Positional is not { Count: > 0 }) return null;

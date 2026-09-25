@@ -55,7 +55,7 @@ internal static class CampaignCallCheck
                     // **结构步骤**（`branch` / `return`）不是调用，也没有上游方法可调：
                     // 它们由执行器处理，翻译器管不着。显式分开统计——不然它们会以空 op 混进"已翻译"，
                     // 又是一次"看起来能跑"的假绿。
-                    if (step.Kind is "branch" or "return")
+                    if (step.Kind is "branch" or "return" or "local_set")
                     {
                         structural++;
                         continue;

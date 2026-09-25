@@ -5,8 +5,8 @@
 > 所以是「少做」而不是「做错」。本报告只说清还差什么。
 
 - 导出里的钩子条目：**3019**
-- `plan_complete=false` 且上游**有 ≥2 条语句**的：**51**（其中 `battle_*` **7**、变体/其它 **44**）
-- 棘轮基线：**7**（只允许下降）
+- `plan_complete=false` 且上游**有 ≥2 条语句**的：**49**（其中 `battle_*` **5**、变体/其它 **44**）
+- 棘轮基线：**5**（只允许下降）
 
 ## `if` 的形态分布（条件 / 语句体）
 
@@ -16,18 +16,18 @@
 
 | 条件形态 | 语句体形态 | 次数 |
 | --- | --- | --- |
-| other | expr | 10 |
-| self_call | return | 9 |
+| other | expr | 8 |
 | other | assign+expr+return | 6 |
-| self_call | assign | 6 |
 | compare | assign | 5 |
 | compare | return | 4 |
-| other | assign | 2 |
+| self_call | assign | 3 |
+| self_call | return | 3 |
 | other | expr+return | 2 |
 | local_name | assign+expr+raise | 1 |
 | other | for | 1 |
 | local_name | assign+if | 1 |
 | not_self_call | return | 1 |
+| other | return | 1 |
 
 ## 例子
 
@@ -35,12 +35,12 @@
 - `campaign_main/campaign_14_4` map_data_init：`if not self.map_is_clear_mode` → 体内有 for
 - `campaign_main/campaign_15_1` battle_function：`if self.config.MAP_CLEAR_ALL_THIS_TIME and self.bat` → 体内有 assign+expr+return
 - `campaign_main/campaign_15_2` battle_function：`if self.config.MAP_CLEAR_ALL_THIS_TIME and self.bat` → 体内有 assign+expr+return
-- `campaign_main/campaign_7_2` battle_0：`if self.fleet_2_step_on(FLEET_2_STEP_ON, roadblocks` → 体内有 return
-- `campaign_main/campaign_7_2` battle_0：`if self.fleet_at(A3, fleet=2) and A1.enemy_scale !=` → 体内有 assign
-- `campaign_main/campaign_7_2` battle_0：`if self.fleet_at(G3, fleet=2)` → 体内有 assign
-- `campaign_main/campaign_7_2` battle_0：`if self.clear_roadblocks([ROAD_MAIN], strongest=Tru` → 体内有 return
-- `campaign_main/campaign_7_2` battle_0：`if self.clear_enemy(scale=(3,))` → 体内有 return
-- `campaign_main/campaign_7_2` battle_0：`if self.clear_potential_roadblocks([ROAD_MAIN], str` → 体内有 return
+- `campaign_main/campaign_7_3` battle_5：`if boss` → 体内有 assign+if
+- `campaign_main/campaign_7_3` battle_5：`if boss == A1` → 体内有 assign
+- `campaign_main/campaign_7_3` battle_5：`if not self.check_accessibility(boss, fleet='boss')` → 体内有 return
+- `campaign_main/campaign_7_3` battle_5：`if boss == C6` → 体内有 assign
+- `campaign_main/campaign_7_3` battle_5：`if boss == H1` → 体内有 assign
+- `campaign_main/campaign_7_3` battle_5：`if boss == H5` → 体内有 assign
 
 ## 先决条件（按出现频次）
 
