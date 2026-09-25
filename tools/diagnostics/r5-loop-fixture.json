@@ -68,17 +68,35 @@
       }
     },
     {
-      "name": "MAP_CLEAR_ALL_THIS_TIME=true：battle_function 变体未迁移 → 明确阻塞，不按默认策略跑",
+      "name": "MAP_CLEAR_ALL_THIS_TIME=true：走 clear_all 变体（清完神秘 → 有敌人则打，否则打 boss）",
       "chapter": "campaign_main",
       "level": "campaign_1_1",
-      "config": { "map_clear_all_this_time": true },
+      "config": { "map_clear_all_this_time": true, "error_handle_error": false },
       "grids": [
         { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 5 }
       ],
       "expect": {
-        "outcome": "Blocked",
-        "blocked_contains": "clear_all",
-        "rounds": 1
+        "variant": "clear_all",
+        "detail": "Battle function exhausted.",
+        "rounds": 20,
+        "log_contains": "Enemy remain: 1",
+        "hooks": ["clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all", "clear_all"]
+      }
+    },
+    {
+      "name": "POOR_MAP_DATA=true：走 battle_with_poor_map_data 变体（无 boss 时 clear_siren → clear_enemy）",
+      "chapter": "campaign_main",
+      "level": "campaign_1_1",
+      "config": { "poor_map_data": true, "map_has_siren": true, "error_handle_error": false },
+      "grids": [
+        { "location": "A1", "is_enemy": true, "enemy_scale": 2, "enemy_genre": "Main", "weight": 10, "cost": 5 },
+        { "location": "B1", "is_siren": true, "weight": 20, "cost": 6 }
+      ],
+      "expect": {
+        "variant": "battle_with_poor_map_data",
+        "detail": "Battle function exhausted.",
+        "rounds": 20,
+        "log_contains": "Using function: battle_with_poor_map_data"
       }
     }
   ]

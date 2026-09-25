@@ -83,6 +83,12 @@ public interface ICampaignPrimitiveHost
     /// <summary>按位置取地图状态里的格子；取不到即抛错（不返回默认值糊过去）。</summary>
     CampaignGrid GridAt(string location);
 
+    /// <summary>相机对齐到双边缘（上游 <c>Camera.ensure_edge_insight()</c>，属设备侧手势）。</summary>
+    void EnsureEdgeInsight();
+
+    /// <summary>把全图 <c>is_caught_by_siren</c> 置假（上游在挣脱/判定失败后这么清标记）。</summary>
+    void ClearCaughtBySirenFlags();
+
     /// <summary>撤退（上游 <c>MapOperation.withdraw()</c>，如 <c>capture_clear_boss</c> 结尾会撤退）。</summary>
     void Withdraw();
 
@@ -192,6 +198,10 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
     public CampaignGrid GridAt(string location) =>
         Grids.FirstOrDefault(grid => grid.Location == location)
         ?? throw new NotSupportedException($"地图状态里没有格子 {location}（识别结果可能未覆盖）");
+
+    public void EnsureEdgeInsight() => Actions.Add("ensure_edge_insight()");
+
+    public void ClearCaughtBySirenFlags() => Actions.Add("clear_caught_by_siren_flags()");
 
     public void Withdraw()
     {
@@ -835,6 +845,100 @@ public static class CampaignPrimitives
         return field.CostOf(grid.Location) < CampaignPathfinder.Unreachable;
     }
 
+    /// <summary>上游 <c>Map.fleet_2_break_siren_caught()</c>：2 队被塞壬抓住时先挣脱。</summary>
+    public static bool Fleet2BreakSirenCaught(ICampaignPrimitiveHost host)
+    {
+        if (host.Config.FleetBossIndex != 2) return false;
+        if (!host.Config.MapHasSiren || !host.Config.MapHasMovableEnemy) return false;
+
+        var all = new CampaignGridSet(host.Grids);
+        var caught = all.Select(new CampaignGridFilter(IsCaughtBySiren: true));
+        if (caught.IsEmpty)
+        {
+            host.Log("No fleet caught by siren.");
+            return false;
+        }
+        if (string.IsNullOrEmpty(host.Fleet2Location) ||
+            !caught.Grids.Any(grid => grid.Location == host.Fleet2Location))
+        {
+            host.Log("Appear caught by siren, but not fleet_2.");
+            host.ClearCaughtBySirenFlags();
+            return false;
+        }
+
+        host.Log($"Break siren caught, fleet_2: {host.Fleet2Location}");
+        host.EnsureFleet(2);
+        host.EnsureEdgeInsight();
+        host.ClearChosenEnemy(host.GridAt(host.Fleet2Location), "");
+        host.EnsureFleet(1);
+        host.ClearCaughtBySirenFlags();
+        return true;
+    }
+
+    /// <summary>上游 <c>CampaignBase.battle_boss()</c>：`brute_clear_boss()` 打成就真，否则记 No battle executed.</summary>
+    public static bool BattleBoss(ICampaignPrimitiveHost host)
+    {
+        if (BruteClearBoss(host)) return true;
+        host.Log("No battle executed.");
+        return false;
+    }
+
+    /// <summary>
+    /// 上游 <c>battle_function</c> 变体 <c>battle_with_poor_map_data</c>
+    /// （`@Config.when(POOR_MAP_DATA=True, MAP_CLEAR_ALL_THIS_TIME=False)`）。
+    /// </summary>
+    public static bool PoorMapDataVariant(ICampaignPrimitiveHost host)
+    {
+        host.Log("Using function: battle_with_poor_map_data");
+        if (Fleet2BreakSirenCaught(host)) return true;
+        ClearAllMystery(host);
+        if (host.BattleCount >= 3) PickUpAmmo(host);
+
+        var all = new CampaignGridSet(host.Grids);
+        if (!all.Select(new CampaignGridFilter(IsBoss: true)).IsEmpty)
+        {
+            if (BruteClearBoss(host)) return true;
+        }
+        else
+        {
+            if (ClearSiren(host)) return true;
+            return ClearEnemy(host);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 上游 <c>battle_function</c> 变体 <c>clear_all</c>（`@Config.when(MAP_CLEAR_ALL_THIS_TIME=True)`）。
+    /// </summary>
+    public static bool ClearAllVariant(ICampaignPrimitiveHost host)
+    {
+        host.Log("Using function: clear_all");
+        if (Fleet2BreakSirenCaught(host)) return true;
+        ClearAllMystery(host);
+        if (host.BattleCount >= 3) PickUpAmmo(host);
+
+        var all = new CampaignGridSet(host.Grids);
+        var remain = all.Select(new CampaignGridFilter(IsEnemy: true))
+            .Add(all.Select(new CampaignGridFilter(IsSiren: true)))
+            .Add(all.Select(new CampaignGridFilter(IsFortress: true)))
+            .Delete(all.Select(new CampaignGridFilter(IsBoss: true)));
+        host.Log($"Enemy remain: {remain.Count}");
+
+        if (remain.Count > 0)
+        {
+            if (host.Config.MapHasMovableNormalEnemy)
+            {
+                if (ClearAnyEnemy(host, new CampaignTargetOptions { Sort = ["cost_2"] })) return true;
+                return BattleDefault(host);
+            }
+            if (ClearBouncingEnemy(host)) return true;
+            if (ClearSiren(host)) return true;
+            ClearMechanism(host);
+            return BattleDefault(host);
+        }
+        return BattleBoss(host);
+    }
+
     /// <summary>上游 <c>CampaignBase.battle_default()</c>。</summary>
     public static bool BattleDefault(ICampaignPrimitiveHost host)
     {
@@ -1151,6 +1255,12 @@ public static class CampaignPrimitiveRegistry
         ["clear_bouncing_enemy"] = new CampaignPrimitive(
             "clear_bouncing_enemy", "清巡逻敌人（上游 Map.clear_bouncing_enemy）", false,
             (host, _) => CampaignPrimitives.ClearBouncingEnemy(host)),
+        ["fleet_2_break_siren_caught"] = new CampaignPrimitive(
+            "fleet_2_break_siren_caught", "2 队被塞壬抓住时挣脱（上游 Map.fleet_2_break_siren_caught）", false,
+            (host, _) => CampaignPrimitives.Fleet2BreakSirenCaught(host)),
+        ["battle_boss"] = new CampaignPrimitive(
+            "battle_boss", "打 boss：brute_clear_boss 打成就真（上游 CampaignBase.battle_boss）", false,
+            (host, _) => CampaignPrimitives.BattleBoss(host)),
     };
 
     /// <summary>已实现的原语名（排序返回，便于输出与对拍）。不含舰队前缀组合。</summary>

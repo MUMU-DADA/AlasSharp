@@ -122,60 +122,87 @@ public static class CampaignBattleLoop
     private static CampaignBattleRound ExecuteABattle(CampaignPlan plan, ICampaignPrimitiveHost host, int round)
     {
         int battleCountBefore = host.BattleCount;
-
-        // 变体 1/2 是固定原语序列（fleet_2_break_siren_caught / brute_clear_boss / clear_bouncing_enemy …），
-        // 这些原语尚未实现——明确阻塞，绝不按默认策略（钩子选择）静默跑错。
         string variant = BattleFunctionVariant(host.Config);
-        if (variant != "default_hooks")
-        {
-            return new CampaignBattleRound(round, battleCountBefore, "battle_function", null,
-                $"battle_function 变体 {variant} 尚未迁移（需要 fleet_2_break_siren_caught 等原语）");
-        }
-
-        string hook = SelectHook(plan, host.BattleCount);
-        host.Log($"{hook}（第 {round + 1} 轮，battle_count={host.BattleCount}）");
+        string label = variant == "default_hooks" ? SelectHook(plan, host.BattleCount) : variant;
+        host.Log($"{label}（第 {round + 1} 轮，battle_count={host.BattleCount}）");
 
         for (int attempt = 0; attempt < MaxAttempts; attempt++)
         {
-            var battle = plan.Header.Battles.FirstOrDefault(item => item.Method == hook);
-            if (battle is null)
+            bool? result;
+            string? blocked;
+            if (variant == "default_hooks")
             {
-                // 上游 `hasattr(self, 'battle_default')` 会命中**基类** CampaignBase 的实现
-                // （`module/campaign/campaign_base.py`），关卡自身没有这个方法也照样可用。
-                if (hook == "battle_default")
-                {
-                    bool defaultResult = CampaignPrimitives.BattleDefault(host);
-                    return new CampaignBattleRound(round, battleCountBefore, hook, defaultResult, null);
-                }
-                if (hook == "battle_boss")
-                {
-                    return new CampaignBattleRound(round, battleCountBefore, hook, null,
-                        "基类 battle_boss 需要 brute_clear_boss（尚未迁移）");
-                }
-                return new CampaignBattleRound(round, battleCountBefore, hook, false,
-                                               $"关卡导出与基类都没有钩子 {hook}");
+                (result, blocked) = RunHook(plan, label, host);
+            }
+            else
+            {
+                (result, blocked) = RunVariant(host, variant);
             }
 
-            var execution = CampaignHookRunner.Run(plan, battle, host);
-            if (execution.BlockedReason is null)
+            if (blocked is null)
             {
-                return new CampaignBattleRound(round, battleCountBefore, hook, execution.ReturnValue, null);
+                return new CampaignBattleRound(round, battleCountBefore, label, result, null);
             }
             // 上游：MapEnemyMoved 被 execute_a_battle 捕获；battle_count 增长即视为打过了，否则重试。
-            if (execution.BlockedReason.Contains("MapEnemyMoved", StringComparison.Ordinal))
+            if (blocked.Contains("MapEnemyMoved", StringComparison.Ordinal))
             {
                 if (host.BattleCount > battleCountBefore)
                 {
-                    return new CampaignBattleRound(round, battleCountBefore, hook, true, null);
+                    return new CampaignBattleRound(round, battleCountBefore, label, true, null);
                 }
                 host.Log("MapEnemyMoved：battle_count 未增长，重试");
                 continue;
             }
-            return new CampaignBattleRound(round, battleCountBefore, hook, null, execution.BlockedReason);
+            return new CampaignBattleRound(round, battleCountBefore, label, null, blocked);
         }
 
-        return new CampaignBattleRound(round, battleCountBefore, hook, false,
+        return new CampaignBattleRound(round, battleCountBefore, label, false,
                                        "MapEnemyMoved 重试超过 10 次");
+    }
+
+    /// <summary>默认变体：按 battle_count 选钩子执行；<c>battle_default</c>/<c>battle_boss</c> 落到基类实现。</summary>
+    private static (bool? Result, string? Blocked) RunHook(CampaignPlan plan, string hook, ICampaignPrimitiveHost host)
+    {
+        var battle = plan.Header.Battles.FirstOrDefault(item => item.Method == hook);
+        if (battle is null)
+        {
+            // 上游 `hasattr(self, 'battle_default')` 会命中**基类** CampaignBase 的实现
+            // （`module/campaign/campaign_base.py`），关卡自身没有这个方法也照样可用。
+            if (hook == "battle_default")
+            {
+                return (CampaignPrimitives.BattleDefault(host), null);
+            }
+            if (hook == "battle_boss")
+            {
+                return (CampaignPrimitives.BattleBoss(host), null);
+            }
+            return (false, $"关卡导出与基类都没有钩子 {hook}");
+        }
+
+        var execution = CampaignHookRunner.Run(plan, battle, host);
+        return execution.BlockedReason is null
+            ? (execution.ReturnValue, null)
+            : (null, execution.BlockedReason);
+    }
+
+    /// <summary>另外两个变体（<c>clear_all</c> / <c>battle_with_poor_map_data</c>）：直接跑固定原语序列。</summary>
+    private static (bool? Result, string? Blocked) RunVariant(ICampaignPrimitiveHost host, string variant)
+    {
+        try
+        {
+            bool result = variant == "clear_all"
+                ? CampaignPrimitives.ClearAllVariant(host)
+                : CampaignPrimitives.PoorMapDataVariant(host);
+            return (result, null);
+        }
+        catch (NotSupportedException error)
+        {
+            return (null, error.Message);
+        }
+        catch (CampaignControlFlowSignal signal)
+        {
+            return (null, signal.Message);
+        }
     }
 
     /// <summary>

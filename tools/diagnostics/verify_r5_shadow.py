@@ -42,8 +42,17 @@ CASES = [
         "log": "shadow-drift.log",
         "chapter": "campaign_main",
         "level": "campaign_1_4",
-        "expect": {"matched": 0, "mismatched": 1, "skipped": 2, "exhausted": True,
-                   "verdicts": ["不一致", "跳过", "跳过"]},
+        "expect": {"matched": 0, "mismatched": 2, "skipped": 1, "exhausted": True,
+                   "verdicts": ["不一致", "不一致", "跳过"]},
+    },
+    {
+        "name": "变体：声明 clear_all 时，日志里的 clear_all 全部一致",
+        "log": "shadow-variant.log",
+        "chapter": "campaign_main",
+        "level": "campaign_2_1",
+        "variant": "clear_all",
+        "expect": {"matched": 2, "mismatched": 0, "skipped": 0, "campaign_end": True,
+                   "variant": "clear_all", "verdicts": ["一致", "一致"]},
     },
 ]
 
@@ -57,9 +66,12 @@ def main() -> int:
         if not log.is_file():
             problems.append(f"{case['name']}: 缺少夹具日志 {log.name}")
             continue
+        command = [str(SERVER), "r5-shadow", "--chapter", case["chapter"], "--level", case["level"],
+                   "--log", str(log), "--json"]
+        if case.get("variant"):
+            command += ["--variant", case["variant"]]
         completed = subprocess.run(
-            [str(SERVER), "r5-shadow", "--chapter", case["chapter"], "--level", case["level"],
-             "--log", str(log), "--json"],
+            command,
             cwd=ROOT, capture_output=True, text=True, timeout=180, encoding="utf-8", errors="replace")
         if completed.returncode not in (0, 1):
             print(completed.stdout, completed.stderr)
@@ -67,7 +79,7 @@ def main() -> int:
             continue
         payload = json.loads(completed.stdout)
         expect = case["expect"]
-        for key in ("matched", "mismatched", "skipped", "campaign_end", "exhausted"):
+        for key in ("matched", "mismatched", "skipped", "campaign_end", "exhausted", "variant"):
             if key in expect and payload.get(key) != expect[key]:
                 problems.append(f"{case['name']}: {key}={payload.get(key)}，期望 {expect[key]}")
         verdicts = [row["verdict"] for row in payload["rows"]]

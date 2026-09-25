@@ -19,7 +19,8 @@ namespace Alas.Core.Diagnostics;
 /// </summary>
 internal static class CampaignShadowCheck
 {
-    public static int Run(string dataDir, string? chapter, string? level, string? logPath, bool asJson)
+    public static int Run(string dataDir, string? chapter, string? level, string? logPath, bool asJson,
+                          string declaredVariant = CampaignShadow.DefaultVariant)
     {
         if (string.IsNullOrEmpty(chapter) || string.IsNullOrEmpty(level))
         {
@@ -41,7 +42,7 @@ internal static class CampaignShadowCheck
         }
 
         var observation = UpstreamLogParser.Parse(File.ReadAllText(logPath));
-        var comparison = CampaignShadow.Compare(plan, observation);
+        var comparison = CampaignShadow.Compare(plan, observation, declaredVariant);
 
         if (asJson)
         {
@@ -54,6 +55,7 @@ internal static class CampaignShadowCheck
                 ["matched"] = comparison.Matched,
                 ["mismatched"] = comparison.Mismatched,
                 ["skipped"] = comparison.Skipped,
+                ["variant"] = declaredVariant,
                 ["rows"] = new JsonArray(comparison.Rows.Select(row => (JsonNode)new JsonObject
                 {
                     ["battle_count"] = row.BattleCount,
@@ -67,7 +69,8 @@ internal static class CampaignShadowCheck
         }
 
         Console.WriteLine($"[影子比对] {comparison.Chapter}/{comparison.Level}：上游共 {observation.Rounds.Count} 轮出击" +
-                          $"（Campaign end={observation.CampaignEnd}，耗尽={observation.BattleFunctionExhausted}）");
+                          $"（Campaign end={observation.CampaignEnd}，耗尽={observation.BattleFunctionExhausted}，" +
+                          $"本次声明变体 {declaredVariant}）");
         Console.WriteLine($"{"轮次",-6}{"battle",-8}{"影子会选",-16}{"上游实际",-24}{"判定",-8}说明");
         foreach (var row in comparison.Rows)
         {

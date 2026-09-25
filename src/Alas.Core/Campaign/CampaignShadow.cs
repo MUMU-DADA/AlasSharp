@@ -131,19 +131,24 @@ public sealed record ShadowComparison(
 /// </summary>
 public static class CampaignShadow
 {
-    /// <summary>非默认变体（上游 `battle_function` 的另两个 @Config.when 分支）——影子无法计算，跳过并注明。</summary>
+    /// <summary>非默认变体（上游 `battle_function` 的另两个 @Config.when 分支）。</summary>
     private static readonly HashSet<string> VariantFunctions = new(StringComparer.Ordinal)
     {
         "clear_all", "battle_with_poor_map_data",
     };
 
-    public static ShadowComparison Compare(CampaignPlan plan, UpstreamRunObservation observation)
+    /// <summary>本次比对声明的变体：默认变体（按 battle_count 选钩子）或另两个变体名。</summary>
+    public const string DefaultVariant = "default_hooks";
+
+    public static ShadowComparison Compare(CampaignPlan plan, UpstreamRunObservation observation,
+                                           string declaredVariant = DefaultVariant)
     {
         var rows = new List<ShadowComparisonRow>();
         int matched = 0, mismatched = 0, skipped = 0;
+        bool declaredIsVariant = VariantFunctions.Contains(declaredVariant);
         foreach (var round in observation.Rounds)
         {
-            string expected = CampaignBattleLoop.SelectHook(plan, round.BattleCount);
+            string expected = declaredIsVariant ? declaredVariant : CampaignBattleLoop.SelectHook(plan, round.BattleCount);
             string? actual = round.UsingFunction;
             if (actual is null)
             {
@@ -151,25 +156,29 @@ public static class CampaignShadow
                 skipped++;
                 continue;
             }
-            if (VariantFunctions.Contains(actual))
-            {
-                rows.Add(new ShadowComparisonRow(round.BattleCount, expected, actual, "跳过",
-                    $"上游走的是 battle_function 变体 {actual}（尚未迁移，无法比对）"));
-                skipped++;
-                continue;
-            }
-            bool inPlan = plan.Header.Battles.Any(item => item.Method == actual);
             if (string.Equals(expected, actual, StringComparison.Ordinal))
             {
                 rows.Add(new ShadowComparisonRow(round.BattleCount, expected, actual, "一致", null));
                 matched++;
+                continue;
+            }
+            string note;
+            if (VariantFunctions.Contains(actual))
+            {
+                note = $"上游走了变体 {actual}，但本次比对声明的是 {declaredVariant}"
+                     + $"（若该运行确实配置了它，请用 --variant {actual} 重跑）";
+            }
+            else if (declaredIsVariant)
+            {
+                note = $"本次比对声明变体 {declaredVariant}，但上游实际按 battle_count 选了钩子 {actual}";
             }
             else
             {
-                string note = inPlan ? "两边选的钩子不同" : "上游调的钩子在关卡导出里没有";
-                rows.Add(new ShadowComparisonRow(round.BattleCount, expected, actual, "不一致", note));
-                mismatched++;
+                bool inPlan = plan.Header.Battles.Any(item => item.Method == actual);
+                note = inPlan ? "两边选的钩子不同" : "上游调的钩子在关卡导出里没有";
             }
+            rows.Add(new ShadowComparisonRow(round.BattleCount, expected, actual, "不一致", note));
+            mismatched++;
         }
         return new ShadowComparison(plan.Chapter, plan.Level, rows, matched, mismatched, skipped);
     }

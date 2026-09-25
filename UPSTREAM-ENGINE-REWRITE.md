@@ -628,6 +628,28 @@ C# 影子选择与上游实际 `Using function:` **4/4 完全一致**——包�
 （如 `campaign_2_1` 的一次运行日志）上游用的是另两个 `battle_function` 变体，C# 侧尚未迁移，
 影子比对会**全部跳过**——要让这些关卡也能比对，需要先迁移那两个变体。
 
+#### P2-15 已完成：三个 `battle_function` 变体全覆盖（2026-09-26）
+
+| 新增 | 对应上游 | 关键语义 |
+| --- | --- | --- |
+| `fleet_2_break_siren_caught` | `Map.fleet_2_break_siren_caught()` | `fleet_boss_index != 2` 或无塞壬/无可移动敌人 → 假；没有被抓的格子 → 记 `No fleet caught by siren.`；被抓的不是 2 队 → 警告并清全图标记；否则切 2 队 + 相机对齐（新宿主动作 `EnsureEdgeInsight`）+ 打该格 + 切回 1 队 + 清标记 |
+| `battle_boss` | `CampaignBase.battle_boss()` | `brute_clear_boss()` 打成就真，否则记 `No battle executed.` |
+| `ClearAllVariant` | `battle_function` 的 `@Config.when(MAP_CLEAR_ALL_THIS_TIME=True)` | 挣脱塞壬 → `clear_all_mystery` →（`battle_count ≥ 3` 时捡弹药）→ 统计 `remain`（敌人+塞壬+要塞，去掉 boss）：有剩余时按 `MAP_HAS_MOVABLE_NORMAL_ENEMY` 走 `clear_any_enemy(sort=('cost_2',))` 或 `clear_bouncing_enemy → clear_siren → clear_mechanism → battle_default`；没有剩余则 `battle_boss()` |
+| `PoorMapDataVariant` | `@Config.when(POOR_MAP_DATA=True)` | 挣脱塞壬 → `clear_all_mystery` →（≥3 捡弹药）→ 有 boss 则 `brute_clear_boss`，否则 `clear_siren → clear_enemy` |
+
+`CampaignBattleLoop.ExecuteABattle` 现在**按配置分发变体**（不再是"变体未迁移即阻塞"），
+两个变体与默认路径共用同一套 `MapEnemyMoved` 重试语义（`battle_count` 增长即算成功，否则最多 10 次）。
+
+**影子模式随之升级**：`r5-shadow` 增加 `--variant <default_hooks|clear_all|battle_with_poor_map_data>`，
+在**未声明的变体名出现在日志里**时判为**不一致**并给出提示（"若该运行确实配置了它，请用 `--variant` 重跑"）——
+这样既不再全部跳过，也不会用日志自己证明自己（循环论证）。
+
+**验证**：
+- `verify_r5_loop.py` 扩到 **6 个用例**（新增 `clear_all` 变体跑满 20 轮、`battle_with_poor_map_data` 变体）；
+- `verify_r5_shadow.py` 扩到 **3 个用例**（新增"声明 `clear_all` 时日志里的 `clear_all` 全部一致"）；
+- **真实日志**：`campaign_2_1` 的 `clear_all` 运行，声明 `--variant clear_all` 后 **7/7 一致**；
+- 注册原语 **28 个**；执行面/步覆盖不变（5687/5694，99.9%），全库干跑仍 3019/3019 无阻塞。
+
 ### P4 收口
 
 `IVisionEngine` 只保留识图相关方法；上游目录只剩规则文件与识图组件；文档同步（`docs/architecture-roadmap.md`、本文件、[架构梳理](ARCHITECTURE-NOTES.md)）。
