@@ -234,7 +234,7 @@ Core 内调用点 **33 处**，分布：`Device/DeviceController`、`Tasks/Obser
 
 | 接缝 | 现状 | 纪律 |
 | --- | --- | --- |
-| `IVisionEngine`（唯一上游边界） | 24 方法 / 33 调用点 | 新功能不要轻易新增接口方法；能静态化的不问 Python |
+| `IVisionEngine`（唯一上游边界） | 25 方法 / 41 调用点 | 新功能不要轻易新增接口方法；能静态化的不问 Python |
 | 静态导出覆盖面 | 已导出 assets/campaign_index/campaign/schema/manifest | 凡能用规则表达的就**现在就导出**（页面图、任务目录、阈值参数、地图 IR…），它们是将来自研引擎的输入 |
 | 夹具与基线 | 已有 `RecordingEngine`、`verify_map_ir.py`、`make_*_fixture.py`、`verify_result_contract.py` | 每次新增上游交互顺手录 fixture（脱敏）+ 记性能基线，否则将来无法证明"替换后等价" |
 
@@ -255,7 +255,7 @@ Core 内调用点 **33 处**，分布：`Device/DeviceController`、`Tasks/Obser
 
 ## 7. 待办与下一步产出
 
-1. **能力归属矩阵**：逐 `IVisionEngine` 方法 + Core 33 个调用点，标注【借引擎 / 可静态化 / 必须自研】；
+1. **能力归属矩阵**：逐 `IVisionEngine` 方法 + Core 41 个调用点，标注【借引擎 / 可静态化 / 必须自研】；
 2. **静态化可达性评估**：按域给出"纯静态可达 / 需先补导出（列字段）/ 必须自研引擎"三档结论，
    并附依赖的上游模块与文件数；
 3. 建议把这两份产出登记到 `docs/architecture-roadmap.md` 的 R5 章节，作为"先开发、后替换"的验收锚点。
