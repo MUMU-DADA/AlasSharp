@@ -317,6 +317,7 @@ internal static class RuntimeSelfCheck
              .Register(new Alas.Tasks.AccountStateTask())
              .Register(new Alas.Tasks.TaskCatalogTask())
              .Register(new Alas.Tasks.TaskScheduleTask())
+             .Register(new Alas.Tasks.ConfigGetTask())
              .Register(new Alas.Tasks.OsStateTask())
              .Register(new Alas.Tasks.PeriodicRunTask())
              .Register(new Alas.Tasks.ToolRunTask())

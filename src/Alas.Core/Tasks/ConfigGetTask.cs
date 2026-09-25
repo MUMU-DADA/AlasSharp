@@ -1,6 +1,8 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Alas.Runtime;
+using Alas.Vision;
 
 namespace Alas.Tasks;
 
@@ -75,8 +77,21 @@ public sealed class ConfigGetTask : ITaskRunner
             .Select(k => k!.GetValue<string>()).ToList() ?? new List<string>();
         try
         {
-            var read = context.Session.Vision.CallTyped<ConfigGetResult>(
-                "config_get", new { keys, instance = request.Input?["instance"]?.GetValue<string>() ?? "alas" });
+            string instance = request.Input?["instance"]?.GetValue<string>() ?? "alas";
+            var response = context.Session.Vision.CallTyped<JsonObject>(
+                "config_get", new { keys, instance });
+            result.Evidence = new JsonObject { ["host_response"] = response.DeepClone() };
+            ConfigGetResult read;
+            try
+            {
+                read = response.Deserialize<ConfigGetResult>(VisionProtocol.Json)
+                    ?? throw new JsonException("配置读取响应为空");
+            }
+            catch (JsonException error)
+            {
+                throw new AlasRuntimeException(RuntimeErrorKind.ContractViolation,
+                    $"配置读取响应字段类型不合法: {error.Message}", error);
+            }
             if (read.Error is not null)
             {
                 result.Outcome = TaskOutcome.Failed;
@@ -84,6 +99,7 @@ public sealed class ConfigGetTask : ITaskRunner
                 result.Error = read.Error;
                 return result;
             }
+            ValidateResponse(read, instance, keys);
             var values = new JsonObject();
             var missing = new JsonArray();
             var on = new JsonArray();
@@ -128,6 +144,21 @@ public sealed class ConfigGetTask : ITaskRunner
             result.Error = wrapped.Message;
         }
         return result;
+    }
+
+    private static void ValidateResponse(ConfigGetResult read, string instance, IReadOnlyList<string> keys)
+    {
+        var expected = keys.ToHashSet(StringComparer.Ordinal);
+        var values = read.Values;
+        var missing = read.Missing;
+        if (read.Instance != instance || string.IsNullOrWhiteSpace(read.ConfigSource)
+            || read.Checked != keys.Count || values is null || missing is null
+            || values.Count != expected.Count || !expected.SetEquals(values.Keys)
+            || missing.Count != missing.Distinct(StringComparer.Ordinal).Count()
+            || !missing.ToHashSet(StringComparer.Ordinal)
+                .SetEquals(values.Where(pair => pair.Value is null).Select(pair => pair.Key)))
+            throw new AlasRuntimeException(RuntimeErrorKind.ContractViolation,
+                "配置读取响应实例、来源、键集合或缺失计数不一致");
     }
 }
 

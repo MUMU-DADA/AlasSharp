@@ -18,6 +18,8 @@
 from __future__ import annotations
 
 import json
+import copy
+import os
 import subprocess
 import sys
 import tempfile
@@ -104,10 +106,66 @@ def verify_instances(failures):
             file.unlink(missing_ok=True)
 
 
+def verify_response_contract():
+    """Malformed host snapshots must not become successful configuration evidence."""
+    base = dict(instance='alas', config_source='synthetic.json', checked=2,
+                values={'Probe.Flag': True, 'Probe.Absent': None},
+                missing=['Probe.Absent'])
+    variants = [('valid', base, True)]
+    for name, change in (
+        ('wrong-instance', {'instance': 'other'}),
+        ('empty-source', {'config_source': ''}),
+        ('wrong-count', {'checked': 1}),
+        ('extra-key', {'values': {**base['values'], 'Other.Flag': False}}),
+        ('missing-key', {'values': {'Probe.Flag': True}}),
+        ('missing-list', {'missing': []}),
+        ('duplicate-missing', {'missing': ['Probe.Absent', 'Probe.Absent']}),
+        ('wrong-missing', {'missing': ['Probe.Flag']}),
+    ):
+        variants.append((name, {**copy.deepcopy(base), **change}, False))
+    for name, field in (('absent-values', 'values'), ('absent-missing', 'missing'),
+                        ('absent-checked', 'checked')):
+        changed = copy.deepcopy(base)
+        del changed[field]
+        variants.append((name, changed, False))
+    variants.append(('wrong-values-type', {**base, 'values': []}, False))
+    cases = [dict(name=name, mode='queue', dry_run=True, artifacts=True,
+                  tasks=[dict(id='cfg', kind='config_get', required=True,
+                              input=dict(keys=['Probe.Flag', 'Probe.Absent']))],
+                  stub_responses={'config_get': [dict(result=response)]},
+                  expect=dict(outcome='succeeded' if valid else 'failed', cleared=False,
+                              tasks=[dict(id='cfg', outcome='succeeded' if valid else 'failed')]))
+             for name, response, valid in variants]
+    with tempfile.TemporaryDirectory(prefix='alas-config-contract-') as temporary:
+        directory = Path(temporary)
+        fixture, verdicts = directory / 'fixture.json', directory / 'verdicts.json'
+        fixture.write_text(json.dumps(dict(cases=cases)), encoding='utf-8')
+        process = subprocess.run([str(EXE), 'selftest-runtime', '--fixture', str(fixture),
+                                  '--json', str(verdicts), '--workspace', str(directory / 'runs')],
+                                 cwd=ROOT, env=dict(os.environ, DOTNET_ROOT=str(ROOT / '.runtime/dotnet')),
+                                 capture_output=True, text=True, encoding='utf-8',
+                                 errors='replace', timeout=90)
+        assert verdicts.is_file(), process.stdout + process.stderr
+        rows = json.loads(verdicts.read_text(encoding='utf-8'))['cases']
+        assert len(rows) == len(cases)
+        for (name, response, valid), row in zip(variants, rows):
+            assert row['name'] == name and row['ok'], (name, row)
+            task = row['tasks'][0]
+            artifact = json.loads(Path(task['artifact']).read_text(encoding='utf-8'))
+            if valid:
+                assert artifact['evidence']['values'] == response['values'], name
+            else:
+                assert task['error_kind'] == 'contract_violation', (name, task)
+                assert artifact['evidence']['host_response'] == response, name
+        assert process.returncode in (0, 1), process.stdout + process.stderr
+    print(f'  OK {len(cases)} Core 配置读取响应场景（无宿主或设备）')
+
+
 def main() -> int:
     if not EXE.is_file():
         print(f'**失败**：未找到 {EXE.relative_to(ROOT)}（先 dotnet build）')
         return 1
+    verify_response_contract()
     if not CONFIG.is_file():
         print('[跳过] 没有账号配置 config/alas.json；仅运行合成双实例验收。')
         failures: list[str] = []

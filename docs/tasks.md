@@ -64,6 +64,8 @@ Alas.Server queue --file queue.json --run --allow-actions --serial <设备> --sc
 缺任务、缺 Scheduler 或缺 Enable 时，enable 为未知 null；只有缺 Scheduler 才计入 `no_scheduler_count`。
 原始 false 即使对应上游锁定开关也保持 false，不能据此断言原生任务已禁用。过滤和截断前校验全部条目。
 Core 校验来源、必需字段、计数和条目一致性；矛盾响应保留 `host_response` 并记为合同失败，不进入断点完成列表。
+`config_get` 成功工件同样校验宿主实例、配置来源、请求键集合、读取数量和缺失列表；
+矛盾响应保留 `host_response` 并记为合同失败。键值仍是所选实例的存盘快照，缺失不等于 false。
 
 ## 周期任务授权边界
 
