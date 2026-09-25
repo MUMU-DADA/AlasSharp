@@ -93,6 +93,15 @@ class PermissiveInstance:
         return _fake
 
 
+def sanitize(text: str) -> str:
+    """报告里**不能出现本机绝对路径**（Python 的 ImportError 消息自带模块文件路径，实测被隐私检查抓到）。
+
+    统一替换成本仓库的相对说法；再兜一层"盘符:\\\\ 开头"的通用清洗。
+    """
+    text = text.replace(str(UPSTREAM), "<engine>").replace(str(ROOT), "<repo>")
+    return re.sub(r"[A-Za-z]:\\[^\s)']*", "<path>", text)
+
+
 def upstream_choice(folder: str, name: str, battle_count: int) -> str | None:
     """调上游真实的 `battle_function`，返回它选中的钩子名（选不了返回 None）。"""
     module = importlib.import_module(f"campaign.{folder}.{name}")
@@ -179,7 +188,7 @@ def main() -> int:
                 skipped[key] = skipped.get(key, 0) + 1
                 bucket = examples.setdefault(key, [])
                 if len(bucket) < 3:
-                    bucket.append(f"{folder}/{name} battle_count={battle_count}：{error}")
+                    bucket.append(sanitize(f"{folder}/{name} battle_count={battle_count}：{error}"))
                 continue
             actual = csharp.get(battle_count)
             compared += 1
@@ -209,7 +218,8 @@ def main() -> int:
             lines += [f"  - `{item}`" for item in items]
         lines.append("")
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    # 兜底：整份报告再过一次脱敏，避免将来有别的消息带出本机路径
+    REPORT.write_text(sanitize("\n".join(lines)), encoding="utf-8", newline="\n")
     print(f"已重建 {REPORT.relative_to(ROOT)}：{len(levels)} 关 / {compared} 次比较 / 不一致 {len(mismatches)}")
     for item in mismatches[:5]:
         print("  -", item)

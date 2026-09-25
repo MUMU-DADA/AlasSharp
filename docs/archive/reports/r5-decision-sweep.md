@@ -28,9 +28,9 @@
   - `campaign_main/campaign_14_base battle_count=1：该模块没有 `Campaign` 类（关卡家族基类，不是关卡）`
   - `campaign_main/campaign_14_base battle_count=2：该模块没有 `Campaign` 类（关卡家族基类，不是关卡）`
 - **上游导入/调用失败：ImportError**
-  - `event_20200227_cn/c2 battle_count=0：cannot import name 'C2' from 'module.campaign.assets' (C:\Users\mumu\source\ALAS fork project\csharp\.runtime\engine\module\campaign\assets.py)`
-  - `event_20200227_cn/c2 battle_count=1：cannot import name 'C2' from 'module.campaign.assets' (C:\Users\mumu\source\ALAS fork project\csharp\.runtime\engine\module\campaign\assets.py)`
-  - `event_20200227_cn/c2 battle_count=2：cannot import name 'C2' from 'module.campaign.assets' (C:\Users\mumu\source\ALAS fork project\csharp\.runtime\engine\module\campaign\assets.py)`
+  - `event_20200227_cn/c2 battle_count=0：cannot import name 'C2' from 'module.campaign.assets' (<engine>\module\campaign\assets.py)`
+  - `event_20200227_cn/c2 battle_count=1：cannot import name 'C2' from 'module.campaign.assets' (<engine>\module\campaign\assets.py)`
+  - `event_20200227_cn/c2 battle_count=2：cannot import name 'C2' from 'module.campaign.assets' (<engine>\module\campaign\assets.py)`
 - **上游导入/调用失败：AttributeError**
   - `event_20250520_cn/b3 battle_count=0：'Campaign' object has no attribute 'map'`
   - `event_20250520_cn/b3 battle_count=1：'Campaign' object has no attribute 'map'`
