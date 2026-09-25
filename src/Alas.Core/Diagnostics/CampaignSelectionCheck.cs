@@ -90,6 +90,8 @@ internal static class CampaignSelectionCheck
                 case "primitive_brute_fleet_meet":
                 case "primitive_clear_potential_boss":
                 case "primitive_clear_filter_enemy":
+                case "primitive_pick_up_flare":
+                case "primitive_fleet_2_rescue":
                     var config = new CampaignRuntimeConfig(
                         EnemyPriority: testCase.EnemyPriority,
                         MapClearAllThisTime: testCase.MapClearAllThisTime,
@@ -113,6 +115,10 @@ internal static class CampaignSelectionCheck
                         "primitive_pick_up_ammo" => CampaignPrimitives.PickUpAmmo(host),
                         "primitive_fleet_2_push_forward" => CampaignPrimitives.Fleet2PushForward(host),
                         "primitive_fleet_2_protect" => CampaignPrimitives.Fleet2Protect(host),
+                        "primitive_pick_up_flare" =>
+                            CampaignPrimitives.PickUpFlare(host, TargetGrid(grids, testCase)),
+                        "primitive_fleet_2_rescue" =>
+                            CampaignPrimitives.Fleet2Rescue(host, TargetGrid(grids, testCase)),
                         "primitive_clear_filter_enemy" =>
                             CampaignPrimitives.ClearFilterEnemy(host, testCase.Filter ?? "", testCase.Preserve),
                         "primitive_brute_clear_boss" => CampaignPrimitives.BruteClearBoss(host),
@@ -181,6 +187,20 @@ internal static class CampaignSelectionCheck
             ["cases"] = results,
         }.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         return 0;
+    }
+
+    /// <summary>
+    /// 取用例声明的目标格（`target` 字段，如 `C1`）——给那些**收一个格子参数**的原语用
+    /// （`pick_up_flare` / `fleet_2_rescue` 等）。缺字段或找不到就报错，不猜一个默认格子。
+    /// </summary>
+    private static CampaignGrid TargetGrid(CampaignGridSet grids, SelectionCase testCase)
+    {
+        if (string.IsNullOrEmpty(testCase.Target))
+        {
+            throw new ArgumentException($"用例 {testCase.Name} 的 kind {testCase.Kind} 需要 `target` 字段");
+        }
+        return grids.Grids.FirstOrDefault(grid => grid.Location == testCase.Target)
+               ?? throw new ArgumentException($"用例 {testCase.Name} 的 target {testCase.Target} 不在 grids 里");
     }
 
     private static CampaignGrid Grid(SelectionGrid grid) => new(
@@ -253,6 +273,9 @@ internal static class CampaignSelectionCheck
         [JsonPropertyName("map_clear_all_this_time")] public bool MapClearAllThisTime { get; init; }
         [JsonPropertyName("filter")] public string? Filter { get; init; }
         [JsonPropertyName("preserve")] public int Preserve { get; init; }
+
+        /// <summary>目标格（节点名，如 <c>C1</c>）：给 `pick_up_flare` / `fleet_2_rescue` 这类收格子参数的原语用。</summary>
+        [JsonPropertyName("target")] public string? Target { get; init; }
 
         /// <summary>路段：`roads[road][block] = [节点名…]`（与上游 `RoadGrids` 同构）。</summary>
         [JsonPropertyName("roads")] public List<List<List<string>>>? Roads { get; init; }

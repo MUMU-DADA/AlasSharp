@@ -2554,6 +2554,27 @@ def op_s3_campaign_call(args):
     name = str(args.get('name') or '')
     if not name:
         return {'error': '缺少 name'}
+
+    # `set`：给点号路径的**最后一个属性**赋值（如 `map.C1.is_flare`）。
+    # 上游自己的 helper 就是这么改地图对象的（`pick_up_flare` 里 `grid.is_flare = True`）；
+    # C# 侧替换了那些 helper，所以需要一个受限的写入通道把同样的状态同步过来。
+    # **写入会改变后续上游调用读到的状态，因此与驱动类调用同一把锁：必须显式 allow_actions=true。**
+    if 'set' in args:
+        if not args.get('allow_actions'):
+            return {'refused': True, 'name': name,
+                    'reason': '`set` 会改写上游地图对象的状态；确需执行请显式传 allow_actions=true'}
+        target, _, leaf = name.rpartition('.')
+        if not leaf:
+            return {'error': f'set 需要 `对象路径.属性` 形式，收到 {name!r}'}
+        try:
+            obj = inst
+            for part in target.split('.'):
+                obj = getattr(obj, part)
+            setattr(obj, leaf, _campaign_arg(inst, args.get('set')))
+        except Exception as e:
+            return {'error': f'set {name} 失败: {type(e).__name__}: {e}', 'stage': 'set'}
+        return {'name': name, 'set': True}
+
     leaf = name.split('.')[-1]
     if leaf.startswith(_DANGER_PREFIX) and not args.get('allow_actions'):
         return {'refused': True, 'name': name,

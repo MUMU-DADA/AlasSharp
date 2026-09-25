@@ -694,8 +694,15 @@ seam**——重复维护两套外驱机制违反项目纪律，**自建模块与
 | 既有 op | 做什么 | 已具备的保证 |
 | --- | --- | --- |
 | `s3_campaign_init` | 构造 Campaign 实例（复用上游 `CampaignRun.load_campaign` 的配置合并路径）+ **种一帧**（上游方法假定 `device.image` 已存在） | 实例与 loader 记在宿主 `_CAMPAIGN` 里，供后续逐步调用 |
-| `s3_campaign_call` | 调用实例上任意方法（支持点号路径与 `@属性` 引用） | **危险前缀联锁**（`battle*`/`clear*`/`enter_map`/`run`/`goto`/`map_*`/`execute`/`full_scan` … 必须显式 `allow_actions`）；`CampaignEnd` 走**结果合同**分类（返回 `cleared`/`withdrawn`/`outcome`，不是裸异常）；内部报错带调用栈尾部 |
+| `s3_campaign_call` | 调用实例上任意方法（支持点号路径与 `@属性` 引用）；带 `set` 时给点号路径的**最后一个属性赋值**（如 `map.C1.is_flare`） | **危险前缀联锁**（`battle*`/`clear*`/`enter_map`/`run`/`goto`/`map_*`/`execute`/`full_scan` … 必须显式 `allow_actions`）；**`set` 同样要求 `allow_actions`**（写入会改变后续调用读到的状态）；`CampaignEnd` 走**结果合同**分类（返回 `cleared`/`withdrawn`/`outcome`，不是裸异常）；内部报错带调用栈尾部 |
 | `s3_campaign_info` | 只读状态 | 关卡进度字段（`map_progress`：`map_clear_percentage`、星级条件、`MAP_CLEAR_ALL_THIS_TIME` 等），并注明"进度来自游戏自己的面板读数" |
+
+**`set` 形式的用途（实测驱动）**：上游部分 helper 会直接改地图对象的状态，而这些 helper 已经被
+C# 原语替换，状态就没人设了——例如 `campaign/campaign_main/campaign_14_base.py` 的
+`pick_up_flare` 第一行 `grid.is_flare = True`，而 `Map.find_path` 的**航点绕行**会读 `way_node.is_flare`
+（`module/map/map_base.py:671`，`fleet-step`/`ambush`/`portal`/`maze` 地图上真正走这条路）。
+所以 C# 的 `PickUpFlare` 通过宿主 `MarkFlare` → 渠道 `Set` → `s3_campaign_call` 的 `set` 把它同步过去；
+`r5-device` 有自检断言"模型置位 + 发出 `set:map.<格>.is_flare`"（不连设备也能验证这条接线）。
 
 **离线核对**（`tools/diagnostics/verify_r5_host_seam.py`，把替身注入 `_CAMPAIGN`，不连设备）：
 ① 三个 op 都已注册；② 危险前缀不带 `allow_actions` **必须被拒绝**且说明理由；③ `@ENTRANCE` 这类引用

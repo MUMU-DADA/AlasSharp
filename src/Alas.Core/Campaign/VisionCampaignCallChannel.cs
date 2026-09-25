@@ -47,4 +47,19 @@ public sealed class VisionCampaignCallChannel : ICampaignCallChannel
             ? value
             : null;
     }
+
+    /// <summary>
+    /// 给上游对象的属性赋值（`s3_campaign_call` 的 `set` 形式）。与设备动作同一把锁：
+    /// 带上 <c>allow_actions=true</c>，上游侧也要求它（写入会改变后续调用读到的状态）。
+    /// </summary>
+    public void Set(string name, JsonNode? value)
+    {
+        var payload = new JsonObject
+        {
+            ["name"] = name,
+            ["set"] = value?.DeepClone(),
+            ["allow_actions"] = true,
+        };
+        _vision.CallTyped<JsonNode>("s3_campaign_call", payload);
+    }
 }

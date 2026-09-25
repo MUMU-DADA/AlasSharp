@@ -42,13 +42,21 @@ ENEMY_FILTER_TEXT = "1L > 1M > 1E > 1C > 2L > 2M > 2E > 2C > 3L > 3M > 3E > 3C"
 PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss",
               "clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks",
               "pick_up_ammo", "fleet_2_push_forward", "fleet_2_protect", "brute_clear_boss",
-              "brute_fleet_meet", "clear_potential_boss", "clear_filter_enemy"]
+              "brute_fleet_meet", "clear_potential_boss", "clear_filter_enemy",
+              "pick_up_flare"]
 
 # 曾经把 `brute_clear_boss` 当成"已知差异"排除在外，理由是"路障子集选择不同"。**那是误判**：
 # 真正的原因是诊断命令缺 `primitive_brute_clear_boss` 分派，静默落进了"选一个敌人"的默认分支。
 # 现在 C# 侧对未知 `primitive_*` kind 直接报错，扫描也把 13 种原语全部纳入（见重写文档的记录）。
 KNOWN_DIVERGENCE: list[str] = []      # 13 种原语现已全部纳入；曾误登记的 `brute_clear_boss` 见重写文档的说明
 ROADBLOCK_PRIMITIVES = {"clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks"}
+# 收**一个格子参数**的原语（`pick_up_flare(grid)` / `fleet_2_rescue(grid)`）：对拍时两侧用同一个目标格
+GRID_ARGUMENT_PRIMITIVES = {"pick_up_flare", "fleet_2_rescue"}
+
+# **默认不跑的原语**：`fleet_2_rescue` 会走 `brute_find_roadblocks`，而上游那套枚举**没有上限**
+# （`itertools.product` 按敌人数指数增长），在敌人多的随机状态上能把扫描拖到分钟级甚至更久。
+# 它本身是有覆盖的（`verify_r5_execution` 的夹具用例），需要全量跑时用 `--include-slow`。
+SLOW_PRIMITIVES = ["fleet_2_rescue"]
 CONFIGS = [
     {"enemy_priority": None},
     {"enemy_priority": "S3_enemy_first"},
@@ -68,7 +76,8 @@ CONFIGS = [
 ]
 
 
-def build_cases(states: int, seed: int) -> list[dict]:
+def build_cases(states: int, seed: int, primitives: list[str] | None = None) -> list[dict]:
+    primitives = primitives or PRIMITIVES
     rng = random.Random(seed)
     cases = []
     for index in range(states):
@@ -97,7 +106,7 @@ def build_cases(states: int, seed: int) -> list[dict]:
         # 而 `potential_roadblocks`/`fleet_2_*` 都会看这个标志 —— 夹具必须带上，否则两边状态不同
         fleet_cell = grids[0]["location"]
         second_cell = grids[1]["location"] if len(grids) > 1 else ""
-        for kind in PRIMITIVES:
+        for kind in primitives:
             for config_index, config in enumerate(CONFIGS):
                 has_fleet_2 = bool(config.get("fleet_2"))
                 case = {
@@ -112,6 +121,10 @@ def build_cases(states: int, seed: int) -> list[dict]:
                     "fleet_current_index": 1,
                     **config,
                 }
+                if kind in GRID_ARGUMENT_PRIMITIVES:
+                    # 目标格取"该状态里 weight 最大的格子"：够具体、又随状态变化，避免每次都打同一格
+                    target = max(grids, key=lambda item: (item["weight"], item["location"]))
+                    case["target"] = target["location"]
                 if kind == "clear_filter_enemy":
                     # 过滤器串与 preserve 也要给 C# 侧（默认那条 + 0/1 交替，覆盖 preserve 截断）
                     case["filter"] = ENEMY_FILTER_TEXT
@@ -177,6 +190,9 @@ class RecordingStub:
         self.ammo_count = 3
         self.fleet_ammo = 5
         self.ensure_no_info_bar_calls = 0
+        # 关卡基类 helper（pick_up_flare / pick_up_light_house）会往这两个列表记账
+        self.picked_flare = []
+        self.picked_light_house = []
         from module.base.utils import node2location  # noqa: PLC0415
         self.fleet_1_location = node2location(first_location)
         self.fleet_2_location = node2location(second_location) if second_location else tuple()
@@ -350,7 +366,13 @@ def upstream_target(case: dict) -> tuple[str | None, bool | None]:
     for grid in case["grids"]:
         info = campaign_map[tuple((ord(grid["location"][0]) - 65, int(grid["location"][1:]) - 1))]
         costs[grid["location"]] = (int(info.cost), int(info.cost_1), int(info.cost_2))
-    method = getattr(Map, case["kind"].replace("primitive_", ""))
+    method = getattr(Map, case["kind"].replace("primitive_", ""), None)
+    if method is None:
+        # 少数原语是**关卡基类 helper**（不在 `Map` 上）：`pick_up_flare` / `pick_up_light_house`
+        # 全库只在 `campaign/campaign_main/campaign_14_base.py` 定义一处，绑那一处就是真实实现。
+        # 该文件里的类是 `CampaignBase`（继承上游 `campaign_base.CampaignBase`），不是 `Campaign`
+        from campaign.campaign_main.campaign_14_base import CampaignBase as _LevelBase  # noqa: PLC0415
+        method = getattr(_LevelBase, case["kind"].replace("primitive_", ""))
     if case["kind"].replace("primitive_", "") in ROADBLOCK_PRIMITIVES:
         from module.map.map_grids import RoadGrids  # noqa: PLC0415
         roads = []
@@ -361,6 +383,10 @@ def upstream_target(case: dict) -> tuple[str | None, bool | None]:
                                for location in block])
             roads.append(RoadGrids(blocks))
         result = method(stub, roads)
+    elif case["kind"].replace("primitive_", "") in GRID_ARGUMENT_PRIMITIVES:
+        location = case["target"]
+        grid = campaign_map[tuple((ord(location[0]) - 65, int(location[1:]) - 1))]
+        result = method(stub, grid)
     elif case["kind"] == "primitive_clear_filter_enemy":
         # 上游 `clear_filter_enemy(string, preserve=0)`：过滤器串用库里的真实用法（最常见那条），
         # preserve 由用例给出（0/1 各半），把"保留最弱若干个"这条路径也覆盖到。
@@ -403,8 +429,8 @@ def normalize_csharp(actions: list[str] | None) -> list[tuple[str, str]]:
     normalized = []
     for action in actions or []:
         op = action.split("(", 1)[0].strip()
-        if op in ("clear_caught_by_siren_flags",):
-            continue
+        if op in ("clear_caught_by_siren_flags", "mark_flare"):
+            continue    # 纯状态操作：上游的 helper 也是直接改属性，不产生设备动作
         # C# 侧的动作名 → 与上游替身记录一致的名字
         op = {"fleet_ensure": "ensure_fleet"}.get(op, op)
         inside = action[len(op) + 1:].rstrip(")") if "(" in action else ""
@@ -469,11 +495,14 @@ def main() -> int:
     # （`itertools.product(enemies, repeat)`），状态一多整体就超出可接受时长（实测 60 状态 >10 分钟）。
     parser.add_argument("--states", type=int, default=20)
     parser.add_argument("--seed", type=int, default=13)
+    parser.add_argument("--include-slow", action="store_true",
+                        help="把慢原语也算进去（" + ", ".join(SLOW_PRIMITIVES) + "；路障枚举无上限，可能很慢）")
     options = parser.parse_args()
     if not SERVER.is_file():
         raise SystemExit(f"缺少 {SERVER.relative_to(ROOT)}；先运行 ./build.ps1 构建")
 
-    cases = build_cases(options.states, options.seed)
+    primitives = [*PRIMITIVES, *SLOW_PRIMITIVES] if options.include_slow else list(PRIMITIVES)
+    cases = build_cases(options.states, options.seed, primitives)
 
     # 第一遍：跑上游拿期望，并把**上游算出的成本场**写回夹具，
     # 这样 C# 侧读到的 cost/cost_1/cost_2 与上游看到的完全一致（否则是两套状态）。
@@ -580,6 +609,7 @@ def main() -> int:
              f"其余顺序差异 {len(order_diffs)} 条",
              f"- 等价位**集合序伪影**：**{len(artifacts)}** 处（上游 `SelectedGrids.add` 走 `set`，"
              f"等 weight/cost 的格子谁在前不可复现；两侧都选中同价位格子）",
+             f"- 本次未跑的原语：{', '.join(SLOW_PRIMITIVES) if not options.include_slow else '无（--include-slow 全跑）'}",
              f"- **未纳入的已知差异**：{', '.join(KNOWN_DIVERGENCE) or '无'}（路障**子集**选择不同："
              "C# 寻路定点收敛会找到更小的可达子集；登记在重写文档的差异一节）", ""]
     if order_diffs:

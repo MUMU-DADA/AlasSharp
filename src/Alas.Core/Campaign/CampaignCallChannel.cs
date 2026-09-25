@@ -22,6 +22,14 @@ public interface ICampaignCallChannel
 
     /// <summary>读上游实例上的属性/状态（只读，不发设备动作）。</summary>
     JsonNode? Read(string name);
+
+    /// <summary>
+    /// 给上游对象的属性赋值（点号路径的最后一段，如 <c>map.C1.is_flare</c>）。
+    /// 上游自己的 helper 就是这么改地图状态的（`pick_up_flare` 里 `grid.is_flare = True`）；
+    /// C# 侧替换了这些 helper，需要这条**受限写入**通道把同样的状态同步过去。
+    /// 实现方必须与设备动作同一把锁（见 `tools/alas_vision.py` 的 `set` 分支）。
+    /// </summary>
+    void Set(string name, JsonNode? value);
 }
 
 /// <summary>一次录制的调用。</summary>
@@ -51,6 +59,13 @@ public sealed class RecordingCampaignCallChannel : ICampaignCallChannel
     }
 
     public JsonNode? Read(string name) => _state.GetValueOrDefault(name);
+
+    /// <summary>写入也记进 <see cref="Calls"/>（名字前缀 <c>set:</c>），便于离线断言"状态确实同步了"。</summary>
+    public void Set(string name, JsonNode? value)
+    {
+        Calls.Add(new CampaignCallRecord($"set:{name}", [Describe(value)], new Dictionary<string, string>()));
+        _state[name] = value;
+    }
 
     /// <summary>
     /// 记录用的人读形式：**字符串取原值**（`ToJsonString()` 会把 `#D2` 记成 `"\"#D2\""`，

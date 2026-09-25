@@ -35,6 +35,7 @@ public sealed record CampaignGrid(
     bool IsCurrentFleet = false,
     bool IsSubmarine = false,
     bool IsMissileAttack = false,
+    bool IsFlare = false,
     bool IsCleared = false,
     bool IsLand = false,
     bool IsMechanismTrigger = false,

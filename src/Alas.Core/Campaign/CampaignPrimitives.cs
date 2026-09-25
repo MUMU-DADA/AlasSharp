@@ -103,6 +103,12 @@ public interface ICampaignPrimitiveHost
     /// <summary>把全图 <c>is_caught_by_siren</c> 置假（上游在挣脱/判定失败后这么清标记）。</summary>
     void ClearCaughtBySirenFlags();
 
+    /// <summary>
+    /// 把格子标成"信号弹已放置"（上游 `pick_up_flare` 的第一行 `grid.is_flare = True`）。
+    /// 这个标记影响上游 `Map.find_path` 的**航点绕行**（`way_node.is_flare`），所以必须同步到上游地图对象。
+    /// </summary>
+    void MarkFlare(CampaignGrid grid);
+
     /// <summary>撤退（上游 <c>MapOperation.withdraw()</c>，如 <c>capture_clear_boss</c> 结尾会撤退）。</summary>
     void Withdraw();
 
@@ -254,6 +260,17 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
         for (int i = 0; i < _grids.Count; i++)
         {
             if (_grids[i].IsCaughtBySiren) _grids[i] = _grids[i] with { IsCaughtBySiren = false };
+        }
+    }
+
+    public void MarkFlare(CampaignGrid grid)
+    {
+        // 上游 `pick_up_flare` 的第一行 `grid.is_flare = True`：只改模型，不产生设备动作。
+        // 这个标记影响上游 `Map.find_path` 的航点绕行，所以设备宿主还要把它同步到上游地图对象（见那边）。
+        Actions.Add($"mark_flare({grid.Location})");
+        for (int i = 0; i < _grids.Count; i++)
+        {
+            if (_grids[i].Location == grid.Location) _grids[i] = _grids[i] with { IsFlare = true };
         }
     }
 
@@ -565,6 +582,8 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool PickUpFlare(ICampaignPrimitiveHost host, CampaignGrid grid)
     {
+        // 上游第一行就是 `grid.is_flare = True`（在"已拾取/可达"判断**之前**），照抄顺序
+        host.MarkFlare(grid);
         if (host.PickedFlare.Contains(grid.Location))
         {
             host.Log($"pick_up_flare：Flares {grid.Location} already picked up");

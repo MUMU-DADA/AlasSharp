@@ -141,6 +141,17 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
     /// 所以这里只改宿主自己持有的地图模型（等价于上游改 `GridInfo` 对象），**不调用渠道**；
     /// 真机上下一次识别会把实际状态盖回来。
     /// </summary>
+    public void MarkFlare(CampaignGrid grid)
+    {
+        // 改自己的模型 + **同步到上游地图对象**：`pick_up_flare` 设的这个标记会被
+        // `Map.find_path` 的航点绕行读到（`way_node.is_flare`），不同步就会少绕一格。
+        for (int i = 0; i < _grids.Count; i++)
+        {
+            if (_grids[i].Location == grid.Location) _grids[i] = _grids[i] with { IsFlare = true };
+        }
+        _channel.Set($"map.{grid.Location}.is_flare", JsonValue.Create(true));
+    }
+
     public void ClearCaughtBySirenFlags()
     {
         for (int i = 0; i < _grids.Count; i++)
