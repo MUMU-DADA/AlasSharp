@@ -21,16 +21,17 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
 {
     private readonly ICampaignCallChannel _channel;
     private readonly List<string> _logs = [];
+    private readonly List<CampaignGrid> _grids;
 
     public DeviceCampaignHost(ICampaignCallChannel channel, IReadOnlyList<CampaignGrid> grids,
                               CampaignRuntimeConfig? config = null)
     {
         _channel = channel;
-        Grids = grids;
+        _grids = [.. grids];
         Config = config ?? new CampaignRuntimeConfig();
     }
 
-    public IReadOnlyList<CampaignGrid> Grids { get; }
+    public IReadOnlyList<CampaignGrid> Grids => _grids;
 
     public CampaignRuntimeConfig Config { get; }
 
@@ -133,10 +134,20 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
 
     public void EnsureEdgeInsight() => _channel.Call("ensure_edge_insight", [], []);
 
-    public void ClearCaughtBySirenFlags() =>
-        throw new NotSupportedException(
-            "上游没有对应方法：`is_caught_by_siren` 是 `Map.fleet_2_break_siren_caught` 内部逐格清标记的，" +
-            "没有独立的公开入口；要接设备需要先设计一个宿主侧入口（不在 C# 里直接改地图对象）");
+    /// <summary>
+    /// 把全图 <c>is_caught_by_siren</c> 置假。上游这一支**没有任何设备动作**：见
+    /// `module/map/map.py` 的 `fleet_2_break_siren_caught`——"抓着舰队的不是 2 队"时直接
+    /// `for grid in self.map: grid.is_caught_by_siren = False` 然后返回假。
+    /// 所以这里只改宿主自己持有的地图模型（等价于上游改 `GridInfo` 对象），**不调用渠道**；
+    /// 真机上下一次识别会把实际状态盖回来。
+    /// </summary>
+    public void ClearCaughtBySirenFlags()
+    {
+        for (int i = 0; i < _grids.Count; i++)
+        {
+            if (_grids[i].IsCaughtBySiren) _grids[i] = _grids[i] with { IsCaughtBySiren = false };
+        }
+    }
 
     public void Withdraw()
     {

@@ -44,6 +44,23 @@ internal static class CampaignDeviceCheck
         };
         var run = CampaignBattleLoop.Run(plan, host);
 
+        // 状态类宿主操作的自检：`ClearCaughtBySirenFlags` 对应上游"逐格置假"那段，**不该有设备动作**。
+        // 用一个独立的小状态与独立渠道验证，避免污染上面的运行记录。
+        var stateChannel = new RecordingCampaignCallChannel();
+        var stateGrids = grids.Take(3)
+            .Select((grid, index) => grid with { IsCaughtBySiren = index < 2 })
+            .ToArray();
+        var stateHost = new DeviceCampaignHost(stateChannel, stateGrids);
+        int caughtBefore = stateHost.Grids.Count(grid => grid.IsCaughtBySiren);
+        stateHost.ClearCaughtBySirenFlags();
+        int caughtAfter = stateHost.Grids.Count(grid => grid.IsCaughtBySiren);
+        int stateCalls = stateChannel.Calls.Count;
+        if (caughtAfter != 0 || stateCalls != 0)
+        {
+            return Fail($"ClearCaughtBySirenFlags 语义不符：置假前 {caughtBefore} / 后 {caughtAfter}，" +
+                        $"设备调用 {stateCalls}（都应为 0 次调用、0 个残留标记）");
+        }
+
         if (asJson)
         {
             Console.WriteLine(new JsonObject
@@ -52,6 +69,15 @@ internal static class CampaignDeviceCheck
                 ["level"] = run.Level,
                 ["outcome"] = run.Outcome.ToString(),
                 ["detection"] = detectionSource,
+                ["state_ops"] = new JsonObject
+                {
+                    ["clear_caught_by_siren"] = new JsonObject
+                    {
+                        ["caught_before"] = caughtBefore,
+                        ["caught_after"] = caughtAfter,
+                        ["device_calls"] = stateCalls,
+                    },
+                },
                 ["calls"] = new JsonArray(channel.Calls.Select(call => (JsonNode)new JsonObject
                 {
                     ["name"] = call.Name,
@@ -65,6 +91,8 @@ internal static class CampaignDeviceCheck
 
         Console.WriteLine($"[设备宿主] {run.Chapter}/{run.Level}：{channel.Calls.Count} 次上游调用" +
                           (detectionSource is null ? "（未叠加识别）" : $"（识别来源 {detectionSource}）"));
+        Console.WriteLine($"[状态操作] clear_caught_by_siren：置假前 {caughtBefore} → 后 {caughtAfter}，" +
+                          $"设备调用 {stateCalls} 次（应为 0）");
         Console.WriteLine($"[结论   ] {run.Outcome}" + (run.Detail is null ? "" : $"（{run.Detail}）"));
         foreach (var call in channel.Calls)
         {
