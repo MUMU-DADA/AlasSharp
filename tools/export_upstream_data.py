@@ -254,8 +254,11 @@ def attribute_literal_resolver(literals: dict):
     return resolve
 
 
-def campaign_map_shape(tree) -> str:
-    """模块级 `MAP.shape = 'K9'` 的字面量形状。"""
+def campaign_map_shape(tree, resolved: str | None = None) -> str:
+    """模块级 `MAP.shape = 'K9'`；本模块没写时用**解析出来的**形状
+    （上游有 `MAP = copy.copy(MAP_15_4)` 这种继承写法，只读本模块会拿不到）。"""
+    if resolved:
+        return resolved
     for node in tree.body:
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Constant) \
                 or not isinstance(node.value.value, str):
@@ -266,7 +269,7 @@ def campaign_map_shape(tree) -> str:
     return ''
 
 
-def campaign_symbol_locations(tree) -> dict:
+def campaign_symbol_locations(tree, resolved_shape: str | None = None) -> dict:
     """`A1, B1, … = MAP.flatten()` 的符号 → `[x, y]` 表（带形状自校验，不通过就返回空表）。
 
     上游关卡用这一行元组解包绑定全部格子符号；形状（`MAP.shape = 'K9'`）决定列数与行数，
@@ -279,7 +282,7 @@ def campaign_symbol_locations(tree) -> dict:
             for target in node.targets:
                 if isinstance(target, ast.Tuple):
                     symbols = [e.id for e in target.elts if isinstance(e, ast.Name)]
-    shape = campaign_map_shape(tree)
+    shape = campaign_map_shape(tree, resolved_shape)
     letters = ''.join(ch for ch in shape if ch.isalpha())
     digits = ''.join(ch for ch in shape if ch.isdigit())
     if not symbols or len(letters) != 1 or not digits:
@@ -403,7 +406,7 @@ def campaign_road_list_variables(tree, roads: dict) -> dict:
     return variables
 
 
-def campaign_road_table(tree) -> dict:
+def campaign_road_table(tree, resolved_shape: str | None = None) -> dict:
     """模块级 `road_x = RoadGrids([...])`（含 `.combine(...)` 链）→ `{road_x: [[[x, y], …], …]}`。
 
     上游关卡用 `A1, B1, … = MAP.flatten()` 绑定格子符号，再用
@@ -413,7 +416,7 @@ def campaign_road_table(tree) -> dict:
     **只做能静态解析的**：格子符号必须在形状自校验通过的符号表里，`combine` 两端都要能解析，
     否则该条路段不进表、实参照旧记 `<expr>`（宁缺勿猜）。
     """
-    locations = campaign_symbol_locations(tree)
+    locations = campaign_symbol_locations(tree, resolved_shape)
     if not locations:
         return {}
 
@@ -865,12 +868,17 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
             continue
 
         module = rel[len('campaign/'):-3].replace('/', '.')
+        # 地图导出**先算一次**：下面的格子符号表要用它解析出来的 `shape`。
+        # 上游不少关卡写成 `MAP = copy.copy(MAP_15_4)`（形状继承自父模块），只读本模块的
+        # `MAP.shape = '…'` 会拿不到形状，整张符号表就作废（实测 `campaign_15_4_121`：
+        # `A1.is_accessible` 因此解不出来，整份计划变 `plan_complete=false`）。
+        map_export = map_resolver.export('campaign.' + module)
         # 类属性链上的字面量（如基类的 ENEMY_FILTER）与模块级路段（road_main = RoadGrids([...])），
         # 用于解析 self.<NAME> / [road_*] 实参；解析不出的实参仍记 '<expr>'，不猜值。
         literal_resolver = attribute_literal_resolver(campaign_literal_attributes(tree, module, root))
-        road_table = campaign_road_table(tree)
+        road_table = campaign_road_table(tree, map_export['values'].get('shape'))
         road_resolver = road_argument_resolver(road_table, campaign_road_list_variables(tree, road_table))
-        grid_locations = campaign_symbol_locations(tree)
+        grid_locations = campaign_symbol_locations(tree, map_export['values'].get('shape'))
         symbol_resolver = symbol_argument_resolver(
             grid_locations, campaign_grid_list_variables(tree, grid_locations))
 
@@ -930,7 +938,6 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
             ir['unresolved'].append(f"{prefix}: {issue.get('reason', issue)}")
 
         # Declaration metadata is separate from native runtime map objects.
-        map_export = map_resolver.export('campaign.' + module)
         ir['map'] = map_export['values']
         ir['map_meta'] = {key: map_export[key] for key in (
             'present', 'complete', 'origins', 'typed_values', 'source_files',
