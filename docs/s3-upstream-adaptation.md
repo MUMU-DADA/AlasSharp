@@ -284,6 +284,14 @@ Core/DataTool/Server Release 构建 0 警告/0 错误，架构检查通过。真
 `page_campaign`、`in_map=false`。配置 SHA-256 前后相同，脱敏归档
 `tools/diagnostics/evidence/20260925T202922/` 通过结果审计。不能由此推断其他关卡可通关。
 
+普通模式 4-1 由同一入口加载新章节的六项 Config，并保留 `Campaign` 自身的地图覆盖属性与原生
+`battle_0`/`battle_3`。上游谜题清理、BOSS 可达性判断与刷新后相机恢复在现场执行；
+四场战斗后取得 S 级成功结算，合同 `cleared`、0 违例，后续实时抓帧为
+`page_campaign`、`in_map=false`。账号配置 SHA-256 前后相同，脱敏归档
+`tools/diagnostics/evidence/20260925T203353/` 通过结果审计。
+本轮控制台还观察到船坞容量提示触发原生一键退役后重新进入关卡；逐点击控制台输出未纳入脱敏结果工件，
+因此归档只证明通关和返页，不把退役结果当作独立可复算结论。
+
 ## 只读地图观测的章节配置
 
 `observe` 原先只向 `map_detect` 传 main/os，遗漏宿主已支持的章节参数；需要章节 Config 的画面因此可能按通用参数识别。
