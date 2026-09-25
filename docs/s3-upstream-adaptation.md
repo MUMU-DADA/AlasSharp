@@ -272,6 +272,12 @@ Core/DataTool/Server Release 构建 0 警告/0 错误，架构检查通过。真
 `page_campaign`、`in_map=false`。账号配置 SHA-256 前后相同，脱敏归档
 `tools/diagnostics/evidence/20260925T201939/` 通过结果审计。此样本不外推其他关卡或自动周回。
 
+普通模式 3-3 在同一原生入口加载九项有效章节 Config，来源为 3-1 与 3-3 的继承链。
+上游 `battle_0`/`battle_3`、舰队救援、谜题清理、BOSS 后相机恢复和剧情跳过均在现场执行。
+四场战斗后取得 S 级成功结算，`sortie-result/1` 为 `cleared` 且 0 违例；同队列后续
+`device_capture` 确认 `page_campaign`、`in_map=false`。配置 SHA-256 前后相同，
+脱敏归档 `tools/diagnostics/evidence/20260925T202515/` 通过结果审计。未验关卡仍保留缺口。
+
 ## 只读地图观测的章节配置
 
 `observe` 原先只向 `map_detect` 传 main/os，遗漏宿主已支持的章节参数；需要章节 Config 的画面因此可能按通用参数识别。
