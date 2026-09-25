@@ -2,6 +2,23 @@
   "note": "R5 原语执行对拍夹具：供 `Alas.Server r5-exec --fixture <本文件>` 与 tools/diagnostics/verify_r5_execution.py 使用。关卡/钩子取自静态导出（data/campaign/**），地图状态与运行时配置由本夹具给出，动作只被干跑宿主记录。",
   "cases": [
     {
+      "name": "campaign_15_3 battle_3：`self.clear_chosen_enemy(H5); return True`——字面量返回也要进计划（以前整份作废）",
+      "chapter": "campaign_main",
+      "level": "campaign_15_3",
+      "hook": "battle_3",
+      "grids": [
+        {
+          "location": "H5",
+          "is_siren": true,
+          "weight": 20,
+          "cost": 3
+        }
+      ],
+      "expect": {
+        "completed": true
+      }
+    },
+    {
       "name": "campaign_10_1 battle_6：嵌套 if + 局部变量（`boss = map.select(...)` → `if boss:` → `if not check_accessibility(boss[0])`）——boss 可达时落到 terminal clear_boss",
       "chapter": "campaign_main",
       "level": "campaign_10_1",

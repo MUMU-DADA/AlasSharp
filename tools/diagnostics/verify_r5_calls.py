@@ -40,8 +40,11 @@ def main() -> int:
     runtime_only = payload.get("runtime_only") or []
     if completed.returncode != 0:
         problems.append(f"翻译应零不支持，命令退出码 {completed.returncode}：{payload.get('unsupported')}")
-    if payload["translated"] != payload["steps"]:
-        problems.append(f"应全部可翻译：{payload['translated']}/{payload['steps']}")
+    if payload["translated"] + payload.get("structural", 0) != payload["steps"]:
+        problems.append(f"应全部可处理（调用 + 结构步骤）：{payload['translated']} + "
+                        f"{payload.get('structural', 0)}/{payload['steps']}")
+    if payload.get("structural"):
+        print(f"  [结构步骤] {payload['structural']} 个（`branch`/`return`：不是调用，由执行器处理）")
     # 运行期解析**不算不支持**，但要看得见：这类实参（`__local__` 局部变量 / `__param__` 钩子参数）
     # 由执行器在调用前替换成具体值，静态翻译到这里为止。
     for item in runtime_only:

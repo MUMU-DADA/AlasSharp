@@ -745,6 +745,12 @@ def derive_plan(body: list, where: str, resolve=None):
                 if stmt.value is not None and is_self_call(stmt.value):
                     steps.append(self_call_step(stmt.value, 'terminal'))
                     terminated = True
+                elif isinstance(stmt.value, ast.Constant) and (
+                        stmt.value.value is True or stmt.value.value is False or stmt.value.value is None):
+                    # `return True` / `return False` / `return None`：字面量返回，直接进计划
+                    # （上游不少钩子以 `return True` 收尾，以前一律记 Return(expr) 把整份计划作废）
+                    steps.append({'kind': 'return', 'value': stmt.value.value})
+                    terminated = True
                 elif is_super_delegate(stmt.value):
                     # `return super().X(...)`：纯委托，本类没有新增逻辑，只是覆写钩子。
                     steps.append({'op': super_call_name(stmt.value), 'args': call_args(stmt.value, resolve),

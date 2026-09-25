@@ -44,7 +44,7 @@ internal static class CampaignCallCheck
         var runtime = new Dictionary<string, (int Count, string Reason)>(StringComparer.Ordinal);
         var methods = new SortedDictionary<string, int>(StringComparer.Ordinal);
         var rows = new JsonArray();
-        int steps = 0, translated = 0;
+        int steps = 0, translated = 0, structural = 0;
         foreach (var plan in plans)
         {
             foreach (var battle in plan.Header.Battles)
@@ -52,6 +52,14 @@ internal static class CampaignCallCheck
                 foreach (var step in battle.Steps)
                 {
                     steps++;
+                    // **结构步骤**（`branch` / `return`）不是调用，也没有上游方法可调：
+                    // 它们由执行器处理，翻译器管不着。显式分开统计——不然它们会以空 op 混进"已翻译"，
+                    // 又是一次"看起来能跑"的假绿。
+                    if (step.Kind is "branch" or "return")
+                    {
+                        structural++;
+                        continue;
+                    }
                     var call = CampaignCallTranslator.Translate(step);
                     if (call.Unsupported is { } reason)
                     {
@@ -91,6 +99,7 @@ internal static class CampaignCallCheck
             {
                 ["steps"] = steps,
                 ["translated"] = translated,
+                ["structural"] = structural,
                 ["unsupported"] = new JsonArray(unsupported.Select(pair => (JsonNode)new JsonObject
                 {
                     ["op"] = pair.Key,

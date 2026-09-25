@@ -100,6 +100,9 @@ public sealed class CampaignPlanStep
 
     /// <summary>`kind=branch` 为假时执行的步骤序列。</summary>
     [JsonPropertyName("orelse")] public IReadOnlyList<CampaignPlanStep> OrElse { get; init; } = [];
+
+    /// <summary>`kind=return` 时返回的**字面量**（上游 `return True` / `return False`；缺省即 None）。</summary>
+    [JsonPropertyName("value")] public JsonNode? Value { get; init; }
 }
 
 /// <summary>`branch` 的条件：要么看局部变量（`{"local": "boss"}`），要么调一次原语（`{"call": …}`）。</summary>

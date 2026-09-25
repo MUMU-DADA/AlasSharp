@@ -1457,6 +1457,15 @@ public static class CampaignHookRunner
                 continue;
             }
 
+            // `return <字面量>`：上游不少钩子以 `return True` 收尾（`self.X(); return True`）。
+            // 这是**返回值**不是调用，所以没有 op；按字面量返回。
+            if (step.Kind == "return")
+            {
+                bool? literal = step.Value?.GetValue<bool?>();
+                stepLog.Add($"return {(literal is null ? "None" : literal.Value ? "True" : "False")}");
+                return Result(plan, battle, literal, null, stepLog, host, actionsBefore, actions);
+            }
+
             // `assign`：把一次调用的结果绑定成局部变量。
             //   * `map.select(**flags)` → 绑定一个**格子集合**（后续 `boss[0]` 会用到）
             //   * 其它原语 → 绑定它的布尔结果（`if <name>:` 直接看真假）
