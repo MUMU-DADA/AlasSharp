@@ -13,6 +13,8 @@ public sealed record CampaignConfiguration
     public bool PoorMapData { get; init; }
     public bool ClearAllThisTime { get; init; }
     public bool HasMovableNormalEnemy { get; init; }
+    public bool HasMovableEnemy { get; init; }
+    public bool HasMaze { get; init; }
     public bool HasAmbush { get; init; } = true;
     public bool HandleError { get; init; }
     public int Fleet2 { get; init; }

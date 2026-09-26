@@ -87,6 +87,7 @@ internal static class MapArrivalChecks
         Check(reached is { Outcome: MapArrivalOutcome.MarkerConfirmed, FreshFrames: 5 } &&
             recovering.Taps == 1 && recovering.Relocalizations == 1 && !recovering.Invalidated &&
             encounter.Initializations == 2 && handler.Calls == 1 && handler.SawSuspended &&
+            reached.HandledEncounters.SequenceEqual([MapEncounterKind.Combat]) &&
             map.Fleet1Location == new Cell(1, 1),
             "Handled encounter did not resume the same grid tap after relocalization");
 
@@ -109,8 +110,100 @@ internal static class MapArrivalChecks
             "Unhandled encounter was treated as arrival or left old geometry usable");
 
         await MapEncounterProbeChecks.RunAsync();
+        await MovementChecksAsync(destination, options);
 
-        Console.WriteLine("Map arrival: fresh-frame confirmation, encounter priority, long-handler relocalization, air-raid wait, interruption and marker checks passed; no combat or settlement verification.");
+        Console.WriteLine("Map arrival/movement: fresh-frame confirmation, encounter history, ordinary state commit, long-handler relocalization, air-raid wait and unsupported-interaction rejection passed; no combat or settlement verification.");
+    }
+
+    private static async Task MovementChecksAsync(Cell destination, MapArrivalOptions options)
+    {
+        static CampaignState State()
+        {
+            var state = new CampaignState(new MapDefinition("C3", "-- -- --\n-- -- --\n-- -- --", [], [], []));
+            state.InitializeMapData(new());
+            state.Fleet1Location = new(1, 1);
+            state[new(1, 1)].IsFleet = state[new(1, 1)].IsCurrentFleet = true;
+            return state;
+        }
+
+        var clock = new TestClock();
+        var state = State();
+        var camera = new Camera(clock, [new(true, new(true, true))]);
+        var arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        var moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.Committed && moved.Arrival.HandledEncounters.IsEmpty &&
+            state.Fleet1Location == destination && !state[new(1, 1)].IsFleet &&
+            state[destination].IsFleet && state[destination].IsCurrentFleet &&
+            state[destination].Cost == 0 && camera.Taps == 1,
+            "Ordinary arrival did not commit fleet and path state exactly once");
+
+        clock = new TestClock(); state = State();
+        state.Fleet2Location = new(3, 3);
+        state[new(3, 3)].IsFleet = true;
+        state.FleetIndex = 2;
+        camera = new Camera(clock, [new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.Committed && state.Fleet1Location == new Cell(1, 1) &&
+            state[new(1, 1)].IsFleet && state.Fleet2Location == destination &&
+            !state[new(3, 3)].IsFleet && state[destination].IsCurrentFleet &&
+            state[new(1, 1)].Cost1 == 0 && state[destination].Cost2 == 0,
+            "Second-fleet movement changed first-fleet state or failed to rebuild both costs");
+
+        clock = new TestClock(); state = State();
+        camera = new Camera(clock, [new(true, default)]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination,
+            new(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(1)));
+        Check(moved.Outcome == MapMoveOutcome.Unconfirmed && state.Fleet1Location == new Cell(1, 1) &&
+            state[new(1, 1)].IsFleet && !state[destination].IsFleet && camera.Invalidated,
+            "Unconfirmed movement mutated authoritative fleet state");
+
+        clock = new TestClock(); state = State();
+        camera = new Camera(clock, [new(true, default), new(true, default), new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
+            new Probe(MapEncounterKind.Combat), new Handler(camera, clock));
+        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.UnsupportedEncounter &&
+            moved.Arrival.HandledEncounters.SequenceEqual([MapEncounterKind.Combat]) &&
+            state.Fleet1Location == new Cell(1, 1) && state[new(1, 1)].IsFleet &&
+            !state[destination].IsFleet && camera.Invalidated,
+            "Handled combat was committed without its battle-state contract");
+
+        clock = new TestClock(); state = State();
+        camera = new Camera(clock, [new(true, default), new(true, default), new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
+            new Probe(MapEncounterKind.AirRaid), new Handler(camera, clock, MapEncounterKind.AirRaid));
+        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.Committed &&
+            moved.Arrival.HandledEncounters.SequenceEqual([MapEncounterKind.AirRaid]) &&
+            state.Fleet1Location == destination && state[destination].IsFleet &&
+            camera.Taps == 1 && camera.Relocalizations == 1,
+            "Completed air raid did not preserve the original move and commit state");
+
+        clock = new TestClock(); state = State();
+        state[destination].IsPortal = true;
+        camera = new Camera(clock, [new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        bool rejected = false;
+        try { await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options); }
+        catch (NotSupportedException) { rejected = true; }
+        Check(rejected && camera.Taps == 0 && state.Fleet1Location == new Cell(1, 1),
+            "Unsupported portal was clicked before its state transition was implemented");
+
+        foreach (var config in new[] { new CampaignConfiguration { HasMovableEnemy = true },
+                     new CampaignConfiguration { HasMovableNormalEnemy = true },
+                     new CampaignConfiguration { HasMaze = true } })
+        {
+            clock = new TestClock(); state = State();
+            camera = new Camera(clock, [new(true, new(true, true))]);
+            arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+            rejected = false;
+            try { await new MapMovement(state, config, camera, arrival).MoveAsync(destination, options); }
+            catch (NotSupportedException) { rejected = true; }
+            Check(rejected && camera.Taps == 0 && state.Fleet1Location == new Cell(1, 1),
+                "An unported map-round mode was clicked before its state transition was implemented");
+        }
     }
 
     private sealed class TestClock : TimeProvider
@@ -194,7 +287,8 @@ internal static class MapArrivalChecks
             return ValueTask.FromResult(first);
         }
     }
-    private sealed class Handler(Camera camera, TestClock clock) : IMapEncounterHandler
+    private sealed class Handler(Camera camera, TestClock clock,
+        MapEncounterKind completed = MapEncounterKind.Combat) : IMapEncounterHandler
     {
         public int Calls { get; private set; }
         public bool SawSuspended { get; private set; }
@@ -202,7 +296,7 @@ internal static class MapArrivalChecks
         {
             token.ThrowIfCancellationRequested(); Calls++; SawSuspended = camera.Suspended;
             clock.Advance(30);
-            return ValueTask.FromResult(encounter == MapEncounterKind.Combat);
+            return ValueTask.FromResult(encounter == completed);
         }
     }
 }

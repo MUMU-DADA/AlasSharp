@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Alas.Engine.Navigation;
 using Alas.Engine.Rules;
 
@@ -17,7 +18,10 @@ public interface IMapArrivalCamera
 
 public enum MapArrivalOutcome { MarkerConfirmed, MapInterrupted, Unconfirmed }
 public sealed record MapArrivalResult(MapArrivalOutcome Outcome, long FrameSequence, int FreshFrames,
-    MapEncounterKind Encounter = MapEncounterKind.None);
+    MapEncounterKind Encounter = MapEncounterKind.None)
+{
+    public ImmutableArray<MapEncounterKind> HandledEncounters { get; init; } = [];
+}
 public sealed record MapArrivalOptions(TimeSpan ConfirmDelay, TimeSpan WalkTimeout, bool AllowCurrentMarker = false)
 {
     public static MapArrivalOptions Default { get; } = new(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(20));
@@ -54,6 +58,9 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
         long sequence = camera.FrameSequence;
         int frames = 0;
         bool confirmed = false;
+        var handled = ImmutableArray.CreateBuilder<MapEncounterKind>();
+        MapArrivalResult Result(MapArrivalOutcome outcome, MapEncounterKind encounter = MapEncounterKind.None)
+            => new(outcome, sequence, frames, encounter) { HandledEncounters = handled.ToImmutable() };
         try
         {
             await camera.PrepareTapAsync(destination, token);
@@ -92,20 +99,21 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                                 if (confirm.Reached())
                                 {
                                     confirmed = true;
-                                    return new(MapArrivalOutcome.MarkerConfirmed, sequence, frames);
+                                    return Result(MapArrivalOutcome.MarkerConfirmed);
                                 }
                             }
                             else if (confirm.Started) confirm.Clear();
-                            if (walk.Reached()) return new(MapArrivalOutcome.Unconfirmed, sequence, frames);
+                            if (walk.Reached()) return Result(MapArrivalOutcome.Unconfirmed);
                         }
                     }
                     catch (OperationCanceledException) when (!token.IsCancellationRequested && deadline.IsCancellationRequested)
-                    { return new(MapArrivalOutcome.Unconfirmed, sequence, frames); }
+                    { return Result(MapArrivalOutcome.Unconfirmed); }
                 }
-                if (handler is null) return new(MapArrivalOutcome.MapInterrupted, sequence, frames, encounter);
+                if (handler is null) return Result(MapArrivalOutcome.MapInterrupted, encounter);
                 camera.Suspend();
                 if (!await handler.HandleAsync(encounter, token))
-                    return new(MapArrivalOutcome.MapInterrupted, sequence, frames, encounter);
+                    return Result(MapArrivalOutcome.MapInterrupted, encounter);
+                handled.Add(encounter);
                 await camera.RelocalizeAsync(token);
                 if (camera.FrameSequence <= sequence)
                     throw new InvalidDataException("Interaction recovery reused a stale map frame");

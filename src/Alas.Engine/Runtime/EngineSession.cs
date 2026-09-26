@@ -70,6 +70,8 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService
             probe, new MapAirRaidHandler(Driver, probe,
                 () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No air raid screenshot"), handler));
     }
+    public MapMovement CreateMapMovement(MapCamera camera, CampaignConfiguration configuration)
+        => new(camera.State, configuration, camera, CreateMapArrivalCheck(camera, configuration));
     public async ValueTask<MapVisualObservation> ObserveMapAsync(CampaignRule rule, CancellationToken token)
     {
         var configuration = rule.Configure(new());
