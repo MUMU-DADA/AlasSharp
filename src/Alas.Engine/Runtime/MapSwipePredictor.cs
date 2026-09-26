@@ -92,6 +92,14 @@ public sealed class MapCameraState
         return new(0.5 - View.Geometry.CenterOffset.X + requested.X, 0.5 - View.Geometry.CenterOffset.Y + requested.Y);
     }
 
+    public void UpdateImage(ScreenFrame frame)
+    {
+        if (frame.Sequence <= View.Frame.Sequence) throw new InvalidDataException("Map image refresh reused a stale frame");
+        if (PendingSwipe is { } swipe && swipe != default)
+            throw new InvalidOperationException("Cannot retain map geometry while a swipe is pending");
+        View = View with { Frame = frame };
+    }
+
     public async ValueTask UpdateAsync(MapViewFrame view, MapSwipePredictor predictor, bool predict = true,
         bool currentFleet = true, bool seaGrids = false, CancellationToken token = default)
     {

@@ -125,6 +125,7 @@ internal static class MapViewChecks
         }
         var files = new AssetFiles(Path.Combine(upstream, "assets"));
         var recognition = new GridRecognition(new EmptyPatches(), files, GameServer.Cn, new());
+        await ImageRefreshAsync(blank, files);
         foreach (var entry in reference["controls"]!.AsArray()) await ControlAsync(entry!, blank, recognition);
         foreach (var entry in reference["optimized"]!.AsArray()) await OptimizationAsync(entry!, blank, recognition);
         foreach (var entry in reference["settling"]!.AsArray()) await SettlingAsync(entry!, blank, recognition);
@@ -176,8 +177,9 @@ internal static class MapViewChecks
     }
     private sealed class EmptyPatches : IImagePatchVision
     {
+        public int Calls { get; private set; }
         public ValueTask<ImagePatchObservation> MeasurePatchAsync(ScreenFrame frame, ImagePatchRequest request, CancellationToken token = default)
-            => ValueTask.FromResult(new ImagePatchObservation(frame.Sequence, 0));
+        { Calls++; return ValueTask.FromResult(new ImagePatchObservation(frame.Sequence, 0)); }
     }
     private sealed class FakeClock : TimeProvider
     {
@@ -191,6 +193,45 @@ internal static class MapViewChecks
         public int Captures;
         public ValueTask<MapViewFrame> CaptureAsync(CancellationToken token)
         { token.ThrowIfCancellationRequested(); clock.Advance(); return ValueTask.FromResult(get(++Captures)); }
+        public async ValueTask<ScreenFrame> CaptureImageAsync(CancellationToken token)
+            => (await CaptureAsync(token)).Frame;
+    }
+
+    private static async Task ImageRefreshAsync(ScreenFrame frame, AssetFiles files)
+    {
+        var patches = new EmptyPatches();
+        var recognition = new GridRecognition(patches, files, GameServer.Cn, new());
+        var initial = new MapViewFrame(frame, Regular(new(262, 227.5)));
+        var clock = new FakeClock();
+        var source = new Source(i => new(frame with { Sequence = i + 1 }, Regular(new(340, 280))), clock);
+        var input = new Input();
+        var camera = new MapCamera(Map(), new(5, 4), initial, source, input, recognition,
+            new(new FixedEvidence(null)), new() { Predict = false, Optimize = false }, clock: clock);
+        await camera.ObserveAsync(MapScanMode.Normal, default);
+        int initialCalls = patches.Calls;
+        Check(initialCalls > 0, "Initial map view was not recognized");
+        await camera.RefreshImageAsync();
+        Check(ReferenceEquals(camera.View.Geometry, initial.Geometry) && camera.Position == new Cell(5, 4) &&
+            camera.View.Frame.Sequence == 2 && source.Captures == 1 && input.Gestures.Count == 0,
+            "Image-only refresh changed localized map geometry or moved the camera");
+        await camera.ObserveAsync(MapScanMode.Normal, default);
+        Check(patches.Calls == initialCalls * 2, "Image-only refresh reused an old grid observation");
+
+        var staleSource = new Source(_ => initial, new FakeClock());
+        var stale = new MapCamera(Map(), new(5, 4), initial, staleSource, input, recognition,
+            new(new FixedEvidence(null)), new() { Predict = false, Optimize = false });
+        bool rejected = false;
+        try { await stale.RefreshImageAsync(); } catch (InvalidDataException) { rejected = true; }
+        Check(rejected, "Image-only refresh accepted a stale screenshot");
+        rejected = false;
+        try { await stale.ObserveAsync(MapScanMode.Normal, default); } catch (InvalidOperationException) { rejected = true; }
+        Check(rejected, "Camera with failed image refresh remained usable");
+
+        var pending = new MapCameraState(new(9, 7), new(5, 4), initial);
+        pending.PrepareSwipe(new(1, 0));
+        rejected = false;
+        try { pending.UpdateImage(frame with { Sequence = 2 }); } catch (InvalidOperationException) { rejected = true; }
+        Check(rejected && pending.View.Frame.Sequence == 1, "Image-only refresh concealed a pending swipe");
     }
     private sealed class Input : IMapSwipeInput
     {
@@ -233,6 +274,13 @@ internal static class MapViewChecks
         var recognition = new GridRecognition(vision, files, GameServer.Cn, new());
         async Task<ScreenFrame> Frame(string name, long sequence) => new(sequence, DateTimeOffset.UnixEpoch, await File.ReadAllBytesAsync(Path.Combine(artifacts, name)));
         var old = await Frame("pair-0.png", 1); var next = await Frame("pair-1.png", 2); var mask = await Frame("pair-mask.png", 3);
+        var imageSource = new MapViewSource(_ => ValueTask.FromResult(old with { Sequence = 17 }),
+            new GridDetector(vision, files, new MapDetectionRules()));
+        var masked = await imageSource.CaptureImageAsync(default);
+        var expectedMask = await vision.MaskAsync(old with { Sequence = 17 },
+            await files.ReadAsync(MapDetectionAssets.Mask, default), MapDetectionAssets.MaskOrigin, default);
+        Check(masked.Sequence == 17 && masked.Png.Span.SequenceEqual(expectedMask.Png.Span),
+            "Image-only map capture did not apply the native UI mask");
         var evidence = new MapSwipeEvidence(recognition, vision, vision, mask, new(123, 55));
         foreach (var item in pixels.AsArray())
         {
@@ -366,6 +414,8 @@ internal static class MapViewChecks
             await Task.Delay(Timeout.Infinite, token);
             throw new InvalidOperationException("Blocking source unexpectedly resumed");
         }
+        public ValueTask<ScreenFrame> CaptureImageAsync(CancellationToken token)
+            => throw new InvalidOperationException("Unexpected image-only capture");
     }
     private sealed class SettlingSource(ScreenFrame frame, JsonNode sample, FakeClock clock) : IMapViewSource
     {
@@ -377,6 +427,8 @@ internal static class MapViewChecks
             var geometry = Regular(Point(sample["screens"]![Captures]!));
             return ValueTask.FromResult(new MapViewFrame(frame with { Sequence = ++Captures + 1 }, geometry));
         }
+        public ValueTask<ScreenFrame> CaptureImageAsync(CancellationToken token)
+            => throw new InvalidOperationException("Unexpected image-only capture");
     }
     private static async Task SettlingAsync(JsonNode entry, ScreenFrame frame, GridRecognition recognition)
     {

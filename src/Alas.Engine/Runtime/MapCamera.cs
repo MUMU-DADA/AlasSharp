@@ -8,6 +8,7 @@ namespace Alas.Engine.Runtime;
 public interface IMapViewSource
 {
     ValueTask<MapViewFrame> CaptureAsync(CancellationToken token);
+    ValueTask<ScreenFrame> CaptureImageAsync(CancellationToken token);
 }
 
 /// <summary>Pixel gesture transport. The C# camera supplies geometry and avoidance regions.</summary>
@@ -167,6 +168,16 @@ public sealed class MapCamera : IMapScanCamera
     }
     public async ValueTask RefreshAsync(bool waitSwipe = false, CancellationToken token = default)
         => await RunAsync(async ct => { await UpdateCoreAsync(waitSwipe, ct); return true; }, token);
+
+    /// <summary>Refresh pixels after a map action while retaining the last localized grid geometry.</summary>
+    public async ValueTask RefreshImageAsync(CancellationToken token = default)
+        => await RunAsync(async ct =>
+        {
+            var frame = await _source.CaptureImageAsync(ct);
+            _camera.UpdateImage(frame);
+            _observation = null;
+            return true;
+        }, token);
 
     public async ValueTask EnsureEdgesAsync(bool skipFirstUpdate, CancellationToken token)
         => await EnsureEdgesAsync(skipFirstUpdate, reverse: false, preset: null, new(3, 2), token);

@@ -137,6 +137,8 @@ internal static class MapRecoveryChecks
             if (Captures == 2) return ValueTask.FromResult(corrected);
             throw new InvalidOperationException("Outside correction captured too many frames");
         }
+        public ValueTask<ScreenFrame> CaptureImageAsync(CancellationToken token)
+            => throw new InvalidOperationException("Unexpected image-only capture");
     }
     private sealed class RecordingSwipe : IMapSwipeInput
     {
@@ -159,6 +161,8 @@ internal static class MapRecoveryChecks
                 _ => ValueTask.FromResult(new MapViewFrame(new(Captures + 1, DateTimeOffset.UnixEpoch, image), geometry))
             };
         }
+        public ValueTask<ScreenFrame> CaptureImageAsync(CancellationToken token)
+            => throw new InvalidOperationException("Unexpected image-only capture");
     }
     private sealed class NoSwipe : IMapSwipeInput
     { public ValueTask SwipeAsync(MapSwipeGesture gesture, CancellationToken token) => throw new InvalidOperationException("Unexpected swipe"); }

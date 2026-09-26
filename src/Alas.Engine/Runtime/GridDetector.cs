@@ -16,13 +16,19 @@ public sealed class GridDetector(IGridFeatureVision vision, AssetFiles assets, M
     private readonly SemaphoreSlim _gate = new(1, 1);
     private HomographyLayout? _homography;
     public HomographyLayout? Calibration => _homography;
+    public async ValueTask<ScreenFrame> MaskViewAsync(ScreenFrame raw, CancellationToken token = default)
+    {
+        rules.Validate();
+        ValidateFrame(raw);
+        var mask = await assets.ReadAsync(rules.OperationSiren ? MapDetectionAssets.OsMask : MapDetectionAssets.Mask, token);
+        var frame = await vision.MaskAsync(raw, mask, MapDetectionAssets.MaskOrigin, token);
+        if (frame.Sequence != raw.Sequence) throw new InvalidDataException("Masked image identity differs");
+        return frame;
+    }
     public async ValueTask<MapViewFrame> DetectAsync(ScreenFrame raw, CancellationToken token = default)
     {
         rules.Validate();
-        var png = raw.Png.Span;
-        if (png.Length < 24 || !png.Slice(12, 4).SequenceEqual("IHDR"u8) ||
-            BinaryPrimitives.ReadInt32BigEndian(png.Slice(16, 4)) != 1280 || BinaryPrimitives.ReadInt32BigEndian(png.Slice(20, 4)) != 720)
-            throw new NotSupportedException("Grid detection requires a normalized 1280x720 PNG frame");
+        ValidateFrame(raw);
         await _gate.WaitAsync(token);
         try
         {
@@ -105,6 +111,14 @@ public sealed class GridDetector(IGridFeatureVision vision, AssetFiles assets, M
         finally { _gate.Release(); }
     }
 
+    private static void ValidateFrame(ScreenFrame raw)
+    {
+        var png = raw.Png.Span;
+        if (png.Length < 24 || !png.Slice(12, 4).SequenceEqual("IHDR"u8) ||
+            BinaryPrimitives.ReadInt32BigEndian(png.Slice(16, 4)) != 1280 || BinaryPrimitives.ReadInt32BigEndian(png.Slice(20, 4)) != 720)
+            throw new NotSupportedException("Grid detection requires a normalized 1280x720 PNG frame");
+    }
+
     public static HomographyLayout Calibrate(HomographyStorage storage, MapDetectionRules rules, bool overflow = true)
     {
         rules.Validate();
@@ -165,6 +179,11 @@ public sealed class GridDetector(IGridFeatureVision vision, AssetFiles assets, M
 public sealed class MapViewSource(Func<CancellationToken, ValueTask<ScreenFrame>> capture, GridDetector detector,
     IMapViewGuard? guard = null) : IMapViewSource
 {
+    public async ValueTask<ScreenFrame> CaptureImageAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return await detector.MaskViewAsync(await capture(token), token);
+    }
     public async ValueTask<MapViewFrame> CaptureAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
