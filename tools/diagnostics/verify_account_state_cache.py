@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+
+import dotnet_env  # noqa: E402  （同目录的 .NET 环境解析）
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -119,7 +121,7 @@ def core_checks():
         workspace = Path(temporary)
         fixture, output = workspace / 'fixture.json', workspace / 'result.json'
         fixture.write_text(json.dumps(dict(cases=cases)), encoding='utf-8')
-        env = dict(os.environ, DOTNET_ROOT=str(ROOT / '.runtime/dotnet'))
+        env = dict(os.environ, **dotnet_env.apply(os.environ, ROOT))
         proc = subprocess.run([str(ROOT / 'src/Alas.Server/bin/Release/net10.0/Alas.Server.exe'),
                                'selftest-runtime', '--fixture', str(fixture), '--json', str(output),
                                '--workspace', str(workspace / 'runs')], cwd=ROOT, env=env,

@@ -22,6 +22,8 @@ import copy
 import os
 import subprocess
 import sys
+
+import dotnet_env  # noqa: E402  （同目录的 .NET 环境解析）
 import tempfile
 import uuid
 from pathlib import Path
@@ -142,7 +144,7 @@ def verify_response_contract():
         fixture.write_text(json.dumps(dict(cases=cases)), encoding='utf-8')
         process = subprocess.run([str(EXE), 'selftest-runtime', '--fixture', str(fixture),
                                   '--json', str(verdicts), '--workspace', str(directory / 'runs')],
-                                 cwd=ROOT, env=dict(os.environ, DOTNET_ROOT=str(ROOT / '.runtime/dotnet')),
+                                 cwd=ROOT, env=dotnet_env.apply(os.environ, ROOT),
                                  capture_output=True, text=True, encoding='utf-8',
                                  errors='replace', timeout=90)
         assert verdicts.is_file(), process.stdout + process.stderr
