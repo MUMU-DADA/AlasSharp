@@ -77,8 +77,21 @@ internal static class RecognitionChecks
             { Measure = PatchMeasure.StandardDeviation, Processing = PatchProcessing.Gray });
             if (Math.Abs(deviation.Value - item["standard_deviation"]!.GetValue<double>()) > 1e-6)
                 throw new InvalidOperationException("Gray patch standard deviation differs");
-            patches += 4;
+            var peaks = await vision.MeasurePatchAsync(noise, request with
+            { Measure = PatchMeasure.RowPeakCount, Processing = PatchProcessing.ColorSimilarity,
+                PeakHeight = 180, PeakDistance = 5 });
+            if (peaks.Value != item["row_peaks"]!.GetValue<int>())
+                throw new InvalidOperationException("Color similarity row peaks differ");
+            patches += 5;
         }
+        var lines = new ScreenFrame(++sequence, DateTimeOffset.UtcNow,
+            await File.ReadAllBytesAsync(Path.Combine(artifacts, "fleet-lines.png")));
+        var linePeaks = await vision.MeasurePatchAsync(lines, new(new(0, 0, 64, 32), 64, 32,
+            PatchMeasure.RowPeakCount, PatchProcessing.ColorSimilarity, new(249, 199, 0),
+            PeakHeight: 180, PeakDistance: 5));
+        if (linePeaks.Value != reference["row_peak_fixture"]!.GetValue<int>() || linePeaks.Value != 2)
+            throw new InvalidOperationException("Hard fleet orange-line peaks differ");
+        patches++;
         var templateNames = new Dictionary<string, string>();
         foreach (var asset in UiAssets.All.Where(a => a.Kind == AssetKind.Template && a.Id.StartsWith("module.template.assets.", StringComparison.Ordinal)))
         {

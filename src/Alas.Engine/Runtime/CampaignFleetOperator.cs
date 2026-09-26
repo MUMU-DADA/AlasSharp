@@ -48,6 +48,18 @@ public sealed class CampaignFleetOperator(IUiDriver ui, IImagePatchVision vision
     public ValueTask<bool> IsHardAsync(CancellationToken token = default)
         => ui.AppearsAsync(slot.Advice, SearchOffset, token: token);
 
+    public async ValueTask<bool?> HardSatisfiedAsync(CancellationToken token = default)
+    {
+        if (!await IsHardAsync(token)) return null;
+        var frame = currentFrame();
+        var area = ui.ButtonArea(slot.HardSatisfied);
+        var peaks = await vision.MeasurePatchAsync(frame, new(area.Area, area.Width, area.Height,
+            PatchMeasure.RowPeakCount, PatchProcessing.ColorSimilarity, new(249, 199, 0),
+            PeakHeight: 180, PeakDistance: 5), token);
+        if (peaks.FrameSequence != frame.Sequence) throw new InvalidDataException("Hard fleet restriction belongs to another frame");
+        return peaks.Value > 0;
+    }
+
     public async ValueTask<bool> InUseAsync(CancellationToken token = default)
     {
         var frame = currentFrame();
@@ -118,6 +130,9 @@ public sealed class CampaignFleetOperator(IUiDriver ui, IImagePatchVision vision
         }
         throw new TimeoutException("Fleet could not be cleared");
     }
+
+    public ValueTask ClickClearAsync(CancellationToken token = default)
+        => ui.ClickAsync(slot.Clear, token);
 
     private async ValueTask OpenAsync(CancellationToken token)
         => await WaitForDropdownAsync(true, token);

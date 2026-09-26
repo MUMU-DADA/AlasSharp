@@ -83,6 +83,31 @@ internal static class CampaignStageSelectorChecks
             result.Evidence["cleared"]?.GetValue<bool>() == false,
             "Fleet preparation task entered the map or claimed a cleared sortie");
 
+        var fleetService = new FleetService();
+        var configured = request with { Kind = fleetTask.Kind, Input = new JsonObject
+        { ["campaign"] = "campaign_main/campaign_1_1", ["fleet1"] = 1, ["fleet2"] = 2, ["submarine"] = 0 } };
+        fleetTask.Validate(configured.Input);
+        driver = new Driver { Chapter = 1 };
+        result = await fleetTask.RunAsync(configured,
+            new TaskContext(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
+                Stages: new Stages(driver), Fleets: fleetService), default);
+        Check(fleetService.Plan == new FleetPlan(1, 2, 0) && result.Evidence?["fleetSelectionChecked"]?.GetValue<bool>() == true &&
+            result.Evidence["fleetSelectionChanged"]?.GetValue<bool>() == true &&
+            result.Evidence["mapEntered"]?.GetValue<bool>() == false,
+            "Typed fleet plan was not delegated to the C# session");
+        await Throws<ArgumentException>(() =>
+        {
+            fleetTask.Validate(new JsonObject { ["campaign"] = "campaign_main/campaign_1_1", ["fleet1"] = 1 });
+            return Task.CompletedTask;
+        },
+            "Partial fleet plan was accepted");
+        await Throws<ArgumentException>(() =>
+        {
+            fleetTask.Validate(new JsonObject { ["campaign"] = "campaign_main/campaign_1_1", ["fleet1"] = null });
+            return Task.CompletedTask;
+        },
+            "Null fleet plan was silently treated as observation only");
+
         driver = new Driver { Chapter = 1, MapPreparationVisible = false };
         await driver.ClickAreaAsync(new(200, 250, 230, 280), default);
         await Throws<InvalidDataException>(() => new CampaignPreparation(driver).OpenFleetAsync("normal").AsTask(),
@@ -147,6 +172,12 @@ internal static class CampaignStageSelectorChecks
             Called = true;
             return ValueTask.FromResult(new NavigationObservation(destination, false));
         }
+    }
+    private sealed class FleetService : ICampaignFleetPreparationService
+    {
+        public FleetPlan? Plan { get; private set; }
+        public ValueTask<FleetSetupResult> ConfigureFleetAsync(FleetPlan plan, IPopupHandler popups, CancellationToken token)
+        { Plan = plan; return ValueTask.FromResult(new FleetSetupResult(false, true, true, plan.Submarine)); }
     }
     private sealed class Driver : IUiDriver
     {

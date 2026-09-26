@@ -157,6 +157,14 @@ def patch_measure(image, request):
         if processing != "gray" or image.size < 2:
             raise ValueError("patch_standard_deviation")
         return float(np.std(image.reshape(-1), ddof=1))
+    if measure == "rowpeakcount":
+        height, distance = request["peak_height"], request["peak_distance"]
+        if (processing != "colorsimilarity" or type(height) not in (int, float) or
+                not np.isfinite(height) or not 0 <= height <= 255 or
+                type(distance) is not int or distance < 1):
+            raise ValueError("patch_row_peaks")
+        rows = cv2.reduce(image, 1, cv2.REDUCE_AVG).flatten()
+        return int(len(signal.find_peaks(rows, height=height, distance=distance)[0]))
     if measure == "similaritycount":
         minimum = request["minimum"]
         if image.ndim != 2 or type(minimum) is not int or not 0 <= minimum <= 255:
@@ -393,7 +401,8 @@ def match(request):
     elif request["operation"] == "ocr_infer":
         fields |= {"model", "model_sha256", "num_classes", "candidates", "letter", "threshold", "preprocessing"}
     elif request["operation"] == "image_patch":
-        fields |= {"size", "measure", "processing", "color", "template", "minimum", "lower", "upper"}
+        fields |= {"size", "measure", "processing", "color", "template", "minimum", "lower", "upper",
+                   "peak_height", "peak_distance"}
     elif request["operation"] == "image_pair":
         fields |= {"size", "second_image", "second_frame", "second_area", "second_size"}
     if set(request) != fields:

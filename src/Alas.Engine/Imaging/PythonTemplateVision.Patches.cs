@@ -13,6 +13,9 @@ public sealed partial class PythonTemplateVision : IImagePatchVision
             new[] { request.Color.R, request.Color.G, request.Color.B }.Any(v => v is < 0 or > 255) ||
             (request.Measure == PatchMeasure.StandardDeviation &&
              (request.Processing != PatchProcessing.Gray || (long)request.Width * request.Height < 2)) ||
+            (request.Measure == PatchMeasure.RowPeakCount &&
+             (request.Processing != PatchProcessing.ColorSimilarity || !double.IsFinite(request.PeakHeight) ||
+              request.PeakHeight is < 0 or > 255 || request.PeakDistance < 1)) ||
             (request.Measure == PatchMeasure.Template && (request.Template.IsEmpty || request.Template.Length > 16 * 1024 * 1024)))
             throw new ArgumentException("Invalid image patch parameters", nameof(request));
         var hsv = request.Hsv;
@@ -26,6 +29,7 @@ public sealed partial class PythonTemplateVision : IImagePatchVision
             size = new[] { request.Width, request.Height }, measure = request.Measure.ToString().ToLowerInvariant(),
             processing = request.Processing.ToString().ToLowerInvariant(), color = new[] { request.Color.R, request.Color.G, request.Color.B },
             template = Convert.ToBase64String(request.Template.Span), minimum = request.MinimumSimilarity,
+            peak_height = request.PeakHeight, peak_distance = request.PeakDistance,
             lower = new[] { hsv.HLow / 2, hsv.SLow * 2.55, hsv.VLow * 2.55 },
             upper = new[] { hsv.HHigh / 2 + 1, hsv.SHigh * 2.55 + 1, hsv.VHigh * 2.55 + 1 }
         }, response =>

@@ -102,6 +102,7 @@ def main():
                                     expected={k: getattr(grid, k) for k in fields}))
         # Primitive image measurements independently exercise exact rounding, padding, HSV and GIF mirrors.
         from module.base.utils import crop, rgb2gray, color_similarity_2d, color_mask
+        from scipy import signal
         patches = []
         image = prototypes[1][1]
         for index in range(32):
@@ -115,13 +116,20 @@ def main():
             counts = [int(cv2.countNonZero(color_mask(patch, color, threshold))),
                       int(cv2.countNonZero(cv2.inRange(hsv, (138/2, 0, 0), (151/2+1, 256, 256))))]
             gray = rgb2gray(patch)
+            rows = cv2.reduce(color_similarity_2d(patch, color), 1, cv2.REDUCE_AVG).flatten()
+            row_peaks = int(len(signal.find_peaks(rows, height=180, distance=5)[0]))
             template = gray[:min(5, height), :min(5, width)]
             path = output.parent / f"gray-{index}.png"
             Image.fromarray(template).save(path)
             score = float(cv2.minMaxLoc(cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED))[1])
             patches.append(dict(area=[x,y,w,h], size=[width,height], color=color, minimum=255-threshold,
                                 counts=counts, template=path.name, score=score,
-                                standard_deviation=float(np.std(gray.flatten(), ddof=1))))
+                                standard_deviation=float(np.std(gray.flatten(), ddof=1)), row_peaks=row_peaks))
+        lines = np.zeros((32, 64, 3), dtype=np.uint8)
+        lines[8, :, :] = lines[20, :, :] = (249, 199, 0)
+        Image.fromarray(lines).save(output.parent / "fleet-lines.png")
+        line_rows = cv2.reduce(color_similarity_2d(lines, (249, 199, 0)), 1, cv2.REDUCE_AVG).flatten()
+        line_peaks = int(len(signal.find_peaks(line_rows, height=180, distance=5)[0]))
         # Native control flow on scripted numeric CV results tests strict thresholds and short-circuit priority.
         import random
         import module.map_detection.grid_predictor as predictor
@@ -174,7 +182,8 @@ def main():
                                    expected={k: getattr(grid, k) for k in fields}))
         finally:
             Template.match, predictor.color_similarity_2d = original_match, original_similarity
-    output.write_text(json.dumps(dict(cases=results, patches=patches, traced=traced), separators=(",", ":")), encoding="utf-8")
+    output.write_text(json.dumps(dict(cases=results, patches=patches, row_peak_fixture=line_peaks,
+                                      traced=traced), separators=(",", ":")), encoding="utf-8")
 
 
 if __name__ == "__main__":

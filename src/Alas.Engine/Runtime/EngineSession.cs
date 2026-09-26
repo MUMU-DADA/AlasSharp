@@ -13,7 +13,7 @@ public sealed record EngineSessionOptions(string Adb, string Serial, GameServer 
 
 /// <summary>One device and one pure-vision process for the entire new execution graph.</summary>
 public sealed class EngineSession : IAsyncDisposable, IMapObservationService, ICampaignInMapHost,
-    ICampaignExecutionService, ICampaignStageObservationService
+    ICampaignExecutionService, ICampaignStageObservationService, ICampaignFleetPreparationService
 {
     private readonly PythonTemplateVision _vision;
     private readonly JournalDevice _device;
@@ -138,12 +138,16 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
             _vision, Driver.Server);
         return await reader.ObserveAsync(frame, kinds, token);
     }
+    public ValueTask<FleetSetupResult> ConfigureFleetAsync(FleetPlan plan, IPopupHandler popups, CancellationToken token)
+        => new CampaignFleetSetup(Driver, _vision,
+            () => Driver.Frame ?? throw new InvalidOperationException("No fleet preparation screenshot"), popups)
+            .ApplyAsync(plan, token);
     public TaskContext BeginTask(TimeSpan timeout)
     {
         _device.Actions.Clear();
         Driver.ResetTask();
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
-        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this);
+        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this, this);
     }
     public async Task<JsonObjectEvidence> SaveEvidenceAsync(string directory, bool failed)
     {
