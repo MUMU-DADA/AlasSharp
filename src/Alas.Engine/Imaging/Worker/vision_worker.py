@@ -184,8 +184,31 @@ def patch_measure(image, request):
     return max(values)
 
 
+def pair_measure(image, request):
+    sizes = [request["size"], request["second_size"]]
+    for size in sizes:
+        if (not isinstance(size, list) or len(size) != 2 or any(type(v) is not int or v < 1 for v in size)
+                or size[0] * size[1] > 1024 * 1024):
+            raise ValueError("patch_size")
+    if sizes[0][0] > sizes[1][0] or sizes[0][1] > sizes[1][1]:
+        raise ValueError("pair_shape")
+    area = request["second_area"]
+    if (not isinstance(area, list) or len(area) != 4 or any(type(v) is not int for v in area)
+            or area[2] < 1 or area[3] < 1 or area[2] * area[3] > 16 * 1024 * 1024):
+        raise ValueError("pair_area")
+    if type(request["second_frame"]) is not int or request["second_frame"] < 1:
+        raise ValueError("pair_identity")
+    second = crop(decode(request["second_image"]), *area)
+    def prepare(patch, size):
+        patch = cv2.resize(patch, tuple(size), interpolation=cv2.INTER_CUBIC)
+        return cv2.add(cv2.convertScaleAbs(patch.max(axis=2), alpha=0.5),
+                       cv2.convertScaleAbs(patch.min(axis=2), alpha=0.5))
+    value = cv2.minMaxLoc(cv2.matchTemplate(prepare(second, sizes[1]), prepare(image, sizes[0]), cv2.TM_CCOEFF_NORMED))[1]
+    return dict(value=float(value), second_frame=request["second_frame"])
+
+
 def match(request):
-    if request.get("protocol") != "alas-cv/1" or request.get("operation") not in ("template_match", "color_mean", "color_bands", "ocr_infer", "image_patch"):
+    if request.get("protocol") != "alas-cv/1" or request.get("operation") not in ("template_match", "color_mean", "color_bands", "ocr_infer", "image_patch", "image_pair"):
         raise ValueError("unsupported_operation")
     fields = {"protocol", "id", "operation", "frame", "image", "area"}
     if request["operation"] == "template_match":
@@ -196,6 +219,8 @@ def match(request):
         fields |= {"model", "model_sha256", "num_classes", "candidates", "letter", "threshold", "preprocessing"}
     elif request["operation"] == "image_patch":
         fields |= {"size", "measure", "processing", "color", "template", "minimum", "lower", "upper"}
+    elif request["operation"] == "image_pair":
+        fields |= {"size", "second_image", "second_frame", "second_area", "second_size"}
     if set(request) != fields:
         raise ValueError("request_fields")
     for key in ("id", "frame"):
@@ -212,6 +237,8 @@ def match(request):
         return infer_ocr(crop(image, x, y, width, height), request)
     if request["operation"] == "image_patch":
         return {"value": patch_measure(crop(image, x, y, width, height), request)}
+    if request["operation"] == "image_pair":
+        return pair_measure(crop(image, x, y, width, height), request)
     if request["operation"] == "color_mean":
         return {"color": list(cv2.mean(crop(image, x, y, width, height))[:3])}
     if request["operation"] == "color_bands":

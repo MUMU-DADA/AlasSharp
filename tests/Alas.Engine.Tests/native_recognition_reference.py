@@ -95,8 +95,10 @@ def main():
                     setattr(cfg, key, value)
                 cfg.MAP_ENEMY_GENRE_DETECTION_SCALING = {"Light": (.8, 1, 1.2)}
                 grid = Grid((0, 0), image, corners, cfg)
+                raw = [bool(grid.predict_fleet()), bool(grid.predict_current_fleet())]
                 grid.predict()
                 results.append(dict(name=f"{label}-{variant}", image=image_path.name, corners=corners.tolist(), options=options,
+                                    raw=raw,
                                     expected={k: getattr(grid, k) for k in fields}))
         # Primitive image measurements independently exercise exact rounding, padding, HSV and GIF mirrors.
         from module.base.utils import crop, rgb2gray, color_similarity_2d, color_mask

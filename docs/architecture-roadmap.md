@@ -35,7 +35,9 @@ R5 舰队属性分派已通过原生 Fleet 属性与双宿主的 592 场景离�
 
 `CampaignState.InitializeMapData` 已迁入每局计数/舰队重置、清理模式覆盖顺序、循环地图与出生表选择、拓扑及机制初始化；`GetMissing` / `PredictMissing` 保留按战斗次数索引累计出生表、图标遮挡并集、堡垒/弹跳计数及航母预测的原生语义。732 个实际上游 `Fleet.map_data_init` / `CampaignMap.missing_*` 场景对照通过，包含五种扫描模式、空表、重复装载、稀疏波次标签和随机状态；非 poor 模式的空表明确失败。额外边界检查覆盖跨局隔离、重复初始化拒绝和计数溢出无部分提交。
 
-`MapScanner` 已将最近机位选择、必须扫描队列、观测冲突后的边缘恢复、提前停止、扫描后缺失预测及舰队清理接到 C# 权威状态。22 项合成相机检查通过，覆盖 decoy 模式、BOSS 被抓例外、超时/取消及等待扫描锁也受期限约束；测试看门狗不计作扫描器自身的超时结果。`IMapScanCamera` 尚无真实设备实现，扫描耗尽/预测齐全不产生结算结论；原生出生表对照、合成扫描与真实出击分开记账。
+`MapScanner` 已将最近机位选择、必须扫描队列、观测冲突后的边缘恢复、提前停止、扫描后缺失预测及舰队清理接到 C# 权威状态。22 项合成相机检查通过，覆盖 decoy 模式、BOSS 被抓例外、超时/取消及等待扫描锁也受期限约束；测试看门狗不计作扫描器自身的超时结果。`IMapScanCamera` 已有下述 C# 实现与离线集成，尚未接入真实检测器和设备手势终端；扫描耗尽/预测齐全不产生结算结论，原生出生表对照、合成扫描与真实出击分开记账。
+
+`MapViewGeometry` / `MapSwipePredictor` / `MapCamera` 已连接多边形几何、原始舰队与海格位移预测、边缘定位、聚焦/居中、滑动避让及全图扫描观测。287 个上游 `View.load` 布局核对 1,954 个格子投影和 176 个预期失败，另核对 420 个投票、288 个相机状态、24 条聚焦/边缘轨迹、3 组控制倍率/避让区域和 5 条原生画面稳定等待轨迹。透视输入精度和消元顺序已修正整数边界的相邻格误定位；位移只按唯一标记或唯一最高票选定，零格居中保留待确认状态。滑动区域比对保留原生集合内容，集合并集的未声明顺序不作等价承诺。32 组实际纯 CV 图像配对通过，90 个既有像素场景新增原始舰队标记对照；潜艇抑制不会误入位移预测。并验具体相机到扫描器组合、旧帧/错帧拒绝、超时/取消和失败后实例不可复用。Python `image_pair` 仅计算数值，业务选择在 C#。真实线段/单应性检测、mask 管线、设备手势终端及地图弹窗/检测错误恢复仍缺，未验证真实相机或战役结算。
 
 `GridRecognition` 已将 `GridPredictor.predict` 的逐格判定顺序迁入 C#；Python 视觉 worker 仅提供 `image_patch` 数值测量，不加载上游模块、不解释素材 id。90 个含模板、颜色和 HSV 的合成识别场景、90 次完整视野合并及 96 个基础测量通过；此验证使用上游提供的几何和合成像素，线段/透视/单应性检测、实机截图和战斗仍未验收。
 
@@ -71,6 +73,7 @@ dotnet run --project tests/Alas.Engine.Tests -c Release -- --path .runtime/venv3
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --observation .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-observation
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --spawn .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-spawn
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --scanner
+dotnet run --project tests/Alas.Engine.Tests -c Release -- --view .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-view
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --recognition .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-recognition
 ```
 

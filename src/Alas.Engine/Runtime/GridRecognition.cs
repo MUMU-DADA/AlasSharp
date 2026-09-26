@@ -9,10 +9,14 @@ public sealed record GridCorners(ScreenPoint TopLeft, ScreenPoint TopRight, Scre
 public sealed record VisibleGrid(ViewCell LocalCell, GridCorners Corners);
 
 /// <summary>Native GridPredictor decisions in C#. The CV service returns numeric measurements only.</summary>
-public sealed class GridRecognition(IImagePatchVision vision, AssetFiles assets, GameServer server, GridRecognitionRules rules)
+public sealed partial class GridRecognition(IImagePatchVision vision, AssetFiles assets, GameServer server, GridRecognitionRules rules)
 {
     public static readonly SourceFile Source = new("module/map_detection/grid_predictor.py",
         "7e191b0c48ceb89ecb453742e559b7c4b26fdb920c80e1e128d4e79331d26caa");
+
+    public ValueTask<MapObservation> ObserveAsync(MapViewFrame view, Cell camera,
+        MapScanMode mode = MapScanMode.Normal, CancellationToken token = default)
+        => ObserveAsync(view.Frame, view.Geometry.Grids, camera, view.Geometry.Center, mode, token);
 
     /// <summary>The input frame must already have the upstream map UI mask applied.</summary>
     public async ValueTask<MapObservation> ObserveAsync(ScreenFrame frame, IReadOnlyList<VisibleGrid> grids,
@@ -33,19 +37,11 @@ public sealed class GridRecognition(IImagePatchVision vision, AssetFiles assets,
     {
         rules.Validate();
         var projection = new Projection(corners, rules.ImageScale);
-        async ValueTask<double> Measure(double x0, double y0, double x1, double y1, int width, int height,
+        ValueTask<double> Measure(double x0, double y0, double x1, double y1, int width, int height,
             PatchMeasure measure, PatchProcessing processing = PatchProcessing.Color, PixelColor color = default,
             AssetRule? template = null, int minimum = 0, HsvBounds hsv = default)
-        {
-            token.ThrowIfCancellationRequested();
-            var bytes = template is null ? ReadOnlyMemory<byte>.Empty : await assets.ReadAsync(template.For(server), token);
-            var value = await vision.MeasurePatchAsync(frame, new(projection.Crop(x0, y0, x1, y1), width, height,
-                measure, processing, color, bytes, minimum, hsv), token);
-            if (value.FrameSequence != frame.Sequence || !double.IsFinite(value.Value) ||
-                (measure == PatchMeasure.Template ? value.Value is < -1 or > 1 : value.Value < 0 || value.Value > width * height || value.Value != Math.Truncate(value.Value)))
-                throw new InvalidDataException("Grid measurement has invalid frame identity or value");
-            return value.Value;
-        }
+            => MeasureAsync(frame, projection.Crop(x0, y0, x1, y1), width, height, measure, processing, color,
+                template, minimum, hsv, token);
         async ValueTask<bool> Match(double x0, double y0, double x1, double y1, int width, int height,
             AssetRule template, double threshold = 0.85, PixelColor? color = null)
             => await Measure(x0, y0, x1, y1, width, height, PatchMeasure.Template,
@@ -86,10 +82,9 @@ public sealed class GridRecognition(IImagePatchVision vision, AssetFiles assets,
              await Hsv(0.03, -0.15, 0.63, 0.15, 50, 20, 355, 361) > 100 &&
              await Match(0.03, -0.15, 0.63, 0.15, 50, 20, UiAssets.Template.TEMPLATE_ENEMY_BOSS, 0.7, new(255, 77, 82)));
         bool submarine = await Match(-0.86, 0.08, -0.36, 0.58, 50, 50, UiAssets.Template.TEMPLATE_SUBMARINE, color: new(255, 243, 156));
-        bool fleet = !submarine && await Match(-1, -2, -0.5, -1.5, 50, 50, UiAssets.Template.TEMPLATE_FLEET_AMMO, color: new(255, 255, 255));
+        bool fleet = !submarine && await PredictFleetAsync(frame, projection, token);
         bool mystery = rules.HasMystery && await Rgb(-0.3, -2, 0.3, -0.6, 20, 50, new(148, 255, 247)) > 50;
-        bool current = await Hsv(-0.5, -3.5, 0.5, -2.5, 50, 50, 138, 151) >= 600 &&
-            await Match(-0.5, -3.5, 0.5, -2.5, 60, 60, UiAssets.Template.TEMPLATE_FLEET_CURRENT, color: new(24, 255, 107));
+        bool current = await PredictCurrentFleetAsync(frame, projection, token);
         bool missile = rules.HasMissileAttack && await Rgb(-0.5, -1, 0.5, 0, 50, 50, new(255, 255, 60)) > 35;
         bool enemy = !string.IsNullOrEmpty(genre) || scale != 0;
         if (enemy && string.IsNullOrEmpty(genre)) genre = "Enemy";

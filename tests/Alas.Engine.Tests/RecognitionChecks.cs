@@ -40,6 +40,11 @@ internal static class RecognitionChecks
             var serialized = JsonSerializer.SerializeToNode(actual, Json);
             if (!JsonNode.DeepEquals(serialized, item["expected"]))
                 throw new InvalidOperationException($"Grid recognition differs: {item["name"]}\nExpected: {item["expected"]}\nActual: {serialized}");
+            var layout = new MapViewGeometry([new(new(0, 0), corners)], new(0, 0, 1280, 720),
+                new(300, 480), new(100, 100));
+            var raw = await predictor.RawFleetAsync(new(frame, layout), layout.Grids[0]);
+            if (raw.Fleet != item["raw"]![0]!.GetValue<bool>() || raw.Current != item["raw"]![1]!.GetValue<bool>())
+                throw new InvalidOperationException($"Raw camera fleet prediction differs: {item["name"]}");
             foreach (var value in serialized!.AsObject())
                 if (value.Value is JsonValue scalar && scalar.TryGetValue<bool>(out bool flag) && flag) positive.Add(value.Key);
             if (actual.EnemyScale > 0) positive.Add("enemy_scale");
