@@ -20,6 +20,8 @@ from types import SimpleNamespace
 from typing import Any
 from xml.sax.saxutils import escape
 
+import dotnet_env
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools'))
 from export_deploy_settings import declarations, export
@@ -221,7 +223,7 @@ def main():
             fixtures.append({'text': 'Run: ' + raw + '\n', 'operation': operation})
     local = ROOT / '.runtime/verification'
     local.mkdir(parents=True, exist_ok=True)
-    dotnet = ROOT / '.runtime/dotnet/dotnet.exe'
+    dotnet = dotnet_env.executable(ROOT)
     env = dict(os.environ, DOTNET_ROOT=str(dotnet.parent), DOTNET_CLI_HOME=str(ROOT / '.runtime/dotnet-home'),
                NUGET_PACKAGES=str(ROOT / '.runtime/nuget/packages'))
     env.pop('DEMO', None)
@@ -231,7 +233,8 @@ def main():
         (work / 'Program.cs').write_text(HARNESS, encoding='utf-8')
         project = work / 'DeployProbe.csproj'
         project.write_text(f'''<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><ProjectReference Include="{escape(str(ROOT / 'src/Alas.Core/Alas.Core.csproj'))}" /><ProjectReference Include="{escape(str(ROOT / 'src/Alas.Client/Alas.Client.csproj'))}" /></ItemGroup></Project>''', encoding='utf-8')
-        build = subprocess.run([str(dotnet), 'build', str(project), '-c', 'Release', '--source', str(ROOT / '.runtime/nuget/source'), '-p:NuGetAudit=false'], env=env, capture_output=True, timeout=120)
+        build = subprocess.run([str(dotnet), 'build', str(project), '-c', 'Release', *(['--source', str(ROOT / '.runtime/nuget/source')]
+                                   if (ROOT / '.runtime/nuget/source').is_dir() else []), '-p:NuGetAudit=false'], env=env, capture_output=True, timeout=120)
         assert build.returncode == 0, (build.stdout + build.stderr).decode(errors='replace')
         repo = work / 'api-repo'
         (repo / 'config').mkdir(parents=True)

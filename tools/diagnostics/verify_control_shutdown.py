@@ -14,8 +14,10 @@ from xml.sax.saxutils import escape
 
 from verify_control import request, wait_state
 
+import dotnet_env
+
 ROOT = Path(__file__).resolve().parents[2]
-DOTNET = ROOT / '.runtime/dotnet/dotnet.exe'
+DOTNET = dotnet_env.executable(ROOT)
 
 # The test host only turns a local test file into the public shutdown token. It
 # executes the production server and runtime, without a fake queue or device.
@@ -65,7 +67,7 @@ def main() -> int:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     except AttributeError:
         pass
-    assert DOTNET.is_file(), '先准备项目内 .NET SDK'
+    assert DOTNET.is_file(), '先准备 .NET SDK'
     local = ROOT / '.runtime/control-shutdown-tests'
     local.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=local) as temporary:
@@ -80,7 +82,8 @@ def main() -> int:
                        'NUGET_PACKAGES': str(ROOT / '.runtime/nuget/packages'),
                        'DOTNET_CLI_TELEMETRY_OPTOUT': '1'}
         build = subprocess.run([str(DOTNET), 'build', str(project), '-c', 'Release',
-                                '--source', str(ROOT / '.runtime/nuget/source'), '-p:NuGetAudit=false'],
+                                *(['--source', str(ROOT / '.runtime/nuget/source')]
+                                   if (ROOT / '.runtime/nuget/source').is_dir() else []), '-p:NuGetAudit=false'],
                                cwd=ROOT, env=environment, capture_output=True, timeout=120)
         if build.returncode:
             (work / 'build.log').write_bytes(build.stdout + build.stderr)

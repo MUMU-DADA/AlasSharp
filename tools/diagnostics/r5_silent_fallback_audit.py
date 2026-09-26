@@ -27,21 +27,34 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 ENGINE = ROOT / "src" / "Alas.Core" / "Campaign"
 
 # 已复核的"静默返回"：写明为什么可以不带日志（改了代码就同步改这里）
-REVIEWED: dict[str, str] = {
-    "SortieResult.cs": "冻结合同 `sortie-result/1` 的实现：非法路径形态交给上层路径规则，"
-                       "合同里不判（`verify_result_contract.py` 38 例覆盖；改动需两侧同步）",
-    "CampaignPlan.cs:330": "`TryLoad` 读导出 JSON 失败时返回 false（`plan = null`）——调用方据此**跳过**该关卡，"
-                           "不是拿兜底值继续跑；可改进点：目前丢掉具体原因（JSON 损坏 vs 文件缺失），"
-                           "将来接真机时值得把原因带出去",
+REVIEWED: dict[tuple[str, str, str], str] = {
+    ("SortieResult.cs", "Exception", "return true;"):
+        "冻结合同 sortie-result/1：非法路径形态交给上层路径规则，合同不判",
+    ("CampaignPlan.cs", "Exception error", "return false;"):
+        "TryReadModule 读取导出失败时返回 false；调用方跳过该关卡，不继续执行兜底计划",
 }
 
-CATCH = re.compile(r"catch\s*\((?P<what>[^)]*)\)\s*(?:when\s*\([^)]*\))?\s*\{", re.S)
-REPORTED = ("throw", "Log(", "Result(", ".Message")
+# Mask comments and strings before looking at braces or reporting calls. Their
+# text is not executable evidence (for example // throw; must not hide a return).
+NON_CODE = re.compile(
+    r'//[^\r\n]*|/\*.*?\*/|\$*"{3,}.*?"{3,}|(?:\$@|@\$|@)"(?:""|[^"])*"'
+    r'|\$?"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
+CATCH = re.compile(r"\bcatch\b\s*(?:\((?P<what>[^)]*)\))?\s*(?:when\s*\([^)]*\))?\s*\{", re.S)
+REPORTED = re.compile(r"\bthrow\b|\bLog\s*\(|\bResult\s*\(|\.Message\b")
+
+
+def code_only(text: str) -> str:
+    return NON_CODE.sub(lambda match: re.sub(r"[^\r\n]", " ", match.group()), text)
+
 
 
 def blocks(text: str):
     """产出 (起始行号, catch 头, 块内容)。"""
-    for match in CATCH.finditer(text):
+    text = code_only(text)
+    matches = list(CATCH.finditer(text))
+    if len(matches) != len(re.findall(r"\bcatch\b", text)):
+        raise ValueError("出现不能解析的 catch 语法，不能省略该分支的审计")
+    for match in matches:
         depth = 1
         index = match.end()
         while index < len(text) and depth:
@@ -51,26 +64,34 @@ def blocks(text: str):
                 depth -= 1
             index += 1
         line = text[:match.start()].count("\n") + 1
-        yield line, match.group("what").strip(), text[match.end():index - 1]
+        if depth:
+            raise ValueError(f"第 {line} 行 catch 块未闭合，不能完成审计")
+        yield line, (match.group("what") or "裸 catch").strip(), text[match.end():index - 1]
 
 
 def main() -> int:
     if not ENGINE.is_dir():
         raise SystemExit(f"缺少 {ENGINE.relative_to(ROOT)}")
-    silent: list[tuple[str, int, str]] = []
-    for path in sorted(ENGINE.rglob("*.cs")):
+    silent: list[tuple[str, int, str, str]] = []
+    paths = sorted(ENGINE.rglob("*.cs"))
+    if not paths:
+        raise ValueError("没有 Campaign C# 源文件，不能完成静默兜底审计")
+    for path in paths:
         text = path.read_text(encoding="utf-8")
         for line, what, body in blocks(text):
-            if any(marker in body for marker in REPORTED):
+            if REPORTED.search(body):
                 continue
             if not re.search(r"\breturn\b", body):
                 continue
-            silent.append((path.name, line, what))
+            silent.append((path.relative_to(ENGINE).as_posix(), line, what, " ".join(body.split())))
 
     print(f"[r5-silent-fallback] `catch` 块里既不上报也不重抛的返回：{len(silent)} 处")
     undeclared = []
-    for name, line, what in silent:
-        reason = REVIEWED.get(name) or REVIEWED.get(f"{name}:{line}")
+    consumed = set()
+    for name, line, what, body in silent:
+        key = (name, what, body)
+        reason = REVIEWED.get(key) if key not in consumed else None
+        consumed.add(key)
         if reason is None:
             undeclared.append((name, line, what))
         else:

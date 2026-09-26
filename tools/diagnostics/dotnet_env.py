@@ -1,44 +1,66 @@
 #!/usr/bin/env python3
-"""解析 .NET 运行时目录，避免把**不存在的目录**塞给 `DOTNET_ROOT`。
+"""Resolve a real .NET host for offline checks, including system SDK installs.
 
-背景（实测）：`verify_config_get` / `verify_account_state_cache` / `verify_periodic_run_result` /
-`verify_task_schedule` 把 `DOTNET_ROOT` 固定指向 `<repo>/.runtime/dotnet`，而本机并没有这个目录
-→ apphost 报 `missing_runtime=true`、`verify_all.py` 里这些步骤全红。
-（同族的 `verify_deploy_*` 能"通过"是因为它们在没有本地 dotnet 时**跳过**了。）
-
-规则：
-  1. `<repo>/.runtime/dotnet` 存在 → 用它；
-  2. 否则用 `PATH` 上 `dotnet` 所在目录（系统 SDK）；
-  3. 两者都没有 → **不要设** `DOTNET_ROOT`（宁可不设，也不指向不存在的目录），
-     调用方可用 `skip_reason()` 如实跳过。
+Prefer the repository SDK, then an explicitly configured DOTNET_ROOT, then PATH.
+A directory alone is not evidence of an installed host. Missing prerequisites fail
+at executable(), rather than silently skipping the cross-language check.
 """
 from __future__ import annotations
 
+import os
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 
 
-def local_root(repo: Path | str) -> Path | None:
-    candidate = Path(repo) / ".runtime" / "dotnet"
-    if (candidate / "dotnet.exe").is_file() or (candidate / "dotnet").is_file() \
-            or (candidate / "shared").is_dir():
-        return candidate
+def _host(root: Path) -> Path | None:
+    for name in ("dotnet.exe", "dotnet"):
+        candidate = root / name
+        if candidate.is_file():
+            return candidate.resolve()
     return None
 
 
-def resolved_root(repo: Path | str | None = None) -> Path | None:
+def local_root(repo: Path | str) -> Path | None:
+    host = _host(Path(repo) / ".runtime" / "dotnet")
+    return host.parent if host else None
+
+
+def resolved_executable(repo: Path | str | None = None,
+                        env: Mapping[str, str] | None = None) -> Path | None:
+    environment = os.environ if env is None else env
     if repo is not None:
-        local = local_root(repo)
-        if local is not None:
-            return local
-    found = shutil.which("dotnet")
-    return Path(found).parent if found else None
+        host = _host(Path(repo) / ".runtime" / "dotnet")
+        if host:
+            return host
+    configured = environment.get("DOTNET_ROOT")
+    if configured:
+        host = _host(Path(configured))
+        if host:
+            return host
+    found = shutil.which("dotnet", path=environment.get("PATH", ""))
+    # Resolve symlinks: /usr/bin/dotnet is commonly a link into the runtime root.
+    return Path(found).resolve() if found else None
 
 
-def apply(env: dict, repo: Path | str | None = None) -> dict:
-    """把 `DOTNET_ROOT` 设成真实存在的位置；解析不到就删掉它（不指向不存在的目录）。"""
+def executable(repo: Path | str | None = None,
+               env: Mapping[str, str] | None = None) -> Path:
+    host = resolved_executable(repo, env)
+    if host is None:
+        raise RuntimeError("未找到 .NET 主机；请准备项目内 .runtime/dotnet、DOTNET_ROOT 或 PATH 上的 dotnet")
+    return host
+
+
+def resolved_root(repo: Path | str | None = None,
+                  env: Mapping[str, str] | None = None) -> Path | None:
+    host = resolved_executable(repo, env)
+    return host.parent if host else None
+
+
+def apply(env: Mapping[str, str], repo: Path | str | None = None) -> dict[str, str]:
+    """Return an independent environment with a valid host root, if available."""
     result = dict(env)
-    root = resolved_root(repo)
+    root = resolved_root(repo, env)
     if root is None:
         result.pop("DOTNET_ROOT", None)
     else:
@@ -47,8 +69,7 @@ def apply(env: dict, repo: Path | str | None = None) -> dict:
 
 
 def skip_reason(repo: Path | str | None = None) -> str | None:
-    """没有可用的 .NET 时给出人话原因，否则 None。"""
+    """Compatibility diagnostic; required checks must still return failure."""
     if resolved_root(repo) is not None:
         return None
-    return ("本机没有可用的 .NET：既没有 <repo>/.runtime/dotnet，PATH 上也没有 dotnet"
-            "（有 SDK/运行时之后再跑本检查）")
+    return "本机没有可用的 .NET 主机（项目内 .runtime/dotnet、DOTNET_ROOT 和 PATH 均未找到）"

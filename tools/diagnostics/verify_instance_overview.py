@@ -21,6 +21,8 @@ from typing import Any
 from unittest.mock import patch
 from xml.sax.saxutils import escape
 
+import dotnet_env
+
 ROOT = Path(__file__).resolve().parents[2]
 NOW = datetime(2030, 1, 2, 3, 4, 5)
 
@@ -85,11 +87,11 @@ def main():
         project.write_text(f'''<Project Sdk="Microsoft.NET.Sdk">
 <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
 <ItemGroup><ProjectReference Include="{escape(str(ROOT / 'src/Alas.Core/Alas.Core.csproj'))}" /></ItemGroup></Project>''', encoding='utf-8')
-        dotnet = ROOT / '.runtime/dotnet/dotnet.exe'
+        dotnet = dotnet_env.executable(ROOT)
         env = dict(os.environ, DOTNET_ROOT=str(dotnet.parent), DOTNET_CLI_HOME=str(ROOT / '.runtime/dotnet-home'),
                    NUGET_PACKAGES=str(ROOT / '.runtime/nuget/packages'))
-        build = subprocess.run([str(dotnet), 'build', str(project), '-c', 'Release', '--source',
-                                str(ROOT / '.runtime/nuget/source'), '-p:NuGetAudit=false'],
+        build = subprocess.run([str(dotnet), 'build', str(project), '-c', 'Release', *(['--source', str(ROOT / '.runtime/nuget/source')]
+                                   if (ROOT / '.runtime/nuget/source').is_dir() else []), '-p:NuGetAudit=false'],
                                env=env, capture_output=True, timeout=120)
         assert build.returncode == 0, (build.stdout + build.stderr).decode(errors='replace')
         result = subprocess.run([str(dotnet), str(work / 'bin/Release/net10.0/OverviewProbe.dll'), str(work / 'fixtures.json')],
