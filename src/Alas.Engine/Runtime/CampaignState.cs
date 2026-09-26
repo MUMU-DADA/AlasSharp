@@ -15,6 +15,8 @@ public sealed partial class CampaignState
     public CampaignState(MapDefinition map)
     {
         Map = map;
+        Mechanisms = map.Mechanisms;
+        ActiveWaves = map.Waves;
         Cells = Array.AsReadOnly(map.Tiles.Select((tile, index) =>
         {
             var cell = map.CreateCell(new Cell(index % map.Shape.Column + 1, index / map.Shape.Column + 1), tile);
@@ -40,7 +42,7 @@ public sealed partial class CampaignState
     public void LoadMechanisms(bool landBased = false, bool maze = false, bool fortress = false, bool bouncingEnemy = false)
     {
         if (landBased)
-            foreach (var mechanism in Map.Mechanisms.LandBased)
+            foreach (var mechanism in Mechanisms.LandBased)
             {
                 (int x, int y) = mechanism.Direction switch
                 { MapDirection.Up => (0, -1), MapDirection.Down => (0, 1), MapDirection.Left => (-1, 0), MapDirection.Right => (1, 0), _ => throw new InvalidOperationException() };
@@ -51,10 +53,10 @@ public sealed partial class CampaignState
             }
         if (maze)
         {
-            MazeRound = Map.Mechanisms.Mazes.Length * 3;
-            for (int index = 0; index < Map.Mechanisms.Mazes.Length; index++)
+            MazeRound = Mechanisms.Mazes.Length * 3;
+            for (int index = 0; index < Mechanisms.Mazes.Length; index++)
             {
-                var cells = Map.Mechanisms.Mazes[index].Select(c => this[c]).ToArray();
+                var cells = Mechanisms.Mazes[index].Select(c => this[c]).ToArray();
                 foreach (var cell in cells) { cell.IsMaze = true; cell.MazeRound = Array.AsReadOnly(new[] { index * 3, index * 3 + 1, index * 3 + 2 }); }
                 foreach (var cell in cells)
                 {
@@ -65,11 +67,11 @@ public sealed partial class CampaignState
         }
         if (fortress)
         {
-            foreach (var cell in Map.Mechanisms.FortressEnemies) this[cell].IsFortress = true;
-            foreach (var cell in Map.Mechanisms.FortressBlocks) this[cell].IsMechanismBlock = true;
+            foreach (var cell in Mechanisms.FortressEnemies) this[cell].IsFortress = true;
+            foreach (var cell in Mechanisms.FortressBlocks) this[cell].IsMechanismBlock = true;
         }
         if (bouncingEnemy)
-            foreach (var cell in Map.Mechanisms.BouncingRoutes.SelectMany(g => g)) this[cell].MayBouncingEnemy = true;
+            foreach (var cell in Mechanisms.BouncingRoutes.SelectMany(g => g)) this[cell].MayBouncingEnemy = true;
     }
 }
 

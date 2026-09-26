@@ -123,6 +123,19 @@ try
     await Throws<IOException>(() => application.IsRunningAsync(default).AsTask(), "Unknown foreground silently accepted");
     Console.WriteLine($"Local engine/transport checks passed: {checks}");
 
+    if (args is ["--spawn", var spawnPython, var spawnUpstream, var spawnArtifacts])
+    {
+        string folder = Path.GetFullPath(spawnArtifacts);
+        Directory.CreateDirectory(folder);
+        await MapSpawnChecks.RunAsync(Path.GetFullPath(spawnPython), Path.GetFullPath(spawnUpstream), folder);
+        await MapScannerChecks.RunAsync();
+        return 0;
+    }
+    if (args is ["--scanner"])
+    {
+        await MapScannerChecks.RunAsync();
+        return 0;
+    }
     if (args is ["--maps", var mapsPython, var mapsUpstream, var mapsArtifacts])
     {
         string folder = Path.GetFullPath(mapsArtifacts);
