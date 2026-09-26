@@ -35,10 +35,10 @@ public sealed partial class CampaignState
         }
         int failed = 0;
         foreach (var (target, info) in targets)
-            if (!this[target].CopyForObservation().Merge(info, observation.Mode)) failed++;
+            if (!this[target].CopyForObservation().Merge(info, observation.Mode, Map.GridBehavior)) failed++;
         if (failed >= 2) return new(false, failed, 0, ignored.AsReadOnly(), outside.AsReadOnly());
         // Native permits one incompatible observation and retains writes made before Merge returned false.
-        foreach (var (target, info) in targets) this[target].Merge(info, observation.Mode);
+        foreach (var (target, info) in targets) this[target].Merge(info, observation.Mode, Map.GridBehavior);
         if (observation.Mode == MapScanMode.Init) FixupSubmarineFleet();
         return new(true, failed, targets.Count, ignored.AsReadOnly(), outside.AsReadOnly());
     }

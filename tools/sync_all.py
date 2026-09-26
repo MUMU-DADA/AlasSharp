@@ -37,6 +37,8 @@ ROOT = os.path.normpath(os.path.join(HERE, '..'))
 FORK = os.path.normpath(os.path.join(ROOT, '.runtime', 'engine'))
 EXPORT = os.path.join(HERE, 'export_upstream_data.py')
 ASSETS = os.path.join(HERE, 'sync_upstream_assets.py')
+MAPS = os.path.join(HERE, 'migration', 'compile_campaign_maps.py')
+MAPS_OUTPUT = os.path.join(ROOT, 'src', 'Alas.Engine', 'Rules', 'Generated', 'CampaignMaps.g.cs')
 DIAG = os.path.join(HERE, 'diagnostics')
 
 # 免设备的验收（不需要真机）：识图协议 + 产品路径 + 偏移对齐 + 文档汇总
@@ -83,6 +85,9 @@ def check(strict_drift):
         cmd.append('--strict-drift')
     details['assets'] = run(cmd, 'C. vendor 素材快照是否与上游一致%s'
                             % ('（strict：把上游领先也算失败）' if strict_drift else ''))
+    details['maps'] = run([sys.executable, MAPS, '--upstream', FORK,
+                           '--output', MAPS_OUTPUT, '--check'],
+                          'D. C# 地图规则声明是否与上游一致')
     return details
 
 
@@ -137,6 +142,8 @@ def main(argv=None):
     rc['ir'] = run([sys.executable, EXPORT, '--out', os.path.join(ROOT, 'data')],
                    'B. 重导关卡 IR / assets / schema')
     rc['assets'] = run([sys.executable, ASSETS], 'C. 刷新 vendor 素材快照')
+    rc['maps'] = run([sys.executable, MAPS, '--upstream', FORK,
+                      '--output', MAPS_OUTPUT], 'D. 编译 C# 地图规则声明')
     if any(v != 0 for v in rc.values()):
         print('\n更新阶段有失败项：%s' % {k: v for k, v in rc.items() if v})
         return 1

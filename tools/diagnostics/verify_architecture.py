@@ -587,6 +587,11 @@ def main() -> int:
     map_literal = re.compile(r"campaign_[A-Za-z0-9]+_[0-9]+(?:_[0-9]+)+")
     for path in csharp_files:
         text = path.read_text(encoding="utf-8")
+        # The compiled campaign catalog is the type-safe upstream rule source. It
+        # intentionally contains every upstream id; the migration generator's
+        # drift check protects it from becoming a hand-maintained special-case table.
+        if path.as_posix().endswith("src/Alas.Engine/Rules/Generated/CampaignMaps.g.cs"):
+            continue
         if map_literal.search(text):
             problems.append(f"生产代码含地图特例字面量: {path.relative_to(ROOT)}")
         if '"assets.json"' in text and path.name != "UpstreamData.cs":

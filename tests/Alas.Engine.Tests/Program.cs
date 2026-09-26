@@ -57,6 +57,29 @@ try
     var configuration = one.Configure(new CampaignConfiguration { Fleet2 = 2, Submarine = 1, ClearAllThisTime = true });
     Check(configuration is { Fleet2: 0, Submarine: 0, ClearAllThisTime: true }, "Chapter configuration overwrote unrelated values");
     Check(RuleCatalog.Create("campaign_main/campaign_1_2").Map.Tiles[3] == MapTile.LowPriorityEnemy, "ME/Me distinction lost");
+    var mapIds = CampaignMapCatalog.Ids.ToArray();
+    Check(mapIds.Length >= 1370, $"Compiled map catalog is incomplete: {mapIds.Length}");
+    var eventMap = CampaignMapCatalog.Get("event_20220224_cn/a1").Map;
+    Check(eventMap.Mechanisms.FortressEnemies.Contains(Cell.Parse("E3")) &&
+          eventMap.Mechanisms.FortressBlocks.Contains(Cell.Parse("E2")) &&
+          eventMap.Mechanisms.BouncingRoutes.Single().SequenceEqual([Cell.Parse("C2"), Cell.Parse("C3"), Cell.Parse("C4")]),
+        "Map mechanism declarations were not compiled");
+    Check(CampaignMapCatalog.Get("war_archives_20210422_cn/b1").Map.Mechanisms.Mazes.Length == 3,
+        "Maze declarations were not compiled");
+    Check(CampaignMapCatalog.Get("campaign_main/campaign_15_3").Map.GridBehavior == MapGridBehavior.W15,
+        "Custom grid behavior was not compiled");
+    var customGrid = new CellState(new(1, 1), MapTile.Siren);
+    Check(customGrid.Merge(new(IsBoss: true), gridBehavior: MapGridBehavior.W15) && customGrid.IsSiren,
+        "Custom grid merge behavior was not applied");
+    Check(CampaignMapCatalog.Get("event_20200326_cn/d3").Map.SwipePreset == new SwipePreset(0, 2),
+        "Swipe preset declaration was not compiled");
+    var ignoredMap = CampaignMapCatalog.Get("campaign_main/campaign_9_1").Map;
+    var ignoredState = new CampaignState(ignoredMap);
+    var ignoredResult = ignoredState.ApplyObservation(new(
+        [new MapCellObservation(new(0, 0), new(IsEnemy: true, EnemyScale: 1, EnemyGenre: "Enemy"))],
+        Cell.Parse("D5"), new(0, 0)));
+    Check(ignoredResult.Accepted && ignoredResult.Ignored.Contains(Cell.Parse("D5")) && !ignoredState[Cell.Parse("D5")].IsEnemy,
+        "Compiled ignore_prediction rule was not applied");
 
     // Real process execution verifies binary reads, parallel stderr, arguments, timeout and cancellation.
     var process = new ProcessRunner();
@@ -194,6 +217,11 @@ try
     {
         string hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(upstream, source.Path))));
         Check(hash == source.Sha256, $"Upstream source changed: {source.Path}");
+    }
+    foreach (var entry in mapIds.Select(CampaignMapCatalog.Get))
+    {
+        string hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(upstream, entry.Source.Path))));
+        Check(hash == entry.Source.Sha256, $"Upstream map source changed: {entry.Source.Path}");
     }
     var cases = new List<Scenario>();
     foreach (string id in RuleCatalog.Ids)

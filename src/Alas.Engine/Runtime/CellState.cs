@@ -85,7 +85,8 @@ public sealed class CellState : IEquatable<CellState>
         MayAmbush = !(MayEnemy || MayBoss || MayMystery);
     }
 
-    public bool Merge(CellObservation info, MapScanMode mode = MapScanMode.Normal)
+    public bool Merge(CellObservation info, MapScanMode mode = MapScanMode.Normal,
+        MapGridBehavior gridBehavior = MapGridBehavior.Default)
     {
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
         if (info.IsSubmarine && IsSubmarineSpawnPoint) IsSubmarine = true;
@@ -100,6 +101,16 @@ public sealed class CellState : IEquatable<CellState>
             IsFleet = true;
             if (info.IsCurrentFleet) IsCurrentFleet = true;
             if (!(mode == MapScanMode.Init && info.IsEnemy)) return true;
+        }
+        if (info.IsBoss && gridBehavior == MapGridBehavior.W15)
+        {
+            if (!IsLand && MaySiren)
+            {
+                IsSiren = true;
+                EnemyScale = 0;
+                EnemyGenre = string.Empty;
+                return true;
+            }
         }
         if (info.IsBoss)
         {

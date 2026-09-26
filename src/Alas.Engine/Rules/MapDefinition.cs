@@ -31,7 +31,10 @@ public readonly record struct Cell(int Column, int Row)
 
 // Tokens describe possibilities, never observations. Preserve ME/Me spelling;
 // GridInfo.decode uppercases both, so LowPriorityEnemy has no separate runtime priority.
-public enum MapTile { Water, Land, Spawn, Enemy, LowPriorityEnemy, Boss, Mystery, Ammo, SubmarineSpawn, Siren }
+public enum MapTile { Water, Unknown, Land, Spawn, Enemy, LowPriorityEnemy, Boss, Mystery, Ammo, SubmarineSpawn, Siren }
+public enum MapGridBehavior { Default, W15 }
+public readonly record struct CameraSight(int Left, int Top, int Right, int Bottom);
+public readonly record struct SwipePreset(int X, int Y);
 public sealed record SpawnWave(int Battle, int Enemy = 0, int Mystery = 0, int Boss = 0, int Siren = 0);
 public sealed record SourceFile(string Path, string Sha256);
 public sealed record IgnoredPrediction(Cell Cell, Func<CellObservation, bool> Matches);
@@ -53,11 +56,19 @@ public sealed class MapDefinition
     public ImmutableArray<Cell> Cameras { get; }
     public ImmutableArray<Cell> SpawnCameras { get; }
     public ImmutableArray<SpawnWave> Waves { get; }
+    public ImmutableArray<SpawnWave> LoopWaves { get; }
+    public ImmutableArray<Cell> Covered { get; }
+    public CameraSight CameraSight { get; }
+    public SwipePreset? SwipePreset { get; }
+    public MapGridBehavior GridBehavior { get; }
 
     public MapDefinition(string shape, string tiles, IEnumerable<string> cameras,
         IEnumerable<string> spawnCameras, IEnumerable<SpawnWave> waves, string? loopTiles = null,
         IEnumerable<double>? weights = null, IEnumerable<MapEdge>? walls = null, IEnumerable<MapEdge>? portals = null,
-        MapMechanisms? mechanisms = null, IEnumerable<IgnoredPrediction>? ignoredPredictions = null)
+        MapMechanisms? mechanisms = null, IEnumerable<IgnoredPrediction>? ignoredPredictions = null,
+        IEnumerable<SpawnWave>? loopWaves = null, IEnumerable<string>? covered = null,
+        CameraSight? cameraSight = null, SwipePreset? swipePreset = null,
+        MapGridBehavior gridBehavior = MapGridBehavior.Default)
     {
         Shape = Cell.Parse(shape);
         Tiles = ParseTiles(tiles);
@@ -82,9 +93,15 @@ public sealed class MapDefinition
         SpawnCameras = spawnCameras.Select(Cell.Parse).ToImmutableArray();
         foreach (var camera in Cameras.Concat(SpawnCameras)) ValidateCell(camera);
         Waves = waves.ToImmutableArray();
-        if (Waves.Any(w => w.Battle < 0 || w.Enemy < 0 || w.Mystery < 0 || w.Boss < 0 || w.Siren < 0) ||
-            !Waves.Select(w => w.Battle).SequenceEqual(Waves.Select(w => w.Battle).Distinct().Order()))
-            throw new ArgumentException("Spawn waves must have unique ascending battle numbers and nonnegative counts", nameof(waves));
+        LoopWaves = loopWaves?.ToImmutableArray() ?? [];
+        Covered = covered?.Select(Cell.Parse).ToImmutableArray() ?? [];
+        foreach (var cell in Covered) ValidateCell(cell);
+        CameraSight = cameraSight ?? new CameraSight(-3, -1, 3, 2);
+        SwipePreset = swipePreset;
+        if (!Enum.IsDefined(gridBehavior)) throw new ArgumentOutOfRangeException(nameof(gridBehavior));
+        GridBehavior = gridBehavior;
+        ValidateWaves(Waves, nameof(waves));
+        ValidateWaves(LoopWaves, nameof(loopWaves));
     }
 
     private ImmutableArray<MapTile> ParseTiles(string text)
@@ -99,7 +116,7 @@ public sealed class MapDefinition
             foreach (string token in columns)
                 parsed.Add(token switch
                 {
-                    "--" => MapTile.Water, "++" => MapTile.Land, "SP" => MapTile.Spawn,
+                    "--" => MapTile.Water, "-" or "SI" => MapTile.Unknown, "++" => MapTile.Land, "SP" => MapTile.Spawn,
                     "ME" => MapTile.Enemy, "Me" => MapTile.LowPriorityEnemy, "MB" => MapTile.Boss,
                     "MM" => MapTile.Mystery, "MA" => MapTile.Ammo, "__" => MapTile.SubmarineSpawn, "MS" => MapTile.Siren,
                     _ => throw new NotSupportedException($"Unported map token: {token}")
@@ -118,5 +135,13 @@ public sealed class MapDefinition
     {
         if (cell.Column < 1 || cell.Row < 1 || cell.Column > Shape.Column || cell.Row > Shape.Row)
             throw new ArgumentOutOfRangeException(nameof(cell), "Cell lies outside map");
+    }
+
+    private static void ValidateWaves(IEnumerable<SpawnWave> waves, string parameterName)
+    {
+        var values = waves.ToArray();
+        if (values.Any(w => w is null || w.Battle < 0 || w.Enemy < 0 || w.Mystery < 0 || w.Boss < 0 || w.Siren < 0) ||
+            !values.Select(w => w.Battle).SequenceEqual(values.Select(w => w.Battle).Distinct().Order()))
+            throw new ArgumentException("Spawn waves must have unique ascending battle numbers and nonnegative counts", parameterName);
     }
 }
