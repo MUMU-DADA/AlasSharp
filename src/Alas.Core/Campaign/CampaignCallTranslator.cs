@@ -54,12 +54,14 @@ public static class CampaignCallTranslator
         // 舰队前缀**保留成点号路径**：上游 `Fleet.fleet_2` 是属性，会先 `fleet_ensure(index=2)` 再
         // **返回 self**（`module/map/fleet.py:35`），所以 `instance.fleet_2.clear_boss` 才是忠实调用
         // ——"切队 + 内层原语"一次到位，比在 C# 侧分开调 `ensure_fleet` 更贴上游语义。
-        // `super()` 不是舰队前缀：它是"调基类实现"，翻译成直接调那个方法。
+        // super 从词法定义类之后沿实例 MRO 查找；普通实例方法路径无法表达这种绑定。
+        // 当前导出不携带定义类身份，宿主也没有基类分派协议，不能剥前缀伪装成 self.X。
         var (prefix, inner) = CampaignPrimitiveRegistry.SplitFleetPrefix(step.Op);
         string? fleetPrefix = null;
         if (prefix == "super()")
         {
-            prefix = "";
+            return new CampaignHostCall(step.Op, step.Op, null, [], [],
+                "super 委托缺少词法定义类与原生 MRO 绑定，宿主不能将其编码为普通实例方法调用");
         }
         else if (prefix.Length > 0)
         {
