@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/Alas.Engine/Alas.Engine.csproj" />
+  <Project Path="tests/Alas.Engine.Tests/Alas.Engine.Tests.csproj" />
+</Solution>
