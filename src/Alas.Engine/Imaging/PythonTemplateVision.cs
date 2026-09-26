@@ -45,8 +45,60 @@ public sealed class PythonTemplateVision : IVision
 
     public async ValueTask<TemplateObservation> MatchAsync(ScreenFrame frame, TemplateRequest request, CancellationToken token = default)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         Validate(frame, request);
+        return await ExchangeAsync(frame, id => new
+        {
+            protocol = "alas-cv/1", id, operation = "template_match", frame = frame.Sequence,
+            image = Convert.ToBase64String(frame.Png.Span), template = Convert.ToBase64String(request.TemplatePng.Span),
+            area = AreaValues(request.SearchArea), template_area = request.TemplateArea is { } crop ? AreaValues(crop) : null,
+            preprocessing = request.Preprocessing.ToString().ToLowerInvariant()
+        }, response =>
+        {
+            var candidates = response.GetProperty("candidates");
+            if (candidates.GetArrayLength() is < 1 or > 512)
+                throw new InvalidDataException("Pure vision returned an invalid frame count");
+            TemplateObservation? selected = null;
+            foreach (var candidate in candidates.EnumerateArray())
+            {
+                double similarity = candidate.GetProperty("similarity").GetDouble();
+                var position = candidate.GetProperty("location");
+                if (position.GetArrayLength() != 2 || !double.IsFinite(similarity) || similarity is < -1 or > 1)
+                    throw new InvalidDataException("Pure vision returned an invalid match");
+                var point = new PixelPoint(position[0].GetInt32(), position[1].GetInt32());
+                var area = request.SearchArea;
+                if (point.X < area.X || point.Y < area.Y || point.X >= (long)area.X + area.Width || point.Y >= (long)area.Y + area.Height)
+                    throw new InvalidDataException("Pure vision returned a match outside the search area");
+                // Native animated buttons select the first passing frame, or retain the last failed offset.
+                // Validate every measurement even after selection; malformed responses cannot be reused.
+                if (selected?.Matched != true)
+                    selected = new TemplateObservation(frame.Sequence, similarity > request.Similarity, similarity, point);
+            }
+            return selected!;
+        }, token);
+    }
+
+    public async ValueTask<MeanColorObservation> MeanColorAsync(ScreenFrame frame, PixelArea area, CancellationToken token = default)
+    {
+        ValidateFrame(frame);
+        ValidateArea(area);
+        return await ExchangeAsync(frame, id => new
+        {
+            protocol = "alas-cv/1", id, operation = "color_mean", frame = frame.Sequence,
+            image = Convert.ToBase64String(frame.Png.Span), area = AreaValues(area)
+        }, response =>
+        {
+            var color = response.GetProperty("color");
+            if (color.GetArrayLength() != 3) throw new InvalidDataException("Pure vision returned invalid color channels");
+            var values = color.EnumerateArray().Select(c => c.GetDouble()).ToArray();
+            if (values.Any(c => !double.IsFinite(c) || c is < 0 or > 255)) throw new InvalidDataException("Pure vision returned invalid color values");
+            return new MeanColorObservation(frame.Sequence, values[0], values[1], values[2]);
+        }, token);
+    }
+
+    private async ValueTask<T> ExchangeAsync<T>(ScreenFrame frame, Func<long, object> commandFactory,
+        Func<JsonElement, T> parse, CancellationToken token)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         await _gate.WaitAsync(token);
         try
         {
@@ -55,13 +107,7 @@ public sealed class PythonTemplateVision : IVision
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
             limit.CancelAfter(_timeout);
             long id = ++_requestId;
-            string command = JsonSerializer.Serialize(new
-            {
-                protocol = "alas-cv/1", id, operation = "template_match", frame = frame.Sequence,
-                image = Convert.ToBase64String(frame.Png.Span), template = Convert.ToBase64String(request.TemplatePng.Span),
-                area = new[] { request.SearchArea.X, request.SearchArea.Y, request.SearchArea.Width, request.SearchArea.Height },
-                preprocessing = request.Preprocessing.ToString().ToLowerInvariant()
-            });
+            string command = JsonSerializer.Serialize(commandFactory(id));
             try
             {
                 await _process.StandardInput.WriteLineAsync(command.AsMemory(), limit.Token);
@@ -74,16 +120,7 @@ public sealed class PythonTemplateVision : IVision
                     throw new InvalidDataException("Pure vision response identity mismatch");
                 if (response.TryGetProperty("error", out var error))
                     throw new InvalidDataException($"Pure vision rejected image input: {error.GetString()}");
-                double similarity = response.GetProperty("similarity").GetDouble();
-                var position = response.GetProperty("location");
-                if (position.GetArrayLength() != 2 || !double.IsFinite(similarity) || similarity is < -1 or > 1)
-                    throw new InvalidDataException("Pure vision returned an invalid match");
-                var point = new PixelPoint(position[0].GetInt32(), position[1].GetInt32());
-                var area = request.SearchArea;
-                if (point.X < area.X || point.Y < area.Y || point.X >= (long)area.X + area.Width || point.Y >= (long)area.Y + area.Height)
-                    throw new InvalidDataException("Pure vision returned a match outside the search area");
-                // Upstream Button/Template use a strict comparison, including at equality.
-                return new TemplateObservation(frame.Sequence, similarity > request.Similarity, similarity, point);
+                return parse(response);
             }
             catch (Exception error) when (error is not OutOfMemoryException)
             {
@@ -106,7 +143,7 @@ public sealed class PythonTemplateVision : IVision
         // Responses contain numbers only; bound input before constructing a full line.
         var text = new StringBuilder();
         char[] character = new char[1];
-        while (text.Length < 4096)
+        while (text.Length < 65536)
         {
             int count = await _process.StandardOutput.ReadAsync(character.AsMemory(), token);
             if (count == 0)
@@ -141,15 +178,25 @@ public sealed class PythonTemplateVision : IVision
 
     private static void Validate(ScreenFrame frame, TemplateRequest request)
     {
-        var area = request.SearchArea;
-        if (frame.Sequence < 1 || frame.Png.IsEmpty || request.TemplatePng.IsEmpty ||
-            frame.Png.Length > 16 * 1024 * 1024 || request.TemplatePng.Length > 16 * 1024 * 1024)
-            throw new ArgumentException("Vision requires a frame identity and bounded image data");
-        if (area.Width < 1 || area.Height < 1 || (long)area.Width * area.Height > 16 * 1024 * 1024 ||
-            (long)area.X + area.Width > int.MaxValue || (long)area.Y + area.Height > int.MaxValue ||
+        ValidateFrame(frame);
+        ValidateArea(request.SearchArea);
+        if (request.TemplateArea is { } templateArea) ValidateArea(templateArea);
+        if (request.TemplatePng.IsEmpty || request.TemplatePng.Length > 16 * 1024 * 1024 ||
             !double.IsFinite(request.Similarity) || request.Similarity is < -1 or > 1 || !Enum.IsDefined(request.Preprocessing))
             throw new ArgumentException("Invalid template match parameters");
     }
+    private static void ValidateFrame(ScreenFrame frame)
+    {
+        if (frame.Sequence < 1 || frame.Png.IsEmpty || frame.Png.Length > 16 * 1024 * 1024)
+            throw new ArgumentException("Vision requires a frame identity and bounded image data");
+    }
+    private static void ValidateArea(PixelArea area)
+    {
+        if (area.Width < 1 || area.Height < 1 || (long)area.Width * area.Height > 16 * 1024 * 1024 ||
+            (long)area.X + area.Width > int.MaxValue || (long)area.Y + area.Height > int.MaxValue)
+            throw new ArgumentException("Invalid image area");
+    }
+    private static int[] AreaValues(PixelArea area) => [area.X, area.Y, area.Width, area.Height];
 
     private void StopWorker()
     {

@@ -3,6 +3,7 @@
 """检查项目的不可变架构边界（无需设备）。"""
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 import sys
@@ -381,19 +382,32 @@ def contract_consistency() -> list[str]:
 
 
 def executable_boundary_intact() -> list[str]:
-    """Only Server and Desktop are product executables; Core owns diagnostics."""
+    """Legacy product entries stay separate from the independent native-engine diagnostic CLI."""
     problems: list[str] = []
     projects = ROOT / "src"
     for path in projects.glob("*/*.csproj"):
         tree = ET.parse(path).getroot()
         output = tree.findtext(".//OutputType", "Library")
         if output in ("Exe", "WinExe") and path.parent.name not in (
-                "Alas.Server", "Alas.UI.Desktop", "Alas.UI.Headless"):
+                "Alas.Server", "Alas.UI.Desktop", "Alas.UI.Headless", "Alas.Engine.Cli"):
             problems.append(f"额外可执行入口: {path.relative_to(ROOT)}")
         if path.parent.name == "Alas.Core":
             references = [item.attrib.get("Include", "") for item in tree.iter("ProjectReference")]
             if any("Alas.Server" in item or "Alas.UI" in item for item in references):
                 problems.append("Core 反向依赖 Server 或 UI")
+        if path.parent.name in ("Alas.Engine", "Alas.Engine.Cli"):
+            references = [Path(item.attrib.get("Include", "")).stem for item in tree.iter("ProjectReference")]
+            expected = [] if path.parent.name == "Alas.Engine" else ["Alas.Engine"]
+            if references != expected:
+                problems.append(f"独立引擎依赖边界变化: {path.parent.name}")
+    worker = ROOT / "src/Alas.Engine/Imaging/Worker/vision_worker.py"
+    if worker.is_file():
+        allowed = {"base64", "io", "json", "sys", "cv2", "numpy", "imageio"}
+        for node in ast.walk(ast.parse(worker.read_text(encoding="utf-8"))):
+            imports = ([alias.name for alias in node.names] if isinstance(node, ast.Import)
+                       else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
+            if any(name.split(".")[0] not in allowed for name in imports):
+                problems.append("独立视觉 worker 导入了非图像依赖")
     for path in (ROOT / "Alas.sln", ROOT / "Alas.UI.slnx"):
         if "Alas.DataTool" in path.read_text(encoding="utf-8"):
             problems.append(f"产品解决方案仍包含旧 DataTool: {path.name}")

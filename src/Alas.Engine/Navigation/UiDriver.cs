@@ -1,0 +1,79 @@
+using Alas.Engine.Devices;
+using Alas.Engine.Imaging;
+using Alas.Engine.Rules;
+
+namespace Alas.Engine.Navigation;
+
+public interface IUiDriver
+{
+    GameServer Server { get; }
+    bool HasFrame { get; }
+    TimeProvider Clock { get; }
+    ValueTask ScreenshotAsync(CancellationToken token);
+    ValueTask<bool> AppearsAsync(AssetRule asset, ButtonOffset offset = default, double interval = 0,
+        double similarity = 0.85, int threshold = 10, TemplatePreprocessing preprocessing = TemplatePreprocessing.Color,
+        CancellationToken token = default);
+    ValueTask ClickAsync(AssetRule asset, CancellationToken token);
+    void ClearOffset(AssetRule asset);
+    IntervalTimer Timer(AssetRule asset, double seconds = 5, bool renew = false);
+    void ResetInterval(AssetRule asset, double seconds = 3);
+    void ClearInterval(AssetRule asset);
+    ValueTask DelayAsync(TimeSpan time, CancellationToken token);
+}
+
+/// <summary>C# owns screenshot identity, button offsets, timers and clicks for one automation session.</summary>
+public sealed class UiDriver : IUiDriver
+{
+    private readonly IGameDevice _device;
+    private readonly AssetMatcher _matcher;
+    private readonly Random _random;
+    private readonly Dictionary<string, IntervalTimer> _timers = new(StringComparer.Ordinal);
+    public GameServer Server { get; }
+    public TimeProvider Clock { get; }
+    public ScreenFrame? Frame { get; private set; }
+    public bool HasFrame => Frame is not null;
+
+    public UiDriver(GameServer server, IGameDevice device, IVision vision, AssetFiles assets,
+        TimeProvider? clock = null, Random? random = null)
+    {
+        Server = server;
+        _device = device;
+        _matcher = new AssetMatcher(server, vision, assets);
+        Clock = clock ?? TimeProvider.System;
+        _random = random ?? Random.Shared;
+    }
+    public async ValueTask ScreenshotAsync(CancellationToken token) => Frame = await _device.CaptureAsync(token);
+    public async ValueTask<bool> AppearsAsync(AssetRule asset, ButtonOffset offset = default, double interval = 0,
+        double similarity = 0.85, int threshold = 10, TemplatePreprocessing preprocessing = TemplatePreprocessing.Color,
+        CancellationToken token = default)
+    {
+        if (interval > 0 && !Timer(asset, interval, renew: true).Reached()) return false;
+        bool appeared = await _matcher.AppearsAsync(Frame ?? throw new InvalidOperationException("No screenshot has been captured"),
+            asset, offset, similarity, threshold, preprocessing, token);
+        if (appeared && interval > 0) Timer(asset).Reset();
+        return appeared;
+    }
+    public ValueTask ClickAsync(AssetRule asset, CancellationToken token)
+    {
+        var rectangle = _matcher.ClickArea(asset);
+        return _device.TapAsync(new PixelPoint(RandomCoordinate(rectangle.Left, rectangle.Right),
+            RandomCoordinate(rectangle.Top, rectangle.Bottom)), token);
+    }
+    private int RandomCoordinate(int minimum, int maximum)
+    {
+        if (minimum >= maximum) return maximum;
+        long sum = 0;
+        for (int i = 0; i < 3; i++) sum += _random.NextInt64(minimum, (long)maximum + 1);
+        return (int)Math.Round(sum / 3.0, MidpointRounding.ToEven);
+    }
+    public void ClearOffset(AssetRule asset) => _matcher.ClearOffset(asset);
+    public IntervalTimer Timer(AssetRule asset, double seconds = 5, bool renew = false)
+    {
+        if (!_timers.TryGetValue(asset.Name, out var timer) || (renew && timer.Seconds != seconds))
+            _timers[asset.Name] = timer = new IntervalTimer(Clock, seconds);
+        return timer;
+    }
+    public void ResetInterval(AssetRule asset, double seconds = 3) => Timer(asset, seconds).Reset();
+    public void ClearInterval(AssetRule asset) => Timer(asset, 3).Clear();
+    public ValueTask DelayAsync(TimeSpan time, CancellationToken token) => new(Task.Delay(time, Clock, token));
+}

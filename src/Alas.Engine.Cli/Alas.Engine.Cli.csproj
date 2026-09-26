@@ -7,8 +7,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/Alas.Engine/Alas.Engine.csproj" />
-    <None Include="native_campaign_reference.py" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="native_ui_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="../Alas.Engine/Alas.Engine.csproj" />
   </ItemGroup>
 </Project>

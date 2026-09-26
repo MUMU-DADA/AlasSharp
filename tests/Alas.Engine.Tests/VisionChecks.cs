@@ -42,6 +42,16 @@ internal static class VisionChecks
             Check(binary.Matched && binary.Location == new PixelPoint(14, 9), "Binary match differs on identical input");
             var padded = await vision.MatchAsync(frame, request with { SearchArea = new PixelArea(-2, -3, 34, 27) });
             Check(padded.Matched && padded.Location == new PixelPoint(14, 9), "Black-padded crop lost global coordinates");
+            var fullAsset = await vision.MatchAsync(frame, request with
+            {
+                TemplatePng = frame.Png, TemplateArea = new PixelArea(14, 9, 5, 4)
+            });
+            Check(fullAsset.Matched && fullAsset.Location == new PixelPoint(14, 9), "Full asset source crop lost template coordinates");
+            var mean = await vision.MeanColorAsync(frame, new PixelArea(14, 9, 5, 4));
+            double ChannelMean(int channel) => Enumerable.Range(0, 20).Average(i => (double)crop[i * 3 + channel]);
+            Check(mean.FrameSequence == frame.Sequence && Math.Abs(mean.R - ChannelMean(0)) < 1e-9 &&
+                Math.Abs(mean.G - ChannelMean(1)) < 1e-9 && Math.Abs(mean.B - ChannelMean(2)) < 1e-9,
+                "Mean color changed RGB channel order or pixel coverage");
             var requests = Enumerable.Range(1, 8).Select(sequence => vision.MatchAsync(frame with { Sequence = sequence }, request).AsTask()).ToArray();
             var results = await Task.WhenAll(requests);
             Check(results.Select(r => r.FrameSequence).SequenceEqual(Enumerable.Range(1, 8).Select(x => (long)x)), "Concurrent CV responses crossed frames");
@@ -63,6 +73,24 @@ internal static class VisionChecks
         }
 
         // A deliberately wrong response id must close the session, not become a valid observation.
+        string animatedWorker = Path.Combine(artifacts, "animated_measurements_worker.py");
+        await File.WriteAllTextAsync(animatedWorker, """
+            import json, sys
+            for line in sys.stdin:
+                request = json.loads(line)
+                print(json.dumps(dict(protocol='alas-cv/1', id=request['id'], frame=request['frame'], candidates=[
+                    dict(similarity=0.9, location=[8, 6]), dict(similarity=0.95, location=[9, 7]),
+                    dict(similarity=0.8, location=[10, 8])])), flush=True)
+            """);
+        await using (var animated = new PythonTemplateVision(python, animatedWorker))
+        {
+            var first = await animated.MatchAsync(frame, request with { Similarity = 0.85 });
+            Check(first.Matched && first.Location == new PixelPoint(8, 6), "Animated match selected best score instead of first passing frame");
+            var equality = await animated.MatchAsync(frame, request with { Similarity = 0.9 });
+            Check(equality.Matched && equality.Location == new PixelPoint(9, 7), "Animated match accepted threshold equality");
+            var failed = await animated.MatchAsync(frame, request with { Similarity = 0.99 });
+            Check(!failed.Matched && failed.Location == new PixelPoint(10, 8), "Animated failure lost last evaluated offset");
+        }
         string wrongWorker = Path.Combine(artifacts, "wrong_response_worker.py");
         await File.WriteAllTextAsync(wrongWorker, """
             import json, sys

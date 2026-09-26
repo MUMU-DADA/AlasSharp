@@ -82,6 +82,14 @@ try
     await Throws<IOException>(() => device.CaptureAsync().AsTask(), "Invalid screenshot accepted");
     Console.WriteLine($"Local engine/transport checks passed: {checks}");
 
+    if (args is ["--ui", var uiPython, var uiUpstream, var uiArtifacts])
+    {
+        string folder = Path.GetFullPath(uiArtifacts);
+        Directory.CreateDirectory(folder);
+        await UiChecks.RunAsync(Path.GetFullPath(uiPython), Path.GetFullPath(uiUpstream), folder);
+        return 0;
+    }
+
     if (args is ["--vision", var visionPython, var visionArtifacts])
     {
         string folder = Path.GetFullPath(visionArtifacts);

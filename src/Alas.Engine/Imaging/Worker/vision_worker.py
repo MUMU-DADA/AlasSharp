@@ -1,10 +1,12 @@
 """Pure CV worker: image bytes in, image measurements out. No upstream imports."""
 import base64
+import io
 import json
 import sys
 
 import cv2
 import numpy as np
+import imageio.v2 as imageio
 
 
 def decode(value):
@@ -17,6 +19,19 @@ def decode(value):
     if image is None:
         raise ValueError("image_decode")
     return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+
+def templates(value):
+    encoded = base64.b64decode(value, validate=True)
+    if len(encoded) > 16 * 1024 * 1024:
+        raise ValueError("image_size")
+    if encoded[:6] not in (b"GIF87a", b"GIF89a"):
+        return [decode(value)]
+    frames = imageio.mimread(io.BytesIO(encoded), format="GIF", memtest="256MB")
+    if not frames or len(frames) > 512:
+        raise ValueError("template_frames")
+    return [frame[:, :, :3].copy() if frame.ndim == 3 else cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+            for frame in frames]
 
 
 def preprocess(image, mode):
@@ -42,10 +57,13 @@ def crop(image, x, y, width, height):
 
 
 def match(request):
-    if set(request) != {"protocol", "id", "operation", "frame", "image", "template", "area", "preprocessing"}:
-        raise ValueError("request_fields")
-    if request["protocol"] != "alas-cv/1" or request["operation"] != "template_match":
+    if request.get("protocol") != "alas-cv/1" or request.get("operation") not in ("template_match", "color_mean"):
         raise ValueError("unsupported_operation")
+    fields = {"protocol", "id", "operation", "frame", "image", "area"}
+    if request["operation"] == "template_match":
+        fields |= {"template", "preprocessing", "template_area"}
+    if set(request) != fields:
+        raise ValueError("request_fields")
     for key in ("id", "frame"):
         if type(request[key]) is not int or request[key] < 1:
             raise ValueError("request_identity")
@@ -53,16 +71,28 @@ def match(request):
     if not isinstance(area, list) or len(area) != 4 or any(type(v) is not int for v in area):
         raise ValueError("area_type")
     x, y, width, height = area
-    image, template = decode(request["image"]), decode(request["template"])
+    image = decode(request["image"])
     if width <= 0 or height <= 0 or width * height > 16 * 1024 * 1024:
         raise ValueError("area_bounds")
-    if template.shape[0] > height or template.shape[1] > width:
-        raise ValueError("template_bounds")
+    if request["operation"] == "color_mean":
+        return {"color": list(cv2.mean(crop(image, x, y, width, height))[:3])}
+    template_area = request["template_area"]
+    if template_area is not None:
+        if (not isinstance(template_area, list) or len(template_area) != 4 or any(type(v) is not int for v in template_area)
+                or template_area[2] <= 0 or template_area[3] <= 0 or template_area[2] * template_area[3] > 16 * 1024 * 1024):
+            raise ValueError("template_area")
     image = preprocess(crop(image, x, y, width, height), request["preprocessing"])
-    template = preprocess(template, request["preprocessing"])
-    scores = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
-    _, similarity, _, position = cv2.minMaxLoc(scores)
-    return {"similarity": similarity, "location": [position[0] + x, position[1] + y]}
+    candidates = []
+    for template in templates(request["template"]):
+        if template_area is not None:
+            template = crop(template, *template_area)
+        if template.shape[0] > height or template.shape[1] > width:
+            raise ValueError("template_bounds")
+        template = preprocess(template, request["preprocessing"])
+        scores = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
+        _, similarity, _, position = cv2.minMaxLoc(scores)
+        candidates.append({"similarity": similarity, "location": [position[0] + x, position[1] + y]})
+    return {"candidates": candidates}
 
 
 def main():
