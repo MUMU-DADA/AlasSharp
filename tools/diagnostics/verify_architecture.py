@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import ast
 import re
+import os
+import subprocess
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
@@ -587,15 +589,25 @@ def main() -> int:
     map_literal = re.compile(r"campaign_[A-Za-z0-9]+_[0-9]+(?:_[0-9]+)+")
     for path in csharp_files:
         text = path.read_text(encoding="utf-8")
-        # The compiled campaign catalog is the type-safe upstream rule source. It
-        # intentionally contains every upstream id; the migration generator's
-        # drift check protects it from becoming a hand-maintained special-case table.
-        if path.as_posix().endswith("src/Alas.Engine/Rules/Generated/CampaignMaps.g.cs"):
-            continue
-        if map_literal.search(text):
+        # Only the map-id literal rule has a generated-declaration exception.
+        # All other architecture checks still apply to this source file.
+        generated_maps = path.relative_to(ROOT).as_posix() == "src/Alas.Engine/Rules/Generated/CampaignMaps.g.cs"
+        if map_literal.search(text) and not generated_maps:
             problems.append(f"生产代码含地图特例字面量: {path.relative_to(ROOT)}")
         if '"assets.json"' in text and path.name != "UpstreamData.cs":
             problems.append(f"生产代码直接依赖 assets.json: {path.relative_to(ROOT)}")
+
+    # The exception above is valid only if the full generated content matches
+    # the pinned upstream sources. Missing inputs and check errors fail closed.
+    try:
+        checked = subprocess.run([sys.executable, str(ROOT / "tools/migration/compile_campaign_maps.py"),
+                                  "--upstream", os.environ.get("ALAS_FORK", str(ROOT / ".runtime/engine")),
+                                  "--output", str(ROOT / "src/Alas.Engine/Rules/Generated/CampaignMaps.g.cs"),
+                                  "--check"], cwd=ROOT, capture_output=True, timeout=60)
+        if checked.returncode != 0:
+            problems.append("C# 地图声明生成漂移检查失败；运行 compile_campaign_maps.py --check 查看原因")
+    except (OSError, subprocess.TimeoutExpired):
+        problems.append("C# 地图声明生成漂移检查无法完成")
 
     # R0 门槛：`CampaignEnd` 只表示"出击结束"（撤退也抛它），不得单独用作通关判据。
     # 范围是**生产代码**（C# 生产源 + tools 顶层）；`tools/diagnostics/` 下的对拍脚本

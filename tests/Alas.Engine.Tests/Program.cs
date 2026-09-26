@@ -66,10 +66,10 @@ try
         "Map mechanism declarations were not compiled");
     Check(CampaignMapCatalog.Get("war_archives_20210422_cn/b1").Map.Mechanisms.Mazes.Length == 3,
         "Maze declarations were not compiled");
-    Check(CampaignMapCatalog.Get("campaign_main/campaign_15_3").Map.GridBehavior == MapGridBehavior.W15,
+    Check(new CampaignState(CampaignMapCatalog.Get("campaign_main/campaign_15_3").Map).Cells[0] is Alas.Engine.Rules.Main.W15CellState,
         "Custom grid behavior was not compiled");
-    var customGrid = new CellState(new(1, 1), MapTile.Siren);
-    Check(customGrid.Merge(new(IsBoss: true), gridBehavior: MapGridBehavior.W15) && customGrid.IsSiren,
+    var customGrid = new Alas.Engine.Rules.Main.W15CellState(new(1, 1), MapTile.Siren);
+    Check(customGrid.Merge(new(IsBoss: true, IsFleet: true)) && customGrid.IsSiren && !customGrid.IsFleet,
         "Custom grid merge behavior was not applied");
     Check(CampaignMapCatalog.Get("event_20200326_cn/d3").Map.SwipePreset == new SwipePreset(0, 2),
         "Swipe preset declaration was not compiled");
@@ -123,6 +123,13 @@ try
     await Throws<IOException>(() => application.IsRunningAsync(default).AsTask(), "Unknown foreground silently accepted");
     Console.WriteLine($"Local engine/transport checks passed: {checks}");
 
+    if (args is ["--maps", var mapsPython, var mapsUpstream, var mapsArtifacts])
+    {
+        string folder = Path.GetFullPath(mapsArtifacts);
+        Directory.CreateDirectory(folder);
+        await MapCatalogChecks.RunAsync(Path.GetFullPath(mapsPython), Path.GetFullPath(mapsUpstream), folder);
+        return 0;
+    }
     if (args is ["--recognition", var recognitionPython, var recognitionUpstream, var recognitionArtifacts])
     {
         string folder = Path.GetFullPath(recognitionArtifacts);
@@ -218,10 +225,10 @@ try
         string hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(upstream, source.Path))));
         Check(hash == source.Sha256, $"Upstream source changed: {source.Path}");
     }
-    foreach (var entry in mapIds.Select(CampaignMapCatalog.Get))
+    foreach (var source in CampaignMapCatalog.Sources)
     {
-        string hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(upstream, entry.Source.Path))));
-        Check(hash == entry.Source.Sha256, $"Upstream map source changed: {entry.Source.Path}");
+        string hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(upstream, source.Path))));
+        Check(hash == source.Sha256, $"Upstream map source changed: {source.Path}");
     }
     var cases = new List<Scenario>();
     foreach (string id in RuleCatalog.Ids)

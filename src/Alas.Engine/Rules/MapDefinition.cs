@@ -32,7 +32,6 @@ public readonly record struct Cell(int Column, int Row)
 // Tokens describe possibilities, never observations. Preserve ME/Me spelling;
 // GridInfo.decode uppercases both, so LowPriorityEnemy has no separate runtime priority.
 public enum MapTile { Water, Unknown, Land, Spawn, Enemy, LowPriorityEnemy, Boss, Mystery, Ammo, SubmarineSpawn, Siren }
-public enum MapGridBehavior { Default, W15 }
 public readonly record struct CameraSight(int Left, int Top, int Right, int Bottom);
 public readonly record struct SwipePreset(int X, int Y);
 public sealed record SpawnWave(int Battle, int Enemy = 0, int Mystery = 0, int Boss = 0, int Siren = 0);
@@ -60,7 +59,8 @@ public sealed class MapDefinition
     public ImmutableArray<Cell> Covered { get; }
     public CameraSight CameraSight { get; }
     public SwipePreset? SwipePreset { get; }
-    public MapGridBehavior GridBehavior { get; }
+    public Func<Cell, MapTile, CellState> CreateCell { get; }
+    public string? Name { get; }
 
     public MapDefinition(string shape, string tiles, IEnumerable<string> cameras,
         IEnumerable<string> spawnCameras, IEnumerable<SpawnWave> waves, string? loopTiles = null,
@@ -68,7 +68,7 @@ public sealed class MapDefinition
         MapMechanisms? mechanisms = null, IEnumerable<IgnoredPrediction>? ignoredPredictions = null,
         IEnumerable<SpawnWave>? loopWaves = null, IEnumerable<string>? covered = null,
         CameraSight? cameraSight = null, SwipePreset? swipePreset = null,
-        MapGridBehavior gridBehavior = MapGridBehavior.Default)
+        Func<Cell, MapTile, CellState>? createCell = null, string? name = null)
     {
         Shape = Cell.Parse(shape);
         Tiles = ParseTiles(tiles);
@@ -98,8 +98,8 @@ public sealed class MapDefinition
         foreach (var cell in Covered) ValidateCell(cell);
         CameraSight = cameraSight ?? new CameraSight(-3, -1, 3, 2);
         SwipePreset = swipePreset;
-        if (!Enum.IsDefined(gridBehavior)) throw new ArgumentOutOfRangeException(nameof(gridBehavior));
-        GridBehavior = gridBehavior;
+        CreateCell = createCell ?? (static (cell, tile) => new CellState(cell, tile));
+        Name = name;
         ValidateWaves(Waves, nameof(waves));
         ValidateWaves(LoopWaves, nameof(loopWaves));
     }
@@ -114,12 +114,13 @@ public sealed class MapDefinition
             var columns = row.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
             if (columns.Length != Shape.Column) throw new ArgumentException("Map column count does not match shape", nameof(text));
             foreach (string token in columns)
-                parsed.Add(token switch
+                parsed.Add(token == "Me" ? MapTile.LowPriorityEnemy : token.ToUpperInvariant() switch
                 {
-                    "--" => MapTile.Water, "-" or "SI" => MapTile.Unknown, "++" => MapTile.Land, "SP" => MapTile.Spawn,
-                    "ME" => MapTile.Enemy, "Me" => MapTile.LowPriorityEnemy, "MB" => MapTile.Boss,
+                    "--" => MapTile.Water, "++" => MapTile.Land, "SP" => MapTile.Spawn,
+                    "ME" => MapTile.Enemy, "MB" => MapTile.Boss,
                     "MM" => MapTile.Mystery, "MA" => MapTile.Ammo, "__" => MapTile.SubmarineSpawn, "MS" => MapTile.Siren,
-                    _ => throw new NotSupportedException($"Unported map token: {token}")
+                    // Native GridInfo.decode clears every declaration flag for any unknown token.
+                    _ => MapTile.Unknown
                 });
         }
         return parsed.ToImmutable();

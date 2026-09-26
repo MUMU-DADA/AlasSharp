@@ -23,7 +23,11 @@ R5 舰队属性分派已通过原生 Fleet 属性与双宿主的 592 场景离�
 
 新架构整体重建，禁止把新模块逐个接回旧结构：独立引擎/编译规则 → C# 设备与权威状态/纯视觉服务 → 完整导航、战役和各任务域 → 桌面与 Server 组合入口整体切换 → 旧流程从发布依赖图移除。静态数据和溯源校验保留。现有架构检查中的永久原生调用要求须随整体切换改为语义与执行归属验收；历史成功证据保留为原生基线，不能改标成 C# 成功。
 
-`Alas.Engine.slnx` 已提供不引用旧 Core 的独立构建：首批四张主线规则、类型化章节覆盖、每局隔离状态、普通/全清/低地图信息三种分派、十次移动重试与二十轮循环均直接执行 C#。原生实际 Campaign 方法对照 18,628 个合成末端动作场景通过；25 项本地/进程检查覆盖依赖隔离、状态隔离、参数、并发流、超时、取消、输出超限、ADB 动作拒绝、前台应用判断与设备方向。进程输出超限的原始错误已保留，不再误报超时。
+`Alas.Engine.slnx` 已提供不引用旧 Core 的独立构建：首批四张主线规则、类型化章节覆盖、每局隔离状态、普通/全清/低地图信息三种分派、十次移动重试与二十轮循环均直接执行 C#。原生实际 Campaign 方法对照 18,628 个合成末端动作场景通过；32 项本地/进程检查覆盖依赖隔离、状态隔离、地图声明、参数、并发流、超时、取消、输出超限、ADB 动作拒绝、前台应用判断与设备方向。进程输出超限的原始错误已保留，不再误报超时。
+
+`CampaignMapCatalog` 已直接从上游源码生成 1,370 份类型化 C# MAP，保留普通/循环逐格声明、出生表、权重、墙/传送拓扑、机关组、遮挡、相机视野、滑动预设和名称；首章四份 Campaign 共用此目录，运行时不读取地图 JSON。修复缺省机位遗漏及 W15 覆写落在舰队判断之后的问题：机位按初始化时的视野生成，W15 使用规则层派生格子并先于基类执行，整帧副本保留派生类型。目录记录全部章节和解析依赖哈希；生成器拒绝未知字段/调用/格子类型及不能保留的 setter 顺序，8 组反例/隔离回归覆盖类型、覆盖赋值、来源与生成漂移，以及没有 JSON 目录时的生成。架构检查仅豁免生成目录的地图标识，并实际执行 `--check`，其他限制仍生效。
+
+独立原生 MAP 对照已核验 1,370 份声明的 28,770 个字段比较（含全部普通/循环格子、机位、权重、出生表、机关与拓扑）、704 个忽略预测输入，以及 960 个 W15 合并/整帧预检场景。1,367 份读取完整原生模块；另 3 份保留入口素材导入失败记录，仅执行 MAP 依赖声明切片，不注入替代素材，不算 Campaign 导入成功。全部辅助模块和目录成员也核对一致。这些是离线声明与合并语义证据；可执行 Campaign 钩子仍只有首章四份，不能把 1,370 份 MAP 当成 1,370 个可运行关卡。
 
 `CellState` 已直接迁移上游 `GridInfo` 的声明标志、观测合并、编码、遮挡、清格与重置；机关触发/阻挡组在本局对象间联动。`CampaignState` 持有完整可变状态，声明只设置 may 标志，不凭静态地图生成已发现敌人；`ME/Me` 保留声明拼写但运行语义一致，潜艇与塞壬声明已补齐。4,100 个原生场景、20,500 份状态快照核对五种扫描模式、覆盖优先级、移动/航母敌人、初始化舰队与敌人共存、声明重载和机关重置；另验每局隔离、坐标相等和地图默认权重。原生离线对照不能代替新引擎实机验证。
 
@@ -56,6 +60,9 @@ dotnet run --project tests/Alas.Engine.Tests -c Release -- --ocr .runtime/venv31
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --queue .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-task-queue
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --data-key .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-data-key
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --grid .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-grid-state
+dotnet run --project tests/Alas.Engine.Tests -c Release -- --maps .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-maps
+.runtime/venv314/Scripts/python.exe tools/migration/compile_campaign_maps.py --upstream .runtime/engine --check
+.runtime/venv314/Scripts/python.exe tests/Alas.Engine.Tests/test_map_compiler.py
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --path .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-path
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --observation .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-observation
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --recognition .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-recognition
@@ -67,7 +74,7 @@ dotnet run --project tests/Alas.Engine.Tests -c Release -- --recognition .runtim
 - 1,793 个素材的四服组合共 7,172 项原生加载/字段对照通过；52 个可识别页面四服合成正对照通过，`Page(None)` 明确跳过。原生导航 2,551 个可达图对用合成识别/点击状态通过；真实页面可达性仍受账号、活动、服务器与客户端条件约束。
 - 控件扫描包含 31 个模块实例、25 个延迟构造声明和 7 个任务内工厂。四服独立进程共 252 项通过，保留导入时的服务器分支；延迟返回的 Scroll 与容器内 Navbar 均调用原生识别。7 个工厂另有 192 个合成状态场景验证原生切换、附加处理和滚动循环，不算真机命中或业务完成。57 个 Scheduler.Command 绑定及声明依赖通过，11 个仅配置分组另记。
 - 导出消费端补齐来源、服务器字段、索引与哈希校验，正常数据及损坏反例共 43 组在 Python/C# 同时验收。完整原生覆盖、地图对照及双端导出完整性检查会因源缺陷退出 1，不能以其他专项通过声称总体通过。
-- MAP 规则已直接编译为 `Alas.Engine` 的类型化声明：`CampaignMapCatalog` 覆盖 1,370 份地图，保留来源哈希、循环地图、出生表、权重、墙、传送门、地图机关、相机视野、滑动预设和 W15 格子行为；运行时不读取地图 JSON，也不通过 Python 解释规则。`tools/migration/compile_campaign_maps.py --check` 与 `tools/sync_all.py` 的漂移闸门会在上游源或生成文件不同步时失败。JSON 仍只作离线导出、溯源和对照，不替代 C# 规则加载。
+- MAP 导出 2.1.0 补齐符号格子、类引用、复制链与 22 个原生方法声明：1,370 份 MAP、8,322 个赋值字段均可追溯；10 组静态回归和原生导入赋值/调用逐项对拍通过。JSON 始终是离线元数据，未改战役加载/导航/实战语义。
 - Campaign 声明导出 2.2.0 补回 18 个被静默丢弃的类/格子引用，保留自身 913 个数据属性、9 个方法别名和来源类型；7 组回归与原生类字典对拍通过。3 个历史入口缺失不再伪装为静态完整，校验明确失败；不把声明摘要当作有效继承状态或运行时数据源。
 - 当前导出器 2.11.0 另外保留计划控制流、方法签名、参数类型和来源元数据；严格调用审计以 6,515 个步骤、7 个 super 编码失败复核，仍对 74 个不完整钩子和 12 个待原生绑定调用保持失败。离线执行器与覆盖统计也拒绝把 super 归为同名原语：标准夹具实调 31/34 个原语，3 个未覆盖；状态写入审计另有 39 项待核对，均不能抵消或豁免。
 - `8be3c3e` 完整离线验收为 72 项通过、7 项设备检查跳过、2 项失败，耗时约 7.3 分钟；地图对照与全量原生覆盖仍暴露上述 3 个源缺陷。此前 69/7/3 整轮记录原样保留，其中实例绑定夹具问题已修复，本轮 14/14 通过。单独运行 Python/C# 导出完整性也明确拒绝同 3 项，不能把漂移一致等同于源可运行。

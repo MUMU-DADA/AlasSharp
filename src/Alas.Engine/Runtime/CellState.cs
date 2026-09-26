@@ -9,7 +9,7 @@ public sealed record CellObservation(bool IsSubmarine = false, bool IsCaughtBySi
     int EnemyScale = 0, string? EnemyGenre = null);
 
 /// <summary>Direct GridInfo port. All authoritative game state and observation merging stay in C#.</summary>
-public sealed class CellState : IEquatable<CellState>
+public class CellState : IEquatable<CellState>
 {
     public static readonly SourceFile Source = new("module/map_detection/grid_info.py", "ddc95643dca6bd3f4d0840cf18185bd1a9c7ec57231698184a9d64141e23cde6");
     public Cell Location { get; }
@@ -85,8 +85,7 @@ public sealed class CellState : IEquatable<CellState>
         MayAmbush = !(MayEnemy || MayBoss || MayMystery);
     }
 
-    public bool Merge(CellObservation info, MapScanMode mode = MapScanMode.Normal,
-        MapGridBehavior gridBehavior = MapGridBehavior.Default)
+    public virtual bool Merge(CellObservation info, MapScanMode mode = MapScanMode.Normal)
     {
         if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
         if (info.IsSubmarine && IsSubmarineSpawnPoint) IsSubmarine = true;
@@ -101,16 +100,6 @@ public sealed class CellState : IEquatable<CellState>
             IsFleet = true;
             if (info.IsCurrentFleet) IsCurrentFleet = true;
             if (!(mode == MapScanMode.Init && info.IsEnemy)) return true;
-        }
-        if (info.IsBoss && gridBehavior == MapGridBehavior.W15)
-        {
-            if (!IsLand && MaySiren)
-            {
-                IsSiren = true;
-                EnemyScale = 0;
-                EnemyGenre = string.Empty;
-                return true;
-            }
         }
         if (info.IsBoss)
         {

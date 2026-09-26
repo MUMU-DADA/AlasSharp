@@ -16,7 +16,11 @@ public sealed partial class CampaignState
     {
         Map = map;
         Cells = Array.AsReadOnly(map.Tiles.Select((tile, index) =>
-            new CellState(new Cell(index % map.Shape.Column + 1, index / map.Shape.Column + 1), tile) { Weight = map.Weights[index] }).ToArray());
+        {
+            var cell = map.CreateCell(new Cell(index % map.Shape.Column + 1, index / map.Shape.Column + 1), tile);
+            cell.Weight = map.Weights[index];
+            return cell;
+        }).ToArray());
         foreach (var portal in map.Portals) this[portal.From].IsPortal = true;
         Paths = new MapPathfinder(this);
     }
