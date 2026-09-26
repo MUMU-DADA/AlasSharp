@@ -27,6 +27,8 @@ R5 舰队属性分派已通过原生 Fleet 属性与双宿主的 592 场景离�
 
 `CellState` 已直接迁移上游 `GridInfo` 的声明标志、观测合并、编码、遮挡、清格与重置；机关触发/阻挡组在本局对象间联动。`CampaignState` 持有完整可变状态，声明只设置 may 标志，不凭静态地图生成已发现敌人；`ME/Me` 保留声明拼写但运行语义一致，潜艇与塞壬声明已补齐。4,100 个原生场景、20,500 份状态快照核对五种扫描模式、覆盖优先级、移动/航母敌人、初始化舰队与敌人共存、声明重载和机关重置；另验每局隔离、坐标相等和地图默认权重。寻路、地图视觉观测及实机动作仍未接入这层状态，不能把旧路径对拍记作新引擎通过。
 
+`MapPathfinder` 已在该状态层上接通拓扑、墙、单向传送门、伏击权重、敌人格停止扩散、机关阻挡、迷宫邻域、路径回溯、转弯/步长节点和双舰队成本。C# 使用正权最短路，修复上游以“前沿集合不增长”提前停止造成的伏击成本偏大；路线仍保留上游目的地回退语义，但明确标记不可达。325 个地图案例、9,206 个成本格、9,206 组邻接集合、28,460 次原生节点回放通过；其中 12 个上游早停成本被修正，39 条等成本路线选择不同合法前驱。路径尚未由真实设备动作消费，不能据此证明真机寻敌或战斗成功。
+
 独立纯视觉服务已实现彩色/亮度/二值模板匹配、GIF 逐帧测量、全图素材裁剪和 RGB 均值。C# 管理常驻进程、帧与请求身份、严格阈值、动画首个命中/末帧失败偏移、超时/取消及错误收尾；颜色判据也在 C#。Python worker 只依赖图像库，不导入上游模块，不解析素材 id，不接设备/页面/任务业务；越界裁剪保留上游补黑语义。21 项合成像素及协议反例通过，包含错帧拒绝、并发请求、超时/取消/释放、根因保留、模板尺寸拒绝与业务调用拒绝。OCR 已接五套固定哈希 ONNX 模型：图像预处理/推理在 worker，字母表、服务器语言选择、置信阈值、CTC 解码和数字/计数器/时长解析在 C#。原生对照包含 81 次实际模型推理、14 个字母表拒绝、200 条 CTC 序列、13 个数值解析和 54 项逐像素预处理，模型及标签损坏明确拒绝。缩放、地图特征和原生完整视觉路径尚未验收。
 
 45 个上游模块的 1,793 个素材及 53 个页面关系已直接迁为可编译 C# 声明，保留四服参数、来源行/源码哈希与图片哈希；运行时不读取导出 JSON。构建期 `tools/migration/compile_static_rules.py --upstream .runtime/engine --check` 检查源码漂移，只支持声明迁移，未知控制流拒绝。四服实际原生对象对照通过 7,172 项素材、212 项页面、10,192 项可达最短路径与 1,040 项页面识别调用轨迹；2,499 项 C# 合成导航通过。原生同长路径用无序集合择路，因此比较可达性、最短长度和声明边，不声称同长路线顺序固定一致。630 项原生/C# 视觉对照覆盖所有页面检查素材的静态/GIF 帧、移位和空白图，核对颜色、匹配结果与点击偏移。
@@ -50,6 +52,7 @@ dotnet run --project tests/Alas.Engine.Tests -c Release -- --ocr .runtime/venv31
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --queue .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-task-queue
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --data-key .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-data-key
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --grid .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-grid-state
+dotnet run --project tests/Alas.Engine.Tests -c Release -- --path .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-path
 ```
 
 ## 自动化规则覆盖与剩余项

@@ -31,28 +31,62 @@ public readonly record struct Cell(int Column, int Row)
 // Tokens describe possibilities, never observations. Preserve ME/Me spelling;
 // GridInfo.decode uppercases both, so LowPriorityEnemy has no separate runtime priority.
 public enum MapTile { Water, Land, Spawn, Enemy, LowPriorityEnemy, Boss, Mystery, Ammo, SubmarineSpawn, Siren }
-public sealed record SpawnWave(int Battle, int Enemy = 0, int Mystery = 0, int Boss = 0);
+public sealed record SpawnWave(int Battle, int Enemy = 0, int Mystery = 0, int Boss = 0, int Siren = 0);
 public sealed record SourceFile(string Path, string Sha256);
+public readonly record struct MapEdge(Cell From, Cell To)
+{
+    public MapEdge(string from, string to) : this(Cell.Parse(from), Cell.Parse(to)) { }
+}
 
 public sealed class MapDefinition
 {
     public Cell Shape { get; }
     public ImmutableArray<MapTile> Tiles { get; }
+    public ImmutableArray<MapTile> LoopTiles { get; }
+    public ImmutableArray<double> Weights { get; }
+    public ImmutableArray<MapEdge> Walls { get; }
+    public ImmutableArray<MapEdge> Portals { get; }
+    public MapMechanisms Mechanisms { get; }
     public ImmutableArray<Cell> Cameras { get; }
     public ImmutableArray<Cell> SpawnCameras { get; }
     public ImmutableArray<SpawnWave> Waves { get; }
 
     public MapDefinition(string shape, string tiles, IEnumerable<string> cameras,
-        IEnumerable<string> spawnCameras, IEnumerable<SpawnWave> waves)
+        IEnumerable<string> spawnCameras, IEnumerable<SpawnWave> waves, string? loopTiles = null,
+        IEnumerable<double>? weights = null, IEnumerable<MapEdge>? walls = null, IEnumerable<MapEdge>? portals = null,
+        MapMechanisms? mechanisms = null)
     {
         Shape = Cell.Parse(shape);
-        var rows = tiles.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (rows.Length != Shape.Row) throw new ArgumentException("Map row count does not match shape", nameof(tiles));
+        Tiles = ParseTiles(tiles);
+        LoopTiles = string.IsNullOrWhiteSpace(loopTiles) ? [] : ParseTiles(loopTiles);
+        Weights = weights?.ToImmutableArray() ?? Enumerable.Repeat(10.0, Tiles.Length).ToImmutableArray();
+        if (Weights.Length != Tiles.Length || Weights.Any(w => !double.IsFinite(w)))
+            throw new ArgumentException("Map weights must be finite and cover every cell", nameof(weights));
+        Walls = walls?.ToImmutableArray() ?? [];
+        Portals = portals?.ToImmutableArray() ?? [];
+        foreach (var edge in Walls.Concat(Portals)) { ValidateCell(edge.From); ValidateCell(edge.To); }
+        if (Walls.Any(e => Math.Abs(e.From.Column - e.To.Column) + Math.Abs(e.From.Row - e.To.Row) != 1))
+            throw new ArgumentException("Walls must separate adjacent cells", nameof(walls));
+        Mechanisms = mechanisms ?? new MapMechanisms();
+        foreach (var cell in Mechanisms.Cells) ValidateCell(cell);
+        Cameras = cameras.Select(Cell.Parse).ToImmutableArray();
+        SpawnCameras = spawnCameras.Select(Cell.Parse).ToImmutableArray();
+        foreach (var camera in Cameras.Concat(SpawnCameras)) ValidateCell(camera);
+        Waves = waves.ToImmutableArray();
+        if (Waves.Any(w => w.Battle < 0 || w.Enemy < 0 || w.Mystery < 0 || w.Boss < 0 || w.Siren < 0) ||
+            !Waves.Select(w => w.Battle).SequenceEqual(Waves.Select(w => w.Battle).Distinct().Order()))
+            throw new ArgumentException("Spawn waves must have unique ascending battle numbers and nonnegative counts", nameof(waves));
+    }
+
+    private ImmutableArray<MapTile> ParseTiles(string text)
+    {
+        var rows = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (rows.Length != Shape.Row) throw new ArgumentException("Map row count does not match shape", nameof(text));
         var parsed = ImmutableArray.CreateBuilder<MapTile>();
         foreach (string row in rows)
         {
             var columns = row.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            if (columns.Length != Shape.Column) throw new ArgumentException("Map column count does not match shape", nameof(tiles));
+            if (columns.Length != Shape.Column) throw new ArgumentException("Map column count does not match shape", nameof(text));
             foreach (string token in columns)
                 parsed.Add(token switch
                 {
@@ -62,14 +96,7 @@ public sealed class MapDefinition
                     _ => throw new NotSupportedException($"Unported map token: {token}")
                 });
         }
-        Tiles = parsed.ToImmutable();
-        Cameras = cameras.Select(Cell.Parse).ToImmutableArray();
-        SpawnCameras = spawnCameras.Select(Cell.Parse).ToImmutableArray();
-        foreach (var camera in Cameras.Concat(SpawnCameras)) ValidateCell(camera);
-        Waves = waves.ToImmutableArray();
-        if (Waves.Any(w => w.Battle < 0 || w.Enemy < 0 || w.Mystery < 0 || w.Boss < 0) ||
-            !Waves.Select(w => w.Battle).SequenceEqual(Waves.Select(w => w.Battle).Distinct().Order()))
-            throw new ArgumentException("Spawn waves must have unique ascending battle numbers and nonnegative counts", nameof(waves));
+        return parsed.ToImmutable();
     }
 
     public int ExpectedBattles => Waves.FirstOrDefault(w => w.Boss > 0)?.Battle + 1 ?? 0;
