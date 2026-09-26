@@ -1,5 +1,3 @@
-using System.Text.Json.Nodes;
-
 namespace Alas.Campaign;
 
 /// <summary>
@@ -74,11 +72,7 @@ public static class CampaignBattleLoop
         var rounds = new List<CampaignBattleRound>();
         // **关卡实例状态**：初值来自计划里的 initial_state（类体字面量默认值），
         // 钩子里 self.X = … 的写入在整关内共享（上游实例属性就是这个生命周期）。
-        var levelState = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var (name, value) in plan.Header.InitialState)
-        {
-            if (value is JsonValue json && json.TryGetValue<bool>(out bool flag)) levelState[name] = flag;
-        }
+        var levelState = CampaignHookRunner.CreateInitialState(plan);
         for (int round = 0; round < MaxRounds; round++)
         {
             int battleCountBefore = host.BattleCount;
@@ -143,21 +137,30 @@ public static class CampaignBattleLoop
         {
             bool? result;
             string? blocked;
-            if (variant == "default_hooks")
+            string? signal;
+            try
             {
-                (result, blocked) = RunHook(plan, label, host, levelState);
+                if (variant == "default_hooks")
+                    (result, blocked, signal) = RunHook(plan, label, host, levelState);
+                else
+                    (result, blocked, signal) = RunVariant(host, variant);
             }
-            else
+            catch (CampaignControlFlowSignal flow)
             {
-                (result, blocked) = RunVariant(host, variant);
+                (result, blocked, signal) = (null, flow.Message, flow.Kind);
             }
 
+            if (signal == "CampaignEnd")
+            {
+                host.RequestCampaignEnd(blocked ?? "CampaignEnd");
+                return new CampaignBattleRound(round, battleCountBefore, label, null, null);
+            }
             if (blocked is null)
             {
                 return new CampaignBattleRound(round, battleCountBefore, label, result, null);
             }
             // 上游：MapEnemyMoved 被 execute_a_battle 捕获；battle_count 增长即视为打过了，否则重试。
-            if (blocked.Contains("MapEnemyMoved", StringComparison.Ordinal))
+            if (signal == "MapEnemyMoved")
             {
                 if (host.BattleCount > battleCountBefore)
                 {
@@ -169,12 +172,12 @@ public static class CampaignBattleLoop
             return new CampaignBattleRound(round, battleCountBefore, label, null, blocked);
         }
 
-        return new CampaignBattleRound(round, battleCountBefore, label, false,
-                                       "MapEnemyMoved 重试超过 10 次");
+        // 上游重试耗尽时 result=False，继续统一的 No combat executed 错误处理。
+        return new CampaignBattleRound(round, battleCountBefore, label, false, null);
     }
 
     /// <summary>默认变体：按 battle_count 选钩子执行；<c>battle_default</c>/<c>battle_boss</c> 落到基类实现。</summary>
-    private static (bool? Result, string? Blocked) RunHook(CampaignPlan plan, string hook, ICampaignPrimitiveHost host,
+    private static (bool? Result, string? Blocked, string? Signal) RunHook(CampaignPlan plan, string hook, ICampaignPrimitiveHost host,
                                                                 Dictionary<string, object?> levelState)
     {
         var battle = plan.Header.Battles.FirstOrDefault(item => item.Method == hook);
@@ -184,38 +187,38 @@ public static class CampaignBattleLoop
             // （`module/campaign/campaign_base.py`），关卡自身没有这个方法也照样可用。
             if (hook == "battle_default")
             {
-                return (CampaignPrimitives.BattleDefault(host), null);
+                return (CampaignPrimitives.BattleDefault(host), null, null);
             }
             if (hook == "battle_boss")
             {
-                return (CampaignPrimitives.BattleBoss(host), null);
+                return (CampaignPrimitives.BattleBoss(host), null, null);
             }
-            return (false, $"关卡导出与基类都没有钩子 {hook}");
+            return (false, $"关卡导出与基类都没有钩子 {hook}", null);
         }
 
         var execution = CampaignHookRunner.Run(plan, battle, host, levelState);
         return execution.BlockedReason is null
-            ? (execution.ReturnValue, null)
-            : (null, execution.BlockedReason);
+            ? (execution.ReturnValue, null, null)
+            : (null, execution.BlockedReason, execution.Signal);
     }
 
     /// <summary>另外两个变体（<c>clear_all</c> / <c>battle_with_poor_map_data</c>）：直接跑固定原语序列。</summary>
-    private static (bool? Result, string? Blocked) RunVariant(ICampaignPrimitiveHost host, string variant)
+    private static (bool? Result, string? Blocked, string? Signal) RunVariant(ICampaignPrimitiveHost host, string variant)
     {
         try
         {
             bool result = variant == "clear_all"
                 ? CampaignPrimitives.ClearAllVariant(host)
                 : CampaignPrimitives.PoorMapDataVariant(host);
-            return (result, null);
+            return (result, null, null);
         }
         catch (NotSupportedException error)
         {
-            return (null, error.Message);
+            return (null, error.Message, null);
         }
         catch (CampaignControlFlowSignal signal)
         {
-            return (null, signal.Message);
+            return (null, signal.Message, signal.Kind);
         }
     }
 
