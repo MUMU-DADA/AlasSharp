@@ -167,8 +167,29 @@ internal static class CampaignMapCombatChecks
         Check(result is { Outcome: TaskOutcome.Failed, Reason: "sortie_settlement_unverified" } &&
             result.Evidence?["cleared"]?.GetValue<bool>() == false &&
             result.Evidence["settlementVerified"]?.GetValue<bool>() == false &&
-            result.Evidence["stageReturn"] is not null,
+            result.Evidence["campaignIdentityVerified"]?.GetValue<bool>() == false &&
+            result.Evidence["stageReturn"] is not null &&
+            result.Evidence["sortie"]?["outcome"]?.GetValue<string>() == "ended_unknown" &&
+            result.Evidence["sortie"]?["campaign_end"]?.GetValue<bool>() == true &&
+            result.Evidence["sortie"]?["end_evidence"]?["rank_source"]?.GetValue<string>() == "BATTLE_STATUS_",
             "Campaign task promoted a loop end or stage return into a cleared outcome");
+
+        var noReturn = await task.RunAsync(request,
+            new TaskContext(null!, null!, null!, TimeSpan.FromMinutes(2),
+                Campaign: new ResumeService(new(CampaignLoopExit.Ended, 0, null))), default);
+        Check(noReturn.Evidence?["sortie"]?["outcome"]?.GetValue<string>() == "ended_unknown" &&
+            noReturn.Evidence["sortie"]?["end_evidence"] is null &&
+            noReturn.Outcome == TaskOutcome.Failed,
+            "CampaignEnd without a stage return acquired settlement evidence");
+
+        var exhausted = await task.RunAsync(request,
+            new TaskContext(null!, null!, null!, TimeSpan.FromMinutes(2),
+                Campaign: new ResumeService(new(CampaignLoopExit.Exhausted, 20, null))), default);
+        Check(exhausted is { Outcome: TaskOutcome.Failed, Reason: "campaign_loop_exhausted" } &&
+            exhausted.Evidence?["sortie"]?["outcome"]?.GetValue<string>() == "incomplete" &&
+            exhausted.Evidence["sortie"]?["stop_reason"]?.GetValue<string>() == "round_limit" &&
+            exhausted.Evidence["sortie"]?["campaign_end"]?.GetValue<bool>() == false,
+            "Round limit was recorded as a completed sortie");
 
         host = new Host { InMap = false };
         execution = new CampaignExecution(new TwoBattleRule(map), new(),

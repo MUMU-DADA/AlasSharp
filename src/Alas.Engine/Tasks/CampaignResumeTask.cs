@@ -24,10 +24,30 @@ public sealed class CampaignResumeTask : ITaskRunner
         var service = context.Campaign ?? throw new NotSupportedException("C# campaign execution service is unavailable");
         var rule = RuleCatalog.Create(request.Input!["campaign"]!.GetValue<string>());
         var result = await service.ResumeInMapAsync(rule, token);
+        var terminalCombat = result.StageReturn?.Combats.LastOrDefault();
+        var ended = result.Exit == CampaignLoopExit.Ended;
         var evidence = JsonSerializer.SerializeToNode(new
         {
-            campaign = rule.Id, loopExit = result.Exit.ToString(), result.BattleCount,
-            stageReturn = result.StageReturn, settlementVerified = false, cleared = false
+            campaign = rule.Id, campaignIdentityVerified = false,
+            loopExit = result.Exit.ToString(), result.BattleCount,
+            stageReturn = result.StageReturn, settlementVerified = false, cleared = false,
+            sortie = new
+            {
+                contract = "sortie-result/1",
+                outcome = ended ? "ended_unknown" : "incomplete",
+                cleared = false,
+                campaign_end = ended,
+                stop_reason = ended ? null : "round_limit",
+                end_evidence = terminalCombat is null ? null : new
+                {
+                    battle_rank = terminalCombat.Rank?.Rank.ToString(),
+                    rank_source = terminalCombat.Rank?.Source == CombatRankSource.BattleStatus
+                        ? "BATTLE_STATUS_" : terminalCombat.Rank is null ? null : "EXP_INFO_",
+                    combat_status = terminalCombat.Rank?.Source == CombatRankSource.BattleStatus,
+                    stage_observed = terminalCombat.Return == CombatReturn.InStage,
+                    expected_end = "in_stage"
+                }
+            }
         }, TaskQueue.Json)!.AsObject();
         return new(request.Id, Kind, TaskOutcome.Failed,
             result.Exit == CampaignLoopExit.Ended ? "sortie_settlement_unverified" : "campaign_loop_exhausted",
