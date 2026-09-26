@@ -138,9 +138,10 @@ public static class CampaignPlanExecutor
             };
             // 跨钩子调用（`self.battle_0()`）：op 与同关卡另一个钩子同名，执行器会递归执行它。
             // super 委托必须由同一解析器确认词法类/MRO 绑定；同名注册原语不能证明可执行。
-            bool implemented = CampaignPrimitiveRegistry.IsImplemented(step.Op)
-                               || plan.Header.Battles.Any(item => item.Method == step.Op)
-                               || IsExecutableSuperDelegate(step);
+            var nested = plan.Header.Battles.FirstOrDefault(item =>
+                item.Method == CampaignPrimitiveRegistry.InstanceMethodFor(step.Op));
+            bool implemented = nested is not null ? nested.PlanComplete
+                : CampaignPrimitiveRegistry.IsImplemented(step.Op) || IsExecutableSuperDelegate(step);
             steps.Add(new CampaignExecutionStep(role, step.Op, implemented, Describe(step)));
         }
         return new CampaignExecutionTrace(plan.Chapter, plan.Level, battle.Method, steps);

@@ -145,7 +145,7 @@ internal static class CampaignPlanCheck
                 foreach (var step in battle.Steps)
                 {
                     string arguments = FormatArguments(step.Args);
-                    Console.WriteLine($"      {step.Kind,-16}{step.Op}{arguments}{StatusNote(step)}");
+                    Console.WriteLine($"      {step.Kind,-16}{step.Op}{arguments}{StatusNote(plan, step)}");
                 }
             }
             return 0;
@@ -272,10 +272,13 @@ internal static class CampaignPlanCheck
     }
 
     /// <summary>步骤的执行侧状态标记（干跑判定，不执行任何东西）。</summary>
-    private static string StatusNote(CampaignPlanStep step)
+    private static string StatusNote(Alas.Campaign.CampaignPlan plan, CampaignPlanStep step)
     {
         if (step.Kind == "super_delegate" || step.Op.StartsWith("super().", StringComparison.Ordinal))
             return $"    [不可执行：{CampaignPrimitiveRegistry.ResolveSuperDelegate(step).Reason}]";
+        var nested = plan.Header.Battles.FirstOrDefault(item =>
+            item.Method == CampaignPrimitiveRegistry.InstanceMethodFor(step.Op));
+        if (nested is not null) return nested.PlanComplete ? "    [实例覆写]" : "    [不可执行：覆写计划不完整]";
         return CampaignPrimitiveRegistry.IsImplemented(step.Op) ? "    [可执行]" : "    [原语未实现]";
     }
 

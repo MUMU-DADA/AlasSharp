@@ -152,10 +152,9 @@ internal static class CampaignCallCheck
                 runtime.Add(new JsonObject { ["source"] = source, ["op"] = op, ["reason"] = runtimeReason });
             }
             else staticEncoded++;
-            var (prefix, inner) = CampaignPrimitiveRegistry.SplitFleetPrefix(op);
             string binding = op == "map.select" ? "executor"
+                : declared.Contains(CampaignPrimitiveRegistry.InstanceMethodFor(op)) ? "declared_hook"
                 : CampaignPrimitiveRegistry.IsImplemented(op) ? "registered_primitive"
-                : prefix != "super()" && declared.Contains(inner) ? "declared_hook"
                 : "native_resolution_required";
             if (binding == "native_resolution_required")
                 unresolvedBindings.Add(new JsonObject { ["source"] = source, ["op"] = op,

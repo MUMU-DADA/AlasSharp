@@ -813,7 +813,7 @@ public static class CampaignPrimitives
         if (fleet2.Weight <= grids[0].Weight)
         {
             host.Log("fleet_2_push_forward：Fleet_2 pushed to destination");
-            host.EnsureFleet(1);
+            CampaignPrimitiveRegistry.BindFleetReceiver(host, "fleet_1");
             return false;
         }
 
@@ -831,9 +831,9 @@ public static class CampaignPrimitives
         }
 
         host.Log($"fleet_2_push_forward：Push forward: {grids[0].Location}");
-        host.EnsureFleet(2);
+        CampaignPrimitiveRegistry.BindFleetReceiver(host, "fleet_2");
         host.Goto(grids[0]);
-        host.EnsureFleet(1);
+        CampaignPrimitiveRegistry.BindFleetReceiver(host, "fleet_1");
         return true;
     }
 
@@ -979,7 +979,7 @@ public static class CampaignPrimitives
                 host.ClearChosenEnemy(sorted[0], "");
                 return true;
             }
-            host.EnsureFleet(host.Config.FleetBossIndex);
+            CampaignPrimitiveRegistry.BindFleetReceiver(host, "fleet_boss");
             return ClearBoss(host);
         }
 
@@ -987,7 +987,7 @@ public static class CampaignPrimitives
         if (!caught.IsEmpty)
         {
             host.Log("brute_clear_boss：BOSS appear on fleet grid");
-            host.EnsureFleet(2);
+            CampaignPrimitiveRegistry.BindFleetReceiver(host, "fleet_2");
             return host.ClearChosenEnemy(caught[0], "");
         }
         host.Log("brute_clear_boss：BOSS not detected, trying all boss spawn point.");
@@ -1160,15 +1160,15 @@ public static class CampaignPrimitives
             if (CheckAccessibility(host, grid, 2))
             {
                 host.Log($"Fleet_2 step on {grid.Location}");
-                host.EnsureFleet(2);
+                CampaignPrimitiveRegistry.BindFleetReceiver(host, "fleet_2");
                 host.Goto(grid);
-                host.EnsureFleet(1);
+                CampaignPrimitiveRegistry.BindFleetReceiver(host, "fleet_1");
                 return false;
             }
         }
 
         host.Log("Fleet_2 step on got roadblocks.");
-        host.EnsureFleet(1);
+        CampaignPrimitiveRegistry.BindFleetReceiver(host, "fleet_1");
         bool cleared = ClearRoadblocks(host, roads);
         ClearAllMystery(host);
         return cleared;
@@ -1209,10 +1209,10 @@ public static class CampaignPrimitives
         }
 
         host.Log($"Break siren caught, fleet_2: {host.Fleet2Location}");
-        host.EnsureFleet(2);
+        CampaignPrimitiveRegistry.BindFleetReceiver(host, "fleet_2");
         host.EnsureEdgeInsight();
         host.ClearChosenEnemy(host.GridAt(host.Fleet2Location), "");
-        host.EnsureFleet(1);
+        CampaignPrimitiveRegistry.BindFleetReceiver(host, "fleet_1");
         host.ClearCaughtBySirenFlags();
         return true;
     }
@@ -2015,9 +2015,13 @@ public static class CampaignHookRunner
     {
         if (step.Op.StartsWith("super().", StringComparison.Ordinal))
             throw new NotSupportedException(CampaignPrimitiveRegistry.ResolveSuperDelegate(step).Reason);
-        var nested = plan.Header.Battles.FirstOrDefault(item => item.Method == step.Op);
+        string method = CampaignPrimitiveRegistry.InstanceMethodFor(step.Op);
+        var nested = plan.Header.Battles.FirstOrDefault(item => item.Method == method);
         if (nested is not null)
         {
+            // Fleet 的四个属性均返回 self；切队后仍按实例覆写分派，不能落到同名基类原语。
+            if (CampaignPrimitiveRegistry.IsFleetPrefixed(step.Op))
+                CampaignPrimitiveRegistry.BindFleetReceiver(host, CampaignPrimitiveRegistry.SplitFleetPrefix(step.Op).Prefix);
             if (depth >= MaxCallDepth) throw new NotSupportedException($"跨钩子调用超过 {MaxCallDepth} 层");
             var inner = Run(plan, nested, host, depth + 1, BindArguments(nested, step.Args, host), state);
             if (inner.Signal is { } signal)
@@ -2572,24 +2576,29 @@ public static class CampaignPrimitiveRegistry
         return dot > 0 ? (op[..dot], op[(dot + 1)..]) : ("", op);
     }
 
-    /// <summary>前缀对应的舰队索引；<c>fleet_boss</c> 按上游 <c>fleet_boss_index</c> 规则取 2 或 1。</summary>
-    private static int? FleetIndexFor(string prefix, CampaignRuntimeConfig config) => prefix switch
+    /// <summary>仅四个原生 Fleet 属性返回当前实例；其它点号路径不据此推断绑定。</summary>
+    public static string InstanceMethodFor(string op) => IsFleetPrefixed(op) ? SplitFleetPrefix(op).Inner : op;
+
+    /// <summary>复用上游 Fleet property 的切队条件：二队须已配置，同队不调用 fleet_ensure。</summary>
+    internal static void BindFleetReceiver(ICampaignPrimitiveHost host, string prefix)
     {
-        "fleet_1" => 1,
-        "fleet_2" => 2,
-        "fleet_boss" => config.FleetBoss && config.Fleet2 ? 2 : 1,
-        _ => null,
-    };
+        int? index = prefix switch
+        {
+            "fleet_1" => 1,
+            "fleet_2" => host.Config.Fleet2 ? 2 : null,
+            "fleet_boss" => host.Config.FleetBossIndex,
+            "fleet_submarine" => null,
+            _ => throw new NotSupportedException($"未知的 Fleet 接收对象 {prefix}"),
+        };
+        if (index is int value && host.FleetCurrentIndex != value) host.EnsureFleet(value);
+    }
 
     /// <summary>该原语（含舰队前缀组合）当前是否可实现。</summary>
     public static bool IsImplemented(string op)
     {
         if (Table.ContainsKey(op)) return true;
         if (!IsFleetPrefixed(op)) return false;
-        var (prefix, inner) = SplitFleetPrefix(op);
-        // fleet_submarine 只是"当前对象"，没有上游的切换索引；其余前缀会切舰队。
-        return (prefix == "fleet_submarine" || FleetIndexFor(prefix, new CampaignRuntimeConfig()) is not null)
-               && Table.ContainsKey(inner);
+        return Table.ContainsKey(SplitFleetPrefix(op).Inner);
     }
 
     public static bool TryGet(string op, out CampaignPrimitive primitive)
@@ -2607,12 +2616,11 @@ public static class CampaignPrimitiveRegistry
             return false;
         }
         primitive = new CampaignPrimitive(
-            op, $"切到 {prefix} 后执行 {inner}（上游 {prefix} 是返回 self 的 property）",
+            op, $"按 {prefix} 的原生条件切队后执行 {inner}（属性返回 self）",
             target.NeedsArguments,
             (host, step) =>
             {
-                int? index = FleetIndexFor(prefix, host.Config);
-                if (index is int value) host.EnsureFleet(value);
+                BindFleetReceiver(host, prefix);
                 return target.Execute(host, step);
             });
         return true;

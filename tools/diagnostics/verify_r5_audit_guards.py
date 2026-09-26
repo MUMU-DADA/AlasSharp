@@ -89,6 +89,22 @@ class AuditGuards(unittest.TestCase):
         self.assertEqual(result['sample'][0]['binding'], 'declared_hook')
         self.assertIsNone(result['sample'][0]['dynamic_callable'])
 
+    def test_fleet_receiver_keeps_declared_override_ahead_of_registry(self):
+        for prefix in ('', 'fleet_1.', 'fleet_2.', 'fleet_boss.', 'fleet_submarine.'):
+            with self.subTest(prefix=prefix):
+                self.plan([call(prefix + 'clear_boss')], extra=[{'method': 'clear_boss',
+                    'plan_complete': True, 'steps': [{'kind': 'return', 'value': False}]}])
+                code, result = self.audit()
+                self.assertEqual(code, 0)
+                self.assertEqual(result['sample'][0]['binding'], 'declared_hook')
+
+    def test_unknown_receiver_is_not_assumed_to_be_current_instance(self):
+        self.plan([call('unknown.declared_helper')], extra=[{'method': 'declared_helper',
+            'plan_complete': True, 'steps': [{'kind': 'return', 'value': True}]}])
+        code, result = self.audit()
+        self.assertEqual(code, 1)
+        self.assertEqual(result['sample'][0]['binding'], 'native_resolution_required')
+
     def test_incomplete_plan_prevents_full_coverage_claim(self):
         self.plan([], complete=False)
         code, result = self.audit()

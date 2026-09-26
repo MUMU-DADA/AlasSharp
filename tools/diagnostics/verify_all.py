@@ -108,6 +108,8 @@ STEPS = [
     ('r5_capability_matrix.py', 'R5 能力归属矩阵（IVisionEngine 逐方法归属，棘轮）', False, 180),
     ('verify_r5_selection.py', 'R5 目标选择对拍（C# 移植 vs 上游 Filter，离线无设备）', False, 180),
     ('verify_r5_execution_semantics.py', 'R5 独立 Python 语义/动作对照（分支/返回/局部参数/容器/控制流）', False, 120),
+    ('verify_r5_fleet_dispatch.py', 'R5 原生舰队属性分派（配置/同队/覆写/参数/信号，双宿主离线）', False, 180),
+    ('verify_r5_super_dispatch.py', 'R5 super 词法绑定缺失拒绝（执行/编码/覆盖统一）', False, 120),
     ('verify_r5_execution.py', 'R5 计划→原语→动作闭环（干跑记录 vs 上游选敌规则）', False, 180),
     ('verify_r5_loop.py', 'R5 关卡循环（run/execute_a_battle/battle_function vs 上游钩子选择规则）', False, 180),
     ('verify_r5_path.py', 'R5 寻路成本场（vs 上游 find_path_initial / _find_path，逐格对拍）', False, 180),
