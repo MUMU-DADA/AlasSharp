@@ -125,16 +125,19 @@ internal class AppearanceProbe(GameServer server, string? positive) : IUiDriver
         return ValueTask.FromResult(asset.Id == positive);
     }
     public virtual ValueTask ClickAsync(AssetRule asset, CancellationToken token) => throw new InvalidOperationException("Unexpected appearance probe action");
-    public void ClearOffset(AssetRule asset) { }
-    public IntervalTimer Timer(AssetRule asset, double seconds = 5, bool renew = false)
+    public virtual ValueTask ClickAreaAsync(Rectangle area, CancellationToken token) => throw new InvalidOperationException("Unexpected rectangle click");
+    public virtual ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token) => throw new InvalidOperationException("Unexpected color request");
+    public virtual ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token) => throw new InvalidOperationException("Unexpected color bands request");
+    public virtual void ClearOffset(AssetRule asset) { }
+    public virtual IntervalTimer Timer(AssetRule asset, double seconds = 5, bool renew = false)
     {
         if (!_timers.TryGetValue(asset.Name, out var timer) || renew && timer.Seconds != seconds)
             _timers[asset.Name] = timer = new IntervalTimer(Time, seconds);
         return timer;
     }
-    public void ResetInterval(AssetRule asset, double seconds = 3) => Timer(asset, seconds).Reset();
-    public void ClearInterval(AssetRule asset) => Timer(asset).Clear();
-    public ValueTask DelayAsync(TimeSpan time, CancellationToken token) { Time.Advance(time.TotalSeconds); return ValueTask.CompletedTask; }
+    public virtual void ResetInterval(AssetRule asset, double seconds = 3) => Timer(asset, seconds).Reset();
+    public virtual void ClearInterval(AssetRule asset) => Timer(asset, 3).Clear();
+    public virtual ValueTask DelayAsync(TimeSpan time, CancellationToken token) { Time.Advance(time.TotalSeconds); return ValueTask.CompletedTask; }
 }
 
 internal sealed class NavigationProbe(GameServer server, PageGraph graph, string current,

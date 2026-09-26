@@ -8,6 +8,10 @@ public sealed record TemplateRequest(ReadOnlyMemory<byte> TemplatePng, PixelArea
     TemplatePreprocessing Preprocessing = TemplatePreprocessing.Color, PixelArea? TemplateArea = null);
 public sealed record TemplateObservation(long FrameSequence, bool Matched, double Similarity, PixelPoint? Location);
 public sealed record MeanColorObservation(long FrameSequence, double R, double G, double B);
+public sealed record ColorBandRequest(PixelArea Area, int R, int G, int B, int ClosingSize,
+    int RowThreshold, double PeakHeight, double PeakWidth, double PeakDistance, double RelativeHeight);
+public sealed record ColorBand(int Top, int Bottom);
+public sealed record ColorBandObservation(long FrameSequence, IReadOnlyList<ColorBand> Bands);
 public sealed record OcrRequest(PixelArea Area, string Language, string? Alphabet);
 public sealed record OcrObservation(long FrameSequence, string Text, double? Confidence);
 
@@ -16,5 +20,6 @@ public interface IVision : IAsyncDisposable
 {
     ValueTask<TemplateObservation> MatchAsync(ScreenFrame frame, TemplateRequest request, CancellationToken token = default);
     ValueTask<MeanColorObservation> MeanColorAsync(ScreenFrame frame, PixelArea area, CancellationToken token = default);
+    ValueTask<ColorBandObservation> ColorBandsAsync(ScreenFrame frame, ColorBandRequest request, CancellationToken token = default);
     ValueTask<OcrObservation> ReadTextAsync(ScreenFrame frame, OcrRequest request, CancellationToken token = default);
 }

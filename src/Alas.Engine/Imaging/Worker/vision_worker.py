@@ -7,6 +7,7 @@ import sys
 import cv2
 import numpy as np
 import imageio.v2 as imageio
+from scipy import signal
 
 
 def decode(value):
@@ -57,11 +58,13 @@ def crop(image, x, y, width, height):
 
 
 def match(request):
-    if request.get("protocol") != "alas-cv/1" or request.get("operation") not in ("template_match", "color_mean"):
+    if request.get("protocol") != "alas-cv/1" or request.get("operation") not in ("template_match", "color_mean", "color_bands"):
         raise ValueError("unsupported_operation")
     fields = {"protocol", "id", "operation", "frame", "image", "area"}
     if request["operation"] == "template_match":
         fields |= {"template", "preprocessing", "template_area"}
+    elif request["operation"] == "color_bands":
+        fields |= {"color", "closing_size", "row_threshold", "peak_height", "peak_width", "peak_distance", "relative_height"}
     if set(request) != fields:
         raise ValueError("request_fields")
     for key in ("id", "frame"):
@@ -76,6 +79,24 @@ def match(request):
         raise ValueError("area_bounds")
     if request["operation"] == "color_mean":
         return {"color": list(cv2.mean(crop(image, x, y, width, height))[:3])}
+    if request["operation"] == "color_bands":
+        color = request["color"]
+        if not isinstance(color, list) or len(color) != 3 or any(type(v) is not int or not 0 <= v <= 255 for v in color):
+            raise ValueError("color")
+        closing = request["closing_size"]
+        threshold = request["row_threshold"]
+        if type(closing) is not int or not 1 <= closing <= 255 or type(threshold) is not int or not 0 <= threshold <= 255:
+            raise ValueError("color_band_parameters")
+        diff = crop(image, x, y, width, height).astype(np.int16) - np.array(color, dtype=np.int16)
+        distance = np.maximum(diff, 0).max(axis=2) - np.minimum(diff, 0).min(axis=2)
+        similarity = (255 - np.minimum(distance, 255)).astype(np.uint8)
+        cv2.morphologyEx(similarity, cv2.MORPH_CLOSE, kernel=np.ones((closing, closing), dtype=np.uint8), dst=similarity)
+        line = cv2.reduce(similarity, 1, cv2.REDUCE_AVG).flatten()
+        line[line < threshold] = 0
+        line[line >= threshold] = 255
+        _, properties = signal.find_peaks(line, height=request["peak_height"], width=request["peak_width"],
+                                          distance=request["peak_distance"], rel_height=request["relative_height"])
+        return {"bands": [[int(a), int(b)] for a, b in zip(properties["left_bases"], properties["right_bases"])]}
     template_area = request["template_area"]
     if template_area is not None:
         if (not isinstance(template_area, list) or len(template_area) != 4 or any(type(v) is not int for v in template_area)

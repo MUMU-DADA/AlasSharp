@@ -23,21 +23,25 @@ R5 舰队属性分派已通过原生 Fleet 属性与双宿主的 592 场景离�
 
 新架构整体重建，禁止把新模块逐个接回旧结构：独立引擎/编译规则 → C# 设备与权威状态/纯视觉服务 → 完整导航、战役和各任务域 → 桌面与 Server 组合入口整体切换 → 旧流程从发布依赖图移除。静态数据和溯源校验保留。现有架构检查中的永久原生调用要求须随整体切换改为语义与执行归属验收；历史成功证据保留为原生基线，不能改标成 C# 成功。
 
-`Alas.Engine.slnx` 已提供不引用旧 Core 的独立构建：首批四张主线规则、类型化章节覆盖、每局隔离状态、普通/全清/低地图信息三种分派、十次移动重试与二十轮循环均直接执行 C#。原生实际 Campaign 方法对照 18,628 个合成末端动作场景通过；17 项本地/进程检查覆盖依赖隔离、状态隔离、参数、并发流、超时、取消、输出超限及 ADB 拒绝。进程输出超限的原始错误已保留，不再误报超时。
+`Alas.Engine.slnx` 已提供不引用旧 Core 的独立构建：首批四张主线规则、类型化章节覆盖、每局隔离状态、普通/全清/低地图信息三种分派、十次移动重试与二十轮循环均直接执行 C#。原生实际 Campaign 方法对照 18,628 个合成末端动作场景通过；25 项本地/进程检查覆盖依赖隔离、状态隔离、参数、并发流、超时、取消、输出超限、ADB 动作拒绝、前台应用判断与设备方向。进程输出超限的原始错误已保留，不再误报超时。
 
 独立纯视觉服务已实现彩色/亮度/二值模板匹配、GIF 逐帧测量、全图素材裁剪和 RGB 均值。C# 管理常驻进程、帧与请求身份、严格阈值、动画首个命中/末帧失败偏移、超时/取消及错误收尾；颜色判据也在 C#。Python worker 只依赖图像库，不导入上游模块，不解析素材 id，不接设备/页面/任务业务；越界裁剪保留上游补黑语义。21 项合成像素及协议反例通过，包含错帧拒绝、并发请求、超时/取消/释放、根因保留、模板尺寸拒绝与业务调用拒绝。OCR 仍明确未实现，不回退旧宿主；缩放、地图特征和原生完整视觉路径尚未验收。
 
 45 个上游模块的 1,793 个素材及 53 个页面关系已直接迁为可编译 C# 声明，保留四服参数、来源行/源码哈希与图片哈希；运行时不读取导出 JSON。构建期 `tools/migration/compile_static_rules.py --upstream .runtime/engine --check` 检查源码漂移，只支持声明迁移，未知控制流拒绝。四服实际原生对象对照通过 7,172 项素材、212 项页面、10,192 项可达最短路径与 1,040 项页面识别调用轨迹；2,499 项 C# 合成导航通过。原生同长路径用无序集合择路，因此比较可达性、最短长度和声明边，不声称同长路线顺序固定一致。630 项原生/C# 视觉对照覆盖所有页面检查素材的静态/GIF 帧、移位和空白图，核对颜色、匹配结果与点击偏移。
 
-独立 `Alas.Engine.Cli observe` 已可构建和发布，只作禁用动作的截图/页面观测并登记失败帧，不声称导航或通关。发布依赖只含新引擎、CLI 和纯视觉 worker，源码层守卫约束独立项目引用及 worker 导入。本轮 ADB 枚举未发现连接设备，未进行实机截图、点击或出击；发布包/离线检查不能代替设备验收。
+`UiRecovery` 已直接迁移通用页面恢复、弹窗优先级、紧急委托热更新检查、剧情跳过与选项确认、主界面/大世界弹窗、撤退加载等待、休眠页面和点击后间隔重置。四服实际原生方法对照通过 716 个场景、2,008 次状态转换、508 项间隔重置及 32 张剧情选项图像；末端识别/设备为测试替身，比较完整调用顺序、参数、错误和多帧计时。剧情色带检测以参数调用纯 CV，选项几何、索引、确认和动作在 C#；动态选项没有导出步骤或解释器。应用健康检查保持上游前台窗口/活动判断，不把后台进程存在当作游戏正在运行。方向查询保留上游未报告时按正常方向处理，并单独记录是否真实报告。
 
-这仍不是可用的新产品：`ICampaignOperations` 尚无真实游戏动作实现；导航恢复、剧情/弹窗、地图观测/寻路/交互、其余规则、任务队列、配置/统计、结算证据与桌面/Server 切换均未完成。`UiNavigator` 必须注入恢复实现，未提供空实现或 Python 回退。新循环结束值不表示通关，不生成 `cleared`。验证命令如下；本地无上游时可省略参数执行独立检查，原生对照和纯 CV 检查明确记为未跑，不能据此通过完整门槛。
+独立 `Alas.Engine.Cli` 的 `observe` 禁用动作，`navigate` 通过 `Runtime/NavigationRun` 组合 C# 设备、规则、恢复与导航；CLI 只解析参数和输出。每次运行保存图像哈希、导航观察、逐动作尝试/完成状态，失败保存调用栈并登记失败帧；取消与期限到期分别保留。8 项端到端离线重放使用实际 CV/子进程、上游素材截图和合成 ADB，覆盖到达、只读、点击失败、取消、超时及非标准尺寸拒绝。这不是设备验收：本轮 ADB 枚举未发现连接设备，未进行实机截图、点击或出击。发布依赖只含新引擎、CLI 和纯视觉 worker，不包含旧 Core；Python 图像库需由指定环境提供。
+
+这仍不是可用的新产品：`ICampaignOperations` 尚无真实游戏动作实现；地图观测/寻路/交互、其余规则、完整任务队列、配置/统计、结算证据与桌面/Server 切换均未完成。设备缩放/旋转归一化、原生卡死/连续点击检测和其他设备后端尚未迁完，当前 UI 明确拒绝非 1280×720 图像，并在动作前保存失败证据。完整游戏内导航仍待真机效果与性能验收，`navigate` 只是新架构的独立诊断入口。新循环结束值不表示通关，不生成 `cleared`。验证命令如下；本地无上游时可省略参数执行独立检查，原生对照和纯 CV 检查明确记为未跑，不能据此通过完整门槛。
 
 ```powershell
 dotnet build Alas.Engine.slnx -c Release
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --python .runtime/venv314/Scripts/python.exe --upstream .runtime/engine --artifacts .runtime/verification/native-csharp-engine
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --vision .runtime/venv314/Scripts/python.exe .runtime/verification/native-csharp-engine
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --ui .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-ui-engine
+dotnet run --project tests/Alas.Engine.Tests -c Release -- --recovery .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-ui-recovery
+dotnet run --project tests/Alas.Engine.Tests -c Release -- --runtime .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-navigation-runtime
 ```
 
 ## 自动化规则覆盖与剩余项

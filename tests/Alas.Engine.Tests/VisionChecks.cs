@@ -164,7 +164,7 @@ internal static class VisionChecks
         return checks;
     }
 
-    private static byte[] Png(int width, int height, byte[] rgb)
+    internal static byte[] Png(int width, int height, byte[] rgb)
     {
         using var output = new MemoryStream();
         output.Write(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });

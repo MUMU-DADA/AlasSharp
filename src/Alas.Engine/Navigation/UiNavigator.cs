@@ -24,7 +24,7 @@ public sealed class UiNavigator(IUiDriver driver, PageGraph graph, IUiRecovery r
     {
         var target = graph[destination];
         if (target.Check is null) throw new NotSupportedException("Navigation requires a recognizable destination");
-        if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
+        if (timeout <= TimeSpan.Zero || timeout.TotalMilliseconds > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(timeout));
         await _gate.WaitAsync(token);
         using var deadline = new CancellationTokenSource(timeout, driver.Clock);
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);

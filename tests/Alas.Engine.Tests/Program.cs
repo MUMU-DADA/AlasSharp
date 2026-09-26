@@ -11,6 +11,7 @@ using Alas.Engine.Tests;
 
 Console.OutputEncoding = Encoding.UTF8;
 Console.InputEncoding = Encoding.UTF8;
+if (args is ["-s", "offline-replay", ..]) return await RuntimeChecks.FakeAdbAsync(args[2..]);
 
 if (args is ["--echo", var argument])
 {
@@ -80,8 +81,39 @@ try
     await Throws<IOException>(() => device.CaptureAsync().AsTask(), "ADB failure swallowed");
     transport.Response = new ProcessResponse(0, Encoding.UTF8.GetBytes("not a screenshot"), "");
     await Throws<IOException>(() => device.CaptureAsync().AsTask(), "Invalid screenshot accepted");
+    var application = new AdbApplication("adb", "test-device", "org.example.game", false, transport);
+    int beforeStop = transport.Calls.Count;
+    await Throws<InvalidOperationException>(() => application.StopAsync(default).AsTask(), "Read-only application was stopped");
+    Check(transport.Calls.Count == beforeStop, "Rejected application stop reached ADB");
+    transport.Response = new ProcessResponse(0, Encoding.UTF8.GetBytes("mCurrentFocus=Window{abcd u0 org.example.other/.Main}"), "");
+    Check(!await application.IsRunningAsync(default), "Background application was treated as foreground");
+    transport.Response = new ProcessResponse(0, Encoding.UTF8.GetBytes("mCurrentFocus=Window{abcd u0 org.example.game/.Main}"), "");
+    Check(await application.IsRunningAsync(default), "Focused application was rejected");
+    transport.Response = new ProcessResponse(0, Encoding.UTF8.GetBytes("ACTIVITY org.example.other/.Main abcd pid=123\nACTIVITY org.example.game/.Main efab pid=456"), "");
+    Check(await application.IsRunningAsync(default), "Activity fallback did not use the final activity");
+    transport.Response = new ProcessResponse(0, Encoding.UTF8.GetBytes("DisplayViewport{type=INTERNAL, valid=true, orientation=1, deviceWidth=1280, deviceHeight=720}"), "");
+    await application.RefreshOrientationAsync(default);
+    Check(application.Orientation == 1, "ADB orientation parsing failed");
+    transport.Response = new ProcessResponse(0, [], "");
+    await application.RefreshOrientationAsync(default);
+    Check(application.Orientation == 0 && !application.OrientationWasReported, "Unknown orientation did not preserve upstream normal-orientation assumption");
+    await Throws<IOException>(() => application.IsRunningAsync(default).AsTask(), "Unknown foreground silently accepted");
     Console.WriteLine($"Local engine/transport checks passed: {checks}");
 
+    if (args is ["--runtime", var runtimePython, var runtimeUpstream, var runtimeArtifacts])
+    {
+        string folder = Path.GetFullPath(runtimeArtifacts);
+        Directory.CreateDirectory(folder);
+        await RuntimeChecks.RunAsync(Path.GetFullPath(runtimePython), Path.GetFullPath(runtimeUpstream), folder);
+        return 0;
+    }
+    if (args is ["--recovery", var recoveryPython, var recoveryUpstream, var recoveryArtifacts])
+    {
+        string folder = Path.GetFullPath(recoveryArtifacts);
+        Directory.CreateDirectory(folder);
+        await RecoveryChecks.RunAsync(Path.GetFullPath(recoveryPython), Path.GetFullPath(recoveryUpstream), folder);
+        return 0;
+    }
     if (args is ["--ui", var uiPython, var uiUpstream, var uiArtifacts])
     {
         string folder = Path.GetFullPath(uiArtifacts);

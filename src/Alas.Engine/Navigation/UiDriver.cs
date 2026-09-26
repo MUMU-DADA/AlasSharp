@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using Alas.Engine.Devices;
 using Alas.Engine.Imaging;
 using Alas.Engine.Rules;
@@ -14,6 +15,9 @@ public interface IUiDriver
         double similarity = 0.85, int threshold = 10, TemplatePreprocessing preprocessing = TemplatePreprocessing.Color,
         CancellationToken token = default);
     ValueTask ClickAsync(AssetRule asset, CancellationToken token);
+    ValueTask ClickAreaAsync(Rectangle area, CancellationToken token);
+    ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token);
+    ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token);
     void ClearOffset(AssetRule asset);
     IntervalTimer Timer(AssetRule asset, double seconds = 5, bool renew = false);
     void ResetInterval(AssetRule asset, double seconds = 3);
@@ -26,6 +30,7 @@ public sealed class UiDriver : IUiDriver
 {
     private readonly IGameDevice _device;
     private readonly AssetMatcher _matcher;
+    private readonly IVision _vision;
     private readonly Random _random;
     private readonly Dictionary<string, IntervalTimer> _timers = new(StringComparer.Ordinal);
     public GameServer Server { get; }
@@ -39,10 +44,19 @@ public sealed class UiDriver : IUiDriver
         Server = server;
         _device = device;
         _matcher = new AssetMatcher(server, vision, assets);
+        _vision = vision;
         Clock = clock ?? TimeProvider.System;
         _random = random ?? Random.Shared;
     }
-    public async ValueTask ScreenshotAsync(CancellationToken token) => Frame = await _device.CaptureAsync(token);
+    public async ValueTask ScreenshotAsync(CancellationToken token)
+    {
+        Frame = await _device.CaptureAsync(token);
+        // The compiled upstream UI coordinates use a 1280x720 canvas. Device resizing/rotation is not ported yet.
+        var png = Frame.Png.Span;
+        if (png.Length < 24 || !png.Slice(12, 4).SequenceEqual("IHDR"u8) ||
+            BinaryPrimitives.ReadInt32BigEndian(png.Slice(16, 4)) != 1280 || BinaryPrimitives.ReadInt32BigEndian(png.Slice(20, 4)) != 720)
+            throw new NotSupportedException("Native UI currently requires a 1280x720 PNG frame; device normalization is not implemented");
+    }
     public async ValueTask<bool> AppearsAsync(AssetRule asset, ButtonOffset offset = default, double interval = 0,
         double similarity = 0.85, int threshold = 10, TemplatePreprocessing preprocessing = TemplatePreprocessing.Color,
         CancellationToken token = default)
@@ -54,11 +68,13 @@ public sealed class UiDriver : IUiDriver
         return appeared;
     }
     public ValueTask ClickAsync(AssetRule asset, CancellationToken token)
-    {
-        var rectangle = _matcher.ClickArea(asset);
-        return _device.TapAsync(new PixelPoint(RandomCoordinate(rectangle.Left, rectangle.Right),
-            RandomCoordinate(rectangle.Top, rectangle.Bottom)), token);
-    }
+        => ClickAreaAsync(_matcher.ClickArea(asset), token);
+    public ValueTask ClickAreaAsync(Rectangle area, CancellationToken token)
+        => _device.TapAsync(new PixelPoint(RandomCoordinate(area.Left, area.Right), RandomCoordinate(area.Top, area.Bottom)), token);
+    public ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token)
+        => _vision.MeanColorAsync(Frame ?? throw new InvalidOperationException("No screenshot has been captured"), area.Area, token);
+    public ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token)
+        => _vision.ColorBandsAsync(Frame ?? throw new InvalidOperationException("No screenshot has been captured"), request, token);
     private int RandomCoordinate(int minimum, int maximum)
     {
         if (minimum >= maximum) return maximum;

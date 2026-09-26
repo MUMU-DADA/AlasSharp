@@ -95,6 +95,38 @@ public sealed class PythonTemplateVision : IVision
         }, token);
     }
 
+    public async ValueTask<ColorBandObservation> ColorBandsAsync(ScreenFrame frame, ColorBandRequest request, CancellationToken token = default)
+    {
+        ValidateFrame(frame);
+        ValidateArea(request.Area);
+        if (new[] { request.R, request.G, request.B, request.RowThreshold }.Any(v => v is < 0 or > 255) ||
+            request.ClosingSize is < 1 or > 255 || request.PeakDistance < 1 || request.PeakWidth < 0 ||
+            request.RelativeHeight < 0 || new[] { request.PeakHeight, request.PeakWidth, request.PeakDistance, request.RelativeHeight }.Any(v => !double.IsFinite(v)))
+            throw new ArgumentOutOfRangeException(nameof(request));
+        return await ExchangeAsync(frame, id => new
+        {
+            protocol = "alas-cv/1", id, operation = "color_bands", frame = frame.Sequence,
+            image = Convert.ToBase64String(frame.Png.Span), area = AreaValues(request.Area),
+            color = new[] { request.R, request.G, request.B }, closing_size = request.ClosingSize,
+            row_threshold = request.RowThreshold, peak_height = request.PeakHeight, peak_width = request.PeakWidth,
+            peak_distance = request.PeakDistance, relative_height = request.RelativeHeight
+        }, response =>
+        {
+            var bands = new List<ColorBand>();
+            int previousTop = -1;
+            foreach (var pair in response.GetProperty("bands").EnumerateArray())
+            {
+                if (pair.GetArrayLength() != 2) throw new InvalidDataException("Invalid color band");
+                int top = pair[0].GetInt32(), bottom = pair[1].GetInt32();
+                if (top < 0 || top < previousTop || bottom <= top || bottom >= request.Area.Height)
+                    throw new InvalidDataException("Color band outside detection area or out of order");
+                bands.Add(new ColorBand(top, bottom));
+                previousTop = top;
+            }
+            return new ColorBandObservation(frame.Sequence, bands);
+        }, token);
+    }
+
     private async ValueTask<T> ExchangeAsync<T>(ScreenFrame frame, Func<long, object> commandFactory,
         Func<JsonElement, T> parse, CancellationToken token)
     {
