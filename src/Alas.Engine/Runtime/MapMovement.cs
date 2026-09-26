@@ -9,10 +9,6 @@ public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arri
 public sealed class MapMovement(CampaignState state, CampaignConfiguration configuration,
     IMapArrivalCamera camera, Func<MapArrivalCheck> createArrival)
 {
-    public MapMovement(CampaignState state, CampaignConfiguration configuration,
-        IMapArrivalCamera camera, MapArrivalCheck arrival)
-        : this(state, configuration, camera, () => arrival) { }
-
     public ValueTask<MapMoveResult> MoveAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
         => MoveCoreAsync(destination, false, options, token);
@@ -54,7 +50,10 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         if (result.Outcome == MapArrivalOutcome.Unconfirmed) return new(MapMoveOutcome.Unconfirmed, result);
         if (result.Outcome == MapArrivalOutcome.MapInterrupted) return new(MapMoveOutcome.Interrupted, result);
         if (result.Outcome == MapArrivalOutcome.StageReturned)
-            return new(fight && result.Combats.Length == 1 ? MapMoveOutcome.StageReturned :
+            return new(fight && result.Combats is [ { Return: CombatReturn.InStage, Rank.IsWinningRank: true } ] &&
+                result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
+                result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid)
+                ? MapMoveOutcome.StageReturned :
                 MapMoveOutcome.UnsupportedEncounter, result);
         bool combatConfirmed = result.Combats.Length == 1 &&
             result.Combats[0] is { Return: CombatReturn.InMap, Rank.IsWinningRank: true };

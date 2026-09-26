@@ -142,7 +142,7 @@ internal static class MapArrivalChecks
         var state = State();
         var camera = new Camera(clock, [new(true, new(true, true))]);
         var arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
-        var moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options);
+        var moved = await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.Committed && moved.Arrival.HandledEncounters.IsEmpty &&
             state.Fleet1Location == destination && !state[new(1, 1)].IsFleet &&
             state[destination].IsFleet && state[destination].IsCurrentFleet &&
@@ -171,7 +171,7 @@ internal static class MapArrivalChecks
         state.FleetIndex = 2;
         camera = new Camera(clock, [new(true, new(true, true))]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
-        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options);
+        moved = await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.Committed && state.Fleet1Location == new Cell(1, 1) &&
             state[new(1, 1)].IsFleet && state.Fleet2Location == destination &&
             !state[new(3, 3)].IsFleet && state[destination].IsCurrentFleet &&
@@ -181,7 +181,7 @@ internal static class MapArrivalChecks
         clock = new TestClock(); state = State();
         camera = new Camera(clock, [new(true, default)]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
-        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination,
+        moved = await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination,
             new(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(1)));
         Check(moved.Outcome == MapMoveOutcome.Unconfirmed && state.Fleet1Location == new Cell(1, 1) &&
             state[new(1, 1)].IsFleet && !state[destination].IsFleet && camera.Invalidated,
@@ -191,7 +191,7 @@ internal static class MapArrivalChecks
         camera = new Camera(clock, [new(true, default), new(true, default), new(true, new(true, true))]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
             new Probe(MapEncounterKind.Combat), new Handler(camera, clock));
-        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options);
+        moved = await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.UnsupportedEncounter &&
             moved.Arrival.HandledEncounters.SequenceEqual([MapEncounterKind.Combat]) &&
             state.Fleet1Location == new Cell(1, 1) && state[new(1, 1)].IsFleet &&
@@ -212,7 +212,7 @@ internal static class MapArrivalChecks
                     new(CombatRank.S, CombatRankSource.BattleStatus, UiAssets.Combat.BATTLE_STATUS_S.Id),
                     false, false, 5));
             }));
-        moved = await new MapMovement(state, new(), camera, arrival).FightAsync(destination, options);
+        moved = await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.Committed && state.Progress.Battle == 1 && state.AmmoCount == 2 &&
             state.Fleet1Location == destination && !state[new(1, 1)].IsFleet &&
             state[destination].IsFleet && state[destination].IsCleared && !state[destination].IsEnemy &&
@@ -224,7 +224,7 @@ internal static class MapArrivalChecks
         camera = new Camera(clock, [new(true, default), new(true, default), new(true, new(true, true))]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
             new Probe(MapEncounterKind.Combat), new Handler(camera, clock));
-        moved = await new MapMovement(state, new(), camera, arrival).FightAsync(destination, options);
+        moved = await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.Committed && state.Progress is { Battle: 1, Siren: 1 } &&
             state.AmmoCount == 2 && !state[destination].IsSiren && !state[destination].IsCleared,
             "Siren combat did not update its own counter or clear the target");
@@ -233,7 +233,7 @@ internal static class MapArrivalChecks
         state[destination].IsEnemy = true;
         camera = new Camera(clock, [new(true, new(true, true))]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
-        moved = await new MapMovement(state, new(), camera, arrival).FightAsync(destination, options);
+        moved = await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.UnsupportedEncounter && state.Progress.Battle == 0 &&
             state.AmmoCount == 3 && state[destination].IsEnemy && state.Fleet1Location == new Cell(1, 1),
             "Enemy-grid marker without combat evidence changed authoritative state");
@@ -245,7 +245,7 @@ internal static class MapArrivalChecks
             camera = new Camera(clock, [new(true, default), new(true, default), new(true, new(true, true))]);
             arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
                 new Probe(MapEncounterKind.Combat), new Handler(camera, clock, rank: rank));
-            moved = await new MapMovement(state, new(), camera, arrival).FightAsync(destination, options);
+            moved = await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options);
             Check(moved.Outcome == MapMoveOutcome.UnsupportedEncounter && state.Progress.Battle == 0 &&
                 state.AmmoCount == 3 && state.Fleet1Location == new Cell(1, 1) && state[destination].IsEnemy,
                 "Combat with missing or losing rank changed authoritative map state");
@@ -257,7 +257,7 @@ internal static class MapArrivalChecks
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
             new Probe(MapEncounterKind.Combat), new MapCombatHandler(_ => throw new IOException("synthetic combat failure")));
         bool combatFailed = false;
-        try { await new MapMovement(state, new(), camera, arrival).FightAsync(destination, options); }
+        try { await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options); }
         catch (IOException) { combatFailed = true; }
         Check(combatFailed && camera.Invalidated && state.Progress.Battle == 0 && state.AmmoCount == 3 &&
             state[destination].IsEnemy && state.Fleet1Location == new Cell(1, 1),
@@ -268,16 +268,30 @@ internal static class MapArrivalChecks
         camera = new Camera(clock, [new(false, default)]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
             new Probe(MapEncounterKind.Combat), new Handler(camera, clock, combatReturn: CombatReturn.InStage));
-        moved = await new MapMovement(state, new(), camera, arrival).FightAsync(destination, options);
+        moved = await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.StageReturned && state.Progress.Battle == 0 &&
             state.Fleet1Location == new Cell(1, 1) && moved.Arrival.Combats is [ { Return: CombatReturn.InStage } ],
             "Boss stage return was treated as a map move or discarded its settlement evidence");
+
+        foreach (var rank in new CombatRank?[] { null, CombatRank.C })
+        {
+            clock = new TestClock(); state = State();
+            state[destination].IsBoss = true;
+            camera = new Camera(clock, [new(false, default)]);
+            arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
+                new Probe(MapEncounterKind.Combat), new Handler(camera, clock,
+                    combatReturn: CombatReturn.InStage, rank: rank));
+            moved = await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options);
+            Check(moved.Outcome == MapMoveOutcome.UnsupportedEncounter && state.Progress.Battle == 0 &&
+                state.Fleet1Location == new Cell(1, 1) && moved.Arrival.Combats.Length == 1,
+                "Stage return with missing or losing rank was accepted as a completed boss fight");
+        }
 
         clock = new TestClock(); state = State();
         camera = new Camera(clock, [new(true, default), new(true, default), new(true, new(true, true))]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
             new Probe(MapEncounterKind.AirRaid), new Handler(camera, clock, MapEncounterKind.AirRaid));
-        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options);
+        moved = await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.Committed &&
             moved.Arrival.HandledEncounters.SequenceEqual([MapEncounterKind.AirRaid]) &&
             state.Fleet1Location == destination && state[destination].IsFleet &&
@@ -287,7 +301,7 @@ internal static class MapArrivalChecks
         clock = new TestClock(); state = State(portal: true);
         camera = new Camera(clock, [new(true, new(true, true))]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
-        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options);
+        moved = await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination, options);
         var exit = new Cell(3, 2);
         Check(moved.Outcome == MapMoveOutcome.Committed && state.Fleet1Location == exit &&
             state[exit].IsFleet && state[exit].IsCurrentFleet && !state[destination].IsFleet &&
@@ -298,7 +312,7 @@ internal static class MapArrivalChecks
         clock = new TestClock(); state = State(portal: true);
         camera = new Camera(clock, [new(true, default)]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
-        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination,
+        moved = await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination,
             new(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(1)));
         Check(moved.Outcome == MapMoveOutcome.Unconfirmed && state.Fleet1Location == new Cell(1, 1) &&
             !state[exit].IsFleet && camera.Anchored is null && camera.Invalidated,
@@ -309,7 +323,7 @@ internal static class MapArrivalChecks
         camera = new Camera(clock, [new(true, new(true, true))]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
         bool rejected = false;
-        try { await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options); }
+        try { await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination, options); }
         catch (InvalidDataException) { rejected = true; }
         Check(rejected && camera.Taps == 0 && state.Fleet1Location == new Cell(1, 1),
             "Portal without a linked exit was clicked");
@@ -322,7 +336,7 @@ internal static class MapArrivalChecks
             camera = new Camera(clock, [new(true, new(true, true))]);
             arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
             rejected = false;
-            try { await new MapMovement(state, config, camera, arrival).MoveAsync(destination, options); }
+            try { await new MapMovement(state, config, camera, () => arrival).MoveAsync(destination, options); }
             catch (NotSupportedException) { rejected = true; }
             Check(rejected && camera.Taps == 0 && state.Fleet1Location == new Cell(1, 1),
                 "An unported map-round mode was clicked before its state transition was implemented");

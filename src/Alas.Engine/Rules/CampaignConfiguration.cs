@@ -8,6 +8,8 @@ public sealed record MapVisionOverrides(PeakParameters InternalPeaks, PeakParame
     (int Low, int High) Canny, (int Low, int High) EdgeColor,
     int InternalHough, int EdgeHough, int HomographyEdgeHough);
 
+public enum EnemyScalePriority { Default, StrongestFirst, WeakestFirst }
+
 public sealed record CampaignConfiguration
 {
     public bool PoorMapData { get; init; }
@@ -17,6 +19,7 @@ public sealed record CampaignConfiguration
     public bool HasMaze { get; init; }
     public bool HasAmbush { get; init; } = true;
     public bool HandleError { get; init; }
+    public EnemyScalePriority EnemyPriority { get; init; }
     public int Fleet2 { get; init; }
     public int Submarine { get; init; }
     public MapVisionOverrides? Vision { get; init; }

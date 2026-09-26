@@ -143,6 +143,7 @@ internal static class MapViewChecks
         await ImageRefreshAsync(blank, files);
         await GridTapAsync(blank, recognition);
         await MapArrivalChecks.RunAsync();
+        await CampaignMapCombatChecks.RunAsync(upstream);
         foreach (var entry in reference["controls"]!.AsArray()) await ControlAsync(entry!, blank, recognition);
         foreach (var entry in reference["optimized"]!.AsArray()) await OptimizationAsync(entry!, blank, recognition);
         foreach (var entry in reference["settling"]!.AsArray()) await SettlingAsync(entry!, blank, recognition);
