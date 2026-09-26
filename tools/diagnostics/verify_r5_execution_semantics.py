@@ -208,6 +208,15 @@ def main():
                 ["update_map()", "ensure_edge_insight()", "focus_to(<未记录>)"]):
             failures.append("tuple_refocus: tuple preset was not decoded")
 
+        for name, steps, reason in [
+            ("missing_initial_state", [branch({"state": "undefined"}, [ret(True)])], "没有初值"),
+            ("unsupported_scalar_return", [ret(2)], "标量返回尚未迁移"),
+        ]:
+            checked += 1
+            value = run(name, steps)
+            if value and (value["completed"] or reason not in (value["blocked"] or "") or value["actions"]):
+                failures.append(f"{name}: expected explicit rejection without actions")
+
     print(f"[r5 execution semantics] {checked} checks; {len(failures)} failures (offline)")
     for failure in failures:
         print(f"  FAIL {failure}")

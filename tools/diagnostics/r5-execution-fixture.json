@@ -294,7 +294,7 @@
       }
     },
     {
-      "name": "campaign_16_4 battle_1：`if not self.map_has_mob_move:` 而该属性**没有初值**（默认值在基类，本模块拿不到）→ 必须阻塞报原因，不许当成假",
+      "name": "campaign_16_4 battle_1：静态赋值/None 判断无法表达，计划先于执行阶段拒绝，不误判成缺初值",
       "chapter": "campaign_main",
       "level": "campaign_16_4",
       "hook": "battle_1",
@@ -308,7 +308,8 @@
       ],
       "expect": {
         "completed": false,
-        "blocked_contains": "没有初值"
+        "blocked_contains": "计划不完整",
+        "actions_exclude": "clear_chosen_enemy"
       }
     },
     {
