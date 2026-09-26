@@ -76,7 +76,8 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     public MapMovement CreateMapCombatMovement(MapCamera camera, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration,
-            new MapCombatHandler(token => CreateCombatFlow(entrances).RunAutoAsync(token: token))));
+            new MapCombatHandler(token => CreateCombatFlow(entrances).RunAutoAsync(token: token),
+                new MapMysteryItemHandler(Driver))));
     public CampaignMapCombat CreateCampaignMapCombat(MapCamera camera, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances),

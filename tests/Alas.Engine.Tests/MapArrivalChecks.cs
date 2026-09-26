@@ -8,7 +8,7 @@ internal static class MapArrivalChecks
     private static void Check(bool value, string message)
     { if (!value) throw new InvalidOperationException(message); }
 
-    public static async Task RunAsync()
+    public static async Task RunAsync(string upstream)
     {
         var map = new CampaignState(new MapDefinition("C3", "-- -- --\n-- -- --\n-- -- --", [], [], []));
         map.Fleet1Location = new(1, 1);
@@ -121,9 +121,10 @@ internal static class MapArrivalChecks
             "Unhandled encounter was treated as arrival or left old geometry usable");
 
         await MapEncounterProbeChecks.RunAsync();
+        await MapMysteryItemHandlerChecks.RunAsync(upstream);
         await MovementChecksAsync(destination, options);
 
-        Console.WriteLine("Map arrival/movement: fresh-frame confirmation, ordinary/portal and synthetic combat state commits, stage return, air-raid wait and unsupported-interaction rejection passed; no real combat or settlement verification.");
+        Console.WriteLine("Map arrival/movement: fresh-frame confirmation, ordinary/portal, combat and item-mystery commits, stage return, air-raid wait and unsupported-interaction rejection passed; no real combat or settlement verification.");
     }
 
     private static async Task MovementChecksAsync(Cell destination, MapArrivalOptions options)
@@ -228,6 +229,37 @@ internal static class MapArrivalChecks
         Check(moved.Outcome == MapMoveOutcome.Committed && state.Progress is { Battle: 1, Siren: 1 } &&
             state.AmmoCount == 2 && !state[destination].IsSiren && !state[destination].IsCleared,
             "Siren combat did not update its own counter or clear the target");
+
+        clock = new TestClock(); state = State();
+        state[destination].IsMystery = true;
+        camera = new Camera(clock, [new(true, default), new(true, default), new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
+            new Probe(MapEncounterKind.ItemPopup), new Handler(camera, clock, MapEncounterKind.ItemPopup));
+        moved = await new MapMovement(state, new(), camera, () => arrival).CollectMysteryAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.Committed && state.MysteryCount == 1 &&
+            state.BattleCount == 0 && state.AmmoCount == 3 && !state[destination].IsMystery &&
+            state.Fleet1Location == destination &&
+            moved.Arrival.HandledEncounters.SequenceEqual([MapEncounterKind.ItemPopup]),
+            "Confirmed item mystery did not commit one pickup and fleet movement");
+
+        clock = new TestClock(); state = State();
+        state[destination].IsMystery = true;
+        camera = new Camera(clock, [new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        moved = await new MapMovement(state, new(), camera, () => arrival).CollectMysteryAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.UnsupportedEncounter && state.MysteryCount == 0 &&
+            state[destination].IsMystery && state.Fleet1Location == new Cell(1, 1) && camera.Invalidated,
+            "Fleet marker without mystery reward evidence was counted as a pickup");
+
+        clock = new TestClock(); state = State();
+        state[destination].IsMystery = true;
+        camera = new Camera(clock, [new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        bool rejectedMystery = false;
+        try { await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination, options); }
+        catch (NotSupportedException) { rejectedMystery = true; }
+        Check(rejectedMystery && camera.Taps == 0 && state.MysteryCount == 0,
+            "Ordinary movement clicked a mystery without its pickup contract");
 
         clock = new TestClock(); state = State();
         state[destination].IsEnemy = true;

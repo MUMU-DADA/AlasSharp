@@ -33,6 +33,18 @@ internal static class CampaignMapCombatChecks
         Check(!await combat.ClearEnemyAsync() && camera.Taps == 2,
             "No observed enemy caused another grid action");
 
+        map = new MapDefinition("C1", "SP MM MM", ["B1"], [],
+            [new SpawnWave(0, Mystery: 2)]);
+        state = Prepare(map);
+        state[new(2, 1)].IsMystery = state[new(3, 1)].IsMystery = true;
+        state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
+        camera = new Camera(state);
+        combat = Create(state, new(), camera);
+        Check(!await combat.ClearMysteriesAsync() && camera.Taps == 2 && state.MysteryCount == 2 &&
+            state.Fleet1Location == new Cell(3, 1) && !state.Cells.Any(grid => grid.IsMystery) &&
+            state.BattleCount == 0 && state.AmmoCount == 3 && !await combat.ClearMysteriesAsync(),
+            "Accessible mysteries were not picked up in cost order without changing battle state");
+
         map = new MapDefinition("B2", "SP ME\nME --", ["A1"], [], [new SpawnWave(0, Enemy: 2)]);
         foreach (var (priority, target) in new[]
                  {
@@ -106,6 +118,17 @@ internal static class CampaignMapCombatChecks
             { StageReturn: { Combats: [ { Return: CombatReturn.InStage, Rank.IsWinningRank: true } ] } },
             "Compiled campaign loop did not execute the in-map C# scan, combat and stage-return sequence");
 
+        var mysteryMap = new MapDefinition("D1", "SP MM ME MB", ["B1"], ["B1"],
+            [new SpawnWave(0, Enemy: 1, Mystery: 1), new SpawnWave(1, Boss: 1)]);
+        var mysteryHost = new Host { HasMystery = true };
+        var mysteryExecution = new CampaignExecution(new MysteryTwoBattleRule(mysteryMap), new(),
+            (state, config) => new InMapCampaignOperations(mysteryHost, state, config, default));
+        Check(await mysteryExecution.RunAsync() == CampaignLoopExit.Ended &&
+            mysteryHost.Camera is { Taps: 3, Scans: 2 } &&
+            mysteryExecution.Context.State is { MysteryCount: 1, BattleCount: 1, AmmoCount: 2 } &&
+            !mysteryExecution.Context.State.Cells.Any(grid => grid.IsMystery),
+            "Compiled rule did not pick up mystery before combat and boss return in one C# sortie");
+
         var task = new CampaignResumeTask();
         var request = new TaskRequest("resume", task.Kind,
             new JsonObject { ["campaign"] = "campaign_main/campaign_1_1" });
@@ -148,9 +171,27 @@ internal static class CampaignMapCombatChecks
             };
     }
 
+    private sealed class MysteryTwoBattleRule(MapDefinition map) : CampaignRule
+    {
+        public override string Id => "test/mystery_two_battles";
+        public override MapDefinition Map => map;
+        public override ImmutableArray<SourceFile> Sources => [];
+        protected override IReadOnlyDictionary<int, BattleHook> Hooks { get; } =
+            new Dictionary<int, BattleHook>
+            {
+                [0] = static async context =>
+                {
+                    await context.Operations.ClearMysteriesAsync();
+                    return await context.Operations.ClearEnemyAsync();
+                },
+                [1] = static context => context.Operations.ClearBossAsync()
+            };
+    }
+
     private sealed class Host : ICampaignInMapHost
     {
         public bool InMap { get; init; } = true;
+        public bool HasMystery { get; init; }
         public Camera? Camera { get; private set; }
         public ValueTask<bool> VerifyInMapAsync(CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(InMap); }
@@ -162,10 +203,17 @@ internal static class CampaignMapCombatChecks
             {
                 StageForBoss = true,
                 ObservationFactory = (scan, position, mode) => new MapObservation(scan == 1
-                    ? [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true)),
-                       new(new(1, 0), new(IsEnemy: true, EnemyScale: 1))]
-                    : [new(new(1, 0), new(IsFleet: true, IsCurrentFleet: true)),
-                       new(new(2, 0), new(IsBoss: true))], position, new(1, 0), mode)
+                    ? HasMystery
+                        ? [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true)),
+                           new(new(1, 0), new(IsMystery: true)),
+                           new(new(2, 0), new(IsEnemy: true, EnemyScale: 1))]
+                        : [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true)),
+                           new(new(1, 0), new(IsEnemy: true, EnemyScale: 1))]
+                    : HasMystery
+                        ? [new(new(2, 0), new(IsFleet: true, IsCurrentFleet: true)),
+                           new(new(3, 0), new(IsBoss: true))]
+                        : [new(new(1, 0), new(IsFleet: true, IsCurrentFleet: true)),
+                           new(new(2, 0), new(IsBoss: true))], position, new(1, 0), mode)
             };
             return ValueTask.FromResult<IMapScanCamera>(Camera);
         }
@@ -257,9 +305,13 @@ internal static class CampaignMapCombatChecks
         public ValueTask<MapEncounterKind> InspectAsync(long frameSequence, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
-            if (_fired || !camera.IsCombatDestination) return ValueTask.FromResult(MapEncounterKind.None);
+            if (_fired || camera.Destination is not { } destination)
+                return ValueTask.FromResult(MapEncounterKind.None);
+            var encounter = camera.IsCombatDestination ? MapEncounterKind.Combat :
+                camera.State[destination].IsMystery ? MapEncounterKind.ItemPopup : MapEncounterKind.None;
+            if (encounter == MapEncounterKind.None) return ValueTask.FromResult(encounter);
             _fired = true;
-            return ValueTask.FromResult(MapEncounterKind.Combat);
+            return ValueTask.FromResult(encounter);
         }
     }
 
@@ -268,6 +320,8 @@ internal static class CampaignMapCombatChecks
         public ValueTask<MapEncounterHandling> HandleAsync(MapEncounterKind encounter, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
+            if (encounter == MapEncounterKind.ItemPopup && camera.Suspended)
+                return ValueTask.FromResult(new MapEncounterHandling(MapEncounterContinuation.InMap));
             if (encounter != MapEncounterKind.Combat || !camera.Suspended) throw new InvalidDataException();
             var returned = camera.ReturningToStage ? CombatReturn.InStage : CombatReturn.InMap;
             var rank = camera.Rank is { } value

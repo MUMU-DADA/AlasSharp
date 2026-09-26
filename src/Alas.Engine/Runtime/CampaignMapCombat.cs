@@ -10,6 +10,29 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         "187a5ee7d8fbde3c944681216fd2ac75f68036716b17db5a8bb43fdd42de5365");
     public MapArrivalResult? StageReturn { get; private set; }
 
+    public async ValueTask<bool> ClearMysteriesAsync(CancellationToken token = default)
+    {
+        while (true)
+        {
+            var target = state.Cells.Where(grid => grid.IsMystery && grid.IsAccessible)
+                .OrderBy(grid => grid.Cost).FirstOrDefault();
+            if (target is null) return false;
+            var route = state.Paths.FindRoute(target.Location, turningOptimize: configuration.HasAmbush);
+            if (!route.IsReachable || route.Waypoints.Count == 0)
+                throw new InvalidOperationException("Selected mystery has no confirmed fleet route");
+            for (int index = 0; index < route.Waypoints.Count; index++)
+            {
+                token.ThrowIfCancellationRequested();
+                var cell = route.Waypoints[index];
+                var result = index == route.Waypoints.Count - 1
+                    ? await movement.CollectMysteryAsync(cell, token: token)
+                    : await movement.MoveAsync(cell, token: token);
+                if (result.Outcome != MapMoveOutcome.Committed)
+                    throw new CampaignScriptException($"Mystery route to {cell} ended as {result.Outcome}");
+            }
+        }
+    }
+
     public ValueTask<bool> ClearEnemyAsync(CancellationToken token = default)
     {
         var candidates = state.Cells.Where(grid => grid.IsEnemy && !grid.IsBoss && grid.IsAccessible).ToArray();

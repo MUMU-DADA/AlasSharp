@@ -61,8 +61,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask<bool> BruteClearBossAsync() => throw Missing("brute boss search");
     public ValueTask<bool> BreakSirenCaughtAsync() => state.Cells.Any(grid => grid.IsCaughtBySiren)
         ? throw Missing("fleet siren rescue") : ValueTask.FromResult(false);
-    public ValueTask<bool> ClearMysteriesAsync() => state.Cells.Any(grid => grid.IsMystery)
-        ? throw Missing("mystery interaction") : ValueTask.FromResult(false);
+    public ValueTask<bool> ClearMysteriesAsync() => Combat.ClearMysteriesAsync(token);
     public ValueTask<bool> PickUpAmmoAsync() => state.AmmoCount > 0 && state.Cells.Any(grid => grid.IsAmmo)
         ? throw Missing("ammo pickup") : ValueTask.FromResult(false);
     public ValueTask<bool> ClearSirenAsync() => state.Cells.Any(grid => grid.IsSiren || grid.IsFortress)

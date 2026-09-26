@@ -142,7 +142,7 @@ internal static class MapViewChecks
         var recognition = new GridRecognition(new EmptyPatches(), files, GameServer.Cn, new());
         await ImageRefreshAsync(blank, files);
         await GridTapAsync(blank, recognition);
-        await MapArrivalChecks.RunAsync();
+        await MapArrivalChecks.RunAsync(upstream);
         await CampaignMapCombatChecks.RunAsync(upstream);
         await CampaignMapInitializerChecks.RunAsync();
         foreach (var entry in reference["controls"]!.AsArray()) await ControlAsync(entry!, blank, recognition);

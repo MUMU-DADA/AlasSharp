@@ -4,6 +4,7 @@ namespace Alas.Engine.Runtime;
 
 public enum MapMoveOutcome { Committed, Unconfirmed, Interrupted, UnsupportedEncounter, StageReturned }
 public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arrival);
+internal enum MapAction { Move, Fight, Mystery }
 
 /// <summary>Commits a fleet move only after fresh visual arrival and complete interaction accounting.</summary>
 public sealed class MapMovement(CampaignState state, CampaignConfiguration configuration,
@@ -11,13 +12,17 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
 {
     public ValueTask<MapMoveResult> MoveAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
-        => MoveCoreAsync(destination, false, options, token);
+        => MoveCoreAsync(destination, MapAction.Move, options, token);
 
     public ValueTask<MapMoveResult> FightAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
-        => MoveCoreAsync(destination, true, options, token);
+        => MoveCoreAsync(destination, MapAction.Fight, options, token);
 
-    private async ValueTask<MapMoveResult> MoveCoreAsync(Cell destination, bool fight,
+    public ValueTask<MapMoveResult> CollectMysteryAsync(Cell destination, MapArrivalOptions? options = null,
+        CancellationToken token = default)
+        => MoveCoreAsync(destination, MapAction.Mystery, options, token);
+
+    private async ValueTask<MapMoveResult> MoveCoreAsync(Cell destination, MapAction action,
         MapArrivalOptions? options, CancellationToken token)
     {
         if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before moving a fleet");
@@ -32,11 +37,15 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         if (destination == origin) throw new ArgumentException("Destination is the current fleet location", nameof(destination));
         var target = state[destination];
         if (target.IsLand) throw new ArgumentException("Destination is land", nameof(destination));
+        bool fight = action == MapAction.Fight;
+        bool mystery = action == MapAction.Mystery;
         bool enemy = target.IsEnemy || target.IsSiren || target.IsBoss || target.IsFortress || target.IsCaughtBySiren;
         if (fight && (!enemy || target.IsPortal))
             throw new ArgumentException("Combat destination must have an observed enemy", nameof(destination));
+        if (mystery && (!target.IsMystery || enemy || target.IsPortal))
+            throw new ArgumentException("Mystery destination must have an observed mystery", nameof(destination));
         if (target.IsMaze || target.IsMechanismTrigger || target.IsMechanismBlock ||
-            (!fight && enemy) || target.IsMystery || target.IsAmmo || target.IsCarrier || target.IsFleet)
+            (!fight && enemy) || (target.IsMystery && !mystery) || target.IsAmmo || target.IsCarrier || target.IsFleet)
             throw new NotSupportedException("Destination requires a map interaction that is not committed by ordinary movement");
         Cell landing = target.IsPortal
             ? target.PortalLink ?? throw new InvalidDataException("Portal has no linked exit") : destination;
@@ -57,9 +66,19 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
                 MapMoveOutcome.UnsupportedEncounter, result);
         bool combatConfirmed = result.Combats.Length == 1 &&
             result.Combats[0] is { Return: CombatReturn.InMap, Rank.IsWinningRank: true };
-        if (result.HandledEncounters.Any(kind => kind is not (MapEncounterKind.AirRaid or MapEncounterKind.Combat)) ||
-            (fight ? !combatConfirmed || result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) != 1 :
-                result.HandledEncounters.Contains(MapEncounterKind.Combat) || !result.Combats.IsEmpty))
+        bool interactionsConfirmed = action switch
+        {
+            MapAction.Move => result.HandledEncounters.All(kind => kind == MapEncounterKind.AirRaid) &&
+                result.Combats.IsEmpty,
+            MapAction.Fight => combatConfirmed &&
+                result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
+                result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid),
+            MapAction.Mystery => result.Combats.IsEmpty &&
+                result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) == 1 &&
+                result.HandledEncounters.All(kind => kind is MapEncounterKind.ItemPopup or MapEncounterKind.AirRaid),
+            _ => false
+        };
+        if (!interactionsConfirmed)
         {
             camera.Invalidate();
             return new(MapMoveOutcome.UnsupportedEncounter, result);
@@ -69,12 +88,14 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         {
             bool siren = fight && target.IsSiren;
             bool cleared = fight && target.MayEnemy;
+            int mysteryCount = mystery ? checked(state.MysteryCount + 1) : state.MysteryCount;
             if (fight) state.CommitBattle(siren);
             state[origin].IsFleet = false;
             state.ResetCurrentFleet();
             landingGrid.WipeOut();
             if (cleared) landingGrid.IsCleared = true;
             landingGrid.IsFleet = landingGrid.IsCurrentFleet = true;
+            state.MysteryCount = mysteryCount;
             if (state.FleetIndex == 1) state.Fleet1Location = landing;
             else state.Fleet2Location = landing;
             state.Paths.ComputeFleetCosts(
