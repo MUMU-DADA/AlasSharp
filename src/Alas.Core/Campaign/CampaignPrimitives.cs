@@ -1176,7 +1176,6 @@ public static class CampaignPrimitives
     /// </summary>
     private static bool CheckAccessibility(ICampaignPrimitiveHost host, CampaignGrid grid, int fleetIndex)
     {
-        RecordInvocation(host, "check_accessibility");
         if (fleetIndex == host.FleetCurrentIndex) return grid.IsAccessible;
         var field = CampaignPathfinder.FindPathInitial(host.Grids, FleetStart(host, fleetIndex),
                                                       host.Config.MapHasAmbush, hasEnemy: true);
