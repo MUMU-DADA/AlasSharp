@@ -2,14 +2,6 @@ using Alas.Engine.Rules;
 
 namespace Alas.Engine.Runtime;
 
-public sealed class CellState
-{
-    public bool IsEnemy { get; set; }
-    public bool IsSiren { get; set; }
-    public bool IsFortress { get; set; }
-    public bool IsBoss { get; set; }
-}
-
 /// <summary>Owned by one sortie. Declarations never set observed enemy or boss flags.</summary>
 public sealed class CampaignState
 {
@@ -21,11 +13,14 @@ public sealed class CampaignState
     public CampaignState(MapDefinition map)
     {
         Map = map;
-        Cells = Array.AsReadOnly(Enumerable.Range(0, map.Tiles.Length).Select(_ => new CellState()).ToArray());
+        Cells = Array.AsReadOnly(map.Tiles.Select((tile, index) =>
+            new CellState(new Cell(index % map.Shape.Column + 1, index / map.Shape.Column + 1), tile) { Weight = 10 }).ToArray());
     }
     public CellState this[Cell cell] => Cells[Map.IndexOf(cell)];
     public bool HasBoss => Cells.Any(c => c.IsBoss);
     public bool HasNonBossEnemy => Cells.Any(c => !c.IsBoss && (c.IsEnemy || c.IsSiren || c.IsFortress));
+    public void ResetMap() { foreach (var cell in Cells) cell.Reset(); }
+    public void ResetCurrentFleet() { foreach (var cell in Cells) cell.IsCurrentFleet = false; }
 }
 
 public sealed record CampaignContext(CampaignState State, CampaignConfiguration Config, ICampaignOperations Operations);

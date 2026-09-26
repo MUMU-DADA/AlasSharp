@@ -28,8 +28,9 @@ public readonly record struct Cell(int Column, int Row)
     }
 }
 
-// Tokens describe possibilities, never observations. Keep ME/Me distinct.
-public enum MapTile { Water, Land, Spawn, Enemy, LowPriorityEnemy, Boss, Mystery, Ammo }
+// Tokens describe possibilities, never observations. Preserve ME/Me spelling;
+// GridInfo.decode uppercases both, so LowPriorityEnemy has no separate runtime priority.
+public enum MapTile { Water, Land, Spawn, Enemy, LowPriorityEnemy, Boss, Mystery, Ammo, SubmarineSpawn, Siren }
 public sealed record SpawnWave(int Battle, int Enemy = 0, int Mystery = 0, int Boss = 0);
 public sealed record SourceFile(string Path, string Sha256);
 
@@ -57,7 +58,7 @@ public sealed class MapDefinition
                 {
                     "--" => MapTile.Water, "++" => MapTile.Land, "SP" => MapTile.Spawn,
                     "ME" => MapTile.Enemy, "Me" => MapTile.LowPriorityEnemy, "MB" => MapTile.Boss,
-                    "MM" => MapTile.Mystery, "MA" => MapTile.Ammo,
+                    "MM" => MapTile.Mystery, "MA" => MapTile.Ammo, "__" => MapTile.SubmarineSpawn, "MS" => MapTile.Siren,
                     _ => throw new NotSupportedException($"Unported map token: {token}")
                 });
         }

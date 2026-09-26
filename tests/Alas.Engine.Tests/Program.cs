@@ -100,6 +100,13 @@ try
     await Throws<IOException>(() => application.IsRunningAsync(default).AsTask(), "Unknown foreground silently accepted");
     Console.WriteLine($"Local engine/transport checks passed: {checks}");
 
+    if (args is ["--grid", var gridPython, var gridUpstream, var gridArtifacts])
+    {
+        string folder = Path.GetFullPath(gridArtifacts);
+        Directory.CreateDirectory(folder);
+        await GridChecks.RunAsync(Path.GetFullPath(gridPython), Path.GetFullPath(gridUpstream), folder);
+        return 0;
+    }
     if (args is ["--data-key", var taskPython, var taskUpstream, var taskArtifacts])
     {
         string folder = Path.GetFullPath(taskArtifacts);
