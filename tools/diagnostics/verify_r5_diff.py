@@ -14,8 +14,8 @@
   - 只有上游用到的原语（`clear_enemy`，上游会额外打包装层表头）与只有 C# 用到的原语（`withdraw`）
     被如实列出——这类差异是**轨迹粒度/状态来源**造成的，不是引擎错误；
   - 没有"目标不一致"（本夹具两边打同一格）；
-  - **运行目录入口**（`--run`）：临时造一个运行目录（`queue.json` + 目录内日志），核对它自己能解析出
-    章节与日志并给出同样的两层结论——真机验证时就不用再手填 `--chapter/--level/--log`；
+  - **运行目录入口**（`--run`）：临时造运行目录，核对唯一局部日志可用；两个局部日志必须报歧义；
+    只有 queue/shadow 或只有 queue 时必须失败，即使共享引擎目录存在日志也不能猜归属；
   - 帧可用时（`data/fixtures/inmap_3-1.png`）额外跑一次帧驱动对照，缺帧则跳过并说明。
 
 只做离线对照：不连设备、不改变任何运行状态。
@@ -34,6 +34,7 @@ DETECTION = ROOT / "tools" / "diagnostics" / "fixtures" / "detection-3-1.json"
 FRAME = ROOT / "data" / "fixtures" / "inmap_3-1.png"
 SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
 RUN_DIR = ROOT / ".runtime" / "r5-probe" / "run-dir-fixture"
+SHARED_REPO = ROOT / ".runtime" / "r5-probe" / "shared-engine"
 # 真机口径：硬模式 1-4 的一次真实运行日志 + 同关卡的现场帧（都在忽略目录；两者不是同一局）
 REAL_LOG = ROOT / "data" / "s3_native_1_4.log"
 REAL_FRAME = ROOT / "data" / "fixtures" / "map_hard_1_4.png"
@@ -105,32 +106,70 @@ def main() -> int:
         skipped.append(f"缺 {FRAME.relative_to(ROOT)}（忽略目录），跳过帧用例")
         frame_note = "帧用例：跳过"
 
-    # 运行目录入口：造一个最小运行目录（queue.json + 目录内日志），核对 --run 能自解析
+    # 运行目录入口：只允许显式 --log 或唯一局部日志。shared-engine/log 下的文件
+    # 刻意存在，用来证明时间窗/latest/upstream_log 回退已被禁止。
     if RUN_DIR.exists():
         shutil.rmtree(RUN_DIR)
-    RUN_DIR.mkdir(parents=True)
-    (RUN_DIR / "queue.json").write_text(json.dumps({
-        "tasks": [{"id": "fixture", "kind": "campaign_batch", "required": True,
-                   "input": {"chapters": ["campaign.campaign_main.campaign_3_1"], "clear_all": False}}],
-    }, ensure_ascii=False), encoding="utf-8")
-    shutil.copyfile(LOG, RUN_DIR / "upstream.log")
-    run_completed = subprocess.run(
-        [str(SERVER), "r5-diff", "--run", str(RUN_DIR), "--detection", str(DETECTION),
-         "--fleet-1", "A1", "--json"],
-        cwd=ROOT, capture_output=True, text=True, timeout=600, encoding="utf-8", errors="replace")
-    run_text = run_completed.stdout + run_completed.stderr
-    run_start = run_text.find("{")
-    run_payload = json.loads(run_text[run_start:]) if run_start >= 0 else None
-    if run_completed.returncode not in (0, 1):
-        problems.append(f"运行目录用例退出码 {run_completed.returncode}：{run_text.strip().splitlines()[-3:]}")
-    if run_payload is None:
-        problems.append("运行目录用例没有解析到 JSON 输出")
+    if SHARED_REPO.exists():
+        shutil.rmtree(SHARED_REPO)
+    SHARED_REPO.mkdir(parents=True)
+    (SHARED_REPO / "log").mkdir()
+    shutil.copyfile(LOG, SHARED_REPO / "log" / "shared-latest.txt")
+
+    def make_run(name: str, local_logs: tuple[str, ...] = (), shadow: bool = False) -> pathlib.Path:
+        path = RUN_DIR / name
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "queue.json").write_text(json.dumps({
+            "tasks": [{"id": "fixture", "kind": "campaign_batch", "required": True,
+                       "input": {"chapters": ["campaign.campaign_main.campaign_3_1"], "clear_all": False}}],
+        }, ensure_ascii=False), encoding="utf-8")
+        for filename in local_logs:
+            shutil.copyfile(LOG, path / filename)
+        if shadow:
+            (path / "shadow-observation.json").write_text(json.dumps({
+                "upstream_log": "shared-latest.txt", "hooks": {"matched": 2, "mismatched": 0}
+            }), encoding="utf-8")
+        return path
+
+    def run_directory(path: pathlib.Path, explicit_log: pathlib.Path | None = None) -> tuple[int, dict | None, str]:
+        extra = ["--log", str(explicit_log)] if explicit_log is not None else []
+        completed = subprocess.run(
+            [str(SERVER), "r5-diff", "--run", str(path), "--repo", str(SHARED_REPO),
+             "--detection", str(DETECTION), "--fleet-1", "A1", *extra, "--json"],
+            cwd=ROOT, capture_output=True, text=True, timeout=600,
+            encoding="utf-8", errors="replace")
+        text = completed.stdout + completed.stderr
+        start = text.find("{")
+        payload = json.loads(text[start:]) if start >= 0 else None
+        return completed.returncode, payload, text
+
+    unique_code, unique_payload, unique_text = run_directory(make_run("unique", ("upstream.log",)))
+    if unique_code not in (0, 1) or unique_payload is None:
+        problems.append(f"唯一局部日志用例应成功解析，实际退出码 {unique_code}：{unique_text.strip().splitlines()[-3:]}")
     else:
-        if run_payload["level"] != "campaign_main/campaign_3_1":
-            problems.append(f"运行目录用例应从 queue.json 解析出 campaign_3_1，实际 {run_payload['level']}")
-        problems += check(run_payload, run_text, "运行目录用例")
-    if "章节来自 queue.json" not in run_text:
-        problems.append("运行目录用例应说明章节来源（解析来源必须打印，不能隐式猜）")
+        if unique_payload["level"] != "campaign_main/campaign_3_1":
+            problems.append(f"唯一局部日志用例应从 queue.json 解析关卡，实际 {unique_payload['level']}")
+        problems += check(unique_payload, unique_text, "唯一局部日志用例")
+    if "日志来自运行目录内唯一的日志文件" not in unique_text:
+        problems.append("唯一局部日志用例应报告局部日志来源")
+
+    explicit_code, explicit_payload, explicit_text = run_directory(
+        make_run("explicit"), explicit_log=LOG)
+    if explicit_code not in (0, 1) or explicit_payload is None or "日志来自 --log" not in explicit_text:
+        problems.append(f"显式 --log 应允许没有局部日志的运行目录，实际退出码 {explicit_code}：{explicit_text.strip().splitlines()[-3:]}")
+
+    ambiguous_code, ambiguous_payload, ambiguous_text = run_directory(
+        make_run("ambiguous", ("first.log", "second.txt")))
+    if ambiguous_code != 1 or ambiguous_payload is not None or "多个日志候选" not in ambiguous_text:
+        problems.append(f"多个局部日志必须因歧义失败，实际退出码 {ambiguous_code}：{ambiguous_text.strip().splitlines()[-3:]}")
+
+    shadow_code, shadow_payload, shadow_text = run_directory(make_run("shadow-only", shadow=True))
+    if shadow_code != 1 or shadow_payload is not None or "没有局部动作日志" not in shadow_text:
+        problems.append(f"只有 queue+shadow 必须失败且不能回退 upstream_log，实际退出码 {shadow_code}：{shadow_text.strip().splitlines()[-3:]}")
+
+    empty_code, empty_payload, empty_text = run_directory(make_run("empty"))
+    if empty_code != 1 or empty_payload is not None or "没有局部动作日志" not in empty_text:
+        problems.append(f"只有 queue 即使共享目录有日志也必须失败，实际退出码 {empty_code}：{empty_text.strip().splitlines()[-3:]}")
 
     # 真机口径（可跳过）：真实运行日志 + 同关卡现场帧。两者不是同一局，所以只断言
     # 决策层一致与"目标格子有交集"，不断言动作完全一致。
@@ -168,8 +207,7 @@ def main() -> int:
         skipped.append("缺 data/s3_native_1_4.log 或 data/fixtures/map_hard_1_4.png（忽略目录），跳过真机口径用例")
         real_note = "真机口径用例：跳过"
 
-    print(f"[r5-diff] 识别夹具用例：决策层无漂移、动作层两边都打 D2、目标交集为真；"
-          f"运行目录用例：已跑；{real_note}；{frame_note}")
+    print(f"[r5-diff] 已执行识别夹具与运行目录日志归属用例；{real_note}；{frame_note}")
     for note in skipped:
         print(f"  跳过：{note}")
     if problems:
@@ -177,7 +215,7 @@ def main() -> int:
         for item in problems:
             print(f"  - {item}")
         return 1
-    print("PASS: 统一对照同时覆盖决策层（钩子）与动作层（原语/目标），运行目录入口可自解析，差异如实列出")
+    print("PASS: 统一对照覆盖决策层（钩子）与动作层（原语/目标），运行目录严格按日志归属解析，差异如实列出")
     return 0
 
 
