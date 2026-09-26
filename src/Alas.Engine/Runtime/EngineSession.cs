@@ -73,6 +73,13 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService
     public MapMovement CreateMapMovement(MapCamera camera, CampaignConfiguration configuration)
         => new(camera.State, configuration, camera, CreateMapArrivalCheck(camera, configuration));
     public CombatRankProbe CreateCombatRankProbe() => new(Driver);
+    public CombatFlow CreateCombatFlow(StageEntranceKind entrances = StageEntranceKind.Normal)
+    {
+        var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
+        var observations = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No combat screenshot"),
+            _vision, _assets, Driver.Server, entrances);
+        return new(Driver, recovery, recovery, observations);
+    }
     public async ValueTask<MapVisualObservation> ObserveMapAsync(CampaignRule rule, CancellationToken token)
     {
         var configuration = rule.Configure(new());

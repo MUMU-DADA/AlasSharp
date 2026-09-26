@@ -35,6 +35,12 @@ public sealed class CombatRankProbe(IUiDriver ui)
     private CombatRankEvidence? _evidence;
     public CombatRankEvidence? Evidence => _evidence;
 
+    public static AssetRule AssetFor(CombatRankEvidence evidence)
+    {
+        var candidates = evidence.Source == CombatRankSource.BattleStatus ? BattleStatus : Experience;
+        return candidates.First(pair => pair.Rank == evidence.Rank && pair.Asset.Id == evidence.AssetId).Asset;
+    }
+
     public async ValueTask<CombatRankEvidence?> ObserveBattleStatusAsync(CancellationToken token = default)
         => await ObserveAsync(BattleStatus, CombatRankSource.BattleStatus, token);
 

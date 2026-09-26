@@ -163,6 +163,11 @@ try
         await CombatRankChecks.RunAsync();
         return 0;
     }
+    if (args is ["--combat-flow"])
+    {
+        await CombatFlowChecks.RunAsync();
+        return 0;
+    }
     if (args is ["--maps", var mapsPython, var mapsUpstream, var mapsArtifacts])
     {
         string folder = Path.GetFullPath(mapsArtifacts);
