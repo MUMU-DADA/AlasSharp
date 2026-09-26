@@ -199,8 +199,12 @@ def main():
             call("clear_all_mystery", ignore={"__local_grids__": "ignored"}), ret(True)],
             grids=[{"location": "A1", "is_mystery": True, "cost": 0},
                    {"location": "B1", "is_mystery": True, "cost": 1}])
-        if value and (not value["completed"] or value["actions"] != ["clear_chosen_mystery(B1)"]):
-            failures.append(f"local_ignore_collection: ignore was lost, got {value['actions']}")
+        # This recorder has no post-action frames: B1 remains a target. Ignoring
+        # A1 must hold on every iteration, and the incomplete loop must not return.
+        if value and (value["completed"] or value["return"] is not None
+                or "clear_all_mystery" not in (value["blocked"] or "")
+                or value["actions"] != ["clear_chosen_mystery(B1)"] * 100):
+            failures.append("local_ignore_collection: ignore/budget refusal was lost")
 
         checked += 1
         value = run("tuple_refocus", [call("handle_boss_appear_refocus", {"__tuple__": [1, -1]})])

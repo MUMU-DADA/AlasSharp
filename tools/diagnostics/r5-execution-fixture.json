@@ -1335,7 +1335,7 @@
       }
     },
     {
-      "name": "sp battle_0：没有靠近的敌人 → fleet_2_protect 游走一轮后干跑停止，交给 clear_siren",
+      "name": "sp battle_0：固定状态无敌人靠近 → fleet_2_protect 按原生游走 20 轮，交给 clear_siren",
       "chapter": "event_20200820_cn",
       "level": "sp",
       "hook": "battle_0",
@@ -1364,7 +1364,14 @@
       "expect": {
         "return": true,
         "action_contains": "clear_chosen_enemy(S1, expected=siren)",
-        "log_contains": "干跑宿主不刷新地图状态"
+        "log_contains": "fleet_2_protect no siren approaching",
+        "actions": [
+          "goto(N1)", "goto(N1)", "goto(N1)", "goto(N1)", "goto(N1)",
+          "goto(N1)", "goto(N1)", "goto(N1)", "goto(N1)", "goto(N1)",
+          "goto(N1)", "goto(N1)", "goto(N1)", "goto(N1)", "goto(N1)",
+          "goto(N1)", "goto(N1)", "goto(N1)", "goto(N1)", "goto(N1)",
+          "clear_chosen_enemy(S1, expected=siren)"
+        ]
       }
     },
     {

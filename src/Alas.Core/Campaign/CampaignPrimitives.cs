@@ -463,7 +463,7 @@ public static class CampaignPrimitives
             },
         });
 
-    /// <summary>干跑时的循环上限，避免"清不完的神秘格子"把进程拖死。</summary>
+    /// <summary>实验执行器的清理动作预算；耗尽仍有目标时明确阻塞，不能视为原生正常返回。</summary>
     private const int MaxMysteryRounds = 100;
 
     /// <summary>上游 <c>Map.clear_enemy(**kwargs)</c>。</summary>
@@ -844,7 +844,7 @@ public static class CampaignPrimitives
 
     /// <summary>
     /// 上游 <c>Map.fleet_2_protect()</c>：道中队在 boss 队附近游走、清掉靠近的塞壬/敌人。
-    /// 上游最多循环 20 次（每次 goto 后重新扫描地图）；干跑宿主不改变地图状态，因此一轮后即停并记日志。
+    /// 上游最多循环 20 次；每次都按宿主当前地图重选，录制宿主也保留完整轮数。
     /// </summary>
     public static bool Fleet2Protect(ICampaignPrimitiveHost host)
     {
@@ -881,12 +881,8 @@ public static class CampaignPrimitives
             }
             host.Log($"fleet_2_protect：游走到 {moveTargets[0].Location}（第 {round + 1} 轮）");
             host.Goto(moveTargets[0]);
-            if (host is RecordingCampaignHost)
-            {
-                host.Log("fleet_2_protect：干跑宿主不刷新地图状态，一轮后停止（真机由识别刷新后继续）");
-                return false;
-            }
         }
+        host.Log("fleet_2_protect no siren approaching");
         return false;
     }
 
@@ -1330,22 +1326,22 @@ public static class CampaignPrimitives
         return false;
     }
 
-    /// <summary>上游 <c>Map.clear_all_mystery(**kwargs)</c>：恒返回假。</summary>
+    /// <summary>上游 <c>Map.clear_all_mystery(**kwargs)</c>：没有可选目标后返回假；预算耗尽明确阻塞。</summary>
     public static bool ClearAllMystery(ICampaignPrimitiveHost host, CampaignTargetOptions? options = null)
     {
         RecordInvocation(host, "clear_all_mystery");
         options = (options ?? new CampaignTargetOptions()) with { Sort = ["cost"] };
-        for (int round = 0; round < MaxMysteryRounds; round++)
+        for (int round = 0; ; round++)
         {
             var grids = new CampaignGridSet(host.Grids).Select(new CampaignGridFilter(IsMystery: true));
             var selected = CampaignTargetSelector.SelectGrids(grids, options);
-            if (selected.IsEmpty) break;
+            if (selected.IsEmpty) return false;
+            if (round >= MaxMysteryRounds)
+                throw new NotSupportedException($"clear_all_mystery：已达到 {MaxMysteryRounds} 次实验动作预算，" +
+                    $"仍有 {selected.Count} 个可选目标，无法确认原生循环结束");
             host.Log($"clear_all_mystery：选中 {selected[0].Location}（第 {round + 1} 轮）");
             host.ClearChosenMystery(selected[0]);
-            // 干跑宿主不会真的改变地图状态：一轮之后即停止，避免死循环（真机由识别刷新状态）。
-            if (host is RecordingCampaignHost) break;
         }
-        return false;
     }
 
     /// <summary>上游 <c>Map.clear_filter_enemy(string, preserve)</c>。</summary>

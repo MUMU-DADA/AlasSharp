@@ -110,6 +110,7 @@ STEPS = [
     ('verify_r5_execution_semantics.py', 'R5 独立 Python 语义/动作对照（分支/返回/局部参数/容器/控制流）', False, 120),
     ('verify_r5_fleet_dispatch.py', 'R5 原生舰队属性分派（配置/同队/覆写/参数/信号，双宿主离线）', False, 180),
     ('verify_r5_clear_returns.py', 'R5 原生清敌返回（目标/短路/末端假值/错误/控制流，无设备）', False, 180),
+    ('verify_r5_primitive_loops.py', 'R5 原语循环（逐动作状态反馈/完整轮数/预算耗尽拒绝，无设备）', False, 180),
     ('verify_r5_super_dispatch.py', 'R5 super 词法绑定缺失拒绝（执行/编码/覆盖统一）', False, 120),
     ('verify_r5_execution.py', 'R5 计划→原语→动作闭环（干跑记录 vs 上游选敌规则）', False, 180),
     ('verify_r5_loop.py', 'R5 关卡循环（run/execute_a_battle/battle_function vs 上游钩子选择规则）', False, 180),
