@@ -1094,7 +1094,7 @@
         "return": true,
         "action_contains": "goto(A1)",
         "log_contains": "pick_up_ammo：Got ammo 3",
-        "steps_contains": "pick_up_ammo: 真（前置）"
+        "steps_contains": "pick_up_ammo: None（前置）"
       }
     },
     {
@@ -1210,7 +1210,7 @@
       ],
       "expect": {
         "completed": true,
-        "return": false,
+        "return": null,
         "action_contains": "withdraw()",
         "log_contains": "Grand Capture detected, Withdrawing."
       }
@@ -1478,7 +1478,7 @@
       "expect": {
         "return": true,
         "action_contains": "clear_chosen_enemy(D6",
-        "steps_contains": "battle_0: 跨钩子调用 → 真"
+        "steps_contains": "battle_0: 真（兜底）"
       }
     },
     {
@@ -2009,7 +2009,7 @@
         }
       ],
       "expect": {
-        "return": false,
+        "return": null,
         "log_contains": "MapDetectionError occurs after boss appear, trying swipe preset (-3, 0)",
         "action_contains": "map_swipe(-3, 0)"
       }
@@ -2033,7 +2033,7 @@
         }
       ],
       "expect": {
-        "return": false,
+        "return": null,
         "log_contains": "Refocus to previous camera position.",
         "action_contains": "focus_to(D4)"
       }

@@ -68,6 +68,11 @@ public sealed class CampaignPlanBattle
     public IReadOnlyDictionary<string, JsonNode?> Parameters { get; init; } =
         new Dictionary<string, JsonNode?>();
 
+    [JsonPropertyName("parameter_order")] public IReadOnlyList<string> ParameterOrder { get; init; } = [];
+    [JsonPropertyName("required_parameters")] public IReadOnlyList<string> RequiredParameters { get; init; } = [];
+    [JsonPropertyName("keyword_only_parameters")] public IReadOnlyList<string> KeywordOnlyParameters { get; init; } = [];
+    [JsonPropertyName("positional_only_parameters")] public IReadOnlyList<string> PositionalOnlyParameters { get; init; } = [];
+
     /// <summary>
     /// 可执行步骤（`plan_complete=true` 时非空）：C# 引擎要执行的计划本体。
     /// `steps` 为空表示该钩子含静态无法表达的部分，原因见 <see cref="Unparsed"/>。
