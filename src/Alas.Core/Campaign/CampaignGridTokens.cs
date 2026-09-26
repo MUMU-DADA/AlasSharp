@@ -58,6 +58,8 @@ public static class CampaignGridTokens
         return new CampaignGrid(
             location,
             IsLand: flag == "is_land",
+            IsSpawnPoint: flag == "is_spawn_point",
+            IsSubmarineSpawnPoint: flag == "is_submarine_spawn_point",
             MayEnemy: mayEnemy,
             MayBoss: mayBoss,
             MayMystery: mayMystery,

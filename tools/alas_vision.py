@@ -2541,6 +2541,17 @@ def op_s3_campaign_info(args):
     return out
 
 
+def _campaign_grid_int(value, field):
+    """C# 网格模型当前是 int32；仅接受无损整数，不能用 int() 截断上游权重。"""
+    import numbers
+
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise TypeError(f'{field} must be an integer value')
+    if not (-2147483648 <= value <= 2147483647) or int(value) != value:
+        raise ValueError(f'{field} is not representable as int32')
+    return int(value)
+
+
 def op_s3_campaign_grids(args):
     """导出**上游地图的实时状态**（只读）：每格的标志与成本场。
 
@@ -2550,7 +2561,9 @@ def op_s3_campaign_grids(args):
     是自己的一份模型，**每次设备动作之后必须重新取一次**，否则后续决策基于过期状态。
     这是 `loop=csharp` 接线的硬前置（见 docs/upstream-engine-rewrite.md 的 P3 步骤 2）。
 
-    只读：不改状态、不发设备动作、不需要 allow_actions。
+    只读：不改状态、不发设备动作、不需要 allow_actions。字段必须存在且类型匹配；
+    标志只省略已确认为 False 的项，enemy_genre 的 None 保留为 JSON null。
+    当前 C# 权重模型是 int32，浮点整数值可无损转换，分数权重显式拒绝。
     """
     inst = _CAMPAIGN.get('obj')
     if inst is None:
@@ -2561,6 +2574,7 @@ def op_s3_campaign_grids(args):
     flags = ('is_land', 'is_enemy', 'is_boss', 'is_siren', 'is_fortress', 'is_mystery',
              'is_ammo', 'is_fleet', 'is_current_fleet', 'is_submarine', 'is_missile_attack',
              'is_cleared', 'is_caught_by_siren', 'is_mechanism_block', 'is_spawn_point',
+             'is_submarine_spawn_point',
              'may_enemy', 'may_boss', 'may_mystery', 'may_ammo', 'may_siren', 'may_ambush',
              'may_bouncing_enemy', 'is_flare', 'is_mechanism_trigger')
     grids = []
@@ -2568,23 +2582,46 @@ def op_s3_campaign_grids(args):
         items = list(grid_map.grids.items())
     except Exception as e:
         return {'error': f'取 map.grids 失败: {type(e).__name__}: {e}'}
-    for loca, grid in items:
-        item = {'loca': [int(loca[0]), int(loca[1])],
-                'str': str(grid.str),
-                'flags': [name for name in flags if bool(getattr(grid, name, False))],
-                'weight': int(getattr(grid, 'weight', 0)),
-                'enemy_scale': int(getattr(grid, 'enemy_scale', 0) or 0),
-                'enemy_genre': str(getattr(grid, 'enemy_genre', '') or '')}
-        for key in ('cost', 'cost_1', 'cost_2'):
-            try:
-                item[key] = int(getattr(grid, key))
-            except Exception:
-                pass
-        grids.append(item)
-    shape = getattr(grid_map, 'shape', None)
-    return {'grids': grids,
-            'shape': [int(shape[0]) + 1, int(shape[1]) + 1] if shape else None,
-            'count': len(grids)}
+    try:
+        import numpy as np
+
+        seen = set()
+        for loca, grid in items:
+            if len(loca) != 2:
+                raise ValueError('loca must have two coordinates')
+            coordinates = [_campaign_grid_int(value, 'loca') for value in loca]
+            coordinate = tuple(coordinates)
+            if coordinate in seen:
+                raise ValueError(f'duplicate grid coordinate {coordinate}')
+            seen.add(coordinate)
+            if not (0 <= coordinates[0] <= 25 and 0 <= coordinates[1] < 2147483647):
+                raise ValueError('loca is outside the C# node representation')
+            names = []
+            for name in flags:
+                value = getattr(grid, name)
+                if not isinstance(value, (bool, np.bool_)):
+                    raise TypeError(f'{name} must be boolean')
+                if value:
+                    names.append(name)
+            text, genre = grid.str, grid.enemy_genre
+            if not isinstance(text, str):
+                raise TypeError('str must be a string')
+            if genre is not None and not isinstance(genre, str):
+                raise TypeError('enemy_genre must be a string or None')
+            item = {'loca': coordinates, 'str': text, 'flags': names, 'enemy_genre': genre}
+            for key in ('weight', 'enemy_scale', 'cost', 'cost_1', 'cost_2'):
+                item[key] = _campaign_grid_int(getattr(grid, key), key)
+            grids.append(item)
+        shape = grid_map.shape
+        if shape is None or len(shape) != 2:
+            raise ValueError('shape must have two coordinates')
+        shape = [_campaign_grid_int(value, 'shape') + 1 for value in shape]
+        if not (1 <= shape[0] <= 26 and 1 <= shape[1] <= 2147483647):
+            raise ValueError('shape is outside the C# node representation')
+        return {'grids': grids, 'shape': shape, 'count': len(grids)}
+    except Exception as e:
+        return {'error': f'导出 map.grids 失败: {type(e).__name__}: {e}',
+                'traceback_tail': traceback.format_exc().splitlines()[-12:]}
 
 
 def op_s3_campaign_call(args):
@@ -2611,7 +2648,8 @@ def op_s3_campaign_call(args):
         parts = name.split('.')
         writable_flags = {'is_flare', 'is_caught_by_siren', 'may_bouncing_enemy',
                           'is_cleared', 'is_enemy', 'may_siren', 'may_enemy', 'may_boss',
-                          'may_mystery', 'may_ambush', 'may_ammo'}
+                          'may_mystery', 'may_ambush', 'may_ammo', 'is_spawn_point',
+                          'is_submarine_spawn_point'}
         try:
             value = args['set']
             if len(parts) == 3 and parts[0] == 'map' and parts[2] in writable_flags:
