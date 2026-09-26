@@ -44,19 +44,58 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         return candidates.Length == 0 ? ValueTask.FromResult(false) : FightAsync(Order(candidates)[0], token);
     }
 
-    public ValueTask<bool> ClearBossAsync(CancellationToken token = default)
+    public async ValueTask<bool> ClearBossAsync(CancellationToken token = default)
     {
         var candidates = state.Cells.Where(grid => grid.IsBoss && grid.IsAccessible ||
             grid.MayBoss && grid.IsCaughtBySiren).Distinct().ToArray();
         if (candidates.Length == 0)
             candidates = state.Cells.Where(grid => grid.MayBoss && grid.IsEnemy && grid.IsAccessible).ToArray();
-        if (candidates.Length == 0)
+        if (candidates.Length > 0) await FightAsync(Order(candidates)[0], token);
+        return await ClearPotentialBossAsync(token);
+    }
+
+    private async ValueTask<bool> ClearPotentialBossAsync(CancellationToken token)
+    {
+        var potential = state.Cells.Where(grid => grid.MayBoss).ToArray();
+        var tried = new HashSet<Cell>();
+        while (true)
         {
-            if (state.Cells.Any(grid => grid.MayBoss))
-                throw new NotSupportedException("Potential boss search requires an unobserved-grid interaction");
-            return ValueTask.FromResult(false);
+            var current = state.FleetIndex == 1 ? state.Fleet1Location : state.Fleet2Location;
+            var target = Order(potential.Where(grid => grid.IsAccessible && grid.Location != current &&
+                !tried.Contains(grid.Location))).FirstOrDefault();
+            if (target is null) break;
+            var route = state.Paths.FindRoute(target.Location, turningOptimize: configuration.HasAmbush);
+            if (!route.IsReachable || route.Waypoints.Count == 0)
+                throw new InvalidOperationException("Potential boss has no confirmed fleet route");
+            int previousBattles = state.BattleCount;
+            for (int index = 0; index < route.Waypoints.Count; index++)
+            {
+                token.ThrowIfCancellationRequested();
+                var cell = route.Waypoints[index];
+                bool final = index == route.Waypoints.Count - 1;
+                var options = potential.Length == 1
+                    ? new MapArrivalOptions(TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(20)) : null;
+                var result = final ? await movement.ProbeBossAsync(cell, options, token) :
+                    await movement.MoveAsync(cell, token: token);
+                if (result.Outcome == MapMoveOutcome.StageReturned)
+                {
+                    StageReturn = result.Arrival;
+                    throw new CampaignEndedException("Winning boss search returned to stage; sortie settlement remains unverified");
+                }
+                if (result.Outcome != MapMoveOutcome.Committed)
+                    throw new CampaignScriptException($"Potential boss route to {cell} ended as {result.Outcome}");
+            }
+            tried.Add(target.Location);
+            if (state.BattleCount > previousBattles)
+            {
+                await ScanAfterCombatAsync(token);
+                return true;
+            }
         }
-        return FightBossAsync(Order(candidates)[0], token);
+        if (potential.Any(grid => !grid.IsAccessible && grid.Location !=
+            (state.FleetIndex == 1 ? state.Fleet1Location : state.Fleet2Location)))
+            throw new NotSupportedException("Potential boss roadblock clearing is not yet ported");
+        return false;
     }
 
     private static CellState[] FirstPresentScale(CellState[] candidates, int[] priority)
@@ -71,12 +110,6 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
 
     private static CellState[] Order(IEnumerable<CellState> candidates)
         => candidates.OrderBy(grid => grid.Weight).ThenBy(grid => grid.Cost).ToArray();
-
-    private async ValueTask<bool> FightBossAsync(CellState target, CancellationToken token)
-    {
-        await FightAsync(target, token);
-        throw new NotSupportedException("Boss combat returned to map; potential boss search is not yet ported");
-    }
 
     private async ValueTask<bool> FightAsync(CellState target, CancellationToken token)
     {
@@ -99,12 +132,17 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
             if (result.Outcome != MapMoveOutcome.Committed)
                 throw new CampaignScriptException($"Map movement to {cell} ended as {result.Outcome}");
         }
+        await ScanAfterCombatAsync(token);
+        return true;
+    }
+
+    private async ValueTask ScanAfterCombatAsync(CancellationToken token)
+    {
         await scanner.ScanAsync(state.Progress, TimeSpan.FromMinutes(2),
             fleet: new FleetScanOptions(Fleet2Enabled: configuration.Fleet2 != 0), token: token);
         var current = state.FleetIndex == 1 ? state.Fleet1Location : state.Fleet2Location;
         if (current is not { } location) throw new InvalidDataException("Combat completed without a fleet location");
         state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location), new(2, state.Fleet2Location)],
             location, configuration.HasAmbush);
-        return true;
     }
 }

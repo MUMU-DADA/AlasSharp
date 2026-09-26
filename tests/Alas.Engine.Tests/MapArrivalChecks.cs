@@ -305,6 +305,51 @@ internal static class MapArrivalChecks
             state.Fleet1Location == new Cell(1, 1) && moved.Arrival.Combats is [ { Return: CombatReturn.InStage } ],
             "Boss stage return was treated as a map move or discarded its settlement evidence");
 
+        clock = new TestClock(); state = State();
+        state[destination].MayBoss = true;
+        camera = new Camera(clock, [new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        moved = await new MapMovement(state, new(), camera, () => arrival).ProbeBossAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.Committed && state.BattleCount == 0 &&
+            state.Fleet1Location == destination && moved.Arrival.Combats.IsEmpty,
+            "Empty potential-boss grid was counted as a battle");
+
+        clock = new TestClock(); state = State();
+        state[destination].MayBoss = true;
+        camera = new Camera(clock, [new(false, default)]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
+            new Probe(MapEncounterKind.Combat), new Handler(camera, clock, combatReturn: CombatReturn.InStage));
+        moved = await new MapMovement(state, new(), camera, () => arrival).ProbeBossAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.StageReturned && state.BattleCount == 0 &&
+            state.Fleet1Location == new Cell(1, 1) &&
+            moved.Arrival.Combats is [ { Return: CombatReturn.InStage, Rank.IsWinningRank: true } ],
+            "Winning hidden-boss encounter lost stage-return evidence or committed map state");
+
+        foreach (var losingRank in new CombatRank?[] { null, CombatRank.C })
+        {
+            clock = new TestClock(); state = State();
+            state[destination].MayBoss = true;
+            camera = new Camera(clock, [new(false, default)]);
+            arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
+                new Probe(MapEncounterKind.Combat), new Handler(camera, clock,
+                    combatReturn: CombatReturn.InStage, rank: losingRank));
+            moved = await new MapMovement(state, new(), camera, () => arrival).ProbeBossAsync(destination, options);
+            Check(moved.Outcome == MapMoveOutcome.UnsupportedEncounter && state.BattleCount == 0 &&
+                state.Fleet1Location == new Cell(1, 1) && state[destination].MayBoss,
+                "Hidden-boss stage return with missing or losing rank changed sortie state");
+        }
+
+        clock = new TestClock(); state = State();
+        state[destination].MayBoss = true;
+        camera = new Camera(clock, [new(true, default), new(true, default), new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
+            new Probe(MapEncounterKind.Combat), new Handler(camera, clock));
+        moved = await new MapMovement(state, new(), camera, () => arrival).ProbeBossAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.Committed && state.BattleCount == 1 &&
+            state.AmmoCount == 2 && state.Fleet1Location == destination &&
+            moved.Arrival.Combats is [ { Return: CombatReturn.InMap } ],
+            "Winning hidden-boss combat returning to map was not committed as a battle");
+
         foreach (var rank in new CombatRank?[] { null, CombatRank.C })
         {
             clock = new TestClock(); state = State();

@@ -85,24 +85,52 @@ internal static class CampaignMapCombatChecks
         state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
         camera = new Camera(state);
         combat = Create(state, new(), camera);
-        bool fallbackRequired = false;
-        try { await combat.ClearBossAsync(); }
-        catch (NotSupportedException) { fallbackRequired = true; }
-        Check(fallbackRequired && combat.StageReturn is null && state.BattleCount == 1,
-            "Boss return to map skipped the unported potential-boss search");
+        Check(!await combat.ClearBossAsync() && combat.StageReturn is null && state.BattleCount == 1 &&
+            camera.Scans == 1 && state.Fleet1Location == new Cell(2, 1),
+            "Boss return to map did not continue the upstream potential-spawn search");
 
         state = Prepare(map);
         state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
         camera = new Camera(state);
         combat = Create(state, new(), camera);
-        fallbackRequired = false;
+        Check(!await combat.ClearBossAsync() && camera.Taps == 1 && state.BattleCount == 0 &&
+            state.Fleet1Location == new Cell(2, 1),
+            "Empty potential-boss spawn was misclassified as observed combat");
+
+        map = new MapDefinition("C1", "SP MB MB", ["A1"], [], [new SpawnWave(0, Boss: 1)]);
+        state = Prepare(map);
+        state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
+        camera = new Camera(state) { PotentialBossCombat = new(3, 1), ReturnStage = true };
+        combat = Create(state, new(), camera);
+        bool potentialEnded = false;
         try { await combat.ClearBossAsync(); }
-        catch (NotSupportedException) { fallbackRequired = true; }
-        Check(fallbackRequired && camera.Taps == 0 && state.BattleCount == 0,
-            "Unobserved potential boss was clicked as an observed combat target");
+        catch (CampaignEndedException) { potentialEnded = true; }
+        Check(potentialEnded && camera.Taps == 2 && state.BattleCount == 0 &&
+            state.Fleet1Location == new Cell(2, 1) &&
+            combat.StageReturn?.Combats is [ { Return: CombatReturn.InStage, Rank.IsWinningRank: true } ],
+            "Potential-boss search did not probe empty spawn before confirmed boss stage return");
+
+        state = Prepare(map);
+        state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
+        camera = new Camera(state) { PotentialBossCombat = new(3, 1) };
+        combat = Create(state, new(), camera);
+        Check(await combat.ClearBossAsync() && camera.Taps == 2 && camera.Scans == 1 &&
+            state.BattleCount == 1 && state.Fleet1Location == new Cell(3, 1),
+            "Winning potential-boss combat returning to map was not scanned and reported");
+
+        map = new MapDefinition("C1", "SP ++ MB", ["A1"], [], [new SpawnWave(0, Boss: 1)]);
+        state = Prepare(map);
+        state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
+        camera = new Camera(state);
+        combat = Create(state, new(), camera);
+        bool roadblockRequired = false;
+        try { await combat.ClearBossAsync(); }
+        catch (NotSupportedException) { roadblockRequired = true; }
+        Check(roadblockRequired && camera.Taps == 0 && state.BattleCount == 0,
+            "Unported potential-boss roadblock logic clicked an inaccessible spawn");
 
         await ExecutionChecksAsync();
-        Console.WriteLine("Campaign map combat: route, priority, scan and stage-return evidence passed offline; no entry or settlement verification.");
+        Console.WriteLine("Campaign map combat: route, priority, mystery, potential-boss search, scan and stage-return evidence passed offline; no entry or settlement verification.");
     }
 
     private static async Task ExecutionChecksAsync()
@@ -255,6 +283,7 @@ internal static class CampaignMapCombatChecks
         public Cell? Destination { get; private set; }
         public bool ReturnStage { get; init; }
         public bool StageForBoss { get; init; }
+        public Cell? PotentialBossCombat { get; init; }
         public Func<int, Cell, MapScanMode, MapObservation>? ObservationFactory { get; init; }
         public bool ReturningToStage => ReturnStage || StageForBoss && Destination is { } cell && state[cell].IsBoss;
         public CombatRank? Rank { get; init; } = CombatRank.S;
@@ -294,7 +323,8 @@ internal static class CampaignMapCombatChecks
         public ValueTask<bool> InMapAsync(CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(true); }
         public bool IsCombatDestination => Destination is { } cell &&
-            (state[cell].IsEnemy || state[cell].IsBoss || state[cell].IsSiren);
+            (state[cell].IsEnemy || state[cell].IsBoss || state[cell].IsSiren ||
+             PotentialBossCombat == cell && state[cell].MayBoss);
     }
 
     private sealed class Probe(Camera camera) : IMapEncounterProbe
