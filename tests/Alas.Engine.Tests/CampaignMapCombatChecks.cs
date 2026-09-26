@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
 using System.Collections.Immutable;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using Alas.Engine.Devices;
 using Alas.Engine.Rules;
 using Alas.Engine.Runtime;
 using Alas.Engine.Tasks;
@@ -12,7 +15,7 @@ internal static class CampaignMapCombatChecks
     private static void Check(bool value, string message)
     { if (!value) throw new InvalidOperationException(message); }
 
-    public static async Task RunAsync(string upstream)
+    public static async Task RunAsync(string python, string upstream)
     {
         var bytes = await File.ReadAllBytesAsync(Path.Combine(upstream, CampaignMapCombat.Source.Path));
         Check(Convert.ToHexStringLower(SHA256.HashData(bytes)) == CampaignMapCombat.Source.Sha256,
@@ -129,11 +132,11 @@ internal static class CampaignMapCombatChecks
         Check(roadblockRequired && camera.Taps == 0 && state.BattleCount == 0,
             "Unported potential-boss roadblock logic clicked an inaccessible spawn");
 
-        await ExecutionChecksAsync();
+        await ExecutionChecksAsync(python);
         Console.WriteLine("Campaign map combat: route, priority, mystery, potential-boss search, scan and stage-return evidence passed offline; no entry or settlement verification.");
     }
 
-    private static async Task ExecutionChecksAsync()
+    private static async Task ExecutionChecksAsync(string python)
     {
         var map = new MapDefinition("C1", "SP ME MB", ["B1"], ["B1"],
             [new SpawnWave(0, Enemy: 1), new SpawnWave(1, Boss: 1)]);
@@ -175,6 +178,47 @@ internal static class CampaignMapCombatChecks
             result.Evidence["sortie"]?["end_evidence"]?["rank_source"]?.GetValue<string>() == "BATTLE_STATUS_",
             "Campaign task promoted a loop end or stage return into a cleared outcome");
 
+        var compiled = RuleCatalog.Create("campaign_main/campaign_1_1");
+        var settled = CampaignResumeTask.Describe("run", "campaign_run", compiled,
+            new(CampaignLoopExit.Ended, 1, stage), true);
+        Check(settled is { Outcome: TaskOutcome.Succeeded, Reason: "sortie_cleared" } &&
+            settled.Evidence?["settlementVerified"]?.GetValue<bool>() == true &&
+            settled.Evidence["sortie"]?["outcome"]?.GetValue<string>() == "cleared" &&
+            settled.Evidence["sortie"]?["steps"]?[0]?["step"]?.GetValue<string>() == "execute_a_battle",
+            "Verified C# battle status and fresh stage return did not close the sortie contract");
+        await CheckContractAsync(python, settled);
+        await CheckContractAsync(python, result);
+        var observedStage = stage ?? throw new InvalidOperationException("The synthetic combat did not return a stage observation");
+        var lastCombat = observedStage.Combats.Single();
+        foreach (var invalid in new MapArrivalResult?[]
+        {
+            null,
+            observedStage with { FreshFrames = 0 },
+            observedStage with { FrameSequence = 0 },
+            observedStage with { Encounter = MapEncounterKind.None },
+            observedStage with { Outcome = MapArrivalOutcome.MapInterrupted },
+            observedStage with { Combats = [lastCombat with { Rank = null }] },
+            observedStage with { Combats = [lastCombat with { Rank = new CombatRankEvidence(CombatRank.C,
+                CombatRankSource.BattleStatus, UiAssets.Combat.BATTLE_STATUS_C.Id) }] },
+            observedStage with { Combats = [lastCombat with { Rank = new CombatRankEvidence(CombatRank.S,
+                CombatRankSource.Experience, UiAssets.Combat.EXP_INFO_S.Id) }] },
+            observedStage with { Combats = [lastCombat with { Rank = new CombatRankEvidence(CombatRank.S,
+                CombatRankSource.BattleStatus, UiAssets.Combat.BATTLE_STATUS_A.Id) }] },
+            observedStage with { Combats = [lastCombat with { CapturedFrames = 0 }] },
+            observedStage with { HandledEncounters = [MapEncounterKind.ItemPopup, MapEncounterKind.Combat] }
+        })
+        {
+            var uncertain = CampaignResumeTask.Describe("run", "campaign_run", compiled,
+                new(CampaignLoopExit.Ended, 1, invalid), true);
+            Check(uncertain.Outcome == TaskOutcome.Failed &&
+                uncertain.Evidence?["sortie"]?["outcome"]?.GetValue<string>() == "ended_unknown",
+                "Incomplete, stale, losing or unrelated battle evidence was promoted to a clear");
+            await CheckContractAsync(python, uncertain);
+        }
+        Check(CampaignResumeTask.Describe("run", "campaign_run", compiled,
+            new(CampaignLoopExit.Exhausted, 1, stage), true).Outcome == TaskOutcome.Failed,
+            "A stage-return observation without a campaign end was promoted to a clear");
+
         var noReturn = await task.RunAsync(request,
             new TaskContext(null!, null!, null!, TimeSpan.FromMinutes(2),
                 Campaign: new ResumeService(new(CampaignLoopExit.Ended, 0, null))), default);
@@ -200,6 +244,17 @@ internal static class CampaignMapCombatChecks
         catch (InvalidDataException) { rejected = true; }
         Check(rejected && host.Camera is null && !execution.Context.State.IsMapInitialized,
             "Campaign resume entered a map workflow without an observed in-map page");
+    }
+
+    private static async Task CheckContractAsync(string python, TaskResult result)
+    {
+        var sortie = result.Evidence?["sortie"] ?? throw new InvalidDataException("Missing C# sortie evidence");
+        const string script = "import json,sys;sys.path.insert(0,sys.argv[1]);from sortie_contract import evaluate;print(json.dumps(evaluate(json.loads(sys.argv[2]))['violations']))";
+        var output = await new ProcessRunner().RunAsync(python,
+            ["-c", script, Path.GetFullPath("tools"), sortie.ToJsonString()], TimeSpan.FromSeconds(15));
+        if (output.ExitCode != 0) throw new InvalidOperationException("Frozen sortie contract failed: " + output.Error);
+        var violations = JsonSerializer.Deserialize<string[]>(Encoding.UTF8.GetString(output.Output)) ?? [];
+        Check(violations.Length == 0, "New C# sortie evidence violates the frozen result contract: " + string.Join(", ", violations));
     }
 
     private sealed class ResumeService(CampaignResumeResult result) : ICampaignExecutionService

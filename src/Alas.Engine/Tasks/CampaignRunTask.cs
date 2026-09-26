@@ -69,8 +69,7 @@ public sealed class CampaignRunTask : ITaskRunner
             ["requestedFleetPlan"] = JsonSerializer.SerializeToNode(requestedPlan, TaskQueue.Json),
             ["fleetPlan"] = JsonSerializer.SerializeToNode(plan, TaskQueue.Json),
             ["emotionMode"] = "ignore",
-            ["fleetLockRequested"] = configuration.UseFleetLock,
-            ["cleared"] = false
+            ["fleetLockRequested"] = configuration.UseFleetLock
         };
         string phase = "navigation";
         try
@@ -101,6 +100,7 @@ public sealed class CampaignRunTask : ITaskRunner
         catch (Exception error) when (error is not OutOfMemoryException and not OperationCanceledException)
         {
             evidence["failedPhase"] = phase;
+            evidence["cleared"] = false;
             throw new TaskEvidenceException(phase, evidence, error);
         }
     }

@@ -143,7 +143,7 @@ internal static class MapViewChecks
         await ImageRefreshAsync(blank, files);
         await GridTapAsync(blank, recognition);
         await MapArrivalChecks.RunAsync(upstream);
-        await CampaignMapCombatChecks.RunAsync(upstream);
+        await CampaignMapCombatChecks.RunAsync(python, upstream);
         await CampaignMapInitializerChecks.RunAsync();
         await CampaignStageReaderChecks.RunAsync();
         await CampaignStageSelectorChecks.RunAsync(upstream);

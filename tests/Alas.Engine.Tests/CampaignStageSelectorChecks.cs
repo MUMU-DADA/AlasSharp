@@ -218,6 +218,24 @@ internal static class CampaignStageSelectorChecks
             result.Evidence["cleared"]?.GetValue<bool>() == false,
             "Integrated C# campaign graph reported unverified settlement as a clear");
         driver = new Driver { Chapter = 1 };
+        var terminal = new MapArrivalResult(MapArrivalOutcome.StageReturned, 11, 2, MapEncounterKind.Combat)
+        {
+            HandledEncounters = [MapEncounterKind.Combat],
+            Combats = [new CombatFlowResult(CombatReturn.InStage,
+                new CombatRankEvidence(CombatRank.S, CombatRankSource.BattleStatus,
+                    UiAssets.Combat.BATTLE_STATUS_S.Id), false, false, 3)]
+        };
+        result = await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = runInput },
+            new TaskContext(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
+                Campaign: new CampaignService { StageReturn = terminal }, Stages: new Stages(driver),
+                Fleets: new FleetService(), Entry: new EntryService(driver),
+                AutoSearch: new AutoSearchService()), default);
+        Check(result.Outcome == TaskOutcome.Succeeded &&
+            result.Evidence?["cleared"]?.GetValue<bool>() == true &&
+            result.Evidence["sortie"]?["outcome"]?.GetValue<string>() == "cleared" &&
+            result.Evidence["entry"] is not null,
+            "Integrated campaign evidence merge discarded a verified settlement");
+        driver = new Driver { Chapter = 1 };
         try
         {
             await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = runInput },
@@ -307,13 +325,14 @@ internal static class CampaignStageSelectorChecks
     private sealed class CampaignService : ICampaignExecutionService
     {
         public bool Fail { get; init; }
+        public MapArrivalResult? StageReturn { get; init; }
         public ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
             CampaignConfiguration configuration, CancellationToken token)
         {
             if (Fail) throw new IOException("Injected map execution failure");
             Check(configuration is { EmotionMode: CampaignEmotionMode.Ignore, UseFleetLock: true },
                 "Integrated campaign did not preserve explicit emotion and fleet-lock settings");
-            return ValueTask.FromResult(new CampaignResumeResult(CampaignLoopExit.Ended, 1, null));
+            return ValueTask.FromResult(new CampaignResumeResult(CampaignLoopExit.Ended, 1, StageReturn));
         }
     }
     private sealed class Driver : IUiDriver

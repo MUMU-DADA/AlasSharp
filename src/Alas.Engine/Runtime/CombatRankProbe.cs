@@ -41,6 +41,12 @@ public sealed class CombatRankProbe(IUiDriver ui)
         return candidates.First(pair => pair.Rank == evidence.Rank && pair.Asset.Id == evidence.AssetId).Asset;
     }
 
+    public static bool IsRecognized(CombatRankEvidence evidence)
+    {
+        var candidates = evidence.Source == CombatRankSource.BattleStatus ? BattleStatus : Experience;
+        return candidates.Any(pair => pair.Rank == evidence.Rank && pair.Asset.Id == evidence.AssetId);
+    }
+
     public async ValueTask<CombatRankEvidence?> ObserveBattleStatusAsync(CancellationToken token = default)
         => await ObserveAsync(BattleStatus, CombatRankSource.BattleStatus, token);
 
