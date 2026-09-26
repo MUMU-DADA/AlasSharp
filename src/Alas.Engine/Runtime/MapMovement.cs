@@ -7,8 +7,12 @@ public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arri
 
 /// <summary>Commits a fleet move only after fresh visual arrival and complete interaction accounting.</summary>
 public sealed class MapMovement(CampaignState state, CampaignConfiguration configuration,
-    IMapArrivalCamera camera, MapArrivalCheck arrival)
+    IMapArrivalCamera camera, Func<MapArrivalCheck> createArrival)
 {
+    public MapMovement(CampaignState state, CampaignConfiguration configuration,
+        IMapArrivalCamera camera, MapArrivalCheck arrival)
+        : this(state, configuration, camera, () => arrival) { }
+
     public ValueTask<MapMoveResult> MoveAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
         => MoveCoreAsync(destination, false, options, token);
@@ -46,7 +50,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
              landingGrid.IsBoss || landingGrid.IsFortress || landingGrid.IsMystery || landingGrid.IsAmmo))
             throw new NotSupportedException("Portal exit requires an interaction that is not committed by ordinary movement");
 
-        var result = await arrival.TapAndCheckAsync(destination, options, token);
+        var result = await createArrival().TapAndCheckAsync(destination, options, token);
         if (result.Outcome == MapArrivalOutcome.Unconfirmed) return new(MapMoveOutcome.Unconfirmed, result);
         if (result.Outcome == MapArrivalOutcome.MapInterrupted) return new(MapMoveOutcome.Interrupted, result);
         if (result.Outcome == MapArrivalOutcome.StageReturned)

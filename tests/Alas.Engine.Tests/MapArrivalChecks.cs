@@ -150,6 +150,22 @@ internal static class MapArrivalChecks
             "Ordinary arrival did not commit fleet and path state exactly once");
 
         clock = new TestClock(); state = State();
+        camera = new Camera(clock, [new(true, new(true, true))]);
+        int arrivalInstances = 0;
+        var movement = new MapMovement(state, new(), camera, () =>
+        {
+            arrivalInstances++;
+            return new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        });
+        var next = new Cell(3, 2);
+        moved = await movement.MoveAsync(destination, options);
+        var secondMove = await movement.MoveAsync(next, options);
+        Check(moved.Outcome == MapMoveOutcome.Committed && secondMove.Outcome == MapMoveOutcome.Committed &&
+            arrivalInstances == 2 && camera.Taps == 2 && state.Fleet1Location == next &&
+            !state[destination].IsFleet && state[next].IsCurrentFleet && state[next].Cost == 0,
+            "Reusable movement did not create a fresh arrival check for each grid tap");
+
+        clock = new TestClock(); state = State();
         state.Fleet2Location = new(3, 3);
         state[new(3, 3)].IsFleet = true;
         state.FleetIndex = 2;
