@@ -1793,6 +1793,15 @@ public static class CampaignHookRunner
     /// </summary>
     private static readonly object PythonNone = new();
 
+    /// <summary>当前计划返回合同只支持 bool/None；新增标量必须先扩展整个返回链。</summary>
+    private static bool? HookReturn(object? value) => value switch
+    {
+        null => null,
+        _ when ReferenceEquals(value, PythonNone) => null,
+        bool flag => flag,
+        _ => throw new NotSupportedException($"钩子返回类型 {value.GetType().Name} 未迁移；拒绝压缩为真值"),
+    };
+
     private static string Describe(object? value) => value switch
     {
         null => "null",
@@ -2161,7 +2170,13 @@ public static class CampaignHookRunner
             // 这是**返回值**不是调用，所以没有 op；按字面量返回。
             if (step.Kind == "return")
             {
-                bool? literal = step.Value?.GetValue<bool?>();
+                bool? literal = null;
+                if (step.Value is not null)
+                {
+                    if (step.Value is not JsonValue value || !value.TryGetValue<bool>(out bool flag))
+                        throw new NotSupportedException("return 字面量只支持 bool/None，标量返回尚未迁移");
+                    literal = flag;
+                }
                 stepLog.Add($"return {(literal is null ? "None" : literal.Value ? "True" : "False")}");
                 return Result(plan, battle, literal, null, stepLog, host, actionsBefore, actions);
             }
@@ -2216,7 +2231,7 @@ public static class CampaignHookRunner
                     object? returned = basePrimitive.Execute(host, delegated.Step);
                     stepLog.Add($"{step.Op} → 父类实现 {delegated.Step.Op}：已执行" +
                                   (delegated.Note is null ? "" : $"（{delegated.Note}）"));
-                    return Result(plan, battle, returned is null ? null : Truthy(returned), null, stepLog, host, actionsBefore, actions);
+                    return Result(plan, battle, HookReturn(returned), null, stepLog, host, actionsBefore, actions);
                 }
                 catch (NotSupportedException error)
                 {
@@ -2260,7 +2275,7 @@ public static class CampaignHookRunner
             }
             if (role == CampaignStepRole.Fallback)
             {
-                return Result(plan, battle, executed is null ? null : Truthy(executed), null, stepLog, host, actionsBefore, actions);
+                return Result(plan, battle, HookReturn(executed), null, stepLog, host, actionsBefore, actions);
             }
         }
 
