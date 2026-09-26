@@ -480,7 +480,9 @@ public static class CampaignPrimitives
             return false;
         }
         host.Log($"clear_enemy：选中 {decision.Target.Location}（{decision.Target.FilterKey}，{decision.Branch}）");
-        return host.ClearChosenEnemy(decision.Target, "");
+        // 上游选择器在动作正常返回后返回 True；这不是末端动作结果或通关结论。
+        host.ClearChosenEnemy(decision.Target, "");
+        return true;
     }
 
     /// <summary>上游 <c>Map.clear_any_enemy(**kwargs)</c>：敌人 + （有塞壬时）塞壬 + （有要塞时）要塞。</summary>
@@ -503,7 +505,8 @@ public static class CampaignPrimitives
         var target = selected[0];
         string expected = target.IsFortress ? "fortress" : target.IsSiren ? "siren" : "";
         host.Log($"clear_any_enemy：选中 {target.Location}（{target.FilterKey}，expected={expected}）");
-        return host.ClearChosenEnemy(target, expected);
+        host.ClearChosenEnemy(target, expected);
+        return true;
     }
 
     /// <summary>上游 <c>Map.clear_siren(**kwargs)</c>：无塞壬/要塞配置时直接返回假。</summary>
@@ -534,7 +537,8 @@ public static class CampaignPrimitives
         var target = selected[0];
         string expected = target.IsFortress ? "fortress" : "siren";
         host.Log($"clear_siren：选中 {target.Location}（expected={expected}）");
-        return host.ClearChosenEnemy(target, expected);
+        host.ClearChosenEnemy(target, expected);
+        return true;
     }
 
     /// <summary>
@@ -674,7 +678,8 @@ public static class CampaignPrimitives
             return false;
         }
         host.Log($"{label}：选中 {selected[0].Location}");
-        return host.ClearChosenEnemy(selected[0], "");
+        host.ClearChosenEnemy(selected[0], "");
+        return true;
     }
 
     /// <summary>
@@ -1366,7 +1371,8 @@ public static class CampaignPrimitives
             return false;
         }
         host.Log($"clear_filter_enemy：选中 {decision.Target.Location}（{decision.Target.FilterKey}，{decision.Branch}）");
-        return host.ClearChosenEnemy(decision.Target, "");
+        host.ClearChosenEnemy(decision.Target, "");
+        return true;
     }
 }
 

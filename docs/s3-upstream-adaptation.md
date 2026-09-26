@@ -36,6 +36,7 @@
 - `plan_steps`、`semantic_trace` 和 IR 完整度是离线摘要，不是可逐条重放的战斗计划。
 - R5 静态计划未携带方法词法定义类与完整 Campaign MRO；`super().X` 不能通过剥前缀调用同名原语或实例方法。执行器、静态执行面、宿主编码与覆盖统计统一拒绝这种无绑定委托，参数默认值也不能证明绑定。离线反例核对零动作、零原语调用及明确的 MRO 阻塞；原生继承调度继续由 `Campaign.run()` 执行，不增加真机成功结算声明。
 - R5 的舰队属性分派复用 `module/map/fleet.py` 中四个返回 `self` 的属性语义：未配置二队或已处于目标舰队时不调用 `fleet_ensure`，随后优先执行已导出的实例覆写。组合原语中的同类属性访问也复用这一切队条件。旧实现强制切队并优先调用同名注册原语，会绕过覆写及其不完整守卫。`verify_r5_fleet_dispatch.py` 用原生 Fleet 属性、替身动作与双 C# 宿主核对 592 个配置/调用场景（1,184 次宿主执行），涵盖参数、条件、返回和信号；不证明未导出的继承绑定、原语内部动态调用或设备效果，生产调度保持原生路径。
+- R5 清敌原语曾把组合方法返回值误写成末端 `clear_chosen_enemy` 的布尔值，导致末端返回假时继续走兜底。现按 `module/map/map.py` 保留七个选敌/清路障方法的“有目标且动作正常返回后返回 True”，异常与无目标路径保持原义；直接清敌及 `brute_clear_boss` 被抓分支仍透传末端结果。`verify_r5_clear_returns.py` 使用原生 Map、CampaignBase、CampaignMap 和 RoadGrids，312 个离线场景验证末端真假、无目标、动作序列、短路、拒绝与两种控制流信号，另验非法空结果拒绝。回归先复现 24 项失配，再修复为全通过；不证明动作成功或通关，未改生产原生调度及结果合同。
 - 地图识别继续走上游 `_map_config(chapter)` 和 `module.map_detection.utils_assets.Assets`。
 - 页面、按钮、OCR 和模板由 `tools/alas_vision.py` 解析上游对象；不得从 `assets.json` 重建运行时视觉规则。
 - 页面单帧判定直接调用 `UI.ui_page_appear()` 与 `ModuleBase.appear()`，保留短路、offset 和服务器分支；页面图只保留原生链接的按钮对象，不按命名推测替代素材。服务器切换调用上游 `set_server()` 释放全部资源缓存。
