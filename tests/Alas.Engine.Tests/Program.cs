@@ -158,6 +158,11 @@ try
         await MapScannerChecks.RunAsync();
         return 0;
     }
+    if (args is ["--combat-rank"])
+    {
+        await CombatRankChecks.RunAsync();
+        return 0;
+    }
     if (args is ["--maps", var mapsPython, var mapsUpstream, var mapsArtifacts])
     {
         string folder = Path.GetFullPath(mapsArtifacts);

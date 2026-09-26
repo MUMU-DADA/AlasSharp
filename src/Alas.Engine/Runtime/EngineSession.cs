@@ -72,6 +72,7 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService
     }
     public MapMovement CreateMapMovement(MapCamera camera, CampaignConfiguration configuration)
         => new(camera.State, configuration, camera, CreateMapArrivalCheck(camera, configuration));
+    public CombatRankProbe CreateCombatRankProbe() => new(Driver);
     public async ValueTask<MapVisualObservation> ObserveMapAsync(CampaignRule rule, CancellationToken token)
     {
         var configuration = rule.Configure(new());
