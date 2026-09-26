@@ -25,7 +25,9 @@ R5 舰队属性分派已通过原生 Fleet 属性与双宿主的 592 场景离�
 
 `Alas.Engine.slnx` 已提供不引用旧 Core 的独立构建：首批四张主线规则、类型化章节覆盖、每局隔离状态、普通/全清/低地图信息三种分派、十次移动重试与二十轮循环均直接执行 C#。原生实际 Campaign 方法对照 18,628 个合成末端动作场景通过；17 项本地/进程检查覆盖依赖隔离、状态隔离、参数、并发流、超时、取消、输出超限及 ADB 拒绝。进程输出超限的原始错误已保留，不再误报超时。
 
-这仍不是可用的新产品：`ICampaignOperations` 尚无真实游戏动作实现，`IVision` 尚无新识别服务；导航、地图观测/寻路/交互、其余规则、任务队列、配置/统计、结算证据与桌面/Server 切换均未完成。新循环结束值不表示通关，不生成 `cleared`；本轮未使用设备。验证命令：`dotnet run --project tests/Alas.Engine.Tests -c Release -- --python .runtime/venv314/Scripts/python.exe --upstream .runtime/engine --artifacts .runtime/verification/native-csharp-engine`。本地无上游时可省略参数执行独立检查，原生对照明确记为未跑；不能据此通过完整门槛。
+独立纯视觉服务已实现彩色/亮度/二值模板匹配，C# 管理常驻进程、帧与请求身份、严格阈值判断、超时/取消及错误收尾。Python worker 只依赖 CV 库，不导入上游模块，不解析素材 id，不接设备/页面/任务业务；越界裁剪保留上游补黑语义。16 项合成像素及协议反例通过，包含错帧拒绝、并发请求、超时/取消/释放、根因保留、模板尺寸拒绝与业务调用拒绝。OCR 仍明确未实现，不回退旧宿主；GIF/缩放、颜色判据、地图特征和原生完整视觉路径尚未验收。
+
+这仍不是可用的新产品：`ICampaignOperations` 尚无真实游戏动作实现；导航、地图观测/寻路/交互、其余规则、任务队列、配置/统计、结算证据与桌面/Server 切换均未完成。新循环结束值不表示通关，不生成 `cleared`；本轮未使用设备。验证命令：`dotnet run --project tests/Alas.Engine.Tests -c Release -- --python .runtime/venv314/Scripts/python.exe --upstream .runtime/engine --artifacts .runtime/verification/native-csharp-engine`。本地无上游时可省略参数执行独立检查，原生对照和纯 CV 检查明确记为未跑；不能据此通过完整门槛。
 
 ## 自动化规则覆盖与剩余项
 

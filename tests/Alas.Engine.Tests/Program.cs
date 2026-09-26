@@ -82,15 +82,25 @@ try
     await Throws<IOException>(() => device.CaptureAsync().AsTask(), "Invalid screenshot accepted");
     Console.WriteLine($"Local engine/transport checks passed: {checks}");
 
+    if (args is ["--vision", var visionPython, var visionArtifacts])
+    {
+        string folder = Path.GetFullPath(visionArtifacts);
+        Directory.CreateDirectory(folder);
+        Console.WriteLine($"Pure CV checks passed: {await VisionChecks.RunAsync(Path.GetFullPath(visionPython), folder)}; native campaign comparison NOT RUN.");
+        return 0;
+    }
+
     if (args.Length == 0)
     {
-        Console.WriteLine("Native comparison NOT RUN: supply --python <executable> --upstream <source> --artifacts <directory>.");
+        Console.WriteLine("Native comparison and pure CV checks NOT RUN: supply --python <executable> --upstream <source> --artifacts <directory>.");
         return 0;
     }
     if (args.Length != 6 || args[0] != "--python" || args[2] != "--upstream" || args[4] != "--artifacts")
         throw new ArgumentException("Expected --python <executable> --upstream <source> --artifacts <directory>");
     string python = Path.GetFullPath(args[1]), upstream = Path.GetFullPath(args[3]), artifacts = Path.GetFullPath(args[5]);
     Directory.CreateDirectory(artifacts);
+    int visionChecks = await VisionChecks.RunAsync(python, artifacts);
+    Console.WriteLine($"Pure CV checks passed: {visionChecks}; synthetic pixels, no game action.");
     foreach (var source in RuleCatalog.Ids.SelectMany(id => RuleCatalog.Create(id).Sources).Distinct())
     {
         string hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(upstream, source.Path))));
