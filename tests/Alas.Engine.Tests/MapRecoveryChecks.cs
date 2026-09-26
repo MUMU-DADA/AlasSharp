@@ -54,8 +54,8 @@ internal static class MapRecoveryChecks
                 throw new InvalidOperationException("Map recovery trace differs: " + sample["name"]);
             }
         }
-        await CameraTimerChecksAsync(python, upstream, artifacts, JsonNode.Parse(await File.ReadAllTextAsync(output))!["updates"]!.AsArray());
         await ProfileChecks.RunAsync(python, upstream, artifacts);
+        await CameraTimerChecksAsync(python, upstream, artifacts, JsonNode.Parse(await File.ReadAllTextAsync(output))!["updates"]!.AsArray());
         Console.WriteLine($"Native map recovery: {cases.Count} complete priority/helper traces / 4 camera error-timer traces passed.");
     }
     private static bool B(JsonNode n, string key) => n[key]?.GetValue<bool>() ?? false;

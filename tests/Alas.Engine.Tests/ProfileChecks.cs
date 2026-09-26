@@ -43,6 +43,20 @@ internal static class ProfileChecks
             }
         }
         Check(entrances >= 100, "Profile oracle did not exercise positive entrance extraction");
+        await using (var withOcr = new PythonTemplateVision(python,
+            Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"),
+            modelDirectory: Path.Combine(upstream, "bin/ocr_models")))
+        {
+            var synthetic = new ScreenFrame(stages + 1, DateTimeOffset.UnixEpoch,
+                await File.ReadAllBytesAsync(Path.Combine(artifacts, "cn-stage-2.png")));
+            var detector = new StageEntranceDetector(withOcr, assets, GameServer.Cn);
+            var reader = new CampaignStageReader((image, kinds, token) => detector.FindAsync(image, kinds, token),
+                withOcr, GameServer.Cn);
+            bool unknown = false;
+            try { await reader.ObserveAsync(synthetic, StageEntranceKind.Normal); }
+            catch (InvalidDataException error) { unknown = error.Message.Contains("identify a chapter", StringComparison.Ordinal); }
+            Check(unknown, "Synthetic entrance geometry was promoted to a stage name without OCR evidence");
+        }
         await NegativeAsync(python, artifacts, last!, await assets.ReadAsync(UiAssets.Template.TEMPLATE_STAGE_CLEAR.For(GameServer.Cn)));
         Console.WriteLine($"Native profiles: {stages} stage images / {entrances} entrance rectangles / {profiles} info-bar images / 9 malformed protocol cases passed.");
     }

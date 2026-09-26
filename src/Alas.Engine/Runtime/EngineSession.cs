@@ -13,7 +13,7 @@ public sealed record EngineSessionOptions(string Adb, string Serial, GameServer 
 
 /// <summary>One device and one pure-vision process for the entire new execution graph.</summary>
 public sealed class EngineSession : IAsyncDisposable, IMapObservationService, ICampaignInMapHost,
-    ICampaignExecutionService
+    ICampaignExecutionService, ICampaignStageObservationService
 {
     private readonly PythonTemplateVision _vision;
     private readonly JournalDevice _device;
@@ -129,12 +129,21 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         var cells = await recognition.ObserveAsync(view, new(1, 1), token: token);
         return new(view, cells.Cells);
     }
+    public async ValueTask<CampaignStages> ObserveStagesAsync(StageEntranceKind kinds, CancellationToken token)
+    {
+        await Driver.ScreenshotAsync(token);
+        var frame = Driver.Frame ?? throw new InvalidOperationException("No campaign page screenshot");
+        var detector = new StageEntranceDetector(_vision, _assets, Driver.Server);
+        var reader = new CampaignStageReader((image, requested, ct) => detector.FindAsync(image, requested, ct),
+            _vision, Driver.Server);
+        return await reader.ObserveAsync(frame, kinds, token);
+    }
     public TaskContext BeginTask(TimeSpan timeout)
     {
         _device.Actions.Clear();
         Driver.ResetTask();
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
-        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this);
+        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this);
     }
     public async Task<JsonObjectEvidence> SaveEvidenceAsync(string directory, bool failed)
     {

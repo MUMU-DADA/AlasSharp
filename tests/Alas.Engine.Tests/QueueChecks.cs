@@ -35,6 +35,13 @@ internal static class QueueChecks
         Check(resumeDry.Tasks.Single().Outcome == TaskOutcome.DryRun &&
             resumeRefused.Tasks.Single() is { Outcome: TaskOutcome.Refused, Reason: "actions_disabled" },
             "Campaign resume bypassed the queue's dry-run or action gate");
+        var stagesRequest = new TaskRequest("stages", "campaign_stages");
+        var stagesSkipped = await queue.RunAsync([stagesRequest], offline, new(artifacts, DryRun: true));
+        var stagesDry = await queue.RunAsync([stagesRequest], offline with { ModelDirectory = "offline-models" },
+            new(artifacts, DryRun: true));
+        Check(stagesSkipped.Tasks.Single() is { Outcome: TaskOutcome.Skipped, Reason: "preconditions_unmet" } &&
+            stagesDry.Tasks.Single().Outcome == TaskOutcome.DryRun,
+            "Read-only stage observation ignored OCR model availability or queue registration");
         var skipped = await queue.RunAsync([new("key", "data_key"), new("observe", "observe")], offline, new(artifacts, DryRun: true));
         Check(!skipped.Failed && skipped.Tasks[0] is { Outcome: TaskOutcome.Skipped, Reason: "preconditions_unmet" } &&
             skipped.Tasks[1].Outcome == TaskOutcome.DryRun, "Optional precondition failure did not remain skipped");
