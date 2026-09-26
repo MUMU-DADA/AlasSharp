@@ -1346,18 +1346,20 @@ public static class CampaignHookRunner
     private static (bool? Value, string Why) EvaluateBranch(CampaignPlanStep step,
                                                             ICampaignPrimitiveHost host,
                                                             Dictionary<string, object?> env,
-                                                            Dictionary<string, object?> state)
+                                                            Dictionary<string, object?> state,
+                                                            CampaignPlan plan, int depth)
     {
         var test = step.Test;
         if (test is null) return (null, "branch 没有 test 字段");
-        return EvaluateTest(test, host, env, state);
+        return EvaluateTest(test, host, env, state, plan, depth);
     }
 
     /// <summary>求一个条件（`and`/`or` 复合在此递归；`negate` 在叶子最后取反）。</summary>
     private static (bool? Value, string Why) EvaluateTest(CampaignPlanStepTest test,
                                                          ICampaignPrimitiveHost host,
                                                          Dictionary<string, object?> env,
-                                                         Dictionary<string, object?> state)
+                                                         Dictionary<string, object?> state,
+                                                         CampaignPlan plan, int depth)
     {
         bool value;
         string why;
@@ -1394,7 +1396,7 @@ public static class CampaignHookRunner
         else if (test.Expr is { } expression)
         {
             // `if self.<属性>:` —— 取一个值表达式的真假（见 EvaluateExpr 的白名单）
-            var (resolved, resolvedWhy) = EvaluateExpr(expression, host, state, env);
+            var (resolved, resolvedWhy) = EvaluateExpr(expression, host, state, env, plan, depth);
             if (resolved is null) return (null, resolvedWhy);
             value = Truthy(resolved);
             why = $"{resolvedWhy} → {value}";
@@ -1468,8 +1470,6 @@ public static class CampaignHookRunner
         }
         else if (test.Call is { } call)
         {
-            if (!CampaignPrimitiveRegistry.TryGet(call.Op, out var primitive))
-                return (null, $"条件里的原语 {call.Op} 未实现");
             var asStep = new CampaignPlanStep { Kind = "call", Op = call.Op, Args = call.Args };
             CampaignPlanStep resolved;
             try
@@ -1482,8 +1482,7 @@ public static class CampaignHookRunner
             }
             try
             {
-                if (host is RecordingCampaignHost recording4) recording4.InvokedOps.Add(call.Op);
-                value = primitive.Execute(host, resolved);
+                value = Truthy(Invoke(plan, resolved, host, state, depth));
             }
             catch (NotSupportedException error)
             {
@@ -1528,7 +1527,8 @@ public static class CampaignHookRunner
     private static (object? Value, string Why) EvaluateExpr(JsonNode? expr,
                                                             ICampaignPrimitiveHost host,
                                                             Dictionary<string, object?> state,
-                                                            Dictionary<string, object?> env)
+                                                            Dictionary<string, object?> env,
+                                                            CampaignPlan plan, int depth)
     {
         if (expr is not JsonObject node) return (null, "值表达式不是对象");
 
@@ -1577,10 +1577,6 @@ public static class CampaignHookRunner
             && callOp.TryGetValue<string>(out string? callName))
         {
             // 调用作为值：调一次原语，拿它的真假继续求值（条件里 `self.fleet_at(A3, fleet=2) and …`）
-            if (!CampaignPrimitiveRegistry.TryGet(callName, out var callPrimitive))
-            {
-                return (null, $"值表达式里的原语 {callName} 未实现");
-            }
             var callStep = new CampaignPlanStep { Kind = "call", Op = callName, Args = null };
             if (callNode["args"] is { } callArgs)
             {
@@ -1602,9 +1598,8 @@ public static class CampaignHookRunner
             }
             try
             {
-                if (host is RecordingCampaignHost recorder) recorder.InvokedOps.Add(callName);
-                bool callResult = callPrimitive.Execute(host, resolvedStep);
-                return (callResult, $"{callName} → {callResult}");
+                object callResult = Invoke(plan, resolvedStep, host, state, depth) ?? PythonNone;
+                return (callResult, $"{callName} → {Describe(callResult)}");
             }
             catch (NotSupportedException error)
             {
@@ -1701,9 +1696,9 @@ public static class CampaignHookRunner
         if (node["compare"] is JsonObject compare && compare["op"] is JsonValue opValue
             && opValue.TryGetValue<string>(out string? compareOp))
         {
-            var (left, leftWhy) = EvaluateExpr(compare["left"], host, state, env);
+            var (left, leftWhy) = EvaluateExpr(compare["left"], host, state, env, plan, depth);
             if (left is null) return (null, leftWhy);
-            var (right, rightWhy) = EvaluateExpr(compare["right"], host, state, env);
+            var (right, rightWhy) = EvaluateExpr(compare["right"], host, state, env, plan, depth);
             if (right is null) return (null, rightWhy);
             // 只做**整数**比较（上游这些条件都是整数/枚举比较）；类型不对就报错，不做隐式转换
             // 格子比较按位置（`boss == A1`）
@@ -1754,7 +1749,7 @@ public static class CampaignHookRunner
         }
         if (node["not"] is { } inner)
         {
-            var (value, why) = EvaluateExpr(inner, host, state, env);
+            var (value, why) = EvaluateExpr(inner, host, state, env, plan, depth);
             if (value is null) return (null, why);
             return (!Truthy(value), $"not({why})");
         }
@@ -1765,7 +1760,7 @@ public static class CampaignHookRunner
             object? lastValue = null;
             foreach (var item in items)
             {
-                var (value, why) = EvaluateExpr(item, host, state, env);
+                var (value, why) = EvaluateExpr(item, host, state, env, plan, depth);
                 if (value is null) return (null, why);
                 bool truth = Truthy(value);
                 lastValue = value;
@@ -1817,66 +1812,59 @@ public static class CampaignHookRunner
         if (step.Args is null) return step;
         bool changed = false;
 
+        JsonArray Coordinates(CampaignGrid grid)
+        {
+            if (!CampaignLocations.TryParse(grid.Location, out int x, out int y))
+                throw new NotSupportedException($"格子 {grid.Location} 解析不出坐标");
+            return new JsonArray(x, y);
+        }
+
+        JsonNode? Encode(object? bound) => bound switch
+        {
+            null => null,
+            _ when ReferenceEquals(bound, PythonNone) => null,
+            CampaignGrid grid => new JsonObject { ["__grid__"] = Coordinates(grid) },
+            CampaignGridSet set => new JsonObject
+            {
+                ["__grids__"] = new JsonArray(set.Grids.Select(grid => (JsonNode)Coordinates(grid)).ToArray()),
+            },
+            bool value => JsonValue.Create(value),
+            int value => JsonValue.Create(value),
+            string value => JsonValue.Create(value),
+            JsonNode value => value.DeepClone(),
+            _ => throw new NotSupportedException($"局部参数类型 {bound.GetType().Name} 未支持"),
+        };
+
         JsonNode? Replace(JsonNode? node)
         {
-            if (node is JsonObject gridsPayload && gridsPayload["__local_grids__"] is JsonValue gridsName
-                && gridsName.TryGetValue<string>(out string? listName))
-            {
-                // 局部**格子集合**当实参：换成既有的 `{"__grids__": [[x, y], …]}`
-                if (env.TryGetValue(listName!, out var noneBound) && ReferenceEquals(noneBound, PythonNone))
-                {
-                    // `ignore = None`（上游语义就是"不排除"）→ 换成 JSON null，由解码方当"没有"处理
-                    changed = true;
-                    return null!;
-                }
-                if (!env.TryGetValue(listName!, out var listBound) || listBound is not CampaignGridSet list)
-                {
-                    throw new NotSupportedException($"局部名 {listName} 不是格子集合（不能当实参）");
-                }
-                var cells = new JsonArray();
-                foreach (var item in list.Grids)
-                {
-                    if (!CampaignLocations.TryParse(item.Location, out int gx, out int gy))
-                    {
-                        throw new NotSupportedException($"格子 {item.Location} 解析不出坐标");
-                    }
-                    cells.Add(new JsonArray(gx, gy));
-                }
-                changed = true;
-                return new JsonObject { ["__grids__"] = cells };
-            }
-            if (node is not JsonObject payload || payload["__local__"] is not JsonValue nameNode
+            if (node is not JsonObject payload
+                || (payload["__local__"] ?? payload["__local_grids__"] ?? payload["__param__"]) is not JsonValue nameNode
                 || !nameNode.TryGetValue<string>(out string? name))
             {
-                return node;
+                return node switch
+                {
+                    JsonArray values => new JsonArray(values.Select(Replace).Select(value => value?.DeepClone()).ToArray()),
+                    JsonObject values => new JsonObject(values.Select(pair =>
+                        KeyValuePair.Create(pair.Key, Replace(pair.Value)?.DeepClone()))),
+                    _ => node,
+                };
             }
             if (!env.TryGetValue(name, out var bound))
             {
                 throw new NotSupportedException($"局部变量 {name} 没有绑定值");
             }
-            CampaignGrid grid;
-            if (bound is CampaignGrid single && !payload.ContainsKey("__index__"))
+            if (payload.ContainsKey("__index__"))
             {
-                grid = single;
-            }
-            else if (bound is CampaignGridSet set && payload["__index__"] is JsonValue indexNode
-                     && indexNode.TryGetValue<int>(out int index))
-            {
+                if (bound is not CampaignGridSet set || payload["__index__"] is not JsonValue indexNode
+                    || !indexNode.TryGetValue<int>(out int index))
+                    throw new NotSupportedException($"局部变量 {name} 不是可索引的格子集合");
                 int normalized = index < 0 ? set.Count + index : index;
                 if (normalized < 0 || normalized >= set.Count)
                     throw new NotSupportedException($"局部变量 {name} 的下标 {index} 越界（共 {set.Count} 格）");
-                grid = set[normalized];
-            }
-            else
-            {
-                throw new NotSupportedException($"局部变量 {name} 不是单个格子或带下标的格子集合");
-            }
-            if (!CampaignLocations.TryParse(grid.Location, out int x, out int y))
-            {
-                throw new NotSupportedException($"格子 {grid.Location} 解析不出坐标");
+                bound = set[normalized];
             }
             changed = true;
-            return new JsonObject { ["__grid__"] = new JsonArray(x, y) };
+            return Encode(bound);
         }
 
         var positional = step.Args.Positional.Select(Replace).ToArray();
@@ -1895,7 +1883,75 @@ public static class CampaignHookRunner
     }
 
     /// <summary>跨钩子调用的最大递归深度（上游存在 `self.battle_0()` 这种调用同关卡其它钩子的写法）。</summary>
-    private const int MaxCallDepth = 3;
+    private const int MaxCallDepth = 64;
+
+    private static Dictionary<string, object?> BindArguments(CampaignPlanBattle battle,
+                                                              CampaignPlanStepArgs? supplied,
+                                                              ICampaignPrimitiveHost host)
+    {
+        object Decode(JsonNode? node)
+        {
+            if (node is null) return PythonNone;
+            if (node is JsonValue value)
+            {
+                if (value.TryGetValue<bool>(out bool flag)) return flag;
+                if (value.TryGetValue<int>(out int number)) return number;
+                if (value.TryGetValue<string>(out string? text)) return text!;
+            }
+            if (node is JsonObject gridPayload && gridPayload.ContainsKey("__grid__"))
+            {
+                string location = GridLocationOf(gridPayload);
+                return host.Grids.FirstOrDefault(grid => grid.Location == location)
+                    ?? throw new NotSupportedException($"参数格子 {location} 不在当前地图状态中");
+            }
+            return node.DeepClone();
+        }
+        var values = battle.Parameters.ToDictionary(pair => pair.Key,
+            pair => (object?)Decode(pair.Value), StringComparer.Ordinal);
+        var assigned = new HashSet<string>(StringComparer.Ordinal);
+        var positional = supplied?.Positional ?? [];
+        if (positional.Count > battle.ParameterOrder.Count)
+            throw new NotSupportedException($"{battle.Method} 位置参数数量超过签名，或导出缺少 parameter_order");
+        for (int index = 0; index < positional.Count; index++)
+        {
+            string name = battle.ParameterOrder[index];
+            assigned.Add(name);
+            values[name] = Decode(positional[index]);
+        }
+        foreach (var (name, value) in supplied?.Keyword ?? new Dictionary<string, JsonNode?>())
+        {
+            if (!battle.Parameters.ContainsKey(name) || battle.PositionalOnlyParameters.Contains(name))
+                throw new NotSupportedException($"{battle.Method} 不接受关键字参数 {name}");
+            if (!assigned.Add(name)) throw new NotSupportedException($"{battle.Method} 参数 {name} 重复赋值");
+            values[name] = Decode(value);
+        }
+        foreach (string required in battle.RequiredParameters)
+            if (!assigned.Contains(required)) throw new NotSupportedException($"{battle.Method} 缺少必需参数 {required}");
+        return values;
+    }
+
+    private static object? Invoke(CampaignPlan plan, CampaignPlanStep step, ICampaignPrimitiveHost host,
+                                  Dictionary<string, object?> state, int depth)
+    {
+        var nested = plan.Header.Battles.FirstOrDefault(item => item.Method == step.Op);
+        if (nested is not null)
+        {
+            if (depth >= MaxCallDepth) throw new NotSupportedException($"跨钩子调用超过 {MaxCallDepth} 层");
+            var inner = Run(plan, nested, host, depth + 1, BindArguments(nested, step.Args, host), state);
+            if (inner.Signal is { } signal)
+                throw new CampaignControlFlowSignal(signal, inner.BlockedReason ?? signal);
+            if (inner.BlockedReason is { } blocked)
+                throw new NotSupportedException($"跨钩子 {step.Op} 被阻塞：{blocked}");
+            return inner.ReturnValue;
+        }
+        if (!CampaignPrimitiveRegistry.TryGet(step.Op, out var primitive))
+            throw new NotSupportedException($"原语 {step.Op} 未实现");
+        if (UnevaluatedArguments(step) is { } argument)
+            throw new NotSupportedException($"实参未求值：{argument}");
+        CampaignPrimitiveRegistry.ValidateArguments(step);
+        if (host is RecordingCampaignHost recorder) recorder.InvokedOps.Add(step.Op);
+        return primitive.Execute(host, step);
+    }
 
     public static CampaignHookExecution Run(CampaignPlan plan, CampaignPlanBattle battle,
                                             ICampaignPrimitiveHost host) =>
@@ -1961,7 +2017,7 @@ public static class CampaignHookRunner
     {
         // **局部变量环境**：上游 `boss = self.map.select(is_boss=True)` 这类"观察"的绑定，
         // 后续 `if boss:` / `check_accessibility(boss[0], …)` 都从它取值。分支体共享同一份（Python 作用域）。
-        env ??= new Dictionary<string, object?>(StringComparer.Ordinal);
+        env ??= BindArguments(battle, null, host);
         // **关卡实例属性**（跨钩子存在，如 `self._is_D9`）：由关卡循环创建、初值来自计划的
         // `initial_state`；单钩子诊断使用同一套初值转换。
         state ??= CreateInitialState(plan);
@@ -1990,7 +2046,7 @@ public static class CampaignHookRunner
             // （`if not self.check_accessibility(boss[0], fleet='boss')`）。分支体是步骤序列，可再嵌套。
             if (step.Kind == "branch")
             {
-                var (taken, why) = EvaluateBranch(step, host, env, state);
+                var (taken, why) = EvaluateBranch(step, host, env, state, plan, depth);
                 if (taken is null)
                 {
                     stepLog.Add($"{step.Op}: {why}");
@@ -2030,7 +2086,7 @@ public static class CampaignHookRunner
                 {
                     return Result(plan, battle, null, "local_set 缺少绑定名", stepLog, host, actionsBefore, actions);
                 }
-                var (localValue, localWhy) = EvaluateExpr(step.Expr, host, state, env);
+                var (localValue, localWhy) = EvaluateExpr(step.Expr, host, state, env, plan, depth);
                 if (localValue is null)
                 {
                     return Result(plan, battle, null, localWhy, stepLog, host, actionsBefore, actions);
@@ -2047,7 +2103,7 @@ public static class CampaignHookRunner
                 {
                     return Result(plan, battle, null, "state_set 缺少属性名", stepLog, host, actionsBefore, actions);
                 }
-                var (stateValue, stateWhy) = EvaluateExpr(step.Expr, host, state, env);
+                var (stateValue, stateWhy) = EvaluateExpr(step.Expr, host, state, env, plan, depth);
                 if (stateValue is null)
                 {
                     return Result(plan, battle, null, stateWhy, stepLog, host, actionsBefore, actions);
@@ -2122,24 +2178,18 @@ public static class CampaignHookRunner
                     stepLog.Add($"map.select → {selected.Count} 格（绑定 {bind}）");
                     continue;
                 }
-                if (!CampaignPrimitiveRegistry.TryGet(step.Op, out var assigned))
-                {
-                    stepLog.Add($"{step.Op}: 原语未实现，停止执行");
-                    return Result(plan, battle, null, $"原语 {step.Op} 未实现", stepLog, host, actionsBefore, actions);
-                }
-                bool assignedValue;
+                object? assignedValue;
                 try
                 {
-                    if (host is RecordingCampaignHost recording3) recording3.InvokedOps.Add(step.Op);
-                    assignedValue = assigned.Execute(host, step);
+                    assignedValue = Invoke(plan, step, host, state, depth);
                 }
                 catch (NotSupportedException error)
                 {
                     stepLog.Add($"{step.Op}: {error.Message}");
                     return Result(plan, battle, null, error.Message, stepLog, host, actionsBefore, actions);
                 }
-                env[bind] = assignedValue;
-                stepLog.Add($"{step.Op}: {(assignedValue ? "真" : "假")}（绑定 {bind}）");
+                env[bind] = assignedValue ?? PythonNone;
+                stepLog.Add($"{step.Op}: {Describe(assignedValue ?? PythonNone)}（绑定 {bind}）");
                 continue;
             }
 
@@ -2161,10 +2211,12 @@ public static class CampaignHookRunner
                 }
                 try
                 {
-                    bool returned = basePrimitive.Execute(host, delegated.Step);
+                    CampaignPrimitiveRegistry.ValidateArguments(delegated.Step);
+                    if (host is RecordingCampaignHost recorder) recorder.InvokedOps.Add(delegated.Step.Op);
+                    object? returned = basePrimitive.Execute(host, delegated.Step);
                     stepLog.Add($"{step.Op} → 父类实现 {delegated.Step.Op}：已执行" +
                                   (delegated.Note is null ? "" : $"（{delegated.Note}）"));
-                    return Result(plan, battle, returned, null, stepLog, host, actionsBefore, actions);
+                    return Result(plan, battle, returned is null ? null : Truthy(returned), null, stepLog, host, actionsBefore, actions);
                 }
                 catch (NotSupportedException error)
                 {
@@ -2189,45 +2241,10 @@ public static class CampaignHookRunner
                 return Result(plan, battle, null, $"实参未求值：{argument}", stepLog, host, actionsBefore, actions);
             }
 
-            // 跨钩子调用：`self.battle_0()` 这类步骤（上游确实存在），在本关卡内递归执行那个钩子。
-            var nested = plan.Header.Battles.FirstOrDefault(item => item.Method == step.Op);
-            if (nested is not null)
-            {
-                if (depth >= MaxCallDepth)
-                {
-                    stepLog.Add($"{step.Op}: 跨钩子调用超过 {MaxCallDepth} 层，停止执行");
-                    return Result(plan, battle, null, $"跨钩子调用超过 {MaxCallDepth} 层",
-                                  stepLog, host, actionsBefore, actions);
-                }
-                var inner = Run(plan, nested, host, depth + 1, state: state);
-                stepLog.Add($"{step.Op}: 跨钩子调用 → {(inner.ReturnValue is null ? "未完成" : inner.ReturnValue.Value ? "真" : "假")}");
-                if (inner.BlockedReason is not null)
-                {
-                    return Result(plan, battle, null, $"跨钩子 {step.Op} 被阻塞：{inner.BlockedReason}",
-                                  stepLog, host, actionsBefore, actions) with { Signal = inner.Signal };
-                }
-                if (role == CampaignStepRole.Attempt && inner.ReturnValue == true)
-                {
-                    return Result(plan, battle, true, null, stepLog, host, actionsBefore, actions);
-                }
-                if (role == CampaignStepRole.Fallback)
-                {
-                    return Result(plan, battle, inner.ReturnValue, null, stepLog, host, actionsBefore, actions);
-                }
-                continue;
-            }
-
-            if (!CampaignPrimitiveRegistry.TryGet(step.Op, out var primitive))
-            {
-                stepLog.Add($"{step.Op}: 原语未实现，停止执行");
-                return Result(plan, battle, null, $"原语 {step.Op} 未实现", stepLog, host, actionsBefore, actions);
-            }
-
-            bool executed;
+            object? executed;
             try
             {
-                if (host is RecordingCampaignHost recording2) recording2.InvokedOps.Add(step.Op);
-                executed = primitive.Execute(host, step);
+                executed = Invoke(plan, step, host, state, depth);
             }
             catch (NotSupportedException error)
             {
@@ -2235,20 +2252,20 @@ public static class CampaignHookRunner
                 return Result(plan, battle, null, error.Message, stepLog, host, actionsBefore, actions);
             }
 
-            stepLog.Add($"{step.Op}: {(executed ? "真" : "假")}（{Role(role)}）");
+            stepLog.Add($"{step.Op}: {Describe(executed ?? PythonNone)}（{Role(role)}）");
 
-            if (role == CampaignStepRole.Attempt && executed)
+            if (role == CampaignStepRole.Attempt && Truthy(executed))
             {
                 return Result(plan, battle, true, null, stepLog, host, actionsBefore, actions);
             }
             if (role == CampaignStepRole.Fallback)
             {
-                return Result(plan, battle, executed, null, stepLog, host, actionsBefore, actions);
+                return Result(plan, battle, executed is null ? null : Truthy(executed), null, stepLog, host, actionsBefore, actions);
             }
         }
 
         // 没有 terminal 兜底且所有尝试都没成功：上游会落到方法末尾（返回 None，视为假）
-        return Result(plan, battle, false, null, stepLog, host, actionsBefore, actions, didReturn: false);
+        return Result(plan, battle, null, null, stepLog, host, actionsBefore, actions, didReturn: false);
     }
 
     private static CampaignHookExecution Result(CampaignPlan plan, CampaignPlanBattle battle, bool? returned,
@@ -2298,7 +2315,7 @@ public sealed record CampaignPrimitive(
     string Op,
     string Description,
     bool NeedsArguments,
-    Func<ICampaignPrimitiveHost, CampaignPlanStep, bool> Execute);
+    Func<ICampaignPrimitiveHost, CampaignPlanStep, object?> Execute);
 
 /// <summary>`super().X(...)` 的解析结果：可执行的基类步骤，或"为什么不能执行"。</summary>
 public sealed record CampaignSuperDelegate(CampaignPlanStep? Step, string Reason, string? Note = null);
@@ -2332,13 +2349,14 @@ public static class CampaignPrimitiveRegistry
             {
                 if (ParameterName(value) is { } name)
                 {
-                    if (!battle.Parameters.TryGetValue(name, out var fallback) || fallback is null)
+                    if (!battle.Parameters.TryGetValue(name, out var fallback)
+                        || battle.RequiredParameters.Contains(name, StringComparer.Ordinal))
                     {
                         return new CampaignSuperDelegate(null,
                             $"super 委托实参 {name} 没有字面量默认值，无法还原（{step.Op}）");
                     }
-                    positional.Add(fallback.DeepClone());
-                    note = $"实参 {name} 用签名默认值 {fallback.ToJsonString()}";
+                    positional.Add(fallback?.DeepClone());
+                    note = $"实参 {name} 用签名默认值 {fallback?.ToJsonString() ?? "null"}";
                     continue;
                 }
                 positional.Add(value?.DeepClone());
@@ -2348,13 +2366,14 @@ public static class CampaignPrimitiveRegistry
             {
                 if (ParameterName(value) is { } name)
                 {
-                    if (!battle.Parameters.TryGetValue(name, out var fallback) || fallback is null)
+                    if (!battle.Parameters.TryGetValue(name, out var fallback)
+                        || battle.RequiredParameters.Contains(name, StringComparer.Ordinal))
                     {
                         return new CampaignSuperDelegate(null,
                             $"super 委托关键字实参 {name} 没有字面量默认值，无法还原（{step.Op}）");
                     }
-                    keyword[key] = fallback.DeepClone();
-                    note = $"关键字实参 {name} 用签名默认值 {fallback.ToJsonString()}";
+                    keyword[key] = fallback?.DeepClone();
+                    note = $"关键字实参 {name} 用签名默认值 {fallback?.ToJsonString() ?? "null"}";
                     continue;
                 }
                 keyword[key] = value?.DeepClone();
@@ -2409,7 +2428,13 @@ public static class CampaignPrimitiveRegistry
             (host, step) => CampaignPrimitives.ClearFirstRoadblocks(host, DecodeRoads(step), DecodeOptions(host, step))),
         ["pick_up_ammo"] = new CampaignPrimitive(
             "pick_up_ammo", "捡弹药（上游 Map.pick_up_ammo）", false,
-            (host, step) => CampaignPrimitives.PickUpAmmo(host, DecodeGrid(host, step))),
+            (host, step) =>
+            {
+                var grid = DecodeGrid(host, step);
+                bool noAmmo = grid is null && !host.Grids.Any(item => item.MayAmmo);
+                CampaignPrimitives.PickUpAmmo(host, grid);
+                return noAmmo ? false : null;
+            }),
         ["pick_up_light_house"] = new CampaignPrimitive(
             "pick_up_light_house", "捡灯塔（上游关卡基类 helper，恒返回假）", NeedsArguments: true,
             (host, step) => CampaignPrimitives.PickUpLightHouse(host, RequireGrid(host, step))),
@@ -2418,7 +2443,7 @@ public static class CampaignPrimitiveRegistry
             (host, step) => CampaignPrimitives.PickUpFlare(host, RequireGrid(host, step))),
         ["capture_clear_boss"] = new CampaignPrimitive(
             "capture_clear_boss", "打 boss 后退（上游 Map.capture_clear_boss，deprecated）", false,
-            (host, _) => CampaignPrimitives.CaptureClearBoss(host)),
+            (host, _) => { CampaignPrimitives.CaptureClearBoss(host); return null; }),
         ["fleet_2_push_forward"] = new CampaignPrimitive(
             "fleet_2_push_forward", "道中队推进到 weight 最低的可达海域（上游 Map.fleet_2_push_forward）", false,
             (host, _) => CampaignPrimitives.Fleet2PushForward(host)),
@@ -2444,16 +2469,16 @@ public static class CampaignPrimitiveRegistry
             (host, step) => CampaignPrimitives.FleetAt(host, RequireGrid(host, step), OptionalFleet(step))),
         ["goto"] = new CampaignPrimitive(
             "goto", "走到指定格（上游 Fleet.goto；移动本身由宿主执行）", NeedsArguments: true,
-            (host, step) => host.Goto(RequireGrid(host, step), OptionalExpected(step))),
+            (host, step) => { host.Goto(RequireGrid(host, step), OptionalExpected(step)); return null; }),
         ["clear_chosen_enemy"] = new CampaignPrimitive(
             "clear_chosen_enemy", "打指定格子（上游 Map.clear_chosen_enemy 的动作入口）", NeedsArguments: true,
             (host, step) => CampaignPrimitives.ClearChosenEnemy(host, RequireGrid(host, step), OptionalExpected(step))),
         ["switch_to"] = new CampaignPrimitive(
             "switch_to", "上游 Fleet.switch_to() 是 pass（切舰队由前缀完成）", false,
-            (host, step) => CampaignPrimitives.SwitchTo(host, CampaignPrimitiveRegistry.SplitFleetPrefix(step.Op).Prefix)),
+            (host, step) => { CampaignPrimitives.SwitchTo(host, CampaignPrimitiveRegistry.SplitFleetPrefix(step.Op).Prefix); return null; }),
         ["clear_map_items"] = new CampaignPrimitive(
             "clear_map_items", "按 cost 升序清掉指定格子上的物资（上游关卡基类 helper）", NeedsArguments: true,
-            (host, step) => CampaignPrimitives.ClearMapItems(host, RequireGrids(host, step))),
+            (host, step) => { CampaignPrimitives.ClearMapItems(host, RequireGrids(host, step)); return null; }),
         ["clear_mechanism"] = new CampaignPrimitive(
             "clear_mechanism", "清机关并抛 MapEnemyMoved 信号（上游 Map.clear_mechanism）", false,
             (host, step) => CampaignPrimitives.ClearMechanism(host, OptionalGrids(host, step))),
@@ -2479,7 +2504,7 @@ public static class CampaignPrimitiveRegistry
             (host, _) => CampaignPrimitives.Fleet2BreakSirenCaught(host)),
         ["handle_boss_appear_refocus"] = new CampaignPrimitive(
             "handle_boss_appear_refocus", "boss 出现后重对焦（上游 Fleet.handle_boss_appear_refocus）", true,
-            (host, step) => CampaignPrimitives.HandleBossAppearRefocus(host, DecodeSwipe(step))),
+            (host, step) => { CampaignPrimitives.HandleBossAppearRefocus(host, DecodeSwipe(step)); return null; }),
         ["battle_boss"] = new CampaignPrimitive(
             "battle_boss", "打 boss：brute_clear_boss 打成就真（上游 CampaignBase.battle_boss）", false,
             (host, _) => CampaignPrimitives.BattleBoss(host)),
@@ -2566,6 +2591,50 @@ public static class CampaignPrimitiveRegistry
     private static JsonArray? Sequence(JsonNode? node) =>
         node as JsonArray ?? (node as JsonObject)?["__tuple__"] as JsonArray;
 
+    // 上游 Map/Fleet 的调用签名。未迁移的参数明确拒绝，不能静默执行默认行为。
+    internal static void ValidateArguments(CampaignPlanStep step)
+    {
+        string op = IsFleetPrefixed(step.Op) ? SplitFleetPrefix(step.Op).Inner : step.Op;
+        string[] names = op switch
+        {
+            "goto" => ["location", "expected", "step_optimize", "turning_optimize"],
+            "clear_chosen_enemy" => ["grid", "expected"],
+            "check_accessibility" or "fleet_at" => ["grid", "fleet"],
+            "pick_up_ammo" or "pick_up_flare" or "pick_up_light_house" or "fleet_2_rescue" => ["grid"],
+            "clear_filter_enemy" => ["string", "preserve"],
+            "clear_mechanism" or "clear_map_items" => ["grids"],
+            "fleet_2_step_on" => ["grids", "roadblocks"],
+            "clear_roadblocks" or "clear_potential_roadblocks" or "clear_first_roadblocks" => ["roads"],
+            "fleet_ensure" or "ensure_fleet" => ["index"],
+            "handle_boss_appear_refocus" => ["preset"],
+            _ => [],
+        };
+        var args = step.Args;
+        if (args is null) return;
+        if (args.Positional.Count > names.Length)
+            throw new NotSupportedException($"{op} 位置参数超过上游签名");
+        bool selection = op is "clear_enemy" or "clear_any_enemy" or "clear_siren" or "clear_all_mystery"
+            or "clear_roadblocks" or "clear_potential_roadblocks" or "clear_first_roadblocks";
+        string[] options = ["nearby", "is_accessible", "scale", "genre", "strongest", "weakest", "sort", "ignore"];
+        foreach (var name in args.Keyword.Keys)
+        {
+            int index = Array.IndexOf(names, name);
+            if (index < 0 && !(selection && options.Contains(name)))
+                throw new NotSupportedException($"{op} 参数 {name} 未迁移或不在上游签名中");
+            if (index >= 0 && index < args.Positional.Count)
+                throw new NotSupportedException($"{op} 参数 {name} 重复赋值");
+        }
+        if (op == "goto" && (Argument(step, 2, "step_optimize") is not null
+                            || Argument(step, 3, "turning_optimize") is not null))
+            throw new NotSupportedException("goto 的显式路径优化参数尚未迁移到宿主接口");
+    }
+
+    private static JsonNode? Argument(CampaignPlanStep step, int index, string name)
+    {
+        if (step.Args?.Keyword.TryGetValue(name, out var value) == true) return value;
+        return step.Args?.Positional is { } positional && index < positional.Count ? positional[index] : null;
+    }
+
     private static CampaignTargetOptions DecodeOptions(ICampaignPrimitiveHost host, CampaignPlanStep step)
     {
         var options = new CampaignTargetOptions();
@@ -2624,14 +2693,9 @@ public static class CampaignPrimitiveRegistry
     /// </summary>
     private static int DecodeFleetIndex(CampaignPlanStep step)
     {
-        if (step.Args?.Keyword.TryGetValue("index", out var node) == true
-            && node is JsonValue value && value.TryGetValue<int>(out int index))
+        if (Argument(step, 0, "index") is JsonValue value && value.TryGetValue<int>(out int index))
         {
             return index;
-        }
-        foreach (var item in step.Args?.Positional ?? [])
-        {
-            if (item is JsonValue positional && positional.TryGetValue<int>(out int parsed)) return parsed;
         }
         throw new NotSupportedException($"{step.Op} 的舰队序号解不出来（需要 index 整数实参）");
     }
@@ -2639,14 +2703,16 @@ public static class CampaignPrimitiveRegistry
     /// <summary>取 `goto(grid, expected='…')` 的 `expected` 关键字（没有就空串）。</summary>
     private static string OptionalExpected(CampaignPlanStep step)
     {
-        if (step.Args?.Keyword.TryGetValue("expected", out var node) != true || node is null) return "";
+        var node = Argument(step, 1, "expected");
+        if (node is null) return "";
         return node is JsonValue value && value.TryGetValue<string>(out string? text) ? text : "";
     }
 
     /// <summary>取步骤里声明的 `fleet` 关键字实参（`check_accessibility(grid, fleet=…)` 用）。</summary>
     private static string? OptionalFleet(CampaignPlanStep step)
     {
-        if (step.Args?.Keyword.TryGetValue("fleet", out var node) != true || node is null) return null;
+        var node = Argument(step, 1, "fleet");
+        if (node is null) return null;
         return node switch
         {
             JsonValue value when value.TryGetValue<string>(out string? text) => text,
@@ -2657,7 +2723,8 @@ public static class CampaignPrimitiveRegistry
 
     private static CampaignGrid? DecodeGrid(ICampaignPrimitiveHost host, CampaignPlanStep step)
     {
-        foreach (var value in step.Args?.Positional ?? [])
+        string op = IsFleetPrefixed(step.Op) ? SplitFleetPrefix(step.Op).Inner : step.Op;
+        foreach (var value in new[] { Argument(step, 0, op == "goto" ? "location" : "grid") })
         {
             if (value is not JsonObject payload || payload["__grid__"] is not JsonArray cell) continue;
             string location = CampaignLocations.ToNode(cell[0]!.GetValue<int>(), cell[1]!.GetValue<int>());
@@ -2684,20 +2751,19 @@ public static class CampaignPrimitiveRegistry
     /// </summary>
     private static (int X, int Y)? DecodeSwipe(CampaignPlanStep step)
     {
-        var positional = step.Args?.Positional;
-        if (positional is null || positional.Count == 0) return null;
-        if (positional[0] is null) return null;
-        if (Sequence(positional[0]) is not { } pair || pair.Count != 2
+        var node = Argument(step, 0, "preset");
+        if (node is null) return null;
+        if (Sequence(node) is not { } pair || pair.Count != 2
             || pair[0] is null || pair[1] is null)
         {
-            throw new NotSupportedException($"preset 实参形状不支持（{step.Op}）：{positional[0]?.ToJsonString()}");
+            throw new NotSupportedException($"preset 实参形状不支持（{step.Op}）：{node.ToJsonString()}");
         }
         return (pair[0]!.GetValue<int>(), pair[1]!.GetValue<int>());
     }
 
     private static IReadOnlyList<CampaignGrid>? DecodeGrids(ICampaignPrimitiveHost host, CampaignPlanStep step)
     {
-        foreach (var value in step.Args?.Positional ?? [])
+        foreach (var value in new[] { Argument(step, 0, "grids") })
         {
             if (value is not JsonObject payload || payload["__grids__"] is not JsonArray cells) continue;
             var grids = new List<CampaignGrid>();
@@ -2739,7 +2805,7 @@ public static class CampaignPrimitiveRegistry
 
     private static IReadOnlyList<CampaignGrid>? OptionalGrids(ICampaignPrimitiveHost host, CampaignPlanStep step)
     {
-        if (step.Args?.Positional is not { Count: > 0 }) return null;
+        if (Argument(step, 0, "grids") is null) return null;
         return DecodeGrids(host, step) ?? throw new NotSupportedException(
             $"{step.Op} 的格子表实参在导出里不是 __grids__ 结构——需要导出器解析格子符号后才能执行");
     }
@@ -2784,19 +2850,15 @@ public static class CampaignPrimitiveRegistry
     }
 
     private static string DecodeFilter(CampaignPlanStep step)    {
-        var positional = step.Args?.Positional ?? [];
-        foreach (var value in positional)
-        {
-            if (value is JsonValue json && json.TryGetValue(out string? text) && text != "<expr>") return text;
-        }
+        if (Argument(step, 0, "string") is JsonValue json
+            && json.TryGetValue(out string? text) && text != "<expr>") return text;
         throw new NotSupportedException(
             $"clear_filter_enemy 的过滤串在导出里是未求值表达式（{step.Op}）——需要导出器求值后才能执行");
     }
 
     private static int DecodePreserve(CampaignPlanStep step)
     {
-        if (step.Args?.Keyword.TryGetValue("preserve", out var node) == true && node is JsonValue value
-            && value.TryGetValue(out int preserve))
+        if (Argument(step, 1, "preserve") is JsonValue value && value.TryGetValue(out int preserve))
         {
             return preserve;
         }

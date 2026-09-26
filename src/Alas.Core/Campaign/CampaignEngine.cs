@@ -210,7 +210,7 @@ public static class CampaignPlanExecutor
             }
             string? parameter = name?.GetValue<string>();
             if (parameter is null || !battle.Parameters.TryGetValue(parameter, out var fallback)
-                || fallback is null)
+                || battle.RequiredParameters.Contains(parameter, StringComparer.Ordinal))
             {
                 return false;
             }

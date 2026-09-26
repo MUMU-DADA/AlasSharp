@@ -65,7 +65,7 @@ def cases():
                 [ret(True)], [ret(False)])], []),
         ("ensure_current_returns_false", "return False", [call("fleet_ensure", 1, kind="terminal")], []),
         ("call_local_index", "return True", [SELECT, call("goto", LOCAL), TRUE_RETURN], ["goto(A1)"]),
-        ("terminal_local_index", "return True", [SELECT, call("goto", LOCAL, kind="terminal")], ["goto(A1)"]),
+        ("terminal_local_index", "return None", [SELECT, call("goto", LOCAL, kind="terminal")], ["goto(A1)"]),
         ("assign_local_index", "return True", [SELECT,
             {**call("goto", LOCAL, kind="assign"), "target": "moved"}, TRUE_RETURN], ["goto(A1)"]),
         ("call_scalar_grid", "return True", [SELECT,
@@ -80,6 +80,16 @@ def cases():
         ("initial_bool", "value = True\nreturn bool(value)", [
             branch({"state": "initial_bool"}, [ret(True)], [ret(False)])], []),
         ("default_override", "return True", [call("battle_default", kind="terminal")], ["goto(A1)"]),
+        ("goto_is_not_true", "def goto():\n    pass\nif goto():\n    return True\nreturn False", [
+            call("goto", GRID, kind="conditional"), ret(False)], ["goto(A1)"]),
+        ("assign_goto_none", "def goto():\n    pass\nvalue = goto()\nreturn value == None", [
+            {**call("goto", GRID, kind="assign"), "target": "value"},
+            branch({"compare": {"left": {"local": "value"}, "op": "==", "right": lit(None)}},
+                [ret(True)], [ret(False)])], ["goto(A1)"]),
+        ("switch_none", "def switch_to():\n    pass\nreturn switch_to()", [
+            call("switch_to", kind="terminal")], []),
+        ("condition_override", "return True", [
+            branch({"call": {"op": "battle_default"}}, [ret(True)], [ret(False)])], ["goto(A1)"]),
     ]
     for name, source, steps, actions in programs:
         namespace = {}
