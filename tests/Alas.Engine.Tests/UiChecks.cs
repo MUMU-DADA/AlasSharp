@@ -89,6 +89,14 @@ internal static class UiChecks
                 bool matched = await matcher.AppearsAsync(frame, asset, ButtonOffset.Expand(30, 30));
                 Check(color == sample["color"]!.GetValue<bool>() && matched == sample["matched"]!.GetValue<bool>(), "Native visual match differs: " + asset.Id);
                 Check(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(RectangleValues(matcher.ClickArea(asset))), sample["click"]), "Native button offset differs: " + asset.Id);
+                var copied = UiAssets.Map.FLEET_1_BAR;
+                matcher.LoadOffset(copied, asset);
+                var sourceBase = asset.For(server).ClickArea!.Value;
+                var targetBase = copied.For(server).ClickArea!.Value;
+                var moved = matcher.ClickArea(asset);
+                Check(matcher.ClickArea(copied) == targetBase.Offset(moved.Left - sourceBase.Left, moved.Top - sourceBase.Top),
+                    "Native button offset copy differs: " + asset.Id);
+                matcher.ClearOffset(copied);
             }
         }
         // Access and elapsed time must both pass, with strict greater-than at the time boundary.
@@ -126,6 +134,8 @@ internal class AppearanceProbe(GameServer server, string? positive) : IUiDriver
     }
     public virtual ValueTask ClickAsync(AssetRule asset, CancellationToken token) => throw new InvalidOperationException("Unexpected appearance probe action");
     public virtual ValueTask ClickAreaAsync(Rectangle area, CancellationToken token) => throw new InvalidOperationException("Unexpected rectangle click");
+    public virtual Rectangle ButtonArea(AssetRule asset) => throw new InvalidOperationException("Unexpected button area request");
+    public virtual void LoadOffset(AssetRule target, AssetRule reference) => throw new InvalidOperationException("Unexpected button offset copy");
     public virtual ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token) => throw new InvalidOperationException("Unexpected color request");
     public virtual ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token) => throw new InvalidOperationException("Unexpected color bands request");
     public virtual ValueTask<OcrObservation> ReadTextAsync(OcrRequest request, CancellationToken token) => throw new InvalidOperationException("Unexpected OCR request");

@@ -120,7 +120,8 @@ def main():
             Image.fromarray(template).save(path)
             score = float(cv2.minMaxLoc(cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED))[1])
             patches.append(dict(area=[x,y,w,h], size=[width,height], color=color, minimum=255-threshold,
-                                counts=counts, template=path.name, score=score))
+                                counts=counts, template=path.name, score=score,
+                                standard_deviation=float(np.std(gray.flatten(), ddof=1))))
         # Native control flow on scripted numeric CV results tests strict thresholds and short-circuit priority.
         import random
         import module.map_detection.grid_predictor as predictor

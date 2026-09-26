@@ -11,6 +11,8 @@ public sealed partial class PythonTemplateVision : IImagePatchVision
             !Enum.IsDefined(request.Measure) || !Enum.IsDefined(request.Processing) ||
             request.MinimumSimilarity is < 0 or > 255 ||
             new[] { request.Color.R, request.Color.G, request.Color.B }.Any(v => v is < 0 or > 255) ||
+            (request.Measure == PatchMeasure.StandardDeviation &&
+             (request.Processing != PatchProcessing.Gray || (long)request.Width * request.Height < 2)) ||
             (request.Measure == PatchMeasure.Template && (request.Template.IsEmpty || request.Template.Length > 16 * 1024 * 1024)))
             throw new ArgumentException("Invalid image patch parameters", nameof(request));
         var hsv = request.Hsv;
@@ -30,6 +32,7 @@ public sealed partial class PythonTemplateVision : IImagePatchVision
         {
             double value = response.GetProperty("value").GetDouble();
             if (!double.IsFinite(value) || (request.Measure == PatchMeasure.Template ? value is < -1 or > 1 :
+                request.Measure == PatchMeasure.StandardDeviation ? value is < 0 or > 256 :
                 value < 0 || value > (long)request.Width * request.Height || value != Math.Truncate(value)))
                 throw new InvalidDataException("Invalid image patch measurement");
             return new ImagePatchObservation(frame.Sequence, value);

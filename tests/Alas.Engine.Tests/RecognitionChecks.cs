@@ -73,7 +73,11 @@ internal static class RecognitionChecks
             var bytes = await File.ReadAllBytesAsync(Path.Combine(artifacts, item["template"]!.GetValue<string>()));
             var matched = await vision.MeasurePatchAsync(noise, request with { Measure = PatchMeasure.Template, Processing = PatchProcessing.Gray, Template = bytes });
             if (Math.Abs(matched.Value - item["score"]!.GetValue<double>()) > 1e-6) throw new InvalidOperationException("Gray patch template differs");
-            patches += 3;
+            var deviation = await vision.MeasurePatchAsync(noise, request with
+            { Measure = PatchMeasure.StandardDeviation, Processing = PatchProcessing.Gray });
+            if (Math.Abs(deviation.Value - item["standard_deviation"]!.GetValue<double>()) > 1e-6)
+                throw new InvalidOperationException("Gray patch standard deviation differs");
+            patches += 4;
         }
         var templateNames = new Dictionary<string, string>();
         foreach (var asset in UiAssets.All.Where(a => a.Kind == AssetKind.Template && a.Id.StartsWith("module.template.assets.", StringComparison.Ordinal)))

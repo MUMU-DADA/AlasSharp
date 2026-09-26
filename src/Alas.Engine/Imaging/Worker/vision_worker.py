@@ -153,6 +153,10 @@ def patch_measure(image, request):
         image = cv2.add(cv2.convertScaleAbs(high, alpha=0.5), cv2.convertScaleAbs(low, alpha=0.5))
     elif processing != "color":
         raise ValueError("patch_processing")
+    if measure == "standarddeviation":
+        if processing != "gray" or image.size < 2:
+            raise ValueError("patch_standard_deviation")
+        return float(np.std(image.reshape(-1), ddof=1))
     if measure == "similaritycount":
         minimum = request["minimum"]
         if image.ndim != 2 or type(minimum) is not int or not 0 <= minimum <= 255:

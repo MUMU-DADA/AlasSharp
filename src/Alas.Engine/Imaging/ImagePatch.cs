@@ -3,7 +3,7 @@ namespace Alas.Engine.Imaging;
 public readonly record struct PixelColor(int R, int G, int B);
 public readonly record struct HsvBounds(double HLow, double HHigh, double SLow = 0, double SHigh = 100,
     double VLow = 0, double VHigh = 100);
-public enum PatchMeasure { Template, SimilarityCount, HsvCount }
+public enum PatchMeasure { Template, SimilarityCount, HsvCount, StandardDeviation }
 public enum PatchProcessing { Color, Gray, ColorSimilarity }
 public sealed record ImagePatchRequest(PixelArea Area, int Width, int Height, PatchMeasure Measure,
     PatchProcessing Processing = PatchProcessing.Color, PixelColor Color = default,

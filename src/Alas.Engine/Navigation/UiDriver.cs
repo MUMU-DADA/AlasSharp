@@ -16,6 +16,8 @@ public interface IUiDriver
         CancellationToken token = default);
     ValueTask ClickAsync(AssetRule asset, CancellationToken token);
     ValueTask ClickAreaAsync(Rectangle area, CancellationToken token);
+    Rectangle ButtonArea(AssetRule asset) => throw new NotSupportedException("Button offset inspection is unavailable");
+    void LoadOffset(AssetRule target, AssetRule reference) => throw new NotSupportedException("Button offset copying is unavailable");
     ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token);
     ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token);
     ValueTask<OcrObservation> ReadTextAsync(OcrRequest request, CancellationToken token);
@@ -73,6 +75,8 @@ public sealed class UiDriver : IUiDriver
         => ClickAreaAsync(_matcher.ClickArea(asset), token);
     public ValueTask ClickAreaAsync(Rectangle area, CancellationToken token)
         => _device.TapAsync(new PixelPoint(RandomCoordinate(area.Left, area.Right), RandomCoordinate(area.Top, area.Bottom)), token);
+    public Rectangle ButtonArea(AssetRule asset) => _matcher.ClickArea(asset);
+    public void LoadOffset(AssetRule target, AssetRule reference) => _matcher.LoadOffset(target, reference);
     public ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token)
         => _vision.MeanColorAsync(Frame ?? throw new InvalidOperationException("No screenshot has been captured"), area.Area, token);
     public ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token)
