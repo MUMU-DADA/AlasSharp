@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using Alas.Engine.Runtime;
 
 namespace Alas.Engine.Rules;
 
@@ -33,6 +34,7 @@ public readonly record struct Cell(int Column, int Row)
 public enum MapTile { Water, Land, Spawn, Enemy, LowPriorityEnemy, Boss, Mystery, Ammo, SubmarineSpawn, Siren }
 public sealed record SpawnWave(int Battle, int Enemy = 0, int Mystery = 0, int Boss = 0, int Siren = 0);
 public sealed record SourceFile(string Path, string Sha256);
+public sealed record IgnoredPrediction(Cell Cell, Func<CellObservation, bool> Matches);
 public readonly record struct MapEdge(Cell From, Cell To)
 {
     public MapEdge(string from, string to) : this(Cell.Parse(from), Cell.Parse(to)) { }
@@ -47,6 +49,7 @@ public sealed class MapDefinition
     public ImmutableArray<MapEdge> Walls { get; }
     public ImmutableArray<MapEdge> Portals { get; }
     public MapMechanisms Mechanisms { get; }
+    public ImmutableArray<IgnoredPrediction> IgnoredPredictions { get; }
     public ImmutableArray<Cell> Cameras { get; }
     public ImmutableArray<Cell> SpawnCameras { get; }
     public ImmutableArray<SpawnWave> Waves { get; }
@@ -54,7 +57,7 @@ public sealed class MapDefinition
     public MapDefinition(string shape, string tiles, IEnumerable<string> cameras,
         IEnumerable<string> spawnCameras, IEnumerable<SpawnWave> waves, string? loopTiles = null,
         IEnumerable<double>? weights = null, IEnumerable<MapEdge>? walls = null, IEnumerable<MapEdge>? portals = null,
-        MapMechanisms? mechanisms = null)
+        MapMechanisms? mechanisms = null, IEnumerable<IgnoredPrediction>? ignoredPredictions = null)
     {
         Shape = Cell.Parse(shape);
         Tiles = ParseTiles(tiles);
@@ -69,6 +72,12 @@ public sealed class MapDefinition
             throw new ArgumentException("Walls must separate adjacent cells", nameof(walls));
         Mechanisms = mechanisms ?? new MapMechanisms();
         foreach (var cell in Mechanisms.Cells) ValidateCell(cell);
+        IgnoredPredictions = ignoredPredictions?.ToImmutableArray() ?? [];
+        foreach (var rule in IgnoredPredictions)
+        {
+            if (rule?.Matches is null) throw new ArgumentException("Ignored prediction requires a compiled predicate", nameof(ignoredPredictions));
+            ValidateCell(rule.Cell);
+        }
         Cameras = cameras.Select(Cell.Parse).ToImmutableArray();
         SpawnCameras = spawnCameras.Select(Cell.Parse).ToImmutableArray();
         foreach (var camera in Cameras.Concat(SpawnCameras)) ValidateCell(camera);

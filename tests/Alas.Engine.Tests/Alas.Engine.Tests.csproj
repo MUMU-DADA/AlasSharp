@@ -15,5 +15,6 @@
     <None Include="native_data_key_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_grid_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_path_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_observation_reference.py" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -3,7 +3,7 @@ using Alas.Engine.Rules;
 namespace Alas.Engine.Runtime;
 
 /// <summary>Owned by one sortie. Declarations never set observed enemy or boss flags.</summary>
-public sealed class CampaignState
+public sealed partial class CampaignState
 {
     public MapDefinition Map { get; }
     public IReadOnlyList<CellState> Cells { get; }

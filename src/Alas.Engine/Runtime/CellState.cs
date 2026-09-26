@@ -203,6 +203,9 @@ public sealed class CellState : IEquatable<CellState>
         return IsCleared ? "==" : "--";
     }
     public override string ToString() => Location.ToString();
+    // GridInfo.merge mutates scalar fields only. Native Map.update uses copy.copy per observation;
+    // shared mechanism references are preserved and never modified by this preflight operation.
+    internal CellState CopyForObservation() => (CellState)MemberwiseClone();
     public bool Equals(CellState? other) => other is not null && Location == other.Location;
     public override bool Equals(object? obj) => obj is CellState other && Equals(other);
     public override int GetHashCode() => Location.GetHashCode();

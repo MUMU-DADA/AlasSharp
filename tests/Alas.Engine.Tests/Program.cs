@@ -100,6 +100,13 @@ try
     await Throws<IOException>(() => application.IsRunningAsync(default).AsTask(), "Unknown foreground silently accepted");
     Console.WriteLine($"Local engine/transport checks passed: {checks}");
 
+    if (args is ["--observation", var observationPython, var observationUpstream, var observationArtifacts])
+    {
+        string folder = Path.GetFullPath(observationArtifacts);
+        Directory.CreateDirectory(folder);
+        await ObservationChecks.RunAsync(Path.GetFullPath(observationPython), Path.GetFullPath(observationUpstream), folder);
+        return 0;
+    }
     if (args is ["--path", var pathPython, var pathUpstream, var pathArtifacts])
     {
         string folder = Path.GetFullPath(pathArtifacts);

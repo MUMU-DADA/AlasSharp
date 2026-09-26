@@ -25,7 +25,9 @@ R5 舰队属性分派已通过原生 Fleet 属性与双宿主的 592 场景离�
 
 `Alas.Engine.slnx` 已提供不引用旧 Core 的独立构建：首批四张主线规则、类型化章节覆盖、每局隔离状态、普通/全清/低地图信息三种分派、十次移动重试与二十轮循环均直接执行 C#。原生实际 Campaign 方法对照 18,628 个合成末端动作场景通过；25 项本地/进程检查覆盖依赖隔离、状态隔离、参数、并发流、超时、取消、输出超限、ADB 动作拒绝、前台应用判断与设备方向。进程输出超限的原始错误已保留，不再误报超时。
 
-`CellState` 已直接迁移上游 `GridInfo` 的声明标志、观测合并、编码、遮挡、清格与重置；机关触发/阻挡组在本局对象间联动。`CampaignState` 持有完整可变状态，声明只设置 may 标志，不凭静态地图生成已发现敌人；`ME/Me` 保留声明拼写但运行语义一致，潜艇与塞壬声明已补齐。4,100 个原生场景、20,500 份状态快照核对五种扫描模式、覆盖优先级、移动/航母敌人、初始化舰队与敌人共存、声明重载和机关重置；另验每局隔离、坐标相等和地图默认权重。寻路、地图视觉观测及实机动作仍未接入这层状态，不能把旧路径对拍记作新引擎通过。
+`CellState` 已直接迁移上游 `GridInfo` 的声明标志、观测合并、编码、遮挡、清格与重置；机关触发/阻挡组在本局对象间联动。`CampaignState` 持有完整可变状态，声明只设置 may 标志，不凭静态地图生成已发现敌人；`ME/Me` 保留声明拼写但运行语义一致，潜艇与塞壬声明已补齐。4,100 个原生场景、20,500 份状态快照核对五种扫描模式、覆盖优先级、移动/航母敌人、初始化舰队与敌人共存、声明重载和机关重置；另验每局隔离、坐标相等和地图默认权重。原生离线对照不能代替新引擎实机验证。
+
+`MapObservation` 已将整帧观测接入 C# 权威状态与寻路输入，覆盖相机偏移、局部坐标、编译后的忽略规则、整帧预检、两处冲突拒绝和初始化潜艇/舰队纠正。532 个上游实际 `CampaignMap.update` 场景、1,565 帧（1,278 接受、287 拒绝）、67 个忽略预测对照通过，并核对全部状态字段及非法输入无部分写入。输入仍是合成观测，未证明截图检测、寻敌或设备动作有效。
 
 `MapPathfinder` 已在该状态层上接通拓扑、墙、单向传送门、伏击权重、敌人格停止扩散、机关阻挡、迷宫邻域、路径回溯、转弯/步长节点和双舰队成本。C# 使用正权最短路，修复上游以“前沿集合不增长”提前停止造成的伏击成本偏大；路线仍保留上游目的地回退语义，但明确标记不可达。325 个地图案例、9,206 个成本格、9,206 组邻接集合、28,460 次原生节点回放通过；其中 12 个上游早停成本被修正，39 条等成本路线选择不同合法前驱。路径尚未由真实设备动作消费，不能据此证明真机寻敌或战斗成功。
 
@@ -53,6 +55,7 @@ dotnet run --project tests/Alas.Engine.Tests -c Release -- --queue .runtime/venv
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --data-key .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-data-key
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --grid .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-grid-state
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --path .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-path
+dotnet run --project tests/Alas.Engine.Tests -c Release -- --observation .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-observation
 ```
 
 ## 自动化规则覆盖与剩余项
