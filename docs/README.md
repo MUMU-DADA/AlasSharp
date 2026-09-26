@@ -9,7 +9,7 @@
 | [任务域](tasks.md) | 队列格式、任务种类、授权与验证入口 |
 | [结果合同](result-contract.md) | 成功、撤退、失败的唯一判定规则 |
 | [上游适配](s3-upstream-adaptation.md) | 章节加载、原生战役、识别与兼容边界 |
-| [上游引擎重写](upstream-engine-rewrite.md) | R5 目标、范围与按域迁移流程（完成度见迁移路线） |
+| [上游引擎重写](upstream-engine-rewrite.md) | C# 全业务重写目标、实际 Python 依赖及仅视觉桥的迁移门槛 |
 | [架构梳理](architecture-notes.md) | 依赖边界、上游结构与接缝纪律（重写流程的证据来源） |
 | [统一 UI](r4-ui-architecture.md) | 桌面、网页和服务器共用前端的方案 |
 | [并行协作](multi-agent-development.md) | worktree 隔离、agent 通信、集成与清理 |
