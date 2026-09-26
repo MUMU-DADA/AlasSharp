@@ -44,7 +44,7 @@ internal static class MapViewChecks
     {
         foreach (var source in new[] { MapViewGeometry.Source, MapCameraState.Source, GridRecognition.Source, MapCameraRules.Source,
                      GridGeometry.Source, GridGeometry.AreaSource, MapCamera.DirectionSource, MapSwipeEvidence.MaskSource,
-                     MapArrivalCheck.Source })
+                     MapArrivalCheck.Source, MapEncounterProbe.CombatSource, MapEncounterProbe.AmbushSource })
             Check(Convert.ToHexStringLower(SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(upstream, source.Path)))) == source.Sha256,
                 "Native camera source drifted: " + source.Path);
         string output = Path.Combine(artifacts, "native-view.json");
@@ -311,6 +311,19 @@ internal static class MapViewChecks
         failed = false;
         try { await abandoned.TapCellAsync(new(5, 4)); } catch (InvalidOperationException) { failed = true; }
         Check(failed && abandonedTaps.Areas.Count == 0, "Abandoned camera issued another grid tap");
+
+        var resumedSource = new Source(i => view with { Frame = frame with { Sequence = i + 1 } }, clock);
+        var resumedTaps = new TapInput();
+        var resumed = new MapCamera(Map(), new(5, 4), view, resumedSource, swipes, recognition,
+            new(new FixedEvidence(null)), new() { Predict = false, Optimize = false }, clock: clock, gridInput: resumedTaps);
+        resumed.Suspend();
+        failed = false;
+        try { await resumed.TapCellAsync(new(5, 4)); } catch (MapRelocalizationRequiredException) { failed = true; }
+        Check(failed && resumedTaps.Areas.Count == 0, "Suspended camera clicked before map recovery");
+        await resumed.RelocalizeAsync();
+        await resumed.TapCellAsync(new(5, 4));
+        Check(resumedSource.Captures == 1 && resumedTaps.Areas.Count == 1,
+            "Relocalized camera did not resume grid input");
     }
     private sealed class TapInput : IMapGridInput
     {

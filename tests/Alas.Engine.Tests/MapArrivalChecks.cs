@@ -40,7 +40,8 @@ internal static class MapArrivalChecks
         reached = await new MapArrivalCheck(interrupted, map, interrupted.InMapAsync, clock)
             .TapAndCheckAsync(destination, options);
         Check(reached is { Outcome: MapArrivalOutcome.MapInterrupted, FreshFrames: 1 } &&
-            interrupted.MarkerReads == 0 && interrupted.Invalidated && map.Fleet1Location == new Cell(1, 1),
+            reached.Encounter == MapEncounterKind.UnknownPage && interrupted.MarkerReads == 0 &&
+            interrupted.Invalidated && map.Fleet1Location == new Cell(1, 1),
             "A non-map frame became an arrival or was read as a map grid");
         bool blocked = false;
         try { await interrupted.TapCellAsync(destination); } catch (InvalidOperationException) { blocked = true; }
@@ -77,7 +78,39 @@ internal static class MapArrivalChecks
         catch (InvalidDataException) { rejected = true; }
         Check(rejected, "Arrival check accepted a stale screenshot");
 
-        Console.WriteLine("Map arrival: fresh-frame confirmation, marker reset, interruption, timeout and submarine/current marker checks passed; no combat or settlement verification.");
+        clock = new TestClock();
+        var recovering = new Camera(clock, [new(true, default), new(true, default), new(true, new(true, true))]);
+        var encounter = new Probe(MapEncounterKind.Combat);
+        var handler = new Handler(recovering, clock);
+        reached = await new MapArrivalCheck(recovering, map, recovering.InMapAsync, clock, encounter, handler)
+            .TapAndCheckAsync(destination, options);
+        Check(reached is { Outcome: MapArrivalOutcome.MarkerConfirmed, FreshFrames: 5 } &&
+            recovering.Taps == 1 && recovering.Relocalizations == 1 && !recovering.Invalidated &&
+            encounter.Initializations == 2 && handler.Calls == 1 && handler.SawSuspended &&
+            map.Fleet1Location == new Cell(1, 1),
+            "Handled encounter did not resume the same grid tap after relocalization");
+
+        clock = new TestClock();
+        var focused = new Camera(clock, [new(true, new(true, true))]) { FocusBeforeTap = true };
+        var focusedProbe = new Probe(MapEncounterKind.None, () => focused.Taps);
+        reached = await new MapArrivalCheck(focused, map, focused.InMapAsync, clock, focusedProbe)
+            .TapAndCheckAsync(destination, options);
+        Check(reached is { Outcome: MapArrivalOutcome.MarkerConfirmed, FrameSequence: 6 } &&
+            focusedProbe.FirstInitializedSequence == 2 && focusedProbe.TapsAtFirstInitialization == 0 &&
+            focused.Prepared == 1 && focused.Taps == 1,
+            "Encounter baseline was not captured after offscreen focus and before grid tap");
+
+        clock = new TestClock();
+        var pending = new Camera(clock, [new(true, default)]);
+        reached = await new MapArrivalCheck(pending, map, pending.InMapAsync, clock,
+            new Probe(MapEncounterKind.Ambush)).TapAndCheckAsync(destination, options);
+        Check(reached is { Outcome: MapArrivalOutcome.MapInterrupted, Encounter: MapEncounterKind.Ambush,
+            FreshFrames: 1 } && pending.Invalidated && pending.MarkerReads == 0,
+            "Unhandled encounter was treated as arrival or left old geometry usable");
+
+        await MapEncounterProbeChecks.RunAsync();
+
+        Console.WriteLine("Map arrival: fresh-frame confirmation, encounter priority, long-handler relocalization, air-raid wait, interruption and marker checks passed; no combat or settlement verification.");
     }
 
     private sealed class TestClock : TimeProvider
@@ -85,7 +118,7 @@ internal static class MapArrivalChecks
         private long _ticks;
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
         public override long GetTimestamp() => _ticks;
-        public void Advance() => _ticks += TimeSpan.FromSeconds(0.25).Ticks;
+        public void Advance(double seconds = 0.25) => _ticks += TimeSpan.FromSeconds(seconds).Ticks;
     }
     private sealed record Signal(bool InMap, FleetMarker Marker);
     private sealed class Camera(TestClock clock, IReadOnlyList<Signal> signals) : IMapArrivalCamera
@@ -93,12 +126,38 @@ internal static class MapArrivalChecks
         private int _index = -1;
         public long FrameSequence { get; private set; } = 1;
         public int Taps { get; private set; }
+        public int Prepared { get; private set; }
         public int MarkerReads { get; private set; }
         public bool ReuseSequence { get; init; }
+        public bool FocusBeforeTap { get; init; }
         public bool Invalidated { get; private set; }
+        public bool Suspended { get; private set; }
+        public int Relocalizations { get; private set; }
         public void Invalidate() => Invalidated = true;
+        public void Suspend() => Suspended = true;
+        public ValueTask PrepareTapAsync(Cell destination, CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (Invalidated || Suspended) throw new InvalidOperationException("Camera is not localized");
+            Prepared++;
+            if (FocusBeforeTap) FrameSequence++;
+            return ValueTask.CompletedTask;
+        }
+        public ValueTask RelocalizeAsync(CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (!Suspended) throw new InvalidOperationException("Camera was not suspended");
+            Suspended = false; Relocalizations++; clock.Advance(); FrameSequence++;
+            _index = Math.Min(_index + 1, signals.Count - 1);
+            return ValueTask.CompletedTask;
+        }
         public ValueTask TapCellAsync(Cell destination, CancellationToken token = default)
-        { token.ThrowIfCancellationRequested(); if (Invalidated) throw new InvalidOperationException("Camera invalidated"); Taps++; return ValueTask.CompletedTask; }
+        {
+            token.ThrowIfCancellationRequested();
+            if (Invalidated || Suspended) throw new InvalidOperationException("Camera is not localized");
+            Taps++;
+            return ValueTask.CompletedTask;
+        }
         public ValueTask RefreshImageAsync(CancellationToken token = default)
         {
             token.ThrowIfCancellationRequested(); clock.Advance();
@@ -110,5 +169,40 @@ internal static class MapArrivalChecks
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(signals[_index].InMap); }
         public ValueTask<FleetMarker> ReadFleetMarkerAsync(Cell destination, CancellationToken token = default)
         { token.ThrowIfCancellationRequested(); MarkerReads++; return ValueTask.FromResult(signals[_index].Marker); }
+    }
+    private sealed class Probe(MapEncounterKind first, Func<int>? taps = null) : IMapEncounterProbe
+    {
+        private bool _used;
+        public int Initializations { get; private set; }
+        public long FirstInitializedSequence { get; private set; }
+        public int TapsAtFirstInitialization { get; private set; } = -1;
+        public ValueTask InitializeAsync(long frameSequence, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            if (Initializations++ == 0)
+            {
+                FirstInitializedSequence = frameSequence;
+                TapsAtFirstInitialization = taps?.Invoke() ?? -1;
+            }
+            return ValueTask.CompletedTask;
+        }
+        public ValueTask<MapEncounterKind> InspectAsync(long frameSequence, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            if (_used) return ValueTask.FromResult(MapEncounterKind.None);
+            _used = true;
+            return ValueTask.FromResult(first);
+        }
+    }
+    private sealed class Handler(Camera camera, TestClock clock) : IMapEncounterHandler
+    {
+        public int Calls { get; private set; }
+        public bool SawSuspended { get; private set; }
+        public ValueTask<bool> HandleAsync(MapEncounterKind encounter, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested(); Calls++; SawSuspended = camera.Suspended;
+            clock.Advance(30);
+            return ValueTask.FromResult(encounter == MapEncounterKind.Combat);
+        }
     }
 }
