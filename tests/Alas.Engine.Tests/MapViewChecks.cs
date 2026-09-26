@@ -43,7 +43,8 @@ internal static class MapViewChecks
     public static async Task RunAsync(string python, string upstream, string artifacts)
     {
         foreach (var source in new[] { MapViewGeometry.Source, MapCameraState.Source, GridRecognition.Source, MapCameraRules.Source,
-                     GridGeometry.Source, GridGeometry.AreaSource, MapCamera.DirectionSource, MapSwipeEvidence.MaskSource })
+                     GridGeometry.Source, GridGeometry.AreaSource, MapCamera.DirectionSource, MapSwipeEvidence.MaskSource,
+                     MapArrivalCheck.Source })
             Check(Convert.ToHexStringLower(SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(upstream, source.Path)))) == source.Sha256,
                 "Native camera source drifted: " + source.Path);
         string output = Path.Combine(artifacts, "native-view.json");
@@ -141,6 +142,7 @@ internal static class MapViewChecks
         var recognition = new GridRecognition(new EmptyPatches(), files, GameServer.Cn, new());
         await ImageRefreshAsync(blank, files);
         await GridTapAsync(blank, recognition);
+        await MapArrivalChecks.RunAsync();
         foreach (var entry in reference["controls"]!.AsArray()) await ControlAsync(entry!, blank, recognition);
         foreach (var entry in reference["optimized"]!.AsArray()) await OptimizationAsync(entry!, blank, recognition);
         foreach (var entry in reference["settling"]!.AsArray()) await SettlingAsync(entry!, blank, recognition);
@@ -276,8 +278,14 @@ internal static class MapViewChecks
         try { await camera.ObserveAsync(MapScanMode.Normal, default); }
         catch (MapImageRefreshRequiredException) { blocked = true; }
         Check(blocked, "Grid tap allowed stale map observation");
+        blocked = false;
+        try { await camera.ReadFleetMarkerAsync(new(5, 4)); }
+        catch (MapImageRefreshRequiredException) { blocked = true; }
+        Check(blocked, "Grid tap allowed stale fleet-marker recognition");
         await camera.RefreshImageAsync();
         Check(source.Captures == 1, "Grid tap refresh did not capture a new image");
+        Check(await camera.ReadFleetMarkerAsync(new(5, 4)) == default,
+            "Fresh grid frame did not reach raw fleet-marker recognition");
         await camera.TapCellAsync(new(7, 4));
         Check(source.Captures == 2 && swipes.Gestures.Count == 1 && taps.Areas.Count == 2 &&
             taps.Areas[1] == camera.View.Geometry.Projections[camera.View.Geometry.Center].Inner &&
@@ -295,6 +303,14 @@ internal static class MapViewChecks
         failed = false;
         try { await camera.ObserveAsync(MapScanMode.Normal, default); } catch (InvalidOperationException) { failed = true; }
         Check(failed, "Camera remained usable after an uncertain grid tap");
+
+        var abandonedTaps = new TapInput();
+        var abandoned = new MapCamera(Map(), new(5, 4), view, source, swipes, recognition,
+            new(new FixedEvidence(null)), new() { Predict = false, Optimize = false }, clock: clock, gridInput: abandonedTaps);
+        abandoned.Invalidate();
+        failed = false;
+        try { await abandoned.TapCellAsync(new(5, 4)); } catch (InvalidOperationException) { failed = true; }
+        Check(failed && abandonedTaps.Areas.Count == 0, "Abandoned camera issued another grid tap");
     }
     private sealed class TapInput : IMapGridInput
     {

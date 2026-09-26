@@ -62,6 +62,8 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService
         catch (OperationCanceledException error) when (!token.IsCancellationRequested && deadline.IsCancellationRequested)
         { throw new TimeoutException("Map camera initialization exceeded its time limit", error); }
     }
+    public MapArrivalCheck CreateMapArrivalCheck(MapCamera camera)
+        => new(camera, camera.State, token => Driver.AppearsAsync(UiAssets.Handler.IN_MAP, token: token), Driver.Clock);
     public async ValueTask<MapVisualObservation> ObserveMapAsync(CampaignRule rule, CancellationToken token)
     {
         var configuration = rule.Configure(new());

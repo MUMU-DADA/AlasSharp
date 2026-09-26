@@ -50,7 +50,7 @@ public sealed record MapCameraRules
 
 /// <summary>C# scan-camera implementation. Detection and pixel gestures are injected I/O boundaries.
 /// A failed action/update invalidates this instance; uncertain physical state must be relocalized.</summary>
-public sealed class MapCamera : IMapScanCamera
+public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
 {
     public static readonly SourceFile DirectionSource = new("module/map/utils.py",
         "74b9fb3440cf3000336a6a056419b35ea03b8735c935849f6b85c1f0830eaf94");
@@ -70,8 +70,11 @@ public sealed class MapCamera : IMapScanCamera
     private MapObservation? _observation;
     private bool _faulted;
     private bool _requiresRefresh;
+    internal CampaignState State => _map;
     public Cell Position => _camera.Position;
     public MapViewFrame View => _camera.View;
+    public long FrameSequence => View.Frame.Sequence;
+    public void Invalidate() => Volatile.Write(ref _faulted, true);
 
     public MapCamera(CampaignState map, Cell initialPosition, MapViewFrame initialView,
         IMapViewSource source, IMapSwipeInput input, GridRecognition recognition, MapSwipePredictor predictor,
@@ -199,6 +202,18 @@ public sealed class MapCamera : IMapScanCamera
         {
             _observation ??= await _recognition.ObserveAsync(View, Position, token: ct);
             return _observation with { Mode = mode };
+        }, token, requiresFreshImage: true);
+    }
+    public ValueTask<FleetMarker> ReadFleetMarkerAsync(Cell destination, CancellationToken token = default)
+    {
+        if (!_map.Contains(destination)) throw new ArgumentOutOfRangeException(nameof(destination));
+        return RunAsync(ct =>
+        {
+            var local = new ViewCell(checked(destination.Column - Position.Column + View.Geometry.Center.X),
+                checked(destination.Row - Position.Row + View.Geometry.Center.Y));
+            var grid = View.Geometry.Grids.FirstOrDefault(g => g.LocalCell == local)
+                ?? throw new MapGeometryException("Destination grid is outside the localized map view");
+            return _recognition.RawFleetAsync(View, grid, ct);
         }, token, requiresFreshImage: true);
     }
     public async ValueTask RefreshAsync(bool waitSwipe = false, CancellationToken token = default)
@@ -355,7 +370,7 @@ public sealed class MapCamera : IMapScanCamera
         try
         {
             await _gate.WaitAsync(linked.Token); entered = true;
-            if (_faulted) throw new InvalidOperationException("Camera state is uncertain; create a freshly localized camera");
+            if (Volatile.Read(ref _faulted)) throw new InvalidOperationException("Camera state is uncertain; create a freshly localized camera");
             if (requiresFreshImage && _requiresRefresh) throw new MapImageRefreshRequiredException();
             linked.Token.ThrowIfCancellationRequested();
             var result = await operation(linked.Token);
@@ -364,7 +379,7 @@ public sealed class MapCamera : IMapScanCamera
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
-            if (entered && error is not MapImageRefreshRequiredException) _faulted = true;
+            if (entered && error is not MapImageRefreshRequiredException) Invalidate();
             if (error is OperationCanceledException && !token.IsCancellationRequested && deadline.IsCancellationRequested)
                 throw new TimeoutException("Map camera operation exceeded its time limit", error);
             throw;
