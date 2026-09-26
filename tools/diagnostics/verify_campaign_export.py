@@ -4,11 +4,13 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools'))
 from upstream_campaign_export import CampaignResolver
-from export_upstream_data import export_campaign, CAMPAIGN_SCHEMA
+from export_upstream_data import export_assets, export_campaign, export_pages, CAMPAIGN_SCHEMA
+from verify_export import check
 
 
 class CampaignExportTests(unittest.TestCase):
@@ -123,6 +125,86 @@ class Campaign:
         self.assertEqual(rows[0]['campaign_aliases'], ['battle_1'])
         self.assertEqual(manifest['campaign']['campaign_attributes'], 1)
         self.assertEqual(manifest['campaign']['campaign_aliases'], 1)
+
+    def test_static_verifier_never_imports_upstream_to_excuse_corruption(self):
+        self.resolve('import missing_runtime_dependency\nclass Campaign:\n    value=1\n    def battle_0(self): return True')
+        dest = Path(self.temp.name) / 'data'
+        manifest = {'errors': []}
+        export_assets(str(self.repo), str(dest), manifest)
+        export_pages(str(self.repo), str(dest), manifest)
+        rows = export_campaign(str(self.repo), str(dest), manifest)
+        (dest / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+        ir_path = dest / rows[0]['json']
+        ir = json.loads(ir_path.read_text(encoding='utf-8'))
+        ir['campaign']['attributes']['value'] = 99
+        ir_path.write_text(json.dumps(ir), encoding='utf-8')
+        with patch('importlib.util.find_spec') as find_spec, \
+             patch('importlib.import_module', side_effect=ImportError('missing dependency')) as dynamic_import:
+            result = check(str(self.repo), str(dest))
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['stats']['campaign_attribute_issues'], 1)
+        find_spec.assert_not_called()
+        dynamic_import.assert_not_called()
+
+    def test_unresolved_import_does_not_create_an_exemption_marker(self):
+        self.resolve('from .missing import BUTTON\nclass Campaign:\n    ENTRANCE=BUTTON\n    def battle_0(self): return True')
+        dest = Path(self.temp.name) / 'data'
+        manifest = {'errors': []}
+        rows = export_campaign(str(self.repo), str(dest), manifest)
+        ir = json.loads((dest / rows[0]['json']).read_text(encoding='utf-8'))
+        self.assertFalse(ir['campaign']['attributes_meta']['complete'])
+        self.assertNotIn('upstream_import_error', ir['campaign']['attributes_meta'])
+
+    def test_initial_state_uses_resolved_declared_scalars_and_retains_provenance(self):
+        self.source('campaign.fixture.base', 'class Parent:\n    inherited=True')
+        self.resolve('from .base import Parent\nclass Campaign(Parent):\n'
+                     '    flag=True\n    count: int=1+2\n    text="ready"\n    optional=None\n'
+                     '    shadowed=True\n    def shadowed(self): pass\n    mutable=[]\n'
+                     '    def battle_0(self): return True')
+        dest = Path(self.temp.name) / 'data'
+        manifest = {'errors': []}
+        export_assets(str(self.repo), str(dest), manifest)
+        export_pages(str(self.repo), str(dest), manifest)
+        rows = export_campaign(str(self.repo), str(dest), manifest)
+        (dest / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+        row = next(row for row in rows if row['source'].endswith('/chapter.py'))
+        path = dest / row['json']
+        ir = json.loads(path.read_text(encoding='utf-8'))
+        self.assertEqual(ir['campaign']['initial_state'], {
+            'flag': True, 'count': 3, 'text': 'ready', 'optional': None})
+        self.assertEqual(ir['campaign']['attributes_meta']['scope'], 'declared')
+        self.assertEqual(ir['campaign']['attributes_meta']['origins']['count']['module'],
+                         'campaign.fixture.chapter')
+        self.assertTrue(check(str(self.repo), str(dest))['ok'])
+        ir['campaign']['initial_state']['flag'] = False
+        path.write_text(json.dumps(ir), encoding='utf-8')
+        self.assertFalse(check(str(self.repo), str(dest))['ok'])
+
+    def test_verifier_reconstructs_method_steps_and_completeness(self):
+        self.resolve('class Campaign:\n    def battle_0(self):\n        self.clear_siren()\n        return self.battle_default()')
+        dest = Path(self.temp.name) / 'data'
+        manifest = {'errors': []}
+        export_assets(str(self.repo), str(dest), manifest)
+        export_pages(str(self.repo), str(dest), manifest)
+        rows = export_campaign(str(self.repo), str(dest), manifest)
+        (dest / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+        ir_path = dest / rows[0]['json']
+        baseline = ir_path.read_text(encoding='utf-8')
+        self.assertTrue(check(str(self.repo), str(dest))['ok'])
+        for mutation in ('drop_step', 'changed_argument', 'false_incomplete', 'drop_method'):
+            with self.subTest(mutation=mutation):
+                ir = json.loads(baseline)
+                method = ir['campaign']['battles'][0]
+                if mutation == 'drop_step': method['steps'].pop(0)
+                elif mutation == 'changed_argument': method['steps'][0]['args']['keyword']['fleet'] = 2
+                elif mutation == 'false_incomplete':
+                    method['steps'] = []
+                    method['plan_complete'] = False
+                elif mutation == 'drop_method': ir['campaign']['battles'] = []
+                ir_path.write_text(json.dumps(ir), encoding='utf-8')
+                result = check(str(self.repo), str(dest))
+                self.assertFalse(result['ok'])
+                self.assertGreater(result['stats']['plan_issues'], 0)
 
 
 if __name__ == '__main__':
