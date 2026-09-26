@@ -9,7 +9,8 @@ namespace Alas.Campaign;
 ///         陆地 <c>++</c>、boss <c>BO</c>、塞壬（按 <c>enemy_genre</c> 解析）、敌人
 ///         <c>"{enemy_scale}{enemy_genre 首字母大写或 E}"</c>（如 <c>3L</c>/<c>2M</c>/<c>1E</c>）、
 ///         以及 <c>FL</c>/<c>Fc</c>/<c>Fl</c>/<c>ss</c>/<c>MY</c>/<c>AM</c>/<c>FR</c>/<c>MI</c>/<c>BE</c>/<c>==</c>/<c>--</c>；</item>
-///   <item><c>enemy_scale</c>（0–3）、<c>enemy_genre</c>（Light/Main/Carrier/Treasure/Enemy 或空）。</item>
+///   <item><c>enemy_scale</c>（0–3）、<c>enemy_genre</c>（Light/Main/Carrier/Treasure/Enemy 或空）；
+///         <c>is_spawn_point</c> / <c>is_submarine_spawn_point</c> 也保留为静态出生点状态。</item>
 /// </list>
 /// 编码已由全库逐格对拍验证（1370 张声明地图 / 275,934 格，见 <c>r5_path_sweep.py</c> 的
 /// "逐格编码不一致 0"）。识别来源的标志（<c>FL</c>/<c>Fc</c>/<c>ss</c>/<c>MI</c> 等）只在识别叠加后命中，
@@ -40,6 +41,8 @@ public sealed record CampaignGrid(
     bool IsLand = false,
     bool IsMechanismTrigger = false,
     bool IsMechanismBlock = false,
+    bool IsSpawnPoint = false,
+    bool IsSubmarineSpawnPoint = false,
     int EnemyScale = 0,
     string? EnemyGenre = null,
     int Weight = 0,
@@ -252,6 +255,8 @@ public sealed record CampaignGridFilter(
     bool? MayBouncingEnemy = null,
     bool? IsMechanismTrigger = null,
     bool? IsMechanismBlock = null,
+    bool? IsSpawnPoint = null,
+    bool? IsSubmarineSpawnPoint = null,
     bool? IsSea = null,
     bool? IsAccessible = null,
     bool? IsAccessible1 = null,
@@ -284,6 +289,8 @@ public sealed record CampaignGridFilter(
         (MayBouncingEnemy is null || grid.MayBouncingEnemy == MayBouncingEnemy) &&
         (IsMechanismTrigger is null || grid.IsMechanismTrigger == IsMechanismTrigger) &&
         (IsMechanismBlock is null || grid.IsMechanismBlock == IsMechanismBlock) &&
+        (IsSpawnPoint is null || grid.IsSpawnPoint == IsSpawnPoint) &&
+        (IsSubmarineSpawnPoint is null || grid.IsSubmarineSpawnPoint == IsSubmarineSpawnPoint) &&
         (IsSea is null || grid.IsSea == IsSea) &&
         (IsAccessible is null || grid.IsAccessible == IsAccessible) &&
         (IsAccessible1 is null || grid.IsAccessible1 == IsAccessible1) &&

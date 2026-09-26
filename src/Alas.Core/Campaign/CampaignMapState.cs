@@ -27,7 +27,10 @@ public static class CampaignMapState
         "is_enemy", "is_boss", "is_siren", "is_fortress", "is_mystery", "is_ammo",
         "is_fleet", "is_submarine", "is_cleared", "is_caught_by_siren",
         "may_bouncing_enemy", "is_mechanism_block", "is_spawn_point",
+        "is_submarine_spawn_point",
         "is_current_fleet", "is_missile_attack",
+        "may_enemy", "may_boss", "may_mystery", "may_ammo", "may_siren", "may_ambush",
+        "is_flare", "is_land", "is_mechanism_trigger",
     };
 
     /// <summary>
@@ -83,6 +86,7 @@ public static class CampaignMapState
     /// 每项形如 <c>{"loca": [x, y], "flags": [...], "cost": n, "cost_1": n, "cost_2": n, "weight": n,
     /// "enemy_scale": n, "enemy_genre": "…"}</c>。标志走与识别叠加**同一张表**（未知标志收进
     /// <paramref name="unknownFlags"/>，不静默丢）；成本场直接用上游的值，不重算。
+    /// 坐标、标志、成本、权重与敌人字段都是必填项；缺项、类型错误或重复坐标均拒绝整份响应。
     /// </summary>
     public static IReadOnlyList<CampaignGrid> FromUpstream(System.Text.Json.Nodes.JsonNode? payload,
                                                            out IReadOnlyList<string> unknownFlags)
@@ -92,40 +96,51 @@ public static class CampaignMapState
         if (payload is not System.Text.Json.Nodes.JsonObject root
             || root["grids"] is not System.Text.Json.Nodes.JsonArray items)
         {
-            unknownFlags = [];
-            return grids;
+            throw new InvalidDataException("上游地图响应缺少 grids 数组");
         }
 
         var flagMap = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-        var values = new Dictionary<string, (int Cost, int Cost1, int Cost2, int Weight, int Scale, string Genre)>(
+        var values = new Dictionary<string, (int Cost, int Cost1, int Cost2, int Weight, int Scale, string? Genre)>(
             StringComparer.Ordinal);
         foreach (var item in items)
         {
             if (item is not System.Text.Json.Nodes.JsonObject entry
                 || entry["loca"] is not System.Text.Json.Nodes.JsonArray loca || loca.Count != 2)
             {
-                continue;
+                throw new InvalidDataException("上游地图格子缺少二维坐标");
             }
-            int x = loca[0]!.GetValue<int>();
-            int y = loca[1]!.GetValue<int>();
-            if (!CampaignLocations.TryToNode(x, y, out string node)) continue;
+            int x = ReadRequiredInt(loca[0], "loca[0]");
+            int y = ReadRequiredInt(loca[1], "loca[1]");
+            if (!CampaignLocations.TryToNode(x, y, out string node) || y == int.MaxValue)
+                throw new InvalidDataException("上游地图含非法坐标");
+            if (values.ContainsKey(node)) throw new InvalidDataException($"上游地图含重复坐标 {node}");
+            if (!entry.ContainsKey("flags") || entry["flags"] is not System.Text.Json.Nodes.JsonArray list)
+                throw new InvalidDataException($"上游地图格子 {node} 缺少 flags 数组");
+            if (!entry.ContainsKey("cost") || !entry.ContainsKey("cost_1") || !entry.ContainsKey("cost_2")
+                || !entry.ContainsKey("weight") || !entry.ContainsKey("enemy_scale")
+                || !entry.ContainsKey("enemy_genre"))
+                throw new InvalidDataException($"上游地图格子 {node} 缺少成本、权重或敌人字段");
             var flags = new List<string>();
-            if (entry["flags"] is System.Text.Json.Nodes.JsonArray list)
+            foreach (var flag in list)
             {
-                foreach (var flag in list)
-                {
-                    string? text = flag?.GetValue<string>();
-                    if (text is not null) flags.Add(text);
-                }
+                if (flag is not System.Text.Json.Nodes.JsonValue flagValue
+                    || !flagValue.TryGetValue<string>(out string? text) || string.IsNullOrEmpty(text))
+                    throw new InvalidDataException($"上游地图格子 {node} 的 flags 含非字符串或空值");
+                flags.Add(text);
             }
             flagMap[$"{x},{y}"] = flags;
+            string? genre = null;
+            if (entry["enemy_genre"] is { } genreNode
+                && (genreNode is not System.Text.Json.Nodes.JsonValue genreValue
+                    || !genreValue.TryGetValue<string>(out genre)))
+                throw new InvalidDataException($"上游地图格子 {node} 的 enemy_genre 不是字符串或 null");
             values[node] = (
-                entry["cost"]?.GetValue<int>() ?? 9999,
-                entry["cost_1"]?.GetValue<int>() ?? 9999,
-                entry["cost_2"]?.GetValue<int>() ?? 9999,
-                entry["weight"]?.GetValue<int>() ?? 0,
-                entry["enemy_scale"]?.GetValue<int>() ?? 0,
-                entry["enemy_genre"]?.GetValue<string>() ?? "");
+                ReadRequiredInt(entry["cost"], $"{node}.cost"),
+                ReadRequiredInt(entry["cost_1"], $"{node}.cost_1"),
+                ReadRequiredInt(entry["cost_2"], $"{node}.cost_2"),
+                ReadRequiredInt(entry["weight"], $"{node}.weight"),
+                ReadRequiredInt(entry["enemy_scale"], $"{node}.enemy_scale"),
+                genre);
         }
 
         var baseGrids = values.Keys.Select(node => new CampaignGrid(node)).ToArray();
@@ -147,6 +162,11 @@ public static class CampaignMapState
         unknownFlags = unknown.ToArray();
         return grids;
     }
+
+    private static int ReadRequiredInt(System.Text.Json.Nodes.JsonNode? node, string name) =>
+        node is System.Text.Json.Nodes.JsonValue value && value.TryGetValue<int>(out int result)
+            ? result
+            : throw new InvalidDataException($"上游地图字段 {name} 不是 int32 整数");
 
     /// <summary>
     /// 叠加地图识别的运行期标志（`MapDetectResult.GridFlags` 的形态：`"x,y"` → 标志名列表）。
@@ -189,6 +209,15 @@ public static class CampaignMapState
                 grid = flag switch
                 {
                     "is_enemy" => grid with { IsEnemy = true },
+                    "is_land" => grid with { IsLand = true },
+                    "is_flare" => grid with { IsFlare = true },
+                    "is_mechanism_trigger" => grid with { IsMechanismTrigger = true },
+                    "may_enemy" => grid with { MayEnemy = true },
+                    "may_boss" => grid with { MayBoss = true },
+                    "may_mystery" => grid with { MayMystery = true },
+                    "may_ammo" => grid with { MayAmmo = true },
+                    "may_siren" => grid with { MaySiren = true },
+                    "may_ambush" => grid with { MayAmbush = true },
                     "is_boss" => grid with { IsBoss = true },
                     "is_siren" => grid with { IsSiren = true },
                     "is_fortress" => grid with { IsFortress = true },
@@ -199,12 +228,14 @@ public static class CampaignMapState
                     "is_caught_by_siren" => grid with { IsCaughtBySiren = true },
                     "may_bouncing_enemy" => grid with { MayBouncingEnemy = true },
                     "is_mechanism_block" => grid with { IsMechanismBlock = true },
+                    "is_spawn_point" => grid with { IsSpawnPoint = true },
+                    "is_submarine_spawn_point" => grid with { IsSubmarineSpawnPoint = true },
                     // 这三个只影响 `encode()`（`Filter` 用的 `grid.str`）与识别展示，
                     // 不影响寻路/选择判定；但既然上游 encode 有分支，识别给了就照实写下来
                     "is_current_fleet" => grid with { IsCurrentFleet = true },
                     "is_submarine" => grid with { IsSubmarine = true },
                     "is_missile_attack" => grid with { IsMissileAttack = true },
-                    _ => grid,   // is_spawn_point / is_submarine_spawn_point：上游 encode() 也没有对应分支
+                    _ => grid,
                 };
             }
             updated[at] = grid;

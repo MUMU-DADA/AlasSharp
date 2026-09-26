@@ -377,6 +377,8 @@ public static class CampaignPrimitives
         "may_mystery" => grid with { MayMystery = value },
         "may_ambush" => grid with { MayAmbush = value },
         "may_ammo" => grid with { MayAmmo = value },
+        "is_spawn_point" => grid with { IsSpawnPoint = value },
+        "is_submarine_spawn_point" => grid with { IsSubmarineSpawnPoint = value },
         _ => throw new NotSupportedException($"未知的格子标志 {flag}（不在模型里；要同步新标志时在 ApplyFlag 里显式加）"),
     };
 
@@ -423,6 +425,8 @@ public static class CampaignPrimitives
         "is_cleared" => grid => grid.IsCleared,
         "is_caught_by_siren" => grid => grid.IsCaughtBySiren,
         "is_land" => grid => grid.IsLand,
+        "is_spawn_point" => grid => grid.IsSpawnPoint,
+        "is_submarine_spawn_point" => grid => grid.IsSubmarineSpawnPoint,
         "is_sea" => grid => grid.IsSea,
         "is_mechanism_block" => grid => grid.IsMechanismBlock,
         "is_mechanism_trigger" => grid => grid.IsMechanismTrigger,
