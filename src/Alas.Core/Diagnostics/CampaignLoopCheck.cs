@@ -82,6 +82,8 @@ internal static class CampaignLoopCheck
                 ["outcome"] = level.Outcome.ToString(),
                 ["detail"] = level.Detail,
                 ["variant"] = CampaignBattleLoop.BattleFunctionVariant(config),
+                ["invoked_ops"] = new JsonArray(host.InvokedOps.Distinct(StringComparer.Ordinal)
+                    .Select(name => (JsonNode)name!).ToArray()),
                 ["rounds"] = new JsonArray(level.Rounds.Select(round => (JsonNode)new JsonObject
                 {
                     ["index"] = round.Index,
