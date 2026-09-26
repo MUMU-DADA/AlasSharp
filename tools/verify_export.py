@@ -13,9 +13,9 @@ S0 产物校验：确认导出的 JSON 真的可用、且与源码一致。
 from __future__ import annotations
 
 import argparse
+import ast
 from collections import Counter
 import hashlib
-import importlib
 import json
 import os
 import re
@@ -48,41 +48,29 @@ def check(repo: str, data: str) -> dict:
     index = json.loads(Path(data, 'campaign_index.json').read_text(encoding='utf-8'))
     manifest = json.loads(Path(data, 'manifest.json').read_text(encoding='utf-8'))
 
-    # 页面图导出（第三阶段「只依赖上游静态规则」的静态数据之一）：
-    # 页面名唯一、每条边的目标都是已知页面、源文件哈希与当前上游文件一致（漂移即失败）。
-    # 契约门槛：`manifest.pages.present` 为真才要求 `pages.json`
-    # （合成夹具的上游仓库可能没有 `module/ui/page.py`，那时导出会记 `present: false`）。
-    pages_declared = bool((manifest.get('pages') or {}).get('present'))
+    # 以当前源码决定页面图是否存在，不能靠可被删改的 manifest 关闭校验。
+    from export_upstream_data import (SERVERS, TEMPLATE_VOCAB, campaign_class_state_defaults,
+                                      campaign_method_plans, page_documents)
+    expected_pages, expected_page_meta = page_documents(repo)
+    page_meta = manifest.get('pages')
+    if page_meta != expected_page_meta:
+        problems.append('manifest.pages 与上游页面图的完整元数据不一致')
     pages_path = Path(data, 'pages.json')
-    if pages_declared and not pages_path.is_file():
+    if expected_pages is not None and not pages_path.is_file():
         problems.append('缺少 pages.json（页面图导出）；先跑 tools/export_upstream_data.py')
-    elif pages_declared:
-        pages_doc = json.loads(pages_path.read_text(encoding='utf-8'))
-        pages = pages_doc.get('pages') or []
-        stats['pages'] = len(pages)
-        stats['page_links'] = sum(len(page.get('links') or []) for page in pages)
-        names = [page.get('name') for page in pages]
-        if len(names) != len(set(names)):
-            problems.append('pages.json 里有重名页面')
-        known = set(names)
-        for page in pages:
-            for link in page.get('links') or []:
-                if link.get('destination') not in known:
-                    problems.append(f"pages.json：{page.get('name')} 的边指向未知页面 "
-                                    f"{link.get('destination')}")
-        recorded = (pages_doc.get('source_files') or {})
-        for rel, digest in recorded.items():
-            live = Path(repo, rel)
-            if not live.is_file():
-                problems.append(f'pages.json 记的源文件 {rel} 不存在')
-                continue
-            actual = hashlib.sha256(live.read_bytes()).hexdigest()
-            if actual != digest:
-                problems.append(f'pages.json 的源哈希与 {rel} 不一致（上游文件变了，重跑导出）')
-        manifest_pages = (manifest.get('pages') or {})
-        if manifest_pages.get('count') != len(pages):
-            problems.append('manifest.pages.count 与 pages.json 的页数不一致')
-    from export_upstream_data import SERVERS
+    elif expected_pages is not None:
+        try:
+            pages_doc = json.loads(pages_path.read_text(encoding='utf-8'))
+        except (ValueError, OSError):
+            pages_doc = None
+        if pages_doc != expected_pages:
+            problems.append('pages.json 与上游页面声明、按钮、连接顺序或来源哈希不一致')
+        stats['pages'] = expected_page_meta['count']
+        stats['page_links'] = expected_page_meta['links']
+    elif pages_path.exists():
+        problems.append('上游没有页面图源文件但仍残留 pages.json')
+    if expected_page_meta.get('unresolved') or expected_page_meta.get('dangling'):
+        problems.append('上游页面图包含未解析声明或悬空连接')
     if len(assets.get('servers', [])) != len(SERVERS) or set(assets.get('servers', [])) != set(SERVERS):
         problems.append('素材目录服务器清单缺失、重复或与导出契约不一致')
 
@@ -185,6 +173,8 @@ def check(repo: str, data: str) -> dict:
         differences = []
         if campaign.get('attributes') != expected_campaign['values']:
             differences.append('attributes')
+        if campaign.get('initial_state') != campaign_class_state_defaults(expected_campaign):
+            differences.append('initial_state')
         for key, expected in expected_campaign.items():
             if key != 'values' and campaign_meta.get(key) != expected:
                 differences.append(key)
@@ -249,6 +239,23 @@ def check(repo: str, data: str) -> dict:
             map_bad.append({'file': entry['source'], 'differences': differences,
                             'unresolved': expected_map['unresolved']})
 
+        source_tree = ast.parse(Path(repo, entry['source']).read_text(encoding='utf-8'))
+        expected_battles = campaign_method_plans(source_tree, module[len('campaign.'):], repo,
+                                                expected_map['values'].get('shape'))
+        if campaign.get('battles') != expected_battles:
+            plan_bad.append({'file': entry['source'], 'issue': '方法、步骤、实参、签名或完整性与源码不一致'})
+        battle_methods = [method for method in expected_battles if method['method'].startswith('battle_')]
+        expected_complete = bool(battle_methods) and all(method['plan_complete'] for method in battle_methods)
+        calls = {call for method in battle_methods for call in method['calls']}
+        expected_template = expected_complete and calls <= TEMPLATE_VOCAB
+        expected_tier = 'A' if expected_template else ('B' if expected_complete else 'C')
+        for key, expected in (('plan_complete', expected_complete), ('template_only', expected_template),
+                              ('tier', expected_tier)):
+            if campaign.get(key) != expected or entry.get(key) != expected:
+                plan_bad.append({'file': entry['source'], 'issue': f'计划汇总 {key} 与源码不一致'})
+        if entry.get('battle_methods') != [method['method'] for method in battle_methods]:
+            plan_bad.append({'file': entry['source'], 'issue': 'index.battle_methods 与源码不一致'})
+
         shape = ir['map'].get('shape')
         grid = ir['map'].get('map_data')
         if shape and grid:
@@ -275,9 +282,7 @@ def check(repo: str, data: str) -> dict:
             if not b['plan_complete'] and b['steps']:
                 plan_bad.append({'file': entry['source'], 'method': b['method'],
                                  'issue': 'plan_complete=false 但有 steps'})
-            if b['plan_complete'] and not b['steps']:
-                plan_bad.append({'file': entry['source'], 'method': b['method'],
-                                 'issue': 'plan_complete=true 但 steps 为空'})
+            # 空方法/仅 pass 的完整计划合法；是否漏步骤由上面的源码重建检查证明。
 
         # 抽查：模板化关卡（tier A）应能由 steps 还原出源码里的调用序列
         if entry['tier'] == 'A':
@@ -332,46 +337,9 @@ def check(repo: str, data: str) -> dict:
         if manifest.get('campaign', {}).get(key) != expected:
             problems.append(f'campaign manifest {key} 不一致')
     stats['campaign_attribute_checked'] = len(index['chapters'])
-    # Campaign 声明"导出不完整"分两类，必须分开报告（不能简单白名单）：
-    #   * **上游自身无法导入**：关卡文件引用的 assets 常量在上游快照里不存在（如
-    #     `event_20200227_cn/c2.py` 的 `from module.campaign.assets import C2`）→ 上游死代码，
-    #     不是我们的导出缺陷。这里**动态验证**：真的去 import 那个模块，ImportError 才算这一类。
-    #   * **其余**：无法归因，继续当问题。
-    upstream_broken, unexplained = [], []
-    # 归类时要**按上游的导入视角**看：把仓库放进 sys.path，这样 `campaign/…` 里的模块
-    # （包括上游自己坏掉的那些）都定位得到；定位得到的才可能是"上游自身坏掉"，
-    # 定位不到（合成夹具的临时目录）继续当问题。跑完还原 sys.path。
-    added = repo not in sys.path
-    if added:
-        sys.path.insert(0, repo)
-    try:
-        for entry in campaign_bad:
-            module = entry['file'][:-3].replace('/', '.').replace('\\', '.')
-            try:
-                spec = importlib.util.find_spec(module)
-            except (ImportError, ValueError, ModuleNotFoundError):
-                spec = None
-            if spec is None:
-                unexplained.append(entry)
-                continue
-            try:
-                importlib.import_module(module)
-                unexplained.append(entry)
-            except ImportError as error:
-                upstream_broken.append(dict(entry, upstream_import_error=f'{type(error).__name__}: {error}'))
-            except Exception:                  # noqa: BLE001 —— 别的异常不算"上游缺常量"，仍当问题
-                unexplained.append(entry)
-    finally:
-        if added:
-            try:
-                sys.path.remove(repo)
-            except ValueError:
-                pass
-    campaign_bad = unexplained
+    # 静态校验不执行上游模块。依赖缺失/导入失败不能证明声明导出正确，
+    # 更不能豁免同一模块的字段篡改；所有 incomplete 与差异均保留为失败。
     stats['campaign_attribute_issues'] = len(campaign_bad)
-    stats['campaign_attribute_upstream_broken'] = len(upstream_broken)
-    if upstream_broken:
-        stats['campaign_attribute_upstream_broken_modules'] = [item['file'] for item in upstream_broken]
     if campaign_bad:
         problems.append(f'{len(campaign_bad)} 个模块的 Campaign 声明导出不完整或不一致')
     stats['map_checked'] = len(index['chapters'])

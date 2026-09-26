@@ -45,7 +45,7 @@ except ImportError:
     from upstream_map_export import MapResolver
     from upstream_campaign_export import CampaignResolver
 
-EXPORTER_VERSION = '2.10.0'
+EXPORTER_VERSION = '2.11.0'
 SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
@@ -136,7 +136,8 @@ def is_super_delegate(node: ast.AST):
         return False
     f = node.func
     return bool(isinstance(f, ast.Attribute) and isinstance(f.value, ast.Call)
-                and isinstance(f.value.func, ast.Name) and f.value.func.id == 'super')
+                and isinstance(f.value.func, ast.Name) and f.value.func.id == 'super'
+                and not f.value.args and not f.value.keywords)
 
 
 def super_call_name(node: ast.Call):
@@ -269,24 +270,14 @@ def campaign_map_shape(tree, resolved: str | None = None) -> str:
     return ''
 
 
-def campaign_class_state_defaults(tree) -> dict:
-    """`Campaign` 类体里的字面量布尔/None 属性 → 初值（上游用类属性做实例属性默认值）。
+def campaign_class_state_defaults(declarations) -> dict:
+    """Resolved declared scalar defaults only; inherited/native state remains outside this summary.
 
-    只收**本模块**类体里的字面量；继承来的默认值这里拿不到——执行器遇到没有初值的读会
-    **阻塞报原因**，不会悄悄当成假。
+    Reuse CampaignResolver's binding/type provenance so overrides, expressions,
+    annotations and method shadowing cannot disagree with attributes_meta.
     """
-    defaults = {}
-    for node in tree.body:
-        if not isinstance(node, ast.ClassDef) or node.name != 'Campaign':
-            continue
-        for item in node.body:
-            if isinstance(item, ast.Assign) and len(item.targets) == 1 \
-                    and isinstance(item.targets[0], ast.Name) \
-                    and isinstance(item.value, ast.Constant) \
-                    and (item.value.value is True or item.value.value is False
-                         or item.value.value is None):
-                defaults[item.targets[0].id] = item.value.value
-    return defaults
+    return {name: value for name, value in declarations['values'].items()
+            if value is None or type(value) in (bool, int, str)}
 
 
 def campaign_symbol_locations(tree, resolved_shape: str | None = None) -> dict:
@@ -502,10 +493,10 @@ def parameter_defaults(node) -> dict:
             table[name] = None
             continue
         value = literal(default)
-        table[name] = None if value is _UNRESOLVED else value
+        table[name] = None if value is _UNRESOLVED else _argument_literal(value)
     for a, default in zip(arguments.kwonlyargs, arguments.kw_defaults):
         value = None if default is None else literal(default)
-        table[a.arg] = None if value is _UNRESOLVED else value
+        table[a.arg] = None if value is _UNRESOLVED else _argument_literal(value)
     return table
 
 
@@ -522,29 +513,76 @@ def parameter_resolver(parameters: dict):
     return resolve
 
 
+def parameter_signature(node):
+    """Preserve binding order and missing defaults independently of JSON object order/null."""
+    args = node.args
+    positional = args.posonlyargs + args.args
+    required = positional[:len(positional) - len(args.defaults)]
+    return {
+        'parameter_order': [arg.arg for arg in positional if arg.arg != 'self'],
+        'required_parameters': [arg.arg for arg in required if arg.arg != 'self'] +
+                               [arg.arg for arg, default in zip(args.kwonlyargs, args.kw_defaults)
+                                if default is None],
+        'keyword_only_parameters': [arg.arg for arg in args.kwonlyargs],
+        'positional_only_parameters': [arg.arg for arg in args.posonlyargs if arg.arg != 'self'],
+    }
+
+
+class PlanArgumentError(ValueError):
+    """The current plan cannot represent Python call arguments without losing semantics."""
+
+
+def _argument_literal(value):
+    """JSON arrays are Python lists; tuples need a marker because upstream treats them differently."""
+    if isinstance(value, tuple):
+        return {'__tuple__': [_argument_literal(item) for item in value]}
+    if isinstance(value, list):
+        return [_argument_literal(item) for item in value]
+    if isinstance(value, dict):
+        if any(not isinstance(key, str) for key in value):
+            raise PlanArgumentError('argument dictionary requires string keys')
+        return {key: _argument_literal(item) for key, item in value.items()}
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    raise PlanArgumentError(f'unsupported literal type: {type(value).__name__}')
+
+
 def call_args(node: ast.Call, resolve=None):
     """调用实参 → {位置参数: [...], 关键字参数: {...}}。
 
     字面量直接取；`self.<NAME>` 这类**类属性链上的字面量**经 `resolve` 解析（见
-    `campaign_literal_attributes`）；其余非字面量仍记 `'<expr>'`。
+    `campaign_literal_attributes`）；表示不了的参数显式失败，不能丢掉展开参数或冒充完整计划。
     """
     def value_of(argument):
         value = literal(argument)
         if value is not _UNRESOLVED:
-            return value
+            return _argument_literal(value)
         if resolve is not None:
             resolved = resolve(argument)
             if resolved is not _UNRESOLVED:
-                return resolved
-        return '<expr>'
+                return _argument_literal(resolved)
+        raise PlanArgumentError(f'unsupported argument: {_brief(argument)}')
 
     pos, kw = [], {}
     for a in node.args:
-        pos.append(value_of(a))
+        if isinstance(a, ast.Starred):
+            expanded = literal(a.value)
+            if not isinstance(expanded, (tuple, list)):
+                raise PlanArgumentError(f'unsupported positional unpacking: {_brief(a)}')
+            pos.extend(_argument_literal(item) for item in expanded)
+        else:
+            pos.append(value_of(a))
     for k in node.keywords:
         if k.arg is None:
-            continue
-        kw[k.arg] = value_of(k.value)
+            expanded = literal(k.value)
+            if not isinstance(expanded, dict) or any(not isinstance(key, str) for key in expanded):
+                raise PlanArgumentError(f'unsupported keyword unpacking: {_brief(k.value)}')
+            expanded = {key: _argument_literal(value) for key, value in expanded.items()}
+        else:
+            expanded = {k.arg: value_of(k.value)}
+        if kw.keys() & expanded.keys():
+            raise PlanArgumentError('duplicate keyword arguments')
+        kw.update(expanded)
     return {'positional': pos, 'keyword': kw}
 
 
@@ -664,7 +702,7 @@ def _state_expression(node, resolve, locals_=None):
                                            or node.value is None or isinstance(node.value, int)):
         return {'literal': node.value}
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
-            and node.func.id == 'SelectedGrids' and len(node.args) == 1:
+            and node.func.id == 'SelectedGrids' and len(node.args) == 1 and not node.keywords:
         # `SelectedGrids([A2, H3])` —— 显式格列表（元素用已有的符号解析换坐标）
         items = node.args[0]
         if isinstance(items, (ast.List, ast.Tuple)):
@@ -695,8 +733,8 @@ def _state_expression(node, resolve, locals_=None):
         # （`self.mystery_count < 1 and self.clear_roadblocks([road_MY])`）。与 `branch_test` 同一套编码。
         operators = {ast.GtE: '>=', ast.Gt: '>', ast.LtE: '<=', ast.Lt: '<',
                      ast.Eq: '==', ast.NotEq: '!='}
-        left = _state_expression(node.left, resolve)
-        right = _state_expression(node.comparators[0], resolve)
+        left = _state_expression(node.left, resolve, locals_)
+        right = _state_expression(node.comparators[0], resolve, locals_)
         if left is not None and right is not None and type(node.ops[0]) in operators:
             return {'compare': {'left': left, 'op': operators[type(node.ops[0])], 'right': right}}
     if is_self_call(node):
@@ -709,10 +747,10 @@ def _state_expression(node, resolve, locals_=None):
         if isinstance(resolved, dict) and '__grid__' in resolved:
             return {'grid_attr': {'grid': resolved, 'name': node.attr}}
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-        inner = _state_expression(node.operand, resolve)
+        inner = _state_expression(node.operand, resolve, locals_)
         return {'not': inner} if inner is not None else None
     if isinstance(node, ast.BoolOp) and len(node.values) >= 2:
-        parts = [_state_expression(value, resolve) for value in node.values]
+        parts = [_state_expression(value, resolve, locals_) for value in node.values]
         if any(part is None for part in parts):
             return None
         return {'and' if isinstance(node.op, ast.And) else 'or': parts}
@@ -723,10 +761,6 @@ def _state_expression(node, resolve, locals_=None):
         if node.attr in ('battle_count', 'mystery_count'):
             # 宿主状态（不是关卡实例属性）：执行器从宿主取（`battle_count` / `mystery_count`）
             return {'host_value': node.attr}
-        if node.attr == 'battle_count':
-            # 宿主状态（不是关卡实例属性）：执行器从 `host.BattleCount` 取。
-            # 不加这条的话会被当成实例属性 → 没有初值 → 阻塞（实测踩过这个回归）。
-            return {'host_value': 'battle_count'}
         return {'state': node.attr}
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) \
             and isinstance(node.value.value, ast.Name) and node.value.value.id == 'self' \
@@ -780,15 +814,10 @@ def derive_plan(body: list, where: str, resolve=None):
     # 方法内已绑定的**局部变量**（\oss = self.map.select(is_boss=True)\ 这类"观察"）。
     # 按 Python 语义向外层累积：外层绑定的名字在内层分支体里同样可见。
     locals_: set = set()
-
-    # 绑成**格子集合**的局部名（`ignore = SelectedGrids([...])`）：当实参传下去时要用 `__local_grids__`
-    locals_grids: set = set()
+    resolve = resolve or (lambda _: _UNRESOLVED)
 
     def arg_resolve(node):
         """先看局部变量（含 `boss[0]` 这种下标），再走原来的字面量/路段/符号解析。"""
-        if isinstance(node, ast.Name) and node.id in locals_grids:
-            # 格子集合当实参：执行器换成 `{"__grids__": …}`（标量形状的 `__local__` 不适用）
-            return {"__local_grids__": node.id}
         local = _local_reference(node, locals_)
         return local if local is not None else resolve(node)
 
@@ -811,24 +840,27 @@ def derive_plan(body: list, where: str, resolve=None):
             return {'runtime': 'map_is_clear_mode', 'negate': negate}
         local = _local_reference(node, locals_)
         if local is not None:
+            if '__index__' in local:
+                return {'expr': {'local_index': {'name': local['__local__'], 'index': local['__index__']}},
+                        'negate': negate}
             return {'local': local['__local__'], 'negate': negate}
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) \
                 and node.value.id == 'self':
             # `if self.<属性>:` —— 实例属性/运行期标志的真假（值表达式统一走 `expr`）
-            expression = _state_expression(node, resolve)
+            expression = _state_expression(node, arg_resolve, locals_)
             if expression is not None:
                 return {'expr': expression, 'negate': negate}
         if isinstance(node, ast.BoolOp) and len(node.values) >= 2:
             # `A and B` / `A or B`（含括号）：整句编码成值表达式，短路语义由执行器照 Python 处理
-            expression = _state_expression(node, resolve)
+            expression = _state_expression(node, arg_resolve, locals_)
             if expression is not None:
                 return {'expr': expression, 'negate': negate}
         if isinstance(node, ast.Compare) and len(node.ops) == 1 and len(node.comparators) == 1:
             # 通用比较：左右都必须是能表达的值表达式（`self.fleet_step >= 3`、`A1.enemy_scale != 3`）
             operators = {ast.GtE: '>=', ast.Gt: '>', ast.LtE: '<=', ast.Lt: '<',
                          ast.Eq: '==', ast.NotEq: '!='}
-            left = _state_expression(node.left, resolve)
-            right = _state_expression(node.comparators[0], resolve)
+            left = _state_expression(node.left, arg_resolve, locals_)
+            right = _state_expression(node.comparators[0], arg_resolve, locals_)
             if left is not None and right is not None and type(node.ops[0]) in operators:
                 return {'expr': {'compare': {'left': left, 'op': operators[type(node.ops[0])],
                                              'right': right}},
@@ -847,7 +879,7 @@ def derive_plan(body: list, where: str, resolve=None):
                           if isinstance(item, ast.Constant) and isinstance(item.value, int)]
                 if len(values) == len(right.elts):
                     return {'battle_count_in': values,
-                            'negate': negate if isinstance(node.ops[0], ast.NotIn) else not negate}
+                            'negate': not negate if isinstance(node.ops[0], ast.NotIn) else negate}
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
             # `<GRID>.is_xxx`：裸格名是模块级 `A1, B1, ... = MAP.flatten()` 绑定的格子对象
             # （`campaign_15_1.py:40` 那一片）。用**已有的符号解析**把格名换成坐标，再带属性名。
@@ -907,21 +939,21 @@ def derive_plan(body: list, where: str, resolve=None):
                 dead.extend(then_dead)
                 dead.extend(else_dead)
                 # 只有**两条分支都必然返回**时，后面的语句才不可达
-                if then_end and (not stmt.orelse or else_end):
+                if then_end and stmt.orelse and else_end:
                     terminated = True
             elif isinstance(stmt, ast.Return):
                 if stmt.value is not None and is_self_call(stmt.value):
                     steps.append(self_call_step(stmt.value, 'terminal'))
                     terminated = True
-                elif isinstance(stmt.value, ast.Constant) and (
-                        stmt.value.value is True or stmt.value.value is False or stmt.value.value is None):
+                elif stmt.value is None or (isinstance(stmt.value, ast.Constant) and (
+                        stmt.value.value is True or stmt.value.value is False or stmt.value.value is None)):
                     # `return True` / `return False` / `return None`：字面量返回，直接进计划
                     # （上游不少钩子以 `return True` 收尾，以前一律记 Return(expr) 把整份计划作废）
-                    steps.append({'kind': 'return', 'value': stmt.value.value})
+                    steps.append({'kind': 'return', 'value': stmt.value.value if stmt.value else None})
                     terminated = True
                 elif is_super_delegate(stmt.value):
                     # `return super().X(...)`：纯委托，本类没有新增逻辑，只是覆写钩子。
-                    steps.append({'op': super_call_name(stmt.value), 'args': call_args(stmt.value, resolve),
+                    steps.append({'op': super_call_name(stmt.value), 'args': call_args(stmt.value, arg_resolve),
                                   'kind': 'super_delegate'})
                     terminated = True
                 else:
@@ -937,6 +969,8 @@ def derive_plan(body: list, where: str, resolve=None):
                             or (isinstance(stmt.value.func, ast.Name) and stmt.value.func.id == 'print')):
                         # 纯日志调用：没有引擎副作用（不改地图状态、不发设备动作），但**记进计划**，
                         # 免得"静默丢掉"——执行器只把它写进步骤日志。
+                        # 嵌套调用/动态求值可能有引擎副作用，不能以“日志”之名吞掉。
+                        call_args(stmt.value)
                         steps.append({'kind': 'log', 'text': _brief(stmt.value, 120)})
                     else:
                         unparsed.append(f'Expr@{stmt.lineno}: {_brief(stmt.value)}')
@@ -945,7 +979,7 @@ def derive_plan(body: list, where: str, resolve=None):
                     and isinstance(stmt.targets[0].value, ast.Name) \
                     and stmt.targets[0].value.id == 'self':
                 # `self.<属性> = <值表达式>` —— 关卡实例属性（跨钩子存在，属**状态**不是局部变量）
-                expression = _state_expression(stmt.value, resolve, locals_)
+                expression = _state_expression(stmt.value, arg_resolve, locals_)
                 if expression is None:
                     unparsed.append(f'Assign@{stmt.lineno}: {_brief(stmt)}')
                 else:
@@ -965,12 +999,10 @@ def derive_plan(body: list, where: str, resolve=None):
                     # 单独立一支会被它挡住（实测：`ignore = None` 一直被记 unparsed）。
                     if len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
                         bind = stmt.targets[0].id
-                        expression = _state_expression(stmt.value, resolve, locals_)
+                        expression = _state_expression(stmt.value, arg_resolve, locals_)
                         if expression is not None:
                             steps.append({'kind': 'local_set', 'target': bind, 'expr': expression})
                             locals_.add(bind)
-                            if 'grids' in expression or 'local_index' in expression:
-                                locals_grids.add(bind)
                             continue
                     unparsed.append(f'Assign@{stmt.lineno}: {_brief(stmt)}')
             elif isinstance(stmt, ast.For):
@@ -998,7 +1030,8 @@ def derive_plan(body: list, where: str, resolve=None):
             else:
                 if isinstance(stmt, ast.Raise) and isinstance(stmt.exc, ast.Call) \
                         and isinstance(stmt.exc.func, ast.Name) \
-                        and stmt.exc.func.id in ('CampaignEnd', 'MapEnemyMoved'):
+                        and stmt.exc.func.id in ('CampaignEnd', 'MapEnemyMoved') \
+                        and not stmt.exc.args and not stmt.exc.keywords and stmt.cause is None:
                     # 上游用异常做控制流：`raise CampaignEnd()` 结束本关、`raise MapEnemyMoved()` 让
                     # `execute_a_battle` 重新识别地图并重试。两者语义不同，都按**信号步骤**记下来，
                     # 由执行器抛对应的控制流信号（不当作一次调用）。
@@ -1009,14 +1042,17 @@ def derive_plan(body: list, where: str, resolve=None):
 
         return steps, unparsed, dead, terminated
 
-    steps, unparsed, dead, terminated = normalize(body)
+    try:
+        steps, unparsed, dead, terminated = normalize(body)
+    except PlanArgumentError as error:
+        steps, unparsed, dead = [], [f'Arguments({where}): {error}'], []
     plan_complete = not unparsed
     if not plan_complete:
         steps = []
     return steps, plan_complete, unparsed, dead
 
 
-def export_pages(root: str, out_dir: str, manifest: dict):
+def page_documents(root: str):
     """导出上游页面图：页面（含校验按钮）与页面之间的跳转边。
 
     只做**静态提取**（不导入上游代码）：`page_x = Page(CHECK_BUTTON)` 与
@@ -1025,52 +1061,80 @@ def export_pages(root: str, out_dir: str, manifest: dict):
     """
     source = os.path.join(root, 'module', 'ui', 'page.py')
     if not os.path.isfile(source):
-        manifest['pages'] = {'present': False, 'reason': 'module/ui/page.py 不存在'}
-        return
+        return None, {'present': False, 'reason': 'module/ui/page.py 不存在'}
     with open(source, encoding='utf-8') as handle:
         tree = ast.parse(handle.read())
 
-    pages, order, edges, unresolved = {}, [], [], []
+    pages, edges, unresolved = {}, [], []
+
+    def arguments(call, names):
+        if len(call.args) > len(names) or any(isinstance(arg, ast.Starred) for arg in call.args):
+            return None
+        result = dict(zip(names, call.args))
+        for keyword in call.keywords:
+            if keyword.arg not in names or keyword.arg in result:
+                return None
+            result[keyword.arg] = keyword.value
+        return result if set(result) == set(names) else None
+
+    def reference(node, allow_none=False):
+        if isinstance(node, ast.Name):
+            return node.id
+        if allow_none and isinstance(node, ast.Constant) and node.value is None:
+            return 'None'
+        if isinstance(node, ast.Attribute) and reference(node.value) is not None:
+            return ast.unparse(node)
+        return None
+
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 \
                 and isinstance(node.targets[0], ast.Name) \
                 and isinstance(node.value, ast.Call) \
                 and isinstance(node.value.func, ast.Name) and node.value.func.id == 'Page':
             name = node.targets[0].id
-            args = node.value.args
-            pages[name] = {'name': name,
-                           'check_button': ast.unparse(args[0]) if args else '',
-                           'links': []}
-            order.append(name)
+            args = arguments(node.value, ('check_button',))
+            check = reference(args['check_button'], allow_none=True) if args else None
+            if check is None or name in pages:
+                unresolved.append(f'Page@{node.lineno}: unsupported or duplicate declaration {name}')
+            else:
+                pages[name] = {'name': name, 'check_button': check, 'links': []}
             continue
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) \
                 and isinstance(node.value.func, ast.Attribute) and node.value.func.attr == 'link':
-            owner = ast.unparse(node.value.func.value)
-            pair = {}
-            if len(node.value.args) == 2:
-                pair['button'] = ast.unparse(node.value.args[0])
-                pair['destination'] = ast.unparse(node.value.args[1])
-            for keyword in node.value.keywords:
-                if keyword.arg in ('button', 'destination'):
-                    pair[keyword.arg] = ast.unparse(keyword.value)
-            if 'button' in pair and 'destination' in pair:
-                edges.append((owner, pair['button'], pair['destination']))
+            owner = reference(node.value.func.value)
+            pair = arguments(node.value, ('button', 'destination'))
+            button = reference(pair['button']) if pair else None
+            destination = reference(pair['destination']) if pair else None
+            if owner not in pages or not button or not destination:
+                unresolved.append(f'link@{node.lineno}: unsupported arguments or unknown owner')
+                continue
+            edges.append((owner, button, destination))
+            if destination not in pages:
+                unresolved.append(f'link@{node.lineno}: destination is not defined yet: {destination}')
+                continue
+            # Page.links 是以目标 Page 为键的字典，同一目标后一次写入覆盖按钮，保持首次插入顺序。
+            links = pages[owner]['links']
+            previous = next((item for item in links if item['destination'] == destination), None)
+            if previous is None:
+                links.append({'button': button, 'destination': destination})
             else:
-                unresolved.append(f'{owner}.link(...)（第 {node.lineno} 行）不是 button/destination 形态')
-
-    for owner, button, destination in edges:
-        if owner not in pages:
-            unresolved.append(f'{owner} 不是本文件里的页面（link 目标写出去了？）')
+                previous['button'] = button
             continue
-        pages[owner]['links'].append({'button': button, 'destination': destination})
+        if isinstance(node, (ast.Import, ast.ImportFrom, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+            continue
+        # 没有执行任意顶层语句的静态解释器：未知赋值、分支或调用都可能改图，必须留痕。
+        unresolved.append(f'{type(node).__name__}@{node.lineno}: {_brief(node)}')
 
-    records = [pages[name] for name in order]
-    _write_json(os.path.join(out_dir, 'pages.json'), {
+    records = list(pages.values())
+    source_hashes = {os.path.relpath(source, root).replace('\\', '/'): sha256_file(source)}
+    document = {
         'version': EXPORTER_VERSION,
-        'source_files': {os.path.relpath(source, root).replace('\\', '/'): sha256_file(source)},
+        'source_files': source_hashes,
         'pages': records,
-    })
-    manifest['pages'] = {
+    }
+    metadata = {
         'present': True,
         'count': len(records),
         'links': sum(len(page['links']) for page in records),
@@ -1078,8 +1142,76 @@ def export_pages(root: str, out_dir: str, manifest: dict):
                      if destination not in pages],
         'unresolved': unresolved,
         'source_files': 1,
-        'source_hashes': {os.path.relpath(source, root).replace('\\', '/'): sha256_file(source)},
+        'source_hashes': source_hashes,
     }
+    return document, metadata
+
+
+def export_pages(root: str, out_dir: str, manifest: dict):
+    document, manifest['pages'] = page_documents(root)
+    path = os.path.join(out_dir, 'pages.json')
+    if document is None:
+        if os.path.isfile(path):
+            os.unlink(path)
+    else:
+        _write_json(path, document)
+
+
+def campaign_method_plans(tree, module: str, root: str, shape: str | None = None):
+    """Reproducible declared method plans, shared by export and corruption checks."""
+    literal_resolver = attribute_literal_resolver(campaign_literal_attributes(tree, module, root))
+    road_table = campaign_road_table(tree, shape)
+    road_resolver = road_argument_resolver(road_table, campaign_road_list_variables(tree, road_table))
+    grid_locations = campaign_symbol_locations(tree, shape)
+    symbol_resolver = symbol_argument_resolver(
+        grid_locations, campaign_grid_list_variables(tree, grid_locations))
+
+    def resolve_argument(node):
+        for resolver in (literal_resolver, road_resolver, symbol_resolver):
+            value = resolver(node)
+            if value is not _UNRESOLVED:
+                return value
+        return _UNRESOLVED
+
+    battles = []
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != 'Campaign':
+            continue
+        for sub in node.body:
+            if not isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            body = [item for item in sub.body if not (isinstance(item, ast.Expr)
+                    and isinstance(item.value, ast.Constant))]
+            signature_error = None
+            try:
+                parameters = parameter_defaults(sub)
+            except PlanArgumentError as error:
+                parameters, signature_error = {}, str(error)
+            parameter_ref = parameter_resolver(parameters)
+
+            def resolve_with_params(value):
+                resolved = parameter_ref(value)
+                return resolved if resolved is not _UNRESOLVED else resolve_argument(value)
+
+            steps, complete, unparsed, dead = derive_plan(body, sub.name, resolve_with_params)
+            if signature_error:
+                unparsed.append('method parameter default: ' + signature_error)
+            if isinstance(sub, ast.AsyncFunctionDef) or sub.decorator_list:
+                unparsed.append('method transformation requires native execution')
+            if sub.args.vararg or sub.args.kwarg:
+                unparsed.append('variadic method signature requires native execution')
+            if any(default is not None and literal(default) is _UNRESOLVED
+                   for default in [*sub.args.defaults, *sub.args.kw_defaults]):
+                unparsed.append('method parameter default is not a literal')
+            if unparsed:
+                steps, complete = [], False
+            battles.append({
+                'method': sub.name, 'calls': [call_name(call) for call in ast.walk(sub) if is_self_call(call)],
+                'steps': steps, 'plan_complete': complete, 'unparsed': unparsed,
+                'dead_code': dead, 'parameters': parameters, 'stmt_count': len(body),
+                **parameter_signature(sub),
+            })
+    return battles
 
 
 def export_campaign(root: str, out_dir: str, manifest: dict):
@@ -1106,66 +1238,20 @@ def export_campaign(root: str, out_dir: str, manifest: dict):
         # `MAP.shape = '…'` 会拿不到形状，整张符号表就作废（实测 `campaign_15_4_121`：
         # `A1.is_accessible` 因此解不出来，整份计划变 `plan_complete=false`）。
         map_export = map_resolver.export('campaign.' + module)
-        # 类属性链上的字面量（如基类的 ENEMY_FILTER）与模块级路段（road_main = RoadGrids([...])），
-        # 用于解析 self.<NAME> / [road_*] 实参；解析不出的实参仍记 '<expr>'，不猜值。
-        literal_resolver = attribute_literal_resolver(campaign_literal_attributes(tree, module, root))
-        road_table = campaign_road_table(tree, map_export['values'].get('shape'))
-        road_resolver = road_argument_resolver(road_table, campaign_road_list_variables(tree, road_table))
-        grid_locations = campaign_symbol_locations(tree, map_export['values'].get('shape'))
-        symbol_resolver = symbol_argument_resolver(
-            grid_locations, campaign_grid_list_variables(tree, grid_locations))
-
-        def resolve_argument(node, _literal=literal_resolver, _road=road_resolver, _symbol=symbol_resolver):
-            value = _literal(node)
-            if value is not _UNRESOLVED:
-                return value
-            value = _road(node)
-            return value if value is not _UNRESOLVED else _symbol(node)
         ir = {'source': rel, 'name': None, '_name_source': None, 'map': {}, 'config': {},
               'config_meta': {}, 'campaign': {'battles': [], 'attributes': {}},
               'unresolved': []}
 
+        ir['campaign']['battles'] = campaign_method_plans(tree, module, root, map_export['values'].get('shape'))
         for node in tree.body:
             if isinstance(node, ast.ClassDef) and node.name == 'Campaign':
-                for sub in node.body:
-                    if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)) \
-                            and node.name == 'Campaign':
-                        body = [x for x in sub.body if not (isinstance(x, ast.Expr)
-                                and isinstance(x.value, ast.Constant))]
-                        # 方法签名：参数名 + 字面量默认值。用途：`super().X(preset)` 这类委托把**参数引用**
-                        # 解成 `{'__param__': 'preset'}`，再配上这里的默认值就能还原实参（见 campaign_1_1）。
-                        parameters = parameter_defaults(sub)
-                        parameter_ref = parameter_resolver(parameters)
-                        def resolve_with_params(value, _base=resolve_argument, _ref=parameter_ref):
-                            resolved = _ref(value)
-                            return resolved if resolved is not _UNRESOLVED else _base(value)
-
-                        steps, plan_complete, unparsed, dead = derive_plan(body, sub.name, resolve_with_params)
-                        calls = []
-                        for x in ast.walk(sub):
-                            if is_self_call(x):
-                                calls.append(call_name(x))
-                        ir['campaign']['battles'].append({
-                            'method': sub.name, 'calls': calls, 'steps': steps,
-                            'plan_complete': plan_complete, 'unparsed': unparsed,
-                            'dead_code': dead, 'parameters': parameters,
-                            'stmt_count': len(body),
-                        })
-                if node.name == 'Campaign':
-                    ir['campaign']['class'] = node.name
-                    ir['campaign']['bases'] = [ast.unparse(b) for b in node.bases]
+                ir['campaign']['class'] = node.name
+                ir['campaign']['bases'] = [ast.unparse(b) for b in node.bases]
 
         declarations = campaign_resolver.export('campaign.' + module)
         ir['campaign']['attributes'] = declarations['values']
         ir['campaign']['attributes_meta'] = {k: v for k, v in declarations.items() if k != 'values'}
-        # **上游自身无法导入**这种情况要把事实记下来（不能靠白名单，也不能只在检查脚本里猜）：
-        # 关卡文件引用了 `module.campaign.assets` 里不存在的常量时（上游死代码），
-        # `CampaignResolver` 的 unresolved 原因就是 `cannot import X from module.campaign.assets`。
-        # 记在 attributes_meta 里供 Python 与 C# 两侧的验收命令共用同一份判据。
-        import_failures = [issue.get('reason', '') for issue in declarations['unresolved']
-                           if 'cannot import' in str(issue.get('reason', ''))]
-        if import_failures:
-            ir['campaign']['attributes_meta']['upstream_import_error'] = import_failures[0]
+        ir['campaign']['initial_state'] = campaign_class_state_defaults(declarations)
         for issue in declarations['unresolved']:
             prefix = 'Campaign.' + issue['field'] if 'field' in issue else 'Campaign'
             ir['unresolved'].append(f"{prefix}: {issue.get('reason', issue)}")
@@ -1406,9 +1492,12 @@ CAMPAIGN_SCHEMA = {
         },
         'campaign': {
             'type': 'object',
-            'required': ['battles', 'attributes', 'attributes_meta'],
+            'required': ['battles', 'attributes', 'attributes_meta', 'initial_state'],
             'properties': {
                 'class': {'type': 'string'},
+                'initial_state': {'type': 'object', 'additionalProperties': {
+                    'type': ['boolean', 'integer', 'string', 'null']},
+                    'description': 'CampaignResolver declared 标量属性子集；来源见 attributes_meta，不含继承或运行期状态'},
                 'bases': {'type': 'array', 'items': {'type': 'string'}},
                 'boss_battle': {'type': ['integer', 'null']},
                 'plan_complete': {
@@ -1455,22 +1544,30 @@ CAMPAIGN_SCHEMA = {
                     'type': 'array',
                     'items': {
                         'type': 'object',
-                        'required': ['method', 'calls'],
+                        'required': ['method', 'calls', 'steps', 'parameters', 'parameter_order',
+                                     'required_parameters', 'keyword_only_parameters', 'positional_only_parameters',
+                                     'plan_complete', 'unparsed'],
                         'properties': {
                             'method': {'type': 'string'},
                             'calls': {'type': 'array', 'items': {'type': 'string'}},
+                            'parameters': {'type': 'object'},
+                            'parameter_order': {'type': 'array', 'items': {'type': 'string'}},
+                            'required_parameters': {'type': 'array', 'items': {'type': 'string'}},
+                            'keyword_only_parameters': {'type': 'array', 'items': {'type': 'string'}},
+                            'positional_only_parameters': {'type': 'array', 'items': {'type': 'string'}},
                             'steps': {
                                 'type': 'array',
                                 'description': 'plan_complete=false 时恒为空数组，防止残缺计划被误用',
                                 'items': {
                                     'type': 'object',
-                                    'required': ['op', 'kind'],
+                                    'required': ['kind'],
                                     'properties': {
                                         'op': {'type': 'string'},
                                         'kind': {'enum': ['conditional',
                                                           'conditional_negated',
                                                           'terminal', 'call', 'assign',
-                                                          'super_delegate']},
+                                                          'super_delegate', 'branch', 'return', 'raise',
+                                                          'log', 'map_set', 'state_set', 'local_set']},
                                         'args': {'type': 'object'},
                                         'target': {'type': 'string'},
                                     },
@@ -1589,7 +1686,7 @@ def _compare_dirs(a, b):
     （例如 tools/make_imaging_fixture.py 生成的 fixtures/），
     它们不在临时目录里，会被误报成差异（实测踩过）。
     """
-    OWNED_FILES = {'assets.json', 'campaign_index.json', 'manifest.json'}
+    OWNED_FILES = {'assets.json', 'campaign_index.json', 'pages.json', 'manifest.json'}
     OWNED_DIRS = ('campaign/', 'schema/', 'rules/')
 
     def owned(rel):

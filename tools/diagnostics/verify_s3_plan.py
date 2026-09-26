@@ -17,6 +17,26 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools'))
 from campaign_rules import CAMPAIGN_DATA, CampaignRuleError, load_campaign_rules
+from export_upstream_data import export_campaign
+
+
+@contextmanager
+def incomplete_rule_fixture():
+    """Use a real unsupported control-flow construct, independent of evolving map coverage."""
+    scratch = ROOT / '.runtime/verification'
+    scratch.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='s3-incomplete-', dir=scratch) as root:
+        root = Path(root)
+        source = root / 'repo/campaign/fixture/incomplete.py'
+        source.parent.mkdir(parents=True)
+        source.write_text('class Campaign:\n'
+                          '    def battle_0(self): return self.battle_default()\n'
+                          '    def battle_2(self):\n'
+                          '        while self.keep_running():\n'
+                          '            self.battle_default()\n', encoding='utf-8')
+        data = root / 'data'
+        export_campaign(str(root / 'repo'), str(data), {'errors': []})
+        yield 'campaign.fixture.incomplete', data / 'campaign'
 
 
 class CampaignRuleTests(unittest.TestCase):
@@ -64,7 +84,8 @@ class CampaignRuleTests(unittest.TestCase):
                 load_campaign_rules(chapter)
 
     def test_incomplete_plan_retains_native_execution(self):
-        result = load_campaign_rules('campaign.campaign_main.campaign_2_1')
+        with incomplete_rule_fixture() as (chapter, data):
+            result = load_campaign_rules(chapter, data)
         self.assertEqual(result['plan_steps'], ['battle_0', 'battle_2'])
         self.assertEqual(result['incomplete_methods'], ['battle_2'])
         self.assertEqual(result['ir_plan_status'], 'incomplete')
@@ -133,14 +154,17 @@ class S3DryRunTests(unittest.TestCase):
         return response['result']
 
     def test_protocol_dry_run_never_initializes_campaign_or_device(self):
-        with patch.object(self.av, 'op_s3_campaign_init',
+        with incomplete_rule_fixture() as (chapter, data), \
+             patch('campaign_rules.load_campaign_rules',
+                   side_effect=lambda value: load_campaign_rules(value, data)), \
+             patch.object(self.av, 'op_s3_campaign_init',
                           side_effect=AssertionError('unexpected campaign init')), \
              patch.object(self.av, '_device_engine',
                           side_effect=AssertionError('unexpected device access')):
-            result = self.invoke(chapter='campaign.campaign_main.campaign_2_1')
+            result = self.invoke(chapter=chapter)
         self.assertNotIn('error', result)
         self.assertTrue(result['dry_run'])
-        self.assertEqual(result['stage'], '2-1')
+        self.assertEqual(result['stage'], 'incomplete')
         self.assertEqual(result['plan_steps'], ['battle_0', 'battle_2'])
         self.assertEqual(result['ir_plan_status'], 'incomplete')
 
