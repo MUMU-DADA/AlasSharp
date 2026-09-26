@@ -9,6 +9,7 @@ public sealed record MapVisionOverrides(PeakParameters InternalPeaks, PeakParame
     int InternalHough, int EdgeHough, int HomographyEdgeHough);
 
 public enum EnemyScalePriority { Default, StrongestFirst, WeakestFirst }
+public enum CampaignEmotionMode { Calculate, Ignore }
 
 public sealed record CampaignConfiguration
 {
@@ -29,6 +30,8 @@ public sealed record CampaignConfiguration
     public EnemyScalePriority EnemyPriority { get; init; }
     public int Fleet2 { get; init; }
     public int Submarine { get; init; }
+    public bool UseFleetLock { get; init; } = true;
+    public CampaignEmotionMode EmotionMode { get; init; } = CampaignEmotionMode.Calculate;
     public MapVisionOverrides? Vision { get; init; }
 }
 

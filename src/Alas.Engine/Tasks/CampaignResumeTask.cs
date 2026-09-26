@@ -23,12 +23,19 @@ public sealed class CampaignResumeTask : ITaskRunner
         Validate(request.Input);
         var service = context.Campaign ?? throw new NotSupportedException("C# campaign execution service is unavailable");
         var rule = RuleCatalog.Create(request.Input!["campaign"]!.GetValue<string>());
-        var result = await service.ResumeInMapAsync(rule, token);
+        var result = await service.ResumeInMapAsync(rule,
+            new CampaignConfiguration { EmotionMode = CampaignEmotionMode.Ignore }, token);
+        return Describe(request.Id, Kind, rule, result, false);
+    }
+
+    internal static TaskResult Describe(string id, string kind, CampaignRule rule,
+        CampaignResumeResult result, bool identityVerified)
+    {
         var terminalCombat = result.StageReturn?.Combats.LastOrDefault();
         var ended = result.Exit == CampaignLoopExit.Ended;
         var evidence = JsonSerializer.SerializeToNode(new
         {
-            campaign = rule.Id, campaignIdentityVerified = false,
+            campaign = rule.Id, campaignIdentityVerified = identityVerified,
             loopExit = result.Exit.ToString(), result.BattleCount,
             stageReturn = result.StageReturn, settlementVerified = false, cleared = false,
             sortie = new
@@ -49,7 +56,7 @@ public sealed class CampaignResumeTask : ITaskRunner
                 }
             }
         }, TaskQueue.Json)!.AsObject();
-        return new(request.Id, Kind, TaskOutcome.Failed,
+        return new(id, kind, TaskOutcome.Failed,
             result.Exit == CampaignLoopExit.Ended ? "sortie_settlement_unverified" : "campaign_loop_exhausted",
             evidence);
     }

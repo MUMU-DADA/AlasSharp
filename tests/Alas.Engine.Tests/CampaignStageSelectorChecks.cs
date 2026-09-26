@@ -15,8 +15,39 @@ internal static class CampaignStageSelectorChecks
         var source = CampaignStageSelector.Source;
         Check(Convert.ToHexStringLower(SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(upstream, source.Path)))) == source.Sha256,
             "Campaign stage selector source drifted");
+        source = CampaignEntry.Source;
+        Check(Convert.ToHexStringLower(SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(upstream, source.Path)))) == source.Sha256,
+            "Native map entry source drifted");
+        source = CampaignFleetLock.Source;
+        Check(Convert.ToHexStringLower(SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(upstream, source.Path)))) == source.Sha256,
+            "Native fleet lock and auto-search source drifted");
         Check(RuleCatalog.Ids.Select(id => RuleCatalog.Create(id).StageName)
             .SequenceEqual(["1-1", "1-2", "1-3", "1-4"]), "Compiled main-stage identities changed");
+
+        var switchDriver = new Driver { AutoSearchAvailable = false };
+        var auto = new CampaignAutoSearch(switchDriver, new SwitchVision(switchDriver),
+            () => new ScreenFrame(switchDriver.FrameSequence, DateTimeOffset.UtcNow, ReadOnlyMemory<byte>.Empty));
+        Check(await auto.EnsureManualAsync() == new AutoSearchObservation(false, false, false) &&
+            switchDriver.ClickedAssets.Count == 0, "Absent auto-search option caused a click");
+        switchDriver = new Driver { AutoSearchAvailable = true };
+        auto = new CampaignAutoSearch(switchDriver, new SwitchVision(switchDriver),
+            () => new ScreenFrame(switchDriver.FrameSequence, DateTimeOffset.UtcNow, ReadOnlyMemory<byte>.Empty));
+        Check(await auto.EnsureManualAsync() == new AutoSearchObservation(true, false, false) &&
+            switchDriver.ClickedAssets.Count == 0, "Already disabled auto-search caused a click");
+        switchDriver = new Driver { AutoSearchAvailable = true, AutoSearchEnabled = true };
+        auto = new CampaignAutoSearch(switchDriver, new SwitchVision(switchDriver),
+            () => new ScreenFrame(switchDriver.FrameSequence, DateTimeOffset.UtcNow, ReadOnlyMemory<byte>.Empty));
+        Check(await auto.EnsureManualAsync() == new AutoSearchObservation(true, true, false) &&
+            switchDriver.ClickedAssets.SequenceEqual(["AUTO_SEARCH_CHECK"]),
+            "Auto-search enabled on the previous sortie was not disabled before map preparation");
+
+        switchDriver = new Driver();
+        Check(await new CampaignFleetLock(switchDriver).EnsureAsync(true) == new FleetLockObservation(false, false) &&
+            switchDriver.ClickedAssets.Count == 0, "Absent fleet lock caused a blind click");
+        switchDriver = new Driver { FleetLockAvailable = true, FleetLockEnabled = false };
+        Check(await new CampaignFleetLock(switchDriver).EnsureAsync(true) == new FleetLockObservation(true, true) &&
+            switchDriver.ClickedAssets.SequenceEqual(["FLEET_UNLOCKED"]),
+            "Fleet lock failed to wait through a transient unknown state");
 
         var driver = new Driver { Chapter = 3 };
         var stages = new Stages(driver);
@@ -131,7 +162,79 @@ internal static class CampaignStageSelectorChecks
         await driver.ClickAreaAsync(new(200, 250, 230, 280), default);
         await Throws<InvalidDataException>(() => new CampaignPreparation(driver).OpenFleetAsync("normal").AsTask(),
             "Unexpected map entry became verified fleet preparation");
-        Console.WriteLine("Campaign stage/fleet preparation: mode, chapter, unique stage, map and fleet preparation transitions passed offline; no sortie entered.");
+        driver = new Driver { Chapter = 1 };
+        await driver.ClickAreaAsync(new(200, 250, 230, 280), default);
+        await driver.ClickAsync(UiAssets.Map.MAP_PREPARATION, default);
+        var entry = await new CampaignEntry(driver, () => driver.FrameSequence).EnterAsync();
+        Check(entry is { FleetClicks: 1, FrameSequence: > 0 } && driver.EnterMap &&
+            driver.ClickedAssets.SequenceEqual(["MAP_PREPARATION", "FLEET_PREPARATION"]),
+            "Fleet preparation did not reach a fresh observed map frame");
+
+        driver = new Driver { Chapter = 1, EnterMapOnFleetClick = false };
+        await driver.ClickAreaAsync(new(200, 250, 230, 280), default);
+        await driver.ClickAsync(UiAssets.Map.MAP_PREPARATION, default);
+        await Throws<TimeoutException>(() => new CampaignEntry(driver, () => driver.FrameSequence).EnterAsync().AsTask(),
+            "Stalled fleet preparation became map entry");
+        Check(driver.ClickedAssets.Count(asset => asset == "FLEET_PREPARATION") == 6,
+            "Stalled fleet preparation exceeded the upstream click bound");
+
+        driver = new Driver { Chapter = 1, EnterMapOnFleetClick = false, ReturnToMapOnFleetClick = true };
+        await driver.ClickAreaAsync(new(200, 250, 230, 280), default);
+        await driver.ClickAsync(UiAssets.Map.MAP_PREPARATION, default);
+        await Throws<InvalidDataException>(() => new CampaignEntry(driver, () => driver.FrameSequence).EnterAsync().AsTask(),
+            "Fleet preparation returning to map preparation became map entry");
+
+        driver = new Driver { Chapter = 1, OpenFleetOnClick = false };
+        await driver.ClickAreaAsync(new(200, 250, 230, 280), default);
+        await Throws<InvalidDataException>(() => new CampaignEntry(driver, () => driver.FrameSequence).EnterAsync().AsTask(),
+            "Missing fleet preparation caused a blind map-entry click");
+        Check(!driver.ClickedAssets.Contains("FLEET_PREPARATION"), "Missing fleet preparation caused a click");
+
+        var runTask = new CampaignRunTask();
+        await Throws<ArgumentException>(() =>
+        {
+            runTask.Validate(request.Input);
+            return Task.CompletedTask;
+        }, "Campaign run accepted missing fleet plan");
+        var runInput = (JsonObject)configured.Input!.DeepClone();
+        runInput["emotionMode"] = "ignore";
+        await Throws<NotSupportedException>(() =>
+        {
+            runTask.Validate(configured.Input);
+            return Task.CompletedTask;
+        }, "Campaign run accepted implicit emotion calculation without an implementation");
+        driver = new Driver { Chapter = 1 };
+        var runFleet = new FleetService();
+        result = await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = runInput },
+            new TaskContext(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
+                Campaign: new CampaignService(), Stages: new Stages(driver), Fleets: runFleet,
+                Entry: new EntryService(driver), AutoSearch: new AutoSearchService()), default);
+        Check(result.Outcome == TaskOutcome.Failed && runFleet.Plan == new FleetPlan(1, 0, 0) &&
+            result.Evidence?["campaignIdentityVerified"]?.GetValue<bool>() == true &&
+            result.Evidence["entry"]?["fleetClicks"]?.GetValue<int>() == 1 &&
+            result.Evidence["sortie"]?["outcome"]?.GetValue<string>() == "ended_unknown" &&
+            result.Evidence["emotionMode"]?.GetValue<string>() == "ignore" &&
+            result.Evidence["autoSearch"]?["enabled"]?.GetValue<bool>() == false &&
+            result.Evidence["cleared"]?.GetValue<bool>() == false,
+            "Integrated C# campaign graph reported unverified settlement as a clear");
+        driver = new Driver { Chapter = 1 };
+        try
+        {
+            await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = runInput },
+                new TaskContext(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
+                    Campaign: new CampaignService { Fail = true }, Stages: new Stages(driver),
+                    Fleets: new FleetService(), Entry: new EntryService(driver),
+                    AutoSearch: new AutoSearchService()), default);
+            throw new InvalidOperationException("Map execution failure was swallowed");
+        }
+        catch (TaskEvidenceException error)
+        {
+            Check(error.Phase == "map_execution" && error.InnerException is IOException &&
+                error.Evidence["selection"] is not null && error.Evidence["fleetSetup"] is not null &&
+                error.Evidence["entry"] is not null && error.Evidence["cleared"]?.GetValue<bool>() == false,
+                "Completed campaign phases were lost on execution failure");
+        }
+        Console.WriteLine("Campaign entry: mode, chapter, fleet preparation and map-entry transitions passed offline; no real sortie or settlement verified.");
     }
 
     private static void Check(bool value, string message)
@@ -179,6 +282,40 @@ internal static class CampaignStageSelectorChecks
         public ValueTask<FleetSetupResult> ConfigureFleetAsync(FleetPlan plan, IPopupHandler popups, CancellationToken token)
         { Plan = plan; return ValueTask.FromResult(new FleetSetupResult(false, true, true, plan.Submarine)); }
     }
+    private sealed class EntryService(Driver driver) : ICampaignEntryService
+    {
+        public ValueTask<CampaignEntryObservation> EnterFromFleetAsync(CancellationToken token)
+            => new CampaignEntry(driver, () => driver.FrameSequence).EnterAsync(token);
+    }
+    private sealed class AutoSearchService : ICampaignAutoSearchService
+    {
+        public ValueTask<AutoSearchObservation> EnsureManualAsync(CancellationToken token)
+        { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(new AutoSearchObservation(false, false, false)); }
+    }
+    private sealed class SwitchVision(Driver driver) : IImagePatchVision
+    {
+        public ValueTask<ImagePatchObservation> MeasurePatchAsync(ScreenFrame frame, ImagePatchRequest request,
+            CancellationToken token = default)
+        {
+            Check(request.Measure == PatchMeasure.SimilarityCount &&
+                request.Processing == PatchProcessing.ColorSimilarity &&
+                request.Color == new PixelColor(158, 234, 94) && request.MinimumSimilarity == 225,
+                "Auto-search color rule drifted from the upstream green check");
+            return ValueTask.FromResult(new ImagePatchObservation(frame.Sequence, driver.AutoSearchEnabled ? 51 : 0));
+        }
+    }
+    private sealed class CampaignService : ICampaignExecutionService
+    {
+        public bool Fail { get; init; }
+        public ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
+            CampaignConfiguration configuration, CancellationToken token)
+        {
+            if (Fail) throw new IOException("Injected map execution failure");
+            Check(configuration is { EmotionMode: CampaignEmotionMode.Ignore, UseFleetLock: true },
+                "Integrated campaign did not preserve explicit emotion and fleet-lock settings");
+            return ValueTask.FromResult(new CampaignResumeResult(CampaignLoopExit.Ended, 1, null));
+        }
+    }
     private sealed class Driver : IUiDriver
     {
         public GameServer Server => GameServer.Cn;
@@ -194,14 +331,22 @@ internal static class CampaignStageSelectorChecks
         public bool MapPreparationVisible { get; set; } = true;
         public bool OpenFleetOnClick { get; set; } = true;
         public bool EnterMapOnPreparationClick { get; set; }
+        public bool EnterMapOnFleetClick { get; set; } = true;
+        public bool ReturnToMapOnFleetClick { get; set; }
         public bool DockFullOnPreparationClick { get; set; }
         public bool DockFullVisible { get; private set; }
+        public bool AutoSearchAvailable { get; set; }
+        public bool AutoSearchEnabled { get; set; }
+        public bool FleetLockAvailable { get; set; }
+        public bool FleetLockEnabled { get; set; }
+        public int FleetLockTransitionFrames { get; private set; }
         public bool FleetPreparationOpen { get; private set; }
         public bool Selected { get; private set; }
+        public long FrameSequence { get; private set; }
         public List<string> ClickedAssets { get; } = [];
         public List<Rectangle> ClickedAreas { get; } = [];
         public ValueTask ScreenshotAsync(CancellationToken token)
-        { token.ThrowIfCancellationRequested(); HasFrame = true; return ValueTask.CompletedTask; }
+        { token.ThrowIfCancellationRequested(); HasFrame = true; FrameSequence++; if (FleetLockTransitionFrames > 0) FleetLockTransitionFrames--; return ValueTask.CompletedTask; }
         public ValueTask<bool> AppearsAsync(AssetRule asset, ButtonOffset offset = default, double interval = 0,
             double similarity = .85, int threshold = 10, TemplatePreprocessing preprocessing = TemplatePreprocessing.Color,
             CancellationToken token = default)
@@ -216,6 +361,9 @@ internal static class CampaignStageSelectorChecks
                     !FleetPreparationOpen && !EnterMap :
                 asset == UiAssets.Map.FLEET_PREPARATION ? FleetPreparationOpen :
                 asset == UiAssets.Retire.RETIRE_APPEAR_1 || asset == UiAssets.Retire.RETIRE_APPEAR_3 ? DockFullVisible :
+                asset == UiAssets.Handler.AUTO_SEARCH_TITLE ? AutoSearchAvailable :
+                asset == UiAssets.Handler.FLEET_LOCKED ? FleetLockAvailable && FleetLockTransitionFrames == 0 && FleetLockEnabled :
+                asset == UiAssets.Handler.FLEET_UNLOCKED ? FleetLockAvailable && FleetLockTransitionFrames == 0 && !FleetLockEnabled :
                 asset == UiAssets.Handler.IN_MAP ? Selected && EnterMap : false;
             return ValueTask.FromResult(present);
         }
@@ -230,6 +378,13 @@ internal static class CampaignStageSelectorChecks
             else if (asset == UiAssets.Map.MAP_PREPARATION && EnterMapOnPreparationClick) EnterMap = true;
             else if (asset == UiAssets.Map.MAP_PREPARATION && DockFullOnPreparationClick) DockFullVisible = true;
             else if (asset == UiAssets.Map.MAP_PREPARATION && OpenFleetOnClick) FleetPreparationOpen = true;
+            else if (asset == UiAssets.Map.FLEET_PREPARATION && EnterMapOnFleetClick)
+            { FleetPreparationOpen = false; EnterMap = true; }
+            else if (asset == UiAssets.Map.FLEET_PREPARATION && ReturnToMapOnFleetClick)
+                FleetPreparationOpen = false;
+            else if (asset == UiAssets.Handler.AUTO_SEARCH_CHECK) AutoSearchEnabled = !AutoSearchEnabled;
+            else if (asset == UiAssets.Handler.FLEET_UNLOCKED || asset == UiAssets.Handler.FLEET_LOCKED)
+            { FleetLockEnabled = !FleetLockEnabled; FleetLockTransitionFrames = 2; }
             return ValueTask.CompletedTask;
         }
         public ValueTask ClickAreaAsync(Rectangle area, CancellationToken token)
@@ -239,6 +394,8 @@ internal static class CampaignStageSelectorChecks
         public ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token) => throw new NotSupportedException();
         public ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token) => throw new NotSupportedException();
         public ValueTask<OcrObservation> ReadTextAsync(OcrRequest request, CancellationToken token) => throw new NotSupportedException();
+        public Rectangle ButtonArea(AssetRule asset) => asset.For(Server).Area ?? throw new InvalidDataException();
+        public void LoadOffset(AssetRule target, AssetRule reference) { }
         public void ClearOffset(AssetRule asset) { }
         public IntervalTimer Timer(AssetRule asset, double seconds = 5, bool renew = false) => throw new NotSupportedException();
         public void ResetInterval(AssetRule asset, double seconds = 3) { }

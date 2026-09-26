@@ -20,6 +20,7 @@ public sealed class TaskQueue
     public TaskQueue(IEnumerable<ITaskRunner>? runners = null)
         => _runners = (runners ?? [new ObserveTask(), new NavigateTask(), new DataKeyTask(),
             new MapObserveTask(), new CampaignStagesTask(), new CampaignSelectTask(), new CampaignFleetPreparationTask(),
+            new CampaignRunTask(),
             new CampaignResumeTask()]).ToDictionary(r => r.Kind, StringComparer.Ordinal);
     private static JsonSerializerOptions CreateJson()
     {
@@ -142,8 +143,11 @@ public sealed class TaskQueue
                     }
                     catch (Exception error) when (error is not OutOfMemoryException)
                     {
+                        var cause = error is TaskEvidenceException phaseError ? phaseError.InnerException! : error;
                         result = new(request.Id, request.Kind, executed ? TaskOutcome.Failed : TaskOutcome.Refused,
-                            error is OperationCanceledException ? "cancelled_during_task" : error.GetType().Name, Error: error.ToString());
+                            cause is OperationCanceledException ? "cancelled_during_task" : cause.GetType().Name,
+                            error is TaskEvidenceException withEvidence ? withEvidence.Evidence : null,
+                            Error: error.ToString());
                     }
                 }
                 if (executed && session is not null)

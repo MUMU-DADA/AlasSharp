@@ -138,10 +138,10 @@ internal static class CampaignMapCombatChecks
         var map = new MapDefinition("C1", "SP ME MB", ["B1"], ["B1"],
             [new SpawnWave(0, Enemy: 1), new SpawnWave(1, Boss: 1)]);
         var host = new Host();
-        var execution = new CampaignExecution(new TwoBattleRule(map), new(),
+        var execution = new CampaignExecution(new TwoBattleRule(map), new() { EmotionMode = CampaignEmotionMode.Ignore },
             (state, config) => new InMapCampaignOperations(host, state, config, default));
         Check(await execution.RunAsync() == CampaignLoopExit.Ended && host.Camera is { Taps: 2, Scans: 2 } &&
-            execution.Context.State.BattleCount == 1 &&
+            execution.Context.State.BattleCount == 1 && host.FleetLockCalls == 1 &&
             execution.Context.Operations is InMapCampaignOperations
             { StageReturn: { Combats: [ { Return: CombatReturn.InStage, Rank.IsWinningRank: true } ] } },
             "Compiled campaign loop did not execute the in-map C# scan, combat and stage-return sequence");
@@ -149,7 +149,8 @@ internal static class CampaignMapCombatChecks
         var mysteryMap = new MapDefinition("D1", "SP MM ME MB", ["B1"], ["B1"],
             [new SpawnWave(0, Enemy: 1, Mystery: 1), new SpawnWave(1, Boss: 1)]);
         var mysteryHost = new Host { HasMystery = true };
-        var mysteryExecution = new CampaignExecution(new MysteryTwoBattleRule(mysteryMap), new(),
+        var mysteryExecution = new CampaignExecution(new MysteryTwoBattleRule(mysteryMap),
+            new() { EmotionMode = CampaignEmotionMode.Ignore },
             (state, config) => new InMapCampaignOperations(mysteryHost, state, config, default));
         Check(await mysteryExecution.RunAsync() == CampaignLoopExit.Ended &&
             mysteryHost.Camera is { Taps: 3, Scans: 2 } &&
@@ -192,7 +193,7 @@ internal static class CampaignMapCombatChecks
             "Round limit was recorded as a completed sortie");
 
         host = new Host { InMap = false };
-        execution = new CampaignExecution(new TwoBattleRule(map), new(),
+        execution = new CampaignExecution(new TwoBattleRule(map), new() { EmotionMode = CampaignEmotionMode.Ignore },
             (state, config) => new InMapCampaignOperations(host, state, config, default));
         bool rejected = false;
         try { await execution.RunAsync(); }
@@ -203,7 +204,8 @@ internal static class CampaignMapCombatChecks
 
     private sealed class ResumeService(CampaignResumeResult result) : ICampaignExecutionService
     {
-        public ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule, CancellationToken token)
+        public ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
+            CampaignConfiguration configuration, CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(result); }
     }
 
@@ -241,9 +243,12 @@ internal static class CampaignMapCombatChecks
     {
         public bool InMap { get; init; } = true;
         public bool HasMystery { get; init; }
+        public int FleetLockCalls { get; private set; }
         public Camera? Camera { get; private set; }
         public ValueTask<bool> VerifyInMapAsync(CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(InMap); }
+        public ValueTask EnsureFleetLockAsync(bool enabled, CancellationToken token)
+        { token.ThrowIfCancellationRequested(); FleetLockCalls++; return ValueTask.CompletedTask; }
         public ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state,
             CampaignConfiguration configuration, CancellationToken token)
         {

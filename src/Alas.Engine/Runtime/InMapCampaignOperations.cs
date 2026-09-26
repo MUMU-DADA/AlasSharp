@@ -6,6 +6,7 @@ namespace Alas.Engine.Runtime;
 public interface ICampaignInMapHost
 {
     ValueTask<bool> VerifyInMapAsync(CancellationToken token);
+    ValueTask EnsureFleetLockAsync(bool enabled, CancellationToken token);
     ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state,
         CampaignConfiguration configuration, CancellationToken token);
     CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration);
@@ -14,7 +15,8 @@ public interface ICampaignInMapHost
 public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount, MapArrivalResult? StageReturn);
 public interface ICampaignExecutionService
 {
-    ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule, CancellationToken token);
+    ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
+        CampaignConfiguration configuration, CancellationToken token);
 }
 
 /// <summary>Runs the compiled campaign loop after the user has completed stage and fleet preparation.</summary>
@@ -28,7 +30,8 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask CheckEmotionAsync(int battles)
     {
         if (battles < 0) throw new ArgumentOutOfRangeException(nameof(battles));
-        // This entry mode starts after the user has completed emotion and fleet preparation.
+        if (configuration.EmotionMode != CampaignEmotionMode.Ignore)
+            throw Missing("emotion calculation before map entry");
         return ValueTask.CompletedTask;
     }
 
@@ -42,7 +45,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask HandleFleetLockAsync()
     {
         if (!_entered) throw new InvalidOperationException("Verify the in-map page before initializing fleets");
-        return ValueTask.CompletedTask;
+        return host.EnsureFleetLockAsync(configuration.UseFleetLock, token);
     }
 
     public async ValueTask InitializeMapAsync(MapDefinition definition)

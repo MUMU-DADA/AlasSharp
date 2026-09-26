@@ -13,7 +13,8 @@ public sealed record EngineSessionOptions(string Adb, string Serial, GameServer 
 
 /// <summary>One device and one pure-vision process for the entire new execution graph.</summary>
 public sealed class EngineSession : IAsyncDisposable, IMapObservationService, ICampaignInMapHost,
-    ICampaignExecutionService, ICampaignStageObservationService, ICampaignFleetPreparationService
+    ICampaignExecutionService, ICampaignStageObservationService, ICampaignFleetPreparationService,
+    ICampaignEntryService, ICampaignAutoSearchService
 {
     private readonly PythonTemplateVision _vision;
     private readonly JournalDevice _device;
@@ -85,9 +86,10 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     public CampaignExecution CreateInMapCampaignExecution(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token = default)
         => new(rule, configuration, (state, effective) => new InMapCampaignOperations(this, state, effective, token));
-    public async ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule, CancellationToken token)
+    public async ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
+        CampaignConfiguration configuration, CancellationToken token)
     {
-        var execution = CreateInMapCampaignExecution(rule, new(), token);
+        var execution = CreateInMapCampaignExecution(rule, configuration, token);
         var exit = await execution.RunAsync();
         var operations = (InMapCampaignOperations)execution.Context.Operations;
         return new(exit, execution.Context.State.BattleCount, operations.StageReturn);
@@ -97,6 +99,8 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         await Driver.ScreenshotAsync(token);
         return await Driver.AppearsAsync(UiAssets.Handler.IN_MAP, token: token);
     }
+    async ValueTask ICampaignInMapHost.EnsureFleetLockAsync(bool enabled, CancellationToken token)
+        => _ = await new CampaignFleetLock(Driver).EnsureAsync(enabled, token);
     async ValueTask<IMapScanCamera> ICampaignInMapHost.CreateCameraAsync(CampaignState state,
         CampaignConfiguration configuration, CancellationToken token)
     {
@@ -142,12 +146,20 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         => new CampaignFleetSetup(Driver, _vision,
             () => Driver.Frame ?? throw new InvalidOperationException("No fleet preparation screenshot"), popups)
             .ApplyAsync(plan, token);
+    public ValueTask<CampaignEntryObservation> EnterFromFleetAsync(CancellationToken token)
+        => new CampaignEntry(Driver,
+            () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No map entry screenshot"))
+            .EnterAsync(token);
+    public ValueTask<AutoSearchObservation> EnsureManualAsync(CancellationToken token)
+        => new CampaignAutoSearch(Driver, _vision,
+            () => Driver.Frame ?? throw new InvalidOperationException("No map preparation screenshot"))
+            .EnsureManualAsync(token);
     public TaskContext BeginTask(TimeSpan timeout)
     {
         _device.Actions.Clear();
         Driver.ResetTask();
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
-        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this, this);
+        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this, this, this, this);
     }
     public async Task<JsonObjectEvidence> SaveEvidenceAsync(string directory, bool failed)
     {
