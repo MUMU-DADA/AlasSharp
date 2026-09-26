@@ -51,6 +51,20 @@ internal static class MapViewChecks
             [Path.Combine(AppContext.BaseDirectory, "native_view_reference.py"), upstream, output], TimeSpan.FromSeconds(90));
         Check(process.ExitCode == 0, "Native view oracle failed: " + process.Error);
         var reference = JsonNode.Parse(await File.ReadAllTextAsync(output))!;
+        foreach (var tap in reference["taps"]!.AsArray())
+        {
+            var area = ReadArea(tap!["area"]!);
+            var draws = new TapDraws(tap["draws"]!.AsArray().Select(value => I(value!)).ToArray());
+            var point = MapGridInput.Place(area, draws);
+            Equal(Pair(point.X, point.Y), tap["expected"], "Native grid click placement");
+            Check(draws.Count == 6, "Map grid click changed native random draw count");
+        }
+        var firstTap = reference["taps"]![0]!;
+        var tapDevice = new TapDevice();
+        await new MapGridInput(tapDevice, new TapDraws(firstTap["draws"]!.AsArray().Select(value => I(value!)).ToArray()))
+            .TapAsync(ReadArea(firstTap["area"]!), default);
+        Equal(Pair(tapDevice.Point!.Value.X, tapDevice.Point.Value.Y), firstTap["expected"],
+            "Map grid click was not sent through the C# device");
         int projected = 0, outside = 0;
         foreach (var entry in reference["geometry"]!.AsArray())
         {
@@ -126,6 +140,7 @@ internal static class MapViewChecks
         var files = new AssetFiles(Path.Combine(upstream, "assets"));
         var recognition = new GridRecognition(new EmptyPatches(), files, GameServer.Cn, new());
         await ImageRefreshAsync(blank, files);
+        await GridTapAsync(blank, recognition);
         foreach (var entry in reference["controls"]!.AsArray()) await ControlAsync(entry!, blank, recognition);
         foreach (var entry in reference["optimized"]!.AsArray()) await OptimizationAsync(entry!, blank, recognition);
         foreach (var entry in reference["settling"]!.AsArray()) await SettlingAsync(entry!, blank, recognition);
@@ -145,7 +160,8 @@ internal static class MapViewChecks
         Console.WriteLine($"Native view: {reference["geometry"]!.AsArray().Count} layouts / {projected} grid projections / {outside} expected failures; " +
             $"{reference["swipes"]!.AsArray().Count} swipe votes / {reference["cameras"]!.AsArray().Count} camera state transitions / " +
             $"{reference["controls"]!.AsArray().Count} focus/edge traces / {reference["optimized"]!.AsArray().Count} optimized controls / " +
-            $"{reference["settling"]!.AsArray().Count} native settling traces / {reference["pixels"]!.AsArray().Count} actual CV pairs. " +
+            $"{reference["settling"]!.AsArray().Count} native settling traces / {reference["pixels"]!.AsArray().Count} actual CV pairs / " +
+            $"{reference["taps"]!.AsArray().Count} native grid clicks. " +
             "Synthetic polygons and pixels; no detector, real device or sortie verification.");
     }
 
@@ -180,6 +196,16 @@ internal static class MapViewChecks
         public int Calls { get; private set; }
         public ValueTask<ImagePatchObservation> MeasurePatchAsync(ScreenFrame frame, ImagePatchRequest request, CancellationToken token = default)
         { Calls++; return ValueTask.FromResult(new ImagePatchObservation(frame.Sequence, 0)); }
+    }
+    private sealed class TapDraws(int[] values) : Random
+    {
+        public int Count { get; private set; }
+        public override long NextInt64(long minValue, long maxValue)
+        {
+            int value = values[Count++];
+            Check(value >= minValue && value < maxValue, "Native tap draw lies outside grid area");
+            return value;
+        }
     }
     private sealed class FakeClock : TimeProvider
     {
@@ -232,6 +258,64 @@ internal static class MapViewChecks
         rejected = false;
         try { pending.UpdateImage(frame with { Sequence = 2 }); } catch (InvalidOperationException) { rejected = true; }
         Check(rejected && pending.View.Frame.Sequence == 1, "Image-only refresh concealed a pending swipe");
+    }
+    private static async Task GridTapAsync(ScreenFrame frame, GridRecognition recognition)
+    {
+        var view = new MapViewFrame(frame, Regular(new(262, 227.5)));
+        var clock = new FakeClock();
+        var source = new Source(i => view with { Frame = frame with { Sequence = i + 1 } }, clock);
+        var swipes = new Input(); var taps = new TapInput();
+        var camera = new MapCamera(Map(), new(5, 4), view, source, swipes, recognition,
+            new(new FixedEvidence(null)), new() { Predict = false, Optimize = false }, clock: clock, gridInput: taps);
+        var local = view.Geometry.Center;
+        await camera.TapCellAsync(new(5, 4));
+        Check(taps.Areas.SequenceEqual([view.Geometry.Projections[local].Inner]) &&
+            source.Captures == 0 && swipes.Gestures.Count == 0 && camera.Position == new Cell(5, 4),
+            "Visible grid tap changed camera state or used the wrong click area");
+        bool blocked = false;
+        try { await camera.ObserveAsync(MapScanMode.Normal, default); }
+        catch (MapImageRefreshRequiredException) { blocked = true; }
+        Check(blocked, "Grid tap allowed stale map observation");
+        await camera.RefreshImageAsync();
+        Check(source.Captures == 1, "Grid tap refresh did not capture a new image");
+        await camera.TapCellAsync(new(7, 4));
+        Check(source.Captures == 2 && swipes.Gestures.Count == 1 && taps.Areas.Count == 2 &&
+            taps.Areas[1] == camera.View.Geometry.Projections[camera.View.Geometry.Center].Inner &&
+            camera.Position == new Cell(7, 4), "Offscreen grid was not localized before tap");
+        blocked = false;
+        try { await camera.TapCellAsync(new(7, 4)); }
+        catch (MapImageRefreshRequiredException) { blocked = true; }
+        Check(blocked && taps.Areas.Count == 2, "Second grid tap did not require a fresh frame");
+        await camera.RefreshImageAsync();
+        await camera.ObserveAsync(MapScanMode.Normal, default);
+        taps.Fail = true;
+        bool failed = false;
+        try { await camera.TapCellAsync(new(7, 4)); } catch (IOException) { failed = true; }
+        Check(failed, "Grid tap failure was hidden");
+        failed = false;
+        try { await camera.ObserveAsync(MapScanMode.Normal, default); } catch (InvalidOperationException) { failed = true; }
+        Check(failed, "Camera remained usable after an uncertain grid tap");
+    }
+    private sealed class TapInput : IMapGridInput
+    {
+        public List<PixelArea> Areas { get; } = [];
+        public bool Fail;
+        public ValueTask TapAsync(PixelArea area, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested(); Areas.Add(area);
+            if (Fail) throw new IOException("synthetic tap failure");
+            return ValueTask.CompletedTask;
+        }
+    }
+    private sealed class TapDevice : IGameDevice
+    {
+        public PixelPoint? Point;
+        public ValueTask TapAsync(PixelPoint point, CancellationToken token = default)
+        { token.ThrowIfCancellationRequested(); Point = point; return ValueTask.CompletedTask; }
+        public ValueTask<ScreenFrame> CaptureAsync(CancellationToken token = default) => throw new InvalidOperationException("Unexpected capture");
+        public ValueTask SwipeAsync(PixelPoint start, PixelPoint end, TimeSpan duration, CancellationToken token = default)
+            => throw new InvalidOperationException("Unexpected swipe");
+        public ValueTask BackAsync(CancellationToken token = default) => throw new InvalidOperationException("Unexpected back");
     }
     private sealed class Input : IMapSwipeInput
     {

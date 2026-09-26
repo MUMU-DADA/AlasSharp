@@ -16,9 +16,14 @@ public interface IMapSwipeInput
 {
     ValueTask SwipeAsync(MapSwipeGesture gesture, CancellationToken token);
 }
+public interface IMapGridInput
+{
+    ValueTask TapAsync(PixelArea area, CancellationToken token);
+}
 public sealed record MapSwipeGesture(ScreenPoint Pixels, PixelArea Box,
     IReadOnlyList<PixelArea>? PreferredEnds, IReadOnlyList<PixelArea>? ForbiddenAreas);
 public enum MapControlMethod { Adb, Minitouch, MaaTouch }
+public sealed class MapImageRefreshRequiredException() : InvalidOperationException("Refresh the map image after a grid tap");
 
 public sealed record MapCameraRules
 {
@@ -53,6 +58,7 @@ public sealed class MapCamera : IMapScanCamera
     private readonly MapCameraState _camera;
     private readonly IMapViewSource _source;
     private readonly IMapSwipeInput _input;
+    private readonly IMapGridInput? _gridInput;
     private readonly GridRecognition _recognition;
     private readonly MapSwipePredictor _predictor;
     private readonly MapCameraRules _rules;
@@ -63,19 +69,22 @@ public sealed class MapCamera : IMapScanCamera
     private readonly SemaphoreSlim _gate = new(1, 1);
     private MapObservation? _observation;
     private bool _faulted;
+    private bool _requiresRefresh;
     public Cell Position => _camera.Position;
     public MapViewFrame View => _camera.View;
 
     public MapCamera(CampaignState map, Cell initialPosition, MapViewFrame initialView,
         IMapViewSource source, IMapSwipeInput input, GridRecognition recognition, MapSwipePredictor predictor,
         MapCameraRules rules, MapControlMethod method = MapControlMethod.Adb, TimeSpan? timeout = null,
-        TimeProvider? clock = null, Random? random = null, bool correctInitialEdges = true)
+        TimeProvider? clock = null, Random? random = null, bool correctInitialEdges = true,
+        IMapGridInput? gridInput = null)
     {
         rules.Validate();
         if (!Enum.IsDefined(method)) throw new ArgumentOutOfRangeException(nameof(method));
         _timeout = timeout ?? TimeSpan.FromSeconds(30);
         if (_timeout <= TimeSpan.Zero || _timeout.TotalMilliseconds > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(timeout));
-        _map = map; _source = source; _input = input; _recognition = recognition; _predictor = predictor; _rules = rules;
+        _map = map; _source = source; _input = input; _gridInput = gridInput;
+        _recognition = recognition; _predictor = predictor; _rules = rules;
         _camera = new(map.Map.Shape, initialPosition, initialView, correctInitialEdges);
         _multiply = method switch { MapControlMethod.Minitouch => rules.MultiplyMinitouch,
             MapControlMethod.MaaTouch => rules.MultiplyMaaTouch, _ => rules.Multiply };
@@ -85,7 +94,8 @@ public sealed class MapCamera : IMapScanCamera
     /// <summary>Initial capture uses the same error confirmation and outside-view correction as later updates.</summary>
     public static async ValueTask<MapCamera> CreateAsync(CampaignState map, Cell initialPosition,
         IMapViewSource source, IMapSwipeInput input, GridRecognition recognition, MapSwipePredictor predictor,
-        MapCameraRules rules, TimeSpan timeout, CancellationToken token = default, TimeProvider? clock = null)
+        MapCameraRules rules, TimeSpan timeout, CancellationToken token = default, TimeProvider? clock = null,
+        IMapGridInput? gridInput = null)
     {
         rules.Validate();
         if (timeout <= TimeSpan.Zero || timeout.TotalMilliseconds > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(timeout));
@@ -102,14 +112,15 @@ public sealed class MapCamera : IMapScanCamera
                 {
                     var first = await source.CaptureAsync(linked.Token);
                     linked.Token.ThrowIfCancellationRequested();
-                    return new(map, initialPosition, first, source, input, recognition, predictor, rules, timeout: timeout, clock: clock);
+                    return new(map, initialPosition, first, source, input, recognition, predictor, rules,
+                        timeout: timeout, clock: clock, gridInput: gridInput);
                 }
                 catch (MapInterruptionHandledException) { }
                 catch (CameraOutsideViewException error) when (error.PartialView is { } partial)
                 {
                     // Incomplete view edges cannot localize the camera before the corrective capture succeeds.
                     var camera = new MapCamera(map, initialPosition, partial, source, input, recognition, predictor,
-                        rules, timeout: timeout, clock: clock, correctInitialEdges: false);
+                        rules, timeout: timeout, clock: clock, correctInitialEdges: false, gridInput: gridInput);
                     try
                     {
                         await camera.RunAsync(async ct =>
@@ -133,15 +144,39 @@ public sealed class MapCamera : IMapScanCamera
         if (!_map.Contains(destination)) throw new ArgumentOutOfRangeException(nameof(destination));
         await RunAsync(async ct =>
         {
-            while (true)
-            {
-                var delta = new ViewCell((int)Math.Clamp((long)destination.Column - Position.Column, -4, 4),
-                    (int)Math.Clamp((long)destination.Row - Position.Row, -3, 3));
-                // Even when already at the destination, native focus_to performs zero-vector centering.
-                if (!await SwipeCoreAsync(delta, ct)) break;
-            }
+            await FocusCoreAsync(destination, ct);
             return true;
-        }, token);
+        }, token, requiresFreshImage: true);
+    }
+
+    /// <summary>Resolve a global map cell against the current view and issue only its click gesture.</summary>
+    public async ValueTask TapCellAsync(Cell destination, CancellationToken token = default)
+    {
+        if (!_map.Contains(destination)) throw new ArgumentOutOfRangeException(nameof(destination));
+        if (_gridInput is null) throw new InvalidOperationException("Map grid tap input is not configured");
+        await RunAsync(async ct =>
+        {
+            ViewCell Local() => new(checked(destination.Column - Position.Column + View.Geometry.Center.X),
+                checked(destination.Row - Position.Row + View.Geometry.Center.Y));
+            if (!View.Geometry.Projections.ContainsKey(Local())) await FocusCoreAsync(destination, ct);
+            if (!View.Geometry.Projections.TryGetValue(Local(), out var grid))
+                throw new MapGeometryException("Destination grid remains outside the localized map view");
+            await _gridInput.TapAsync(grid.Inner, ct);
+            _observation = null;
+            _requiresRefresh = true;
+            return true;
+        }, token, requiresFreshImage: true);
+    }
+
+    private async ValueTask FocusCoreAsync(Cell destination, CancellationToken token)
+    {
+        while (true)
+        {
+            var delta = new ViewCell((int)Math.Clamp((long)destination.Column - Position.Column, -4, 4),
+                (int)Math.Clamp((long)destination.Row - Position.Row, -3, 3));
+            // Even when already at the destination, native focus_to performs zero-vector centering.
+            if (!await SwipeCoreAsync(delta, token)) break;
+        }
     }
 
     public async ValueTask CenterAsync(double tolerance, CancellationToken token)
@@ -154,7 +189,7 @@ public sealed class MapCamera : IMapScanCamera
             if (Math.Abs(offset.X - 0.5) > limit || Math.Abs(offset.Y - 0.5) > limit)
                 await SwipeCoreAsync(default, ct);
             return true;
-        }, token);
+        }, token, requiresFreshImage: true);
     }
 
     public ValueTask<MapObservation> ObserveAsync(MapScanMode mode, CancellationToken token)
@@ -164,10 +199,10 @@ public sealed class MapCamera : IMapScanCamera
         {
             _observation ??= await _recognition.ObserveAsync(View, Position, token: ct);
             return _observation with { Mode = mode };
-        }, token);
+        }, token, requiresFreshImage: true);
     }
     public async ValueTask RefreshAsync(bool waitSwipe = false, CancellationToken token = default)
-        => await RunAsync(async ct => { await UpdateCoreAsync(waitSwipe, ct); return true; }, token);
+        => await RunAsync(async ct => { await UpdateCoreAsync(waitSwipe, ct); _requiresRefresh = false; return true; }, token);
 
     /// <summary>Refresh pixels after a map action while retaining the last localized grid geometry.</summary>
     public async ValueTask RefreshImageAsync(CancellationToken token = default)
@@ -176,6 +211,7 @@ public sealed class MapCamera : IMapScanCamera
             var frame = await _source.CaptureImageAsync(ct);
             _camera.UpdateImage(frame);
             _observation = null;
+            _requiresRefresh = false;
             return true;
         }, token);
 
@@ -215,7 +251,7 @@ public sealed class MapCamera : IMapScanCamera
                 foreach (var delta in record.AsEnumerable().Reverse())
                     if (delta != default) await SwipeCoreAsync(new(-delta.X, -delta.Y), ct);
             return record.AsReadOnly();
-        }, token);
+        }, token, requiresFreshImage: true);
     }
 
     private async ValueTask<bool> SwipeCoreAsync(ViewCell requested, CancellationToken token)
@@ -310,7 +346,8 @@ public sealed class MapCamera : IMapScanCamera
         return (whitelist.AsReadOnly(), blacklist.Select(g => g.Outer).Concat(blacklist.Select(g => Moved(g, -5))).ToArray());
     }
 
-    private async ValueTask<T> RunAsync<T>(Func<CancellationToken, ValueTask<T>> operation, CancellationToken token)
+    private async ValueTask<T> RunAsync<T>(Func<CancellationToken, ValueTask<T>> operation, CancellationToken token,
+        bool requiresFreshImage = false)
     {
         using var deadline = new CancellationTokenSource(_timeout, _clock);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
@@ -319,6 +356,7 @@ public sealed class MapCamera : IMapScanCamera
         {
             await _gate.WaitAsync(linked.Token); entered = true;
             if (_faulted) throw new InvalidOperationException("Camera state is uncertain; create a freshly localized camera");
+            if (requiresFreshImage && _requiresRefresh) throw new MapImageRefreshRequiredException();
             linked.Token.ThrowIfCancellationRequested();
             var result = await operation(linked.Token);
             linked.Token.ThrowIfCancellationRequested();
@@ -326,7 +364,7 @@ public sealed class MapCamera : IMapScanCamera
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
-            if (entered) _faulted = true;
+            if (entered && error is not MapImageRefreshRequiredException) _faulted = true;
             if (error is OperationCanceledException && !token.IsCancellationRequested && deadline.IsCancellationRequested)
                 throw new TimeoutException("Map camera operation exceeded its time limit", error);
             throw;

@@ -99,6 +99,20 @@ def main():
                 result = dict(error=str(error))
             geometry_results.append(dict(sample=item, expected=result))
 
+        from module.base import utils as base_utils
+        native_randint = base_utils.random.randint
+        taps = []
+        try:
+            for index, grid in enumerate(geometry(layout('taps', columns=4, rows=3))):
+                area = tuple(int(value) for value in grid.inner)
+                draws = [area[0] + (area[2] - area[0]) * ((index + i) % 7) // 6 for i in range(3)]
+                draws += [area[1] + (area[3] - area[1]) * ((index + i + 3) % 7) // 6 for i in range(3)]
+                values = iter(draws)
+                base_utils.random.randint = lambda low, high: next(values)
+                taps.append(dict(area=area, draws=draws, expected=base_utils.random_rectangle_point(area)))
+        finally:
+            base_utils.random.randint = native_randint
+
         class Marker:
             def __init__(self, location, marker, matches=None):
                 self.location = tuple(location); self.marker = marker; self.matches = matches or []
@@ -241,7 +255,7 @@ def main():
             score=float(cv2.minMaxLoc(cv2.matchTemplate(g2._image_similar_full,g1._image_similar_piece,cv2.TM_CCOEFF_NORMED))[1])
             pixels.append(dict(old=a,new=b,score=score,valid=bool(valid),match=bool(g1.is_similar_to(g2)),
                                marker=[bool(g1.predict_fleet()),bool(g1.predict_current_fleet())]))
-        output.write_text(json.dumps(dict(geometry=geometry_results,swipes=swipes,cameras=cameras,controls=controls,optimized=optimized,settling=settling,pixels=pixels),
+        output.write_text(json.dumps(dict(geometry=geometry_results,swipes=swipes,cameras=cameras,controls=controls,optimized=optimized,settling=settling,pixels=pixels,taps=taps),
                                      default=plain),encoding='utf-8')
 
 

@@ -229,6 +229,8 @@ internal static class DetectorChecks
         }
         if (args is ["shell", "input", "swipe", ..])
         { await File.AppendAllTextAsync(fixture + ".actions", JsonSerializer.Serialize(args) + "\n"); return 0; }
+        if (args is ["shell", "input", "tap", ..])
+        { await File.AppendAllTextAsync(fixture + ".actions", JsonSerializer.Serialize(args) + "\n"); return 0; }
         Console.Error.Write("Unexpected map replay command"); return 2;
     }
     private static async Task SessionAsync(string python, string upstream, string artifacts, JsonNode sample)
@@ -245,12 +247,19 @@ internal static class DetectorChecks
             var camera = await session.CreateMapCameraAsync(map, new(10, 10), Rules(B(sample["chapter"]!)), new(), new() { Predict = false }, TimeSpan.FromSeconds(20));
             var observation = await camera.ObserveAsync(MapScanMode.Normal, default);
             Check(observation.Cells.Count > 0, "Session detector did not produce observations");
+            // Initialization may correct the global camera using detected map edges;
+            // tap its current cell to exercise the visible-grid path without a fixture swipe.
+            await camera.TapCellAsync(camera.Position);
+            Check(File.ReadAllLines(fixture + ".actions").Any(line =>
+                JsonNode.Parse(line)!.AsArray()[2]!.GetValue<string>() == "tap"),
+                "Localized map grid click never reached ADB transport");
             // Stationary replay cannot prove a swipe changed the game; exercise the terminal independently.
             var device = new AdbDevice(executable, "offline-map", true);
             await new MapSwipeInput(device, new Random(82)).SwipeAsync(new(new(-200, 80), new(123, 159, 1052, 469), [], []), default);
             Check(File.Exists(fixture + ".actions"), "Concrete swipe input never reached ADB transport");
             var evidence = await session.SaveEvidenceAsync(Path.Combine(artifacts, "session"), false);
-            Check(evidence.Image is not null && evidence.FrameSequence > 0, "Map session lost raw screenshot evidence");
+            Check(evidence.Image is not null && evidence.FrameSequence > 0 && evidence.ActionAttempts == 1,
+                "Map session lost screenshot or click-attempt evidence");
         }
         finally { Environment.SetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE", previous); }
     }
@@ -262,6 +271,11 @@ internal static class DetectorChecks
         try { await readOnly.SwipeAsync(new(new(100, 0), new(0, 0, 1280, 720), null, null), default); }
         catch (InvalidOperationException) { rejected = true; }
         Check(rejected && fake.Calls.Count == 0, "Read-only map gesture reached ADB");
+        rejected = false;
+        try { await new MapGridInput(new AdbDevice("adb", "fixture", false, fake), new Random(4))
+            .TapAsync(new(100, 100, 30, 30), default); }
+        catch (InvalidOperationException) { rejected = true; }
+        Check(rejected && fake.Calls.Count == 0, "Read-only grid click reached ADB");
         var input = new MapSwipeInput(new AdbDevice("adb", "fixture", true, fake), new Random(4));
         await input.SwipeAsync(new(new(1, 0), new(0, 0, 1280, 720), null, null), default);
         Check(fake.Calls.Count == 0, "Sub-ten-pixel swipe was not dropped");

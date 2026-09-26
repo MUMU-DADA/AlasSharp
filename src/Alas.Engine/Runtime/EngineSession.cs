@@ -57,7 +57,7 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService
             var mask = await _assets.ReadAsync(detection.OperationSiren ? MapDetectionAssets.OsMask : MapDetectionAssets.Mask, combined.Token);
             var evidence = new MapSwipeEvidence(predictor, _vision, _vision, new(1, DateTimeOffset.UnixEpoch, mask), MapDetectionAssets.MaskOrigin);
             return await MapCamera.CreateAsync(state, initialPosition, source, new MapSwipeInput(_device), predictor,
-                new(evidence), cameraRules, timeout, combined.Token);
+                new(evidence), cameraRules, timeout, combined.Token, gridInput: new MapGridInput(_device));
         }
         catch (OperationCanceledException error) when (!token.IsCancellationRequested && deadline.IsCancellationRequested)
         { throw new TimeoutException("Map camera initialization exceeded its time limit", error); }
