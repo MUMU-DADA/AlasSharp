@@ -260,6 +260,10 @@ internal static class MapViewChecks
         rejected = false;
         try { pending.UpdateImage(frame with { Sequence = 2 }); } catch (InvalidOperationException) { rejected = true; }
         Check(rejected && pending.View.Frame.Sequence == 1, "Image-only refresh concealed a pending swipe");
+        pending.Anchor(new(3, 2));
+        pending.UpdateImage(frame with { Sequence = 2 });
+        Check(pending.Position == new Cell(3, 2) && pending.PendingSwipe is null && pending.Previous is null,
+            "Portal camera anchor retained old swipe state or rejected a fresh image");
     }
     private static async Task GridTapAsync(ScreenFrame frame, GridRecognition recognition)
     {
@@ -324,6 +328,13 @@ internal static class MapViewChecks
         await resumed.TapCellAsync(new(5, 4));
         Check(resumedSource.Captures == 1 && resumedTaps.Areas.Count == 1,
             "Relocalized camera did not resume grid input");
+        blocked = false;
+        try { await resumed.AnchorAtAsync(new(7, 4)); } catch (MapImageRefreshRequiredException) { blocked = true; }
+        Check(blocked && resumed.Position == new Cell(5, 4), "Portal anchor accepted a stale post-click image");
+        await resumed.RefreshImageAsync();
+        await resumed.AnchorAtAsync(new(7, 4));
+        Check(resumed.Position == new Cell(7, 4) && await resumed.ReadCenterMarkerAsync() == default,
+            "Portal anchor did not relocate the concrete camera and expose its center marker");
     }
     private sealed class TapInput : IMapGridInput
     {

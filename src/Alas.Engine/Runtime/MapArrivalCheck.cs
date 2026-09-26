@@ -11,7 +11,9 @@ public interface IMapArrivalCamera
     ValueTask TapCellAsync(Cell destination, CancellationToken token = default);
     ValueTask RefreshImageAsync(CancellationToken token = default);
     ValueTask<FleetMarker> ReadFleetMarkerAsync(Cell destination, CancellationToken token = default);
+    ValueTask<FleetMarker> ReadCenterMarkerAsync(CancellationToken token = default);
     ValueTask RelocalizeAsync(CancellationToken token = default);
+    ValueTask AnchorAtAsync(Cell location, CancellationToken token = default);
     void Suspend();
     void Invalidate();
 }
@@ -52,6 +54,9 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
             throw new ArgumentOutOfRangeException(nameof(options));
         if (Interlocked.Exchange(ref _started, 1) != 0)
             throw new InvalidOperationException("An arrival check belongs to one grid tap");
+        bool portal = state[destination].IsPortal;
+        Cell? portalExit = portal
+            ? state[destination].PortalLink ?? throw new InvalidDataException("Portal has no linked exit") : null;
         bool submarineAbove = destination.Row > 1 && state.SubmarineLocation == new Cell(destination.Column, destination.Row - 1);
         var walk = new IntervalTimer(_clock, options.WalkTimeout.TotalSeconds);
         var confirm = new IntervalTimer(_clock, options.ConfirmDelay.TotalSeconds, count: 2);
@@ -81,7 +86,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                         while (true)
                         {
                             linked.Token.ThrowIfCancellationRequested();
-                            await camera.RefreshImageAsync(linked.Token);
+                            if (portal) await camera.RelocalizeAsync(linked.Token);
+                            else await camera.RefreshImageAsync(linked.Token);
                             if (camera.FrameSequence <= sequence)
                                 throw new InvalidDataException("Arrival check reused a stale map frame");
                             sequence = camera.FrameSequence;
@@ -90,7 +96,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                             if (encounter == MapEncounterKind.None && !await isInMap(linked.Token))
                                 encounter = MapEncounterKind.UnknownPage;
                             if (encounter != MapEncounterKind.None) break;
-                            var marker = await camera.ReadFleetMarkerAsync(destination, linked.Token);
+                            var marker = portal ? await camera.ReadCenterMarkerAsync(linked.Token) :
+                                await camera.ReadFleetMarkerAsync(destination, linked.Token);
                             bool present = (submarineAbove ? marker.Current : marker.Fleet) ||
                                 options.AllowCurrentMarker && (marker.Fleet || marker.Current);
                             if (present)
@@ -98,6 +105,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                                 if (!confirm.Started) confirm.Reset();
                                 if (confirm.Reached())
                                 {
+                                    if (portal) await camera.AnchorAtAsync(portalExit!.Value, linked.Token);
                                     confirmed = true;
                                     return Result(MapArrivalOutcome.MarkerConfirmed);
                                 }

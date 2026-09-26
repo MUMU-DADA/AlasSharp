@@ -112,15 +112,16 @@ internal static class MapArrivalChecks
         await MapEncounterProbeChecks.RunAsync();
         await MovementChecksAsync(destination, options);
 
-        Console.WriteLine("Map arrival/movement: fresh-frame confirmation, encounter history, ordinary state commit, long-handler relocalization, air-raid wait and unsupported-interaction rejection passed; no combat or settlement verification.");
+        Console.WriteLine("Map arrival/movement: fresh-frame confirmation, encounter history, ordinary/portal state commit, long-handler relocalization, air-raid wait and unsupported-interaction rejection passed; no combat or settlement verification.");
     }
 
     private static async Task MovementChecksAsync(Cell destination, MapArrivalOptions options)
     {
-        static CampaignState State()
+        static CampaignState State(bool portal = false)
         {
-            var state = new CampaignState(new MapDefinition("C3", "-- -- --\n-- -- --\n-- -- --", [], [], []));
-            state.InitializeMapData(new());
+            var state = new CampaignState(new MapDefinition("C3", "-- -- --\n-- -- --\n-- -- --", [], [], [],
+                portals: portal ? [new MapEdge(new Cell(2, 2), new Cell(3, 2))] : null));
+            state.InitializeMapData(new(Portals: portal));
             state.Fleet1Location = new(1, 1);
             state[new(1, 1)].IsFleet = state[new(1, 1)].IsCurrentFleet = true;
             return state;
@@ -181,15 +182,35 @@ internal static class MapArrivalChecks
             camera.Taps == 1 && camera.Relocalizations == 1,
             "Completed air raid did not preserve the original move and commit state");
 
+        clock = new TestClock(); state = State(portal: true);
+        camera = new Camera(clock, [new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options);
+        var exit = new Cell(3, 2);
+        Check(moved.Outcome == MapMoveOutcome.Committed && state.Fleet1Location == exit &&
+            state[exit].IsFleet && state[exit].IsCurrentFleet && !state[destination].IsFleet &&
+            state[exit].Cost == 0 && camera.Anchored == exit && camera.Relocalizations == 4 &&
+            camera.CenterReads == 4 && camera.MarkerReads == 0 && camera.Taps == 1,
+            "Portal arrival did not verify the center marker and commit the linked exit");
+
+        clock = new TestClock(); state = State(portal: true);
+        camera = new Camera(clock, [new(true, default)]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        moved = await new MapMovement(state, new(), camera, arrival).MoveAsync(destination,
+            new(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(1)));
+        Check(moved.Outcome == MapMoveOutcome.Unconfirmed && state.Fleet1Location == new Cell(1, 1) &&
+            !state[exit].IsFleet && camera.Anchored is null && camera.Invalidated,
+            "Unconfirmed portal changed fleet position or anchored the camera");
+
         clock = new TestClock(); state = State();
         state[destination].IsPortal = true;
         camera = new Camera(clock, [new(true, new(true, true))]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
         bool rejected = false;
         try { await new MapMovement(state, new(), camera, arrival).MoveAsync(destination, options); }
-        catch (NotSupportedException) { rejected = true; }
+        catch (InvalidDataException) { rejected = true; }
         Check(rejected && camera.Taps == 0 && state.Fleet1Location == new Cell(1, 1),
-            "Unsupported portal was clicked before its state transition was implemented");
+            "Portal without a linked exit was clicked");
 
         foreach (var config in new[] { new CampaignConfiguration { HasMovableEnemy = true },
                      new CampaignConfiguration { HasMovableNormalEnemy = true },
@@ -221,6 +242,8 @@ internal static class MapArrivalChecks
         public int Taps { get; private set; }
         public int Prepared { get; private set; }
         public int MarkerReads { get; private set; }
+        public int CenterReads { get; private set; }
+        public Cell? Anchored { get; private set; }
         public bool ReuseSequence { get; init; }
         public bool FocusBeforeTap { get; init; }
         public bool Invalidated { get; private set; }
@@ -239,9 +262,15 @@ internal static class MapArrivalChecks
         public ValueTask RelocalizeAsync(CancellationToken token = default)
         {
             token.ThrowIfCancellationRequested();
-            if (!Suspended) throw new InvalidOperationException("Camera was not suspended");
             Suspended = false; Relocalizations++; clock.Advance(); FrameSequence++;
             _index = Math.Min(_index + 1, signals.Count - 1);
+            return ValueTask.CompletedTask;
+        }
+        public ValueTask AnchorAtAsync(Cell location, CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (Suspended || Invalidated) throw new InvalidOperationException("Camera is not localized");
+            Anchored = location;
             return ValueTask.CompletedTask;
         }
         public ValueTask TapCellAsync(Cell destination, CancellationToken token = default)
@@ -262,6 +291,8 @@ internal static class MapArrivalChecks
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(signals[_index].InMap); }
         public ValueTask<FleetMarker> ReadFleetMarkerAsync(Cell destination, CancellationToken token = default)
         { token.ThrowIfCancellationRequested(); MarkerReads++; return ValueTask.FromResult(signals[_index].Marker); }
+        public ValueTask<FleetMarker> ReadCenterMarkerAsync(CancellationToken token = default)
+        { token.ThrowIfCancellationRequested(); CenterReads++; return ValueTask.FromResult(signals[_index].Marker); }
     }
     private sealed class Probe(MapEncounterKind first, Func<int>? taps = null) : IMapEncounterProbe
     {

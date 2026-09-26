@@ -79,6 +79,16 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
     public void Invalidate() => Volatile.Write(ref _faulted, true);
     public void Suspend() => Volatile.Write(ref _suspended, true);
     public ValueTask RelocalizeAsync(CancellationToken token = default) => RefreshAsync(token: token);
+    public async ValueTask AnchorAtAsync(Cell location, CancellationToken token = default)
+    {
+        if (!_map.Contains(location)) throw new ArgumentOutOfRangeException(nameof(location));
+        await RunAsync(ct =>
+        {
+            _camera.Anchor(location);
+            _observation = null;
+            return ValueTask.FromResult(true);
+        }, token, requiresFreshImage: true);
+    }
 
     public MapCamera(CampaignState map, Cell initialPosition, MapViewFrame initialView,
         IMapViewSource source, IMapSwipeInput input, GridRecognition recognition, MapSwipePredictor predictor,
@@ -235,6 +245,13 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
             return _recognition.RawFleetAsync(View, grid, ct);
         }, token, requiresFreshImage: true);
     }
+    public ValueTask<FleetMarker> ReadCenterMarkerAsync(CancellationToken token = default)
+        => RunAsync(ct =>
+        {
+            var grid = View.Geometry.Grids.FirstOrDefault(g => g.LocalCell == View.Geometry.Center)
+                ?? throw new MapGeometryException("Map center grid is outside the localized view");
+            return _recognition.RawFleetAsync(View, grid, ct);
+        }, token, requiresFreshImage: true);
     public async ValueTask RefreshAsync(bool waitSwipe = false, CancellationToken token = default)
         => await RunAsync(async ct =>
         {

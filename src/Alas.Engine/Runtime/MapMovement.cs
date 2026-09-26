@@ -5,7 +5,7 @@ namespace Alas.Engine.Runtime;
 public enum MapMoveOutcome { Committed, Unconfirmed, Interrupted, UnsupportedEncounter }
 public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arrival);
 
-/// <summary>Commits an ordinary fleet move only after fresh visual arrival and complete interaction accounting.</summary>
+/// <summary>Commits a fleet move only after fresh visual arrival and complete interaction accounting.</summary>
 public sealed class MapMovement(CampaignState state, CampaignConfiguration configuration,
     IMapArrivalCamera camera, MapArrivalCheck arrival)
 {
@@ -24,10 +24,16 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         if (destination == origin) throw new ArgumentException("Destination is the current fleet location", nameof(destination));
         var target = state[destination];
         if (target.IsLand) throw new ArgumentException("Destination is land", nameof(destination));
-        if (target.IsPortal || target.IsMaze || target.IsMechanismTrigger || target.IsMechanismBlock ||
+        if (target.IsMaze || target.IsMechanismTrigger || target.IsMechanismBlock ||
             target.IsEnemy || target.IsSiren || target.IsBoss || target.IsFortress || target.IsMystery ||
             target.IsAmmo || target.IsCarrier || target.IsCaughtBySiren || target.IsFleet)
             throw new NotSupportedException("Destination requires a map interaction that is not committed by ordinary movement");
+        Cell landing = target.IsPortal
+            ? target.PortalLink ?? throw new InvalidDataException("Portal has no linked exit") : destination;
+        var landingGrid = state[landing];
+        if (landingGrid.IsLand || landingGrid.IsFleet || landingGrid.IsEnemy || landingGrid.IsSiren ||
+            landingGrid.IsBoss || landingGrid.IsFortress || landingGrid.IsMystery || landingGrid.IsAmmo)
+            throw new NotSupportedException("Portal exit requires an interaction that is not committed by ordinary movement");
 
         var result = await arrival.TapAndCheckAsync(destination, options, token);
         if (result.Outcome == MapArrivalOutcome.Unconfirmed) return new(MapMoveOutcome.Unconfirmed, result);
@@ -42,12 +48,12 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         {
             state[origin].IsFleet = false;
             state.ResetCurrentFleet();
-            target.WipeOut();
-            target.IsFleet = target.IsCurrentFleet = true;
-            if (state.FleetIndex == 1) state.Fleet1Location = destination;
-            else state.Fleet2Location = destination;
+            landingGrid.WipeOut();
+            landingGrid.IsFleet = landingGrid.IsCurrentFleet = true;
+            if (state.FleetIndex == 1) state.Fleet1Location = landing;
+            else state.Fleet2Location = landing;
             state.Paths.ComputeFleetCosts(
-                [new(1, state.Fleet1Location), new(2, state.Fleet2Location)], destination, configuration.HasAmbush);
+                [new(1, state.Fleet1Location), new(2, state.Fleet2Location)], landing, configuration.HasAmbush);
             return new(MapMoveOutcome.Committed, result);
         }
         catch

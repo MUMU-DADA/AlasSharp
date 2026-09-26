@@ -100,6 +100,15 @@ public sealed class MapCameraState
         View = View with { Frame = frame };
     }
 
+    public void Anchor(Cell location)
+    {
+        if (location.Column < 1 || location.Row < 1 || location.Column > _shape.Column || location.Row > _shape.Row)
+            throw new ArgumentOutOfRangeException(nameof(location));
+        Position = location;
+        Previous = null;
+        PendingSwipe = null;
+    }
+
     public async ValueTask UpdateAsync(MapViewFrame view, MapSwipePredictor predictor, bool predict = true,
         bool currentFleet = true, bool seaGrids = false, CancellationToken token = default)
     {
