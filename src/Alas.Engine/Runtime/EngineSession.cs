@@ -12,7 +12,8 @@ public sealed record EngineSessionOptions(string Adb, string Serial, GameServer 
     string? ApplicationPackage = null, string? ModelDirectory = null, bool AllowActions = false);
 
 /// <summary>One device and one pure-vision process for the entire new execution graph.</summary>
-public sealed class EngineSession : IAsyncDisposable, IMapObservationService
+public sealed class EngineSession : IAsyncDisposable, IMapObservationService, ICampaignInMapHost,
+    ICampaignExecutionService
 {
     private readonly PythonTemplateVision _vision;
     private readonly JournalDevice _device;
@@ -80,6 +81,34 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances),
             new MapScanner(camera.State, camera, Driver.Clock));
+    public CampaignExecution CreateInMapCampaignExecution(CampaignRule rule,
+        CampaignConfiguration configuration, CancellationToken token = default)
+        => new(rule, configuration, (state, effective) => new InMapCampaignOperations(this, state, effective, token));
+    public async ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule, CancellationToken token)
+    {
+        var execution = CreateInMapCampaignExecution(rule, new(), token);
+        var exit = await execution.RunAsync();
+        var operations = (InMapCampaignOperations)execution.Context.Operations;
+        return new(exit, execution.Context.State.BattleCount, operations.StageReturn);
+    }
+    async ValueTask<bool> ICampaignInMapHost.VerifyInMapAsync(CancellationToken token)
+    {
+        await Driver.ScreenshotAsync(token);
+        return await Driver.AppearsAsync(UiAssets.Handler.IN_MAP, token: token);
+    }
+    async ValueTask<IMapScanCamera> ICampaignInMapHost.CreateCameraAsync(CampaignState state,
+        CampaignConfiguration configuration, CancellationToken token)
+    {
+        if (state.Map.Cameras.IsEmpty) throw new InvalidDataException("Campaign map has no initial camera declaration");
+        return await CreateMapCameraAsync(state, state.Map.Cameras[0],
+            new MapDetectionRules().WithChapter(configuration.Vision),
+            new GridRecognitionRules { HasSiren = configuration.HasSiren }, new MapCameraRules(),
+            TimeSpan.FromSeconds(30), token);
+    }
+    CampaignMapCombat ICampaignInMapHost.CreateCombat(IMapScanCamera camera,
+        CampaignConfiguration configuration)
+        => camera is MapCamera mapCamera ? CreateCampaignMapCombat(mapCamera, configuration) :
+            throw new ArgumentException("Campaign camera does not belong to this session", nameof(camera));
     public CombatRankProbe CreateCombatRankProbe() => new(Driver);
     public CombatFlow CreateCombatFlow(StageEntranceKind entrances = StageEntranceKind.Normal)
     {
@@ -104,7 +133,7 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService
         _device.Actions.Clear();
         Driver.ResetTask();
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
-        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this);
+        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this);
     }
     public async Task<JsonObjectEvidence> SaveEvidenceAsync(string directory, bool failed)
     {

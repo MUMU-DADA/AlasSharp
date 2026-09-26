@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
+using System.Collections.Immutable;
+using System.Text.Json.Nodes;
 using Alas.Engine.Rules;
 using Alas.Engine.Runtime;
+using Alas.Engine.Tasks;
 
 namespace Alas.Engine.Tests;
 
@@ -85,7 +88,90 @@ internal static class CampaignMapCombatChecks
         catch (NotSupportedException) { fallbackRequired = true; }
         Check(fallbackRequired && camera.Taps == 0 && state.BattleCount == 0,
             "Unobserved potential boss was clicked as an observed combat target");
+
+        await ExecutionChecksAsync();
         Console.WriteLine("Campaign map combat: route, priority, scan and stage-return evidence passed offline; no entry or settlement verification.");
+    }
+
+    private static async Task ExecutionChecksAsync()
+    {
+        var map = new MapDefinition("C1", "SP ME MB", ["B1"], ["B1"],
+            [new SpawnWave(0, Enemy: 1), new SpawnWave(1, Boss: 1)]);
+        var host = new Host();
+        var execution = new CampaignExecution(new TwoBattleRule(map), new(),
+            (state, config) => new InMapCampaignOperations(host, state, config, default));
+        Check(await execution.RunAsync() == CampaignLoopExit.Ended && host.Camera is { Taps: 2, Scans: 2 } &&
+            execution.Context.State.BattleCount == 1 &&
+            execution.Context.Operations is InMapCampaignOperations
+            { StageReturn: { Combats: [ { Return: CombatReturn.InStage, Rank.IsWinningRank: true } ] } },
+            "Compiled campaign loop did not execute the in-map C# scan, combat and stage-return sequence");
+
+        var task = new CampaignResumeTask();
+        var request = new TaskRequest("resume", task.Kind,
+            new JsonObject { ["campaign"] = "campaign_main/campaign_1_1" });
+        var stage = ((InMapCampaignOperations)execution.Context.Operations).StageReturn;
+        var result = await task.RunAsync(request,
+            new TaskContext(null!, null!, null!, TimeSpan.FromMinutes(2),
+                Campaign: new ResumeService(new(CampaignLoopExit.Ended, 1, stage))), default);
+        Check(result is { Outcome: TaskOutcome.Failed, Reason: "sortie_settlement_unverified" } &&
+            result.Evidence?["cleared"]?.GetValue<bool>() == false &&
+            result.Evidence["settlementVerified"]?.GetValue<bool>() == false &&
+            result.Evidence["stageReturn"] is not null,
+            "Campaign task promoted a loop end or stage return into a cleared outcome");
+
+        host = new Host { InMap = false };
+        execution = new CampaignExecution(new TwoBattleRule(map), new(),
+            (state, config) => new InMapCampaignOperations(host, state, config, default));
+        bool rejected = false;
+        try { await execution.RunAsync(); }
+        catch (InvalidDataException) { rejected = true; }
+        Check(rejected && host.Camera is null && !execution.Context.State.IsMapInitialized,
+            "Campaign resume entered a map workflow without an observed in-map page");
+    }
+
+    private sealed class ResumeService(CampaignResumeResult result) : ICampaignExecutionService
+    {
+        public ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule, CancellationToken token)
+        { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(result); }
+    }
+
+    private sealed class TwoBattleRule(MapDefinition map) : CampaignRule
+    {
+        public override string Id => "test/two_battles";
+        public override MapDefinition Map => map;
+        public override ImmutableArray<SourceFile> Sources => [];
+        protected override IReadOnlyDictionary<int, BattleHook> Hooks { get; } =
+            new Dictionary<int, BattleHook>
+            {
+                [0] = static context => context.Operations.ClearEnemyAsync(),
+                [1] = static context => context.Operations.ClearBossAsync()
+            };
+    }
+
+    private sealed class Host : ICampaignInMapHost
+    {
+        public bool InMap { get; init; } = true;
+        public Camera? Camera { get; private set; }
+        public ValueTask<bool> VerifyInMapAsync(CancellationToken token)
+        { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(InMap); }
+        public ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state,
+            CampaignConfiguration configuration, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            Camera = new Camera(state)
+            {
+                StageForBoss = true,
+                ObservationFactory = (scan, position, mode) => new MapObservation(scan == 1
+                    ? [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true)),
+                       new(new(1, 0), new(IsEnemy: true, EnemyScale: 1))]
+                    : [new(new(1, 0), new(IsFleet: true, IsCurrentFleet: true)),
+                       new(new(2, 0), new(IsBoss: true))], position, new(1, 0), mode)
+            };
+            return ValueTask.FromResult<IMapScanCamera>(Camera);
+        }
+        public CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration)
+            => Camera == camera ? Create(Camera.State, configuration, Camera) :
+                throw new InvalidOperationException("Wrong camera instance");
     }
 
     private static CampaignState Prepare(MapDefinition map, bool walls = false)
@@ -115,10 +201,14 @@ internal static class CampaignMapCombatChecks
 
     private sealed class Camera(CampaignState state) : IMapScanCamera, IMapArrivalCamera
     {
+        public CampaignState State => state;
         public Clock Clock { get; } = new();
         public Cell Position { get; private set; } = new(1, 1);
         public Cell? Destination { get; private set; }
         public bool ReturnStage { get; init; }
+        public bool StageForBoss { get; init; }
+        public Func<int, Cell, MapScanMode, MapObservation>? ObservationFactory { get; init; }
+        public bool ReturningToStage => ReturnStage || StageForBoss && Destination is { } cell && state[cell].IsBoss;
         public CombatRank? Rank { get; init; } = CombatRank.S;
         public int Taps { get; private set; }
         public int Scans { get; private set; }
@@ -132,7 +222,11 @@ internal static class CampaignMapCombatChecks
         public ValueTask CenterAsync(double tolerance, CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.CompletedTask; }
         public ValueTask<MapObservation> ObserveAsync(MapScanMode mode, CancellationToken token)
-        { token.ThrowIfCancellationRequested(); Scans++; return ValueTask.FromResult(new MapObservation([], Position, new(0, 0), mode)); }
+        {
+            token.ThrowIfCancellationRequested(); Scans++;
+            return ValueTask.FromResult(ObservationFactory?.Invoke(Scans, Position, mode) ??
+                new MapObservation([], Position, new(0, 0), mode));
+        }
         public ValueTask EnsureEdgesAsync(bool skipFirstUpdate, CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.CompletedTask; }
         public ValueTask PrepareTapAsync(Cell destination, CancellationToken token = default)
@@ -175,10 +269,10 @@ internal static class CampaignMapCombatChecks
         {
             token.ThrowIfCancellationRequested();
             if (encounter != MapEncounterKind.Combat || !camera.Suspended) throw new InvalidDataException();
-            var returned = camera.ReturnStage ? CombatReturn.InStage : CombatReturn.InMap;
+            var returned = camera.ReturningToStage ? CombatReturn.InStage : CombatReturn.InMap;
             var rank = camera.Rank is { } value
                 ? new CombatRankEvidence(value, CombatRankSource.BattleStatus, UiAssets.Combat.BATTLE_STATUS_S.Id) : null;
-            return ValueTask.FromResult(new MapEncounterHandling(camera.ReturnStage ?
+            return ValueTask.FromResult(new MapEncounterHandling(camera.ReturningToStage ?
                 MapEncounterContinuation.InStage : MapEncounterContinuation.InMap,
                 new CombatFlowResult(returned, rank, false, false, 1)));
         }

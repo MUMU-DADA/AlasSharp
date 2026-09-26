@@ -10,7 +10,7 @@ if (args.Length == 0 || args is ["--help"])
     Console.WriteLine("Alas.Engine.Cli <observe|navigate|run> --adb <executable> --serial <device> --server <cn|en|jp|tw> --assets <directory> --python <executable> --artifacts <directory>");
     Console.WriteLine("observe: capture and identify one frame, with device actions disabled.");
     Console.WriteLine("navigate: additionally requires --package <Android package> --page <destination>; --timeout <seconds> defaults to 120. Performs game clicks and recovery.");
-    Console.WriteLine("run: --queue <JSON task array> [--models <ONNX directory>] [--allow-actions --package <Android package>] [--dry-run] [--continue-on-failure] [--resume <run directory>]. Task kinds: observe, navigate, data_key, map_observe (input: campaign).");
+    Console.WriteLine("run: --queue <JSON task array> [--models <ONNX directory>] [--allow-actions --package <Android package>] [--dry-run] [--continue-on-failure] [--resume <run directory>]. Task kinds: observe, navigate, data_key, map_observe, campaign_resume (input: campaign; requires a freshly entered map and never records cleared).");
     return 0;
 }
 try

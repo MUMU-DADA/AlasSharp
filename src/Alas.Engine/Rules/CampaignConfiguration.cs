@@ -17,6 +17,13 @@ public sealed record CampaignConfiguration
     public bool HasMovableNormalEnemy { get; init; }
     public bool HasMovableEnemy { get; init; }
     public bool HasMaze { get; init; }
+    public bool HasWall { get; init; }
+    public bool HasPortal { get; init; }
+    public bool HasLandBased { get; init; }
+    public bool HasFortress { get; init; }
+    public bool HasBouncingEnemy { get; init; }
+    public bool HasSiren { get; init; }
+    public bool IsClearMode { get; init; }
     public bool HasAmbush { get; init; } = true;
     public bool HandleError { get; init; }
     public EnemyScalePriority EnemyPriority { get; init; }

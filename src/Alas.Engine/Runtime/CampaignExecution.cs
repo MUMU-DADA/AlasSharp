@@ -17,6 +17,16 @@ public sealed class CampaignExecution
         Context = new CampaignContext(new CampaignState(rule.Map), rule.Configure(configuration), operations);
     }
 
+    public CampaignExecution(CampaignRule rule, CampaignConfiguration configuration,
+        Func<CampaignState, CampaignConfiguration, ICampaignOperations> createOperations)
+    {
+        ArgumentNullException.ThrowIfNull(createOperations);
+        _rule = rule;
+        var state = new CampaignState(rule.Map);
+        var effective = rule.Configure(configuration);
+        Context = new CampaignContext(state, effective, createOperations(state, effective));
+    }
+
     public async ValueTask<bool> ExecuteBattleAsync()
     {
         int previous = Context.State.BattleCount;
