@@ -9,8 +9,10 @@ import sys
 import tempfile
 from xml.sax.saxutils import escape
 
+import dotnet_env
+
 ROOT = Path(__file__).resolve().parents[2]
-DOTNET = ROOT / '.runtime/dotnet/dotnet.exe'
+DOTNET = dotnet_env.executable(ROOT)
 
 HARNESS = r'''
 using System.Net;
@@ -216,7 +218,8 @@ def main() -> int:
 <ItemGroup>{references}</ItemGroup></Project>''', encoding='utf-8')
         (work / 'Program.cs').write_text(HARNESS, encoding='utf-8')
         build = subprocess.run([str(DOTNET), 'build', str(project), '-c', 'Release',
-                                '--source', str(ROOT / '.runtime/nuget/source'), '-p:NuGetAudit=false'],
+                                *(['--source', str(ROOT / '.runtime/nuget/source')]
+                                   if (ROOT / '.runtime/nuget/source').is_dir() else []), '-p:NuGetAudit=false'],
                                cwd=ROOT, env=environment, capture_output=True, timeout=120)
         assert build.returncode == 0, (build.stdout + build.stderr).decode('utf-8', errors='replace')
         with socket.socket() as reservation:

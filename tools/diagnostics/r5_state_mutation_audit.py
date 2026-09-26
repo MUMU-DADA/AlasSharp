@@ -19,12 +19,13 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import pathlib
 import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-UPSTREAM = ROOT / ".runtime" / "engine"
+UPSTREAM = pathlib.Path(os.environ.get("ALAS_REPO") or ROOT / ".runtime" / "engine").resolve()
 REPORT = ROOT / "docs" / "archive" / "reports" / "r5-state-mutation-audit.md"
 REGISTRY = ROOT / "src" / "Alas.Core" / "Campaign" / "CampaignPrimitives.cs"
 
@@ -90,7 +91,10 @@ DEVICE_SIDE = {
 
 def registry_primitives() -> list[str]:
     text = REGISTRY.read_text(encoding="utf-8")
-    return sorted(set(re.findall(r'\["([a-z_0-9]+)"\]\s*=\s*new CampaignPrimitive\(', text)))
+    names = sorted(set(re.findall(r'\["([a-z_0-9]+)"\]\s*=\s*new CampaignPrimitive\(', text)))
+    if not names:
+        raise ValueError("原语注册表为空或声明格式已变化，不能完成审计")
+    return names
 
 
 def upstream_methods() -> dict[str, tuple[object, str]]:
@@ -111,8 +115,8 @@ def upstream_methods() -> dict[str, tuple[object, str]]:
         module_name = ".".join(path.relative_to(UPSTREAM).with_suffix("").parts)
         try:
             module = importlib.import_module(module_name)
-        except Exception:                              # noqa: BLE001 —— 模块导入失败就跳过，不猜
-            continue
+        except Exception as error:
+            raise RuntimeError(f"无法审计上游家族模块 {module_name}") from error
         for attr in dir(module):
             obj = getattr(module, attr)
             if isinstance(obj, type) and attr == "CampaignBase":
@@ -136,8 +140,8 @@ def upstream_methods() -> dict[str, tuple[object, str]]:
 def scan(method) -> list[tuple[str, str]]:
     try:
         source = inspect.getsource(method)
-    except Exception:                                  # noqa: BLE001 —— 拿不到源码就如实记为未定位
-        return []
+    except (OSError, TypeError) as error:
+        raise RuntimeError("无法读取上游方法源码，不能判定为无状态写入") from error
     hits = []
     for pattern, label in MUTATION_PATTERNS:
         for line in source.splitlines():
@@ -158,11 +162,11 @@ def hook_mutation_scan() -> tuple[list[tuple[str, str, int]], int]:
 
     hits: list[tuple[str, str, int]] = []
     hooks = 0
-    for path in sorted((UPSTREAM / "campaign").rglob("*.py")):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-        except SyntaxError:
-            continue
+    paths = sorted((UPSTREAM / "campaign").rglob("*.py"))
+    if not paths:
+        raise FileNotFoundError("缺少上游 campaign 源文件，无法完成钩子审计")
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path.relative_to(UPSTREAM)))
         module = str(path.relative_to(UPSTREAM)).replace("\\", "/")
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
@@ -184,10 +188,14 @@ def hook_mutation_scan() -> tuple[list[tuple[str, str, int]], int]:
                     if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute) and \
                             sub.func.attr in ("set", "wipe_out"):
                         hits.append((module, f"{item.name}: .{sub.func.attr}(…)", sub.lineno))
+    if not hooks:
+        raise ValueError("没有找到任何 battle_*/handle_* 钩子，不能完成审计")
     return hits, hooks
 
 
 def main() -> int:
+    if not (UPSTREAM / "module/map/map.py").is_file():
+        raise FileNotFoundError("缺少上游地图源码；请准备 .runtime/engine 或指定 ALAS_REPO")
     primitives = registry_primitives()
     methods = upstream_methods()
     rows = []

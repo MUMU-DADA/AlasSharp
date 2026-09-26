@@ -8,6 +8,7 @@
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -32,6 +33,7 @@ except Exception:
 # 页面产品回归由 regress_pages.py 通过原生任务执行。
 STEPS = [
     ('verify_privacy.py', '隐私边界（个人目录/明确凭据/本机工件不入库）', False, 120),
+    ('verify_diagnostic_guards.py', '验收工具反例（运行时解析/空扫描/审计遗漏/超时清理）', False, 120),
     ('verify_architecture.py', '整体架构边界（宿主/数据/路径/禁止地图特例）', False, 120),
     ('regress_pages.py', '页面识别全量回归（产品导航器）', True, 1800),
     ('retry_blocked_pages.py', '此前阻塞的页面定向重试', True, 1800),
@@ -45,6 +47,8 @@ STEPS = [
     ('verify_product_map.py', 'S2 产品路径（Alas.Server map + 关卡 IR 交叉校验）', False, 900),
     ('verify_config_export.py', '章节 Config 导出（继承/表达式/类型证据）', False, 300),
     ('verify_map_export.py', 'MAP 声明导出（符号格子/类/复制/未知语义）', False, 300),
+    ('verify_plan_export.py', '计划 AST 保真（分支/终止/参数类型/丢步拒绝）', False, 120),
+    ('verify_pages_export.py', '页面导出完整性（源重算/规则破坏/动态结构拒绝）', False, 120),
     ('verify_campaign_export.py', 'Campaign 类声明导出（引用/别名/类型/未知语义）', False, 300),
     ('verify_export_integrity.py', '导出完整性破坏用例：Python/C# 同时拒绝', False, 300),
     ('verify_validation_contracts.py', '同步验收与地图失败分类反例（离线）', False, 120),
@@ -102,9 +106,11 @@ STEPS = [
     ('r5_silent_fallback_audit.py', 'R5 静默兜底审计（catch 块里悄悄用兜底值的必须登记）', False, 120),
     ('r5_capability_matrix.py', 'R5 能力归属矩阵（IVisionEngine 逐方法归属，棘轮）', False, 180),
     ('verify_r5_selection.py', 'R5 目标选择对拍（C# 移植 vs 上游 Filter，离线无设备）', False, 180),
+    ('verify_r5_execution_semantics.py', 'R5 独立 Python 语义/动作对照（分支/返回/局部参数/容器/控制流）', False, 120),
     ('verify_r5_execution.py', 'R5 计划→原语→动作闭环（干跑记录 vs 上游选敌规则）', False, 180),
     ('verify_r5_loop.py', 'R5 关卡循环（run/execute_a_battle/battle_function vs 上游钩子选择规则）', False, 180),
     ('verify_r5_path.py', 'R5 寻路成本场（vs 上游 find_path_initial / _find_path，逐格对拍）', False, 180),
+    ('verify_r5_observation.py', 'R5 当前原生运行观测隔离（影子故障不改队列结论）', False, 180),
     ('verify_r5_shadow.py', 'R5 影子模式（C# 只算不执行 vs 上游实际运行日志）', False, 180),
     ('verify_r5_actions.py', 'R5 原语级动作轨迹（上游日志 → 原语名 + C# 覆盖对照）', False, 180),
     ('verify_r5_state.py', 'R5 识别结果→引擎状态（声明地图 + 识别叠加 + 成本场）', False, 180),
@@ -112,6 +118,7 @@ STEPS = [
     ('verify_r5_diff.py', 'R5 原语动作层对照（上游日志动作 vs C# 干跑动作，含目标一致判定）', False, 600),
     ('verify_r5_switch.py', 'R5 域级开关（默认不改行为 / csharp 需二次闸门 / 非法值退回）', False, 180),
     ('verify_r5_seam.py', 'R5 接缝表（C# 原语 ↔ 上游执行方法，含关卡层归属）', False, 180),
+    ('verify_r5_host_contract.py', 'R5 宿主合同（C# 错误/状态回写与 Python seam）', False, 180),
     ('verify_r5_host_seam.py', 'R5 宿主外驱 seam（s3_campaign_init/call/info：联锁、引用、结束分类）', False, 180),
     ('verify_r5_calls.py', 'R5 宿主调用翻译（全库步骤 → 上游方法 + 参数引用形式）', False, 600),
     ('verify_r5_device.py', 'R5 设备宿主（真机宿主 vs 录制宿主发出同样的原语序列）', False, 600),
@@ -150,23 +157,43 @@ def run_step(script, need_device, timeout, docs_only=False, device_only=False):
     log = Path(ROOT) / '.runtime/verification/verify_all' / (Path(script).stem + '.log')
     log.parent.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
+    process = None
     try:
-        r = subprocess.run([PY, path], capture_output=True, text=True,
-                           encoding='utf-8', errors='replace', timeout=timeout)
-        log.write_text((r.stdout or '') + '\n--- stderr ---\n' + (r.stderr or ''), encoding='utf-8')
-        ok = r.returncode == 0
-        output = (r.stderr or r.stdout or '') if not ok else (r.stdout or '')
-        tail = [l for l in output.strip().splitlines() if l.strip()]
+        environment = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', PYTHONUTF8='1')
+        process = subprocess.Popen([PY, path], cwd=ROOT, env=environment,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, encoding='utf-8', errors='replace',
+                                   start_new_session=os.name != 'nt')
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # A timed-out verifier may own a Kestrel/Python host. Kill the whole
+            # process tree so the next verifier cannot inherit locked log files.
+            if os.name == 'nt':
+                subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                               capture_output=True, timeout=20, check=False)
+            else:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            stdout, stderr = process.communicate(timeout=20)
+            log.write_text(stdout + '\n--- stderr ---\n' + stderr
+                           + '\nTimed out after %d seconds.\n' % timeout, encoding='utf-8')
+            return 'timeout', time.time() - t0, '超过 %ds' % timeout
+        log.write_text(stdout + '\n--- stderr ---\n' + stderr, encoding='utf-8')
+        ok = process.returncode == 0
+        output = (stderr or stdout or '') if not ok else (stdout or '')
+        tail = [line for line in output.strip().splitlines() if line.strip()]
         return ('ok' if ok else 'fail'), time.time() - t0, (tail[-1][:120] if tail else '')
-    except subprocess.TimeoutExpired as error:
-        def output_text(value):
-            return value.decode('utf-8', 'replace') if isinstance(value, bytes) else (value or '')
-        log.write_text(output_text(error.stdout) + '\n--- stderr ---\n'
-                       + output_text(error.stderr) + '\nTimed out after %d seconds.\n' % timeout,
-                       encoding='utf-8')
-        return 'timeout', time.time() - t0, '超过 %ds' % timeout
-    except Exception as e:
-        return 'error', time.time() - t0, '%s: %s' % (type(e).__name__, e)
+    except Exception as error:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.communicate(timeout=20)
+        detail = '%s: %s' % (type(error).__name__, error)
+        log.write_text(detail + '\n', encoding='utf-8')
+        return 'error', time.time() - t0, detail
+
 
 
 def read_numbers():

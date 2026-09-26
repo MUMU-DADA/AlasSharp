@@ -21,12 +21,13 @@ from __future__ import annotations
 import ast
 import collections
 import json
+import os
 import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-UPSTREAM = ROOT / ".runtime" / "engine"
-DATA = ROOT / "data" / "campaign"
+UPSTREAM = pathlib.Path(os.environ.get("ALAS_REPO") or ROOT / ".runtime" / "engine").resolve()
+DATA = pathlib.Path(os.environ.get("ALAS_DATA") or ROOT / "data") / "campaign"
 REPORT = ROOT / "docs" / "archive" / "reports" / "r5-incomplete-hooks.md"
 
 # 棘轮基线：上次普查的"不完整且上游有 ≥2 条语句"的钩子数（只许下降）
@@ -62,16 +63,24 @@ def main() -> int:
     shapes: collections.Counter = collections.Counter()
     examples: list[tuple[str, str, str, str]] = []
     plans_total = 0
-    for path in sorted((UPSTREAM / "campaign").rglob("*.py")):
+    source_paths = sorted((UPSTREAM / "campaign").rglob("*.py"))
+    exports = sorted(DATA.rglob("*.json"))
+    if not source_paths or not exports:
+        raise FileNotFoundError("缺少上游 campaign 源文件或章节导出，不能将空扫描当作通过")
+    for path in source_paths:
         level = str(path.relative_to(UPSTREAM / "campaign")).replace("\\", "/")[:-3]
         payload_path = DATA / f"{level}.json"
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=level)
+        has_campaign = any(isinstance(node, ast.ClassDef) and node.name == "Campaign"
+                           for node in tree.body)
         if not payload_path.is_file():
+            if has_campaign:
+                raise FileNotFoundError(f"缺少章节导出 campaign/{level}.json")
             continue
         payload = json.loads(payload_path.read_text(encoding="utf-8"))
         battles = (payload.get("campaign") or {}).get("battles") or []
         incomplete = {b["method"] for b in battles if not b.get("plan_complete", True)}
         plans_total += len(battles)
-        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef) or node.name != "Campaign":
                 continue
@@ -96,6 +105,9 @@ def main() -> int:
                         shapes[(cond_kind(sub.test), body_kinds)] += 1
                         if len(examples) < 10:
                             examples.append((level, item.name, ast.unparse(sub.test)[:48], body_kinds))
+
+    if not plans_total:
+        raise ValueError("导出中没有钩子条目，不能完成不完整钩子审计")
 
     lines = ["# R5 不完整钩子普查（`plan_complete=false` 的成因与先决条件）", "",
              "> 本报告由 `tools/diagnostics/r5_incomplete_hooks.py` 重建，不手写。",

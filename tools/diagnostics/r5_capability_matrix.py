@@ -85,9 +85,11 @@ def interface_methods() -> list[str]:
                 break
     block = re.sub(r"\s+", " ", text[index + 1:end])
     names = []
-    for match in re.finditer(r"([A-Za-z_][\w<>?\[\],\.\s]*?)\s+([A-Z]\w*)\s*\(([^;]*?)\)\s*;", block):
+    for match in re.finditer(r"([A-Za-z_][\w<>?\[\],\.\s]*?)\s+([A-Za-z_]\w*)\s*\(([^;]*?)\)\s*;", block):
         if match.group(2) not in {"get", "set"}:
             names.append(match.group(2))
+    if not names:
+        raise ValueError("接口方法为空或语法已变化，不能完成能力归属审计")
     return names
 
 

@@ -15,8 +15,10 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+import dotnet_env
+
 ROOT = Path(__file__).resolve().parents[2]
-DOTNET = ROOT / ".runtime" / "dotnet" / "dotnet.exe"
+DOTNET = dotnet_env.executable(ROOT)
 SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.dll"
 
 
