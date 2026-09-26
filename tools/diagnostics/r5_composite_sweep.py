@@ -1,40 +1,36 @@
 #!/usr/bin/env python3
-"""R5 复合原语扫描：C# 原语 vs **上游真实方法**（离线，无设备）。
+"""Strict composite primitive comparison with native Map/Fleet methods, without devices.
 
-用法：
-    python tools/diagnostics/r5_composite_sweep.py [--states 60] [--seed 13]
-
-覆盖 `clear_enemy` / `clear_any_enemy` / `clear_siren` / `clear_boss` /
-`clear_roadblocks` / `clear_potential_roadblocks` / `clear_first_roadblocks` / `pick_up_ammo` /
-`fleet_2_push_forward` / `fleet_2_protect`
-十个**复合原语**的判定：
-它们不只是选择器，还带配置分支（`EnemyPriority_EnemyScaleBalanceWeight`、`MAP_CLEAR_ALL_THIS_TIME`、
-`MAP_HAS_SIREN`/`MAP_HAS_FORTRESS`、`FLEET_2` 改排序键）、可能的 boss 兜底路径等。
-
-对拍方式：
-  * 上游侧：用**真实 `CampaignMap`**（`load_map_data` 后逐格设置标志）当 `self.map`，
-    把 `Map.clear_enemy` 等**未绑定的真实方法**绑到一个替身上；替身只提供 `config` 与
-    **记录型动作**（`clear_chosen_enemy` / `goto` / `submarine_move_near_boss`），
-    于是跑的是上游自己的判定，记录到的就是"它打了哪一格"；
-  * C# 侧：`Alas.Server r5-select` 的 `primitive_clear_*` 种类（同一份状态 + 同一份配置），
-    目标从记录宿主的动作里取。
-
-只读：不连设备、不改变任何运行状态。
+Native properties and method dispatch remain intact. Action endpoints record
+arguments and apply the same explicit counter feedback as RecordingCampaignHost.
+Results include returns, full action sequences and post-call state. Every unknown,
+missing result, native failure or mismatch makes the scan fail; there are no
+prefix, order, equal-rank or submarine-target exemptions.
 """
 from __future__ import annotations
 
 import argparse
+from collections import Counter
+import contextlib
+import io
 import json
-import pathlib
+import os
+from pathlib import Path
 import random
+import re
 import subprocess
 import sys
+import tempfile
+import time
+from types import SimpleNamespace
+from xml.sax.saxutils import escape
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-REPORT = ROOT / "docs" / "archive" / "reports" / "r5-composite-sweep.md"
-WORK = ROOT / ".runtime" / "r5-probe"
-SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
-UPSTREAM = ROOT / ".runtime" / "engine"
+import dotnet_env
+
+ROOT = Path(__file__).resolve().parents[2]
+REPORT = ROOT / 'docs/archive/reports/r5-composite-sweep.md'
+WORK = ROOT / '.runtime/verification/composite-sweep'
+UPSTREAM = Path(os.environ.get('ALAS_REPO') or ROOT / '.runtime/engine')
 
 GENRES = ["Light", "Main", "Carrier", "Treasure"]
 # 库里的真实过滤器串（`clear_filter_enemy` 用得最多的那条）
@@ -45,10 +41,6 @@ PRIMITIVES = ["clear_enemy", "clear_any_enemy", "clear_siren", "clear_boss",
               "brute_fleet_meet", "clear_potential_boss", "clear_filter_enemy",
               "pick_up_flare", "check_accessibility", "map_select"]
 
-# 曾经把 `brute_clear_boss` 当成"已知差异"排除在外，理由是"路障子集选择不同"。**那是误判**：
-# 真正的原因是诊断命令缺 `primitive_brute_clear_boss` 分派，静默落进了"选一个敌人"的默认分支。
-# 现在 C# 侧对未知 `primitive_*` kind 直接报错，扫描也把 13 种原语全部纳入（见重写文档的记录）。
-KNOWN_DIVERGENCE: list[str] = []      # 13 种原语现已全部纳入；曾误登记的 `brute_clear_boss` 见重写文档的说明
 ROADBLOCK_PRIMITIVES = {"clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks"}
 # 收**一个格子参数**的原语（`pick_up_flare(grid)` / `fleet_2_rescue(grid)`）：对拍时两侧用同一个目标格
 GRID_ARGUMENT_PRIMITIVES = {"pick_up_flare", "fleet_2_rescue", "check_accessibility"}
@@ -166,545 +158,341 @@ def build_cases(states: int, seed: int, primitives: list[str] | None = None) -> 
     return cases
 
 
-class FleetProxy:
-    """舰队代理：把"哪一队"带进记录（上游 `self.fleet_2.goto(...)` 就是切到 2 队再走）。"""
+HARNESS = r'''
+using Alas.Campaign;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
-    def __init__(self, stub: "RecordingStub", index: int) -> None:
-        self._stub = stub
-        self._index = index
+var rows = new JsonArray();
+foreach (var item in JsonNode.Parse(File.ReadAllText(args[0]))!.AsArray()) {
+    var host = new RecordingCampaignHost(item!["execution_grids"]!.Deserialize<CampaignGrid[]>()!,
+        item["execution_config"]!.Deserialize<CampaignRuntimeConfig>()!) {
+        FleetCurrentIndex = item["fleet_current_index"]!.GetValue<int>(),
+        Fleet1Location = item["fleet_1_location"]!.GetValue<string>(),
+        Fleet2Location = item["fleet_2_location"]!.GetValue<string>(),
+    };
+    object? value = null;
+    string? error = null;
+    try {
+        var step = item["step"]!.Deserialize<CampaignPlanStep>()!;
+        // map.select is an evaluator intrinsic, outside the primitive registry.
+        if (step.Op == "map.select") value = CampaignPrimitives.MapSelect(host, step);
+        else {
+            if (!CampaignPrimitiveRegistry.TryGet(step.Op, out var primitive))
+                throw new NotSupportedException($"Unregistered primitive: {step.Op}");
+            value = primitive.Execute(host, step);
+        }
+        if (value is CampaignGridSet selected)
+            value = selected.Grids.Select(g => g.Location).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+    } catch (Exception e) { error = e.GetType().Name + ": " + e.Message; }
+    rows.Add(new JsonObject {
+        ["name"] = item["name"]!.DeepClone(), ["value"] = JsonSerializer.SerializeToNode(value),
+        ["error"] = error, ["actions"] = JsonSerializer.SerializeToNode(host.Actions),
+        ["state"] = new JsonObject {
+            ["fleet_current_index"] = host.FleetCurrentIndex, ["battle_count"] = host.BattleCount,
+            ["ammo_count"] = host.AmmoCount, ["fleet_ammo"] = host.FleetAmmo,
+            ["picked_flare"] = JsonSerializer.SerializeToNode(host.PickedFlare.OrderBy(x => x).ToArray()),
+            ["grids"] = JsonSerializer.SerializeToNode(host.Grids.ToDictionary(g => g.Location, g => new {
+                is_flare=g.IsFlare, is_caught_by_siren=g.IsCaughtBySiren, is_enemy=g.IsEnemy,
+                is_fleet=g.IsFleet, cost=g.Cost, cost_1=g.Cost1, cost_2=g.Cost2,
+            })),
+        },
+    });
+}
+File.WriteAllText(args[1], rows.ToJsonString());
+'''
 
-    def switch_to(self, *args, **kwargs):
-        # 与 C# `RecordingCampaignHost.EnsureFleet` 同语义：**只在舰队真的变化时才记一次**。
-        # （上游快照里 `Fleet.switch_to` 只是基类的 `pass`，真正的设备实现不在快照里；
-        #  两边统一按"变化才记录"对齐，避免把同一次切换记成两次。）
-        if self._stub.fleet_current_index != self._index:
-            self._stub.calls.append(("switch_to", str(self._index)))
-            self._stub.fleet_current_index = self._index
-
-    def goto(self, location, expected="", **kwargs):
-        # 上游 `self.fleet_2.goto(...)` 隐含"用 2 队走"（真机实现会确保舰队切换，快照里看不到），
-        # C# 侧是显式 `EnsureFleet(2)` + `Goto` —— 这里把隐含的切换也记上，两边才可比。
-        if self._stub.fleet_current_index != self._index:
-            self._stub.calls.append(("switch_to", str(self._index)))
-            self._stub.fleet_current_index = self._index
-        self._stub.calls.append(("goto", str(location)))
-
-    def clear_chosen_enemy(self, grid, expected="", fleet=None):
-        self._stub.calls.append(("clear_chosen_enemy", str(grid)))
-        self._stub.battle_count += 1
-
-    def __getattr__(self, name):
-        # 其余属性/方法透传到宿主替身（如 `fleet_1.fleet_1_location` 之类）
-        return getattr(self._stub, name)
-
-
-class RecordingStub:
-    """替身：只提供 config / 舰队属性 / 记录型动作；`map` 用真实 `CampaignMap`。
-
-    `battle_count` 在每次 `clear_chosen_enemy` 后自增——与 C# 侧 `RecordingCampaignHost` 的假定一致
-    （"选中的敌人会被打掉"），否则 `clear_potential_boss` 这类"打一架看 battle_count 有没有涨"的
-    分支两边会走成不同路径（那是替身差异，不是引擎差异）。
-    """
-
-    def __init__(self, campaign_map, config, first_location="A1", second_location=""):
-        self.map = campaign_map
-        self.config = config
-        self.battle_count = 0
-        # `brute_find_roadblocks`（兜底分支）会读这些舰队状态；给"1 队在第一格、没有 2 队"的最小前提
-        self.fleet_current_index = 1
-        self.ammo_count = 3
-        self.fleet_ammo = 5
-        self.ensure_no_info_bar_calls = 0
-        # 关卡基类 helper（pick_up_flare / pick_up_light_house）会往这两个列表记账
-        self.picked_flare = []
-        self.picked_light_house = []
-        from module.base.utils import node2location  # noqa: PLC0415
-        self.fleet_1_location = node2location(first_location)
-        self.fleet_2_location = node2location(second_location) if second_location else tuple()
-        self.calls: list[tuple[str, str]] = []
-        self.select_grids = self._select_grids
-
-    def fleet_ensure(self, index=1):
-        # 只改索引，**不记动作**：上游 `fleet_ensure` 与 C# `EnsureFleet` 的调用时机在两条代码路径里
-        # 并不一一对应（上游的舰队属性会在访问时切、C# 是显式切），记进来只会放大"记录时机"噪声。
-        # 对拍里真正要比的是 clear/goto/submarine 这些**动作本身**。
-        self.fleet_current_index = index
-
-    @staticmethod
-    def _select_grids(grids, **kwargs):
-        from module.map.map import Map  # noqa: PLC0415
-        return Map.select_grids(grids, **kwargs)
-
-    # 舰队属性：上游 `fleet_1`/`fleet_2`/`fleet_boss` 会先 `fleet_ensure(index)` 再返回舰队对象
-    # （`self.fleet_2.goto(...)`）。返回**按编号记录的代理**，这样"哪一队做的"也进对拍序列。
-    @property
-    def fleet_1(self):
-        return FleetProxy(self, 1)
-
-    @property
-    def fleet_2(self):
-        return FleetProxy(self, 2)
-
-    @property
-    def fleet_boss(self):
-        return FleetProxy(self, self.fleet_boss_index)
-
-    @property
-    def fleet_boss_index(self):
-        return 2 if (self.config.FLEET_BOSS == 2 and self.config.FLEET_2) else 1
-
-    def clear_chosen_enemy(self, grid, expected="", fleet=None):
-        self.calls.append(("clear_chosen_enemy", str(grid)))
-        self.battle_count += 1
-        return True
-
-    def goto(self, location, expected="", **kwargs):
-        self.calls.append(("goto", str(location)))
-
-    def submarine_move_near_boss(self, boss):
-        self.calls.append(("submarine_move_near_boss", str(boss)))
-
-    def show_select_grids(self, *args, **kwargs):
-        return None
-
-    def ensure_no_info_bar(self, *args, **kwargs):
-        # C# 侧也把这个记为动作，所以要进同一条序列（否则序列对拍会假红）
-        self.ensure_no_info_bar_calls += 1
-        self.calls.append(("ensure_no_info_bar", ""))
-
-    def switch_to(self, *args, **kwargs):
-        self.calls.append(("switch_to", "self"))
-
-    def brute_find_roadblocks(self, grid, fleet=None):
-        from module.map.map import Map  # noqa: PLC0415
-        return Map.brute_find_roadblocks(self, grid, fleet=fleet)
-
-    def brute_fleet_meet(self):
-        # 绑**上游真实实现**（它自己会走 `brute_find_roadblocks` + `clear_chosen_enemy`）
-        from module.map.map import Map  # noqa: PLC0415
-        return Map.brute_fleet_meet(self)
-
-    def clear_potential_boss(self):
-        from module.map.map import Map  # noqa: PLC0415
-        return Map.clear_potential_boss(self)
-
-    def clear_boss(self):
-        # 上游 `self.fleet_boss.clear_boss()` 最终调的就是 `Map.clear_boss`（代理透传到宿主）
-        from module.map.map import Map  # noqa: PLC0415
-        return Map.clear_boss(self)
-
-    def clear_any_enemy(self, **kwargs):
-        # 上游 `clear_filter_enemy` 在 `MAP_HAS_MOVABLE_NORMAL_ENEMY` 时会委托给它
-        from module.map.map import Map  # noqa: PLC0415
-        return Map.clear_any_enemy(self, **kwargs)
-
-    def find_path_initial(self, location=None, has_ambush=True, has_enemy=True):
-        """上游有**两个同名方法**：`Fleet.find_path_initial(self)`（无参、读自己的舰队位置）与
-        `Map.find_path_initial(self, location, …)`。`brute_find_roadblocks` 调的是前者——
-        所以无参时绑**真实的 Fleet 变体**，带参时转发到真实 `CampaignMap` 上的方法。
-        """
-        from module.map.fleet import Fleet  # noqa: PLC0415
-        if location is None:
-            return Fleet.find_path_initial(self)
-        return self.map.find_path_initial(location, has_ambush=has_ambush, has_enemy=has_enemy)
-
-    @property
-    def fleet_current(self):
-        return self.fleet_2_location if self.fleet_current_index == 2 else self.fleet_1_location
+STATE_GRID_FIELDS = ('is_flare', 'is_caught_by_siren', 'is_enemy', 'is_fleet', 'cost', 'cost_1', 'cost_2')
 
 
-# `map_select` 的上游选中集合（用例名 → 位置列表）：它没有设备动作，比的是整份集合
-upstream_selection: dict[str, list[str]] = {}
-
-
-def upstream_target(case: dict) -> tuple[str | None, bool | None]:
+def native_probe(case):
     if str(UPSTREAM) not in sys.path:
         sys.path.insert(0, str(UPSTREAM))
-    from module.base.utils import location2node  # noqa: PLC0415
-    from module.map.map_base import CampaignMap  # noqa: PLC0415
-    from module.map.map import Map  # noqa: PLC0415
+    from module.base.utils import node2location, location2node
+    from module.map.map import Map
+    from module.map.map_base import CampaignMap
 
-    rows = {}
-    for grid in case["grids"]:
-        rows.setdefault(grid["location"][1:], []).append(grid)
-    height = max(int(key) for key in rows)
-    width = max(ord(grid["location"][0]) - 65 for grid in case["grids"]) + 1
-    map_data = "\n".join(" ".join("--" for _ in range(width)) for _ in range(height))
+    class Probe(Map):
+        def __init__(self):
+            self.map = CampaignMap('composite-fixture')
+            locations = [node2location(g['location']) for g in case['grids']]
+            width, height = max(x for x, _ in locations) + 1, max(y for _, y in locations) + 1
+            self.map.shape = location2node((width - 1, height - 1))
+            self.map.map_data = '\n'.join(' '.join('--' for _ in range(width)) for _ in range(height))
+            self.map.load_map_data()
+            self.map.grid_connection_initial(wall=False)
+            for fields in case['grids']:
+                grid = self.map[node2location(fields['location'])]
+                for key, value in fields.items():
+                    if key != 'location':
+                        setattr(grid, key, value)
+            self.config = SimpleNamespace(
+                EnemyPriority_EnemyScaleBalanceWeight=case.get('enemy_priority') or '',
+                MAP_CLEAR_ALL_THIS_TIME=case.get('map_clear_all_this_time', False),
+                MAP_HAS_SIREN=case.get('map_has_siren', False),
+                MAP_HAS_FORTRESS=case.get('map_has_fortress', False),
+                MAP_HAS_MOVABLE_ENEMY=case.get('map_has_movable_enemy', False),
+                MAP_HAS_MOVABLE_NORMAL_ENEMY=case.get('map_has_movable_normal_enemy', False),
+                MAP_HAS_AMBUSH=False, FLEET_2=case.get('fleet_2', False),
+                FLEET_BOSS=2 if case.get('fleet_boss') else 1)
+            self.fleet_1_location = node2location(case['fleet_1_location'])
+            self.fleet_2_location = node2location(case['fleet_2_location']) if case['fleet_2_location'] else ()
+            self.fleet_current_index = case['fleet_current_index']
+            self.battle_count, self.ammo_count, self.fleet_ammo = 0, 3, 5
+            self.picked_flare, self.picked_light_house, self.calls = [], [], []
+            self.deadline = time.monotonic() + 3
 
-    campaign_map = CampaignMap("sweep")
-    campaign_map.shape = location2node((width - 1, height - 1))
-    campaign_map.map_data = map_data
-    campaign_map.load_map_data()
-    # 上游 `map_init` 会先建网格连接；替身手工补上（`wall=False`，与 C# 侧的四邻接一致），
-    # 否则 `brute_find_roadblocks → find_path_initial` 会在 `grid_connection[...]` 上 KeyError（实测）
-    campaign_map.grid_connection_initial(wall=False)
-    for grid in case["grids"]:
-        info = campaign_map[tuple((ord(grid["location"][0]) - 65, int(grid["location"][1:]) - 1))]
-        info.is_enemy = bool(grid["is_enemy"])
-        info.is_boss = bool(grid["is_boss"])
-        info.may_boss = bool(grid["may_boss"])
-        info.is_siren = bool(grid["is_siren"])
-        info.is_fortress = bool(grid["is_fortress"])
-        info.is_caught_by_siren = bool(grid["is_caught_by_siren"])
-        info.may_ammo = bool(grid.get("may_ammo"))
-        info.enemy_scale = int(grid["enemy_scale"])
-        info.enemy_genre = grid["enemy_genre"]
-        info.weight = int(grid["weight"])
-        info.cost = int(grid["cost"])
-        info.cost_1 = int(grid["cost_1"])
-        info.cost_2 = int(grid["cost_2"])
+        def find_path_initial(self):
+            # Native brute-force search can grow without bound on synthetic
+            # states. Exceeding the diagnostic budget is unverified, never PASS.
+            if time.monotonic() > self.deadline:
+                raise TimeoutError('native path search exceeded 3s diagnostic budget')
+            return super().find_path_initial()
 
-    class Config:
-        def __init__(self, payload):
-            self._payload = payload
+        def fleet_ensure(self, index):
+            changed = self.fleet_current_index != index
+            if changed:
+                self.calls.append(['fleet_ensure', [str(index)], {}])
+                self.fleet_current_index = index
+            return changed
 
-        def __getattribute__(self, name):
-            payload = object.__getattribute__(self, "_payload")
-            if name in payload:
-                return payload[name]
-            return {
-                "EnemyPriority_EnemyScaleBalanceWeight": "S3_enemy_first",
-                "MAP_CLEAR_ALL_THIS_TIME": False,
-                "MAP_HAS_SIREN": False,
-                "MAP_HAS_FORTRESS": False,
-                "FLEET_2": False,
-            }.get(name, False)
+        def clear_chosen_enemy(self, grid, expected=''):
+            self.calls.append(['clear_chosen_enemy', [location2node(grid.location)], {'expected': expected}])
+            self.battle_count += 1
+            return True
 
-    config = Config({
-        "EnemyPriority_EnemyScaleBalanceWeight": case.get("enemy_priority") or "",
-        "MAP_CLEAR_ALL_THIS_TIME": bool(case.get("map_clear_all_this_time")),
-        "MAP_HAS_SIREN": bool(case.get("map_has_siren")),
-        "MAP_HAS_FORTRESS": bool(case.get("map_has_fortress")),
-        "MAP_HAS_MOVABLE_ENEMY": bool(case.get("map_has_movable_enemy")),
-        "MAP_HAS_MOVABLE_NORMAL_ENEMY": bool(case.get("map_has_movable_normal_enemy")),
-        "FLEET_2": bool(case.get("fleet_2")),
-        # **上游的 `FLEET_BOSS` 是"boss 舰队编号"（1 或 2）**，不是布尔：
-        # C# 侧 `FleetBoss` 是布尔并由 `FleetBossIndex => FleetBoss && Fleet2 ? 2 : 1` 派生。
-        # 映射错了的话上游会一直走"不是 2 队"的早退（实测：fleet_2_* 假不一致）。
-        "FLEET_BOSS": 2 if case.get("fleet_boss") else 1,
-    })
-    stub = RecordingStub(campaign_map, config, case["grids"][0]["location"],
-                         case.get("fleet_2_location") or "")
-    # **先跑一次寻路**再调原语：真实运行里 cost 场是 `map_init` / `full_scan` 之后就已算好的，
-    # 上游原语读的就是这份 cost。少了这一步，上游看到的是夹具里那些**随便填的 cost**，
-    # 而 C# 内部会自己算成本场 → 两边状态根本不同（实测：8 处 clear_potential_boss 假不一致）。
-    stub.find_path_initial()
-    # 成本场要在**调原语之前**快照：上游原语自己会改它（路障兜底临时清敌人标记重算寻路），
-    # 跑完再读就会把"被改过的 cost"写给 C#（实测：clear_any_enemy 假不一致）。
-    costs = {}
-    for grid in case["grids"]:
-        info = campaign_map[tuple((ord(grid["location"][0]) - 65, int(grid["location"][1:]) - 1))]
-        costs[grid["location"]] = (int(info.cost), int(info.cost_1), int(info.cost_2))
-    # `map_select` 不是 `Map`/关卡基类上的方法（它是 `CampaignMap.select`），单独处理，放在取方法之前
-    if case["kind"].replace("primitive_", "") in MAP_SELECT_PRIMITIVES:
-        selected = stub.map.select(**case["flags"])
-        upstream_selection[case["name"]] = sorted(str(grid) for grid in selected)
-        target = next((location for name, location in stub.calls
-                       if name in ("clear_chosen_enemy", "goto")), None)
-        return target, bool(selected), costs, normalize_upstream(stub.calls)
+        def goto(self, grid, expected=''):
+            self.calls.append(['goto', [location2node(grid.location)], {'expected': expected}])
 
-    method = getattr(Map, case["kind"].replace("primitive_", ""), None)
-    if method is None:
-        # 少数原语是**关卡基类 helper**（不在 `Map` 上）：`pick_up_flare` / `pick_up_light_house`
-        # 全库只在 `campaign/campaign_main/campaign_14_base.py` 定义一处，绑那一处就是真实实现。
-        # 该文件里的类是 `CampaignBase`（继承上游 `campaign_base.CampaignBase`），不是 `Campaign`
-        from campaign.campaign_main.campaign_14_base import CampaignBase as _LevelBase  # noqa: PLC0415
-        method = getattr(_LevelBase, case["kind"].replace("primitive_", ""))
-    if case["kind"].replace("primitive_", "") in ROADBLOCK_PRIMITIVES:
-        from module.map.map_grids import RoadGrids  # noqa: PLC0415
-        roads = []
-        for road in case.get("roads") or []:
-            blocks = []
-            for block in road:
-                blocks.append([campaign_map[tuple((ord(location[0]) - 65, int(location[1:]) - 1))]
-                               for location in block])
-            roads.append(RoadGrids(blocks))
-        result = method(stub, roads)
-    elif case["kind"].replace("primitive_", "") in GRID_ARGUMENT_PRIMITIVES:
-        location = case["target"]
-        grid = campaign_map[tuple((ord(location[0]) - 65, int(location[1:]) - 1))]
-        # `check_accessibility(grid, fleet=…)`：fleet 由用例给出（"" / "1" / "2" / "boss"）
-        if case["kind"] == "primitive_check_accessibility":
-            result = method(stub, grid, case.get("fleet") or None)
+        def submarine_move_near_boss(self, grid):
+            self.calls.append(['submarine_move_near_boss', [location2node(grid.location)], {}])
+            return True
+
+        def ensure_no_info_bar(self):
+            self.calls.append(['ensure_no_info_bar', [], {}])
+
+    return Probe()
+
+
+def state_of(probe):
+    from module.base.utils import location2node
+    return dict(fleet_current_index=probe.fleet_current_index, battle_count=probe.battle_count,
+                ammo_count=probe.ammo_count, fleet_ammo=probe.fleet_ammo,
+                picked_flare=sorted(location2node(g.location) for g in probe.picked_flare),
+                grids={location2node(g.location): {key: getattr(g, key) for key in STATE_GRID_FIELDS}
+                       for g in probe.map})
+
+
+def prepare_case(case):
+    probe = native_probe(case)
+    from module.base.utils import node2location
+    probe.find_path_initial()
+    # Export the actual initial native costs and flags, before the method mutates
+    # them. The C# side receives precisely this snapshot, not post-call costs.
+    for fields in case['grids']:
+        native = probe.map[node2location(fields['location'])]
+        for key in STATE_GRID_FIELDS:
+            fields[key] = getattr(native, key)
+    case['execution_grids'] = [{''.join(p.title() for p in k.split('_')): v for k, v in g.items()}
+                               for g in case['grids']]
+    config_names = ('enemy_priority', 'map_clear_all_this_time', 'map_has_siren', 'map_has_fortress',
+                    'fleet_2', 'fleet_boss', 'map_has_movable_enemy', 'map_has_movable_normal_enemy')
+    case['execution_config'] = {''.join(p.title() for p in k.split('_')): case[k]
+                                for k in config_names if k in case}
+    op = case['kind'].removeprefix('primitive_')
+    positional, kwargs = [], {}
+    if op in ROADBLOCK_PRIMITIVES:
+        positional = [{'__roads__': [[[list(node2location(cell)) for cell in block] for block in road]
+                                     for road in case['roads']]}]
+    elif op in GRID_ARGUMENT_PRIMITIVES:
+        positional = [{'__grid__': list(node2location(case['target']))}]
+        if op == 'check_accessibility':
+            if case.get('fleet'):
+                kwargs['fleet'] = case['fleet']
+    elif op == 'clear_filter_enemy':
+        positional = [case['filter'], case['preserve']]
+    elif op == 'map_select':
+        kwargs = case['flags']
+    case['step'] = dict(kind='terminal', op='map.select' if op == 'map_select' else op,
+                        args=dict(positional=positional, keyword=kwargs))
+    return probe
+
+
+def upstream_result(case, probe):
+    from module.base.utils import node2location, location2node
+    from module.map.map_grids import RoadGrids
+    op = case['kind'].removeprefix('primitive_')
+    error, value = None, None
+    try:
+        if op == 'map_select':
+            value = sorted(location2node(g.location) for g in probe.map.select(**case['flags']))
+        elif op in ROADBLOCK_PRIMITIVES:
+            roads = [RoadGrids([[probe.map[node2location(cell)] for cell in block] for block in road])
+                     for road in case['roads']]
+            value = getattr(probe, op)(roads)
+        elif op == 'pick_up_flare':
+            from campaign.campaign_main.campaign_14_base import CampaignBase
+            value = CampaignBase.pick_up_flare(probe, probe.map[node2location(case['target'])])
+        elif op in GRID_ARGUMENT_PRIMITIVES:
+            args = [probe.map[node2location(case['target'])]]
+            if op == 'check_accessibility':
+                args.append(case.get('fleet') or None)
+            value = getattr(probe, op)(*args)
+        elif op == 'clear_filter_enemy':
+            value = probe.clear_filter_enemy(case['filter'], case['preserve'])
         else:
-            result = method(stub, grid)
-    elif case["kind"].replace("primitive_", "") in MAP_SELECT_PRIMITIVES:
-        selected = stub.map.select(**case["flags"])
-        upstream_selection[case["name"]] = sorted(str(grid) for grid in selected)
-        result = bool(selected)
-    elif case["kind"] == "primitive_clear_filter_enemy":
-        # 上游 `clear_filter_enemy(string, preserve=0)`：过滤器串用库里的真实用法（最常见那条），
-        # preserve 由用例给出（0/1 各半），把"保留最弱若干个"这条路径也覆盖到。
-        result = method(stub, ENEMY_FILTER_TEXT, case.get("preserve", 0))
+            value = getattr(probe, op)()
+    except Exception as exc:
+        error = type(exc).__name__ + ': ' + str(exc)
+    return dict(name=case['name'], value=value, error=error, actions=probe.calls, state=state_of(probe))
+
+
+def normalize_csharp(actions):
+    """Preserve operation, positionals and every keyword; reject unknown formats.
+
+    set_flag is a local write, independently checked in the complete post-state.
+    It is not silently dropped as an unverified action.
+    """
+    known = {'clear_chosen_enemy', 'goto', 'fleet_ensure', 'submarine_move_near_boss', 'ensure_no_info_bar'}
+    rows = []
+    for action in actions:
+        match = re.fullmatch(r'([a-z_0-9]+)\((.*)\)', action)
+        if match is None:
+            raise ValueError('unrecognized action: ' + action)
+        op, arguments = match.groups()
+        if op == 'set_flag':
+            if not re.fullmatch(r'[A-Z]+[0-9]+,is_flare=(True|False)', arguments):
+                raise ValueError('unverified state write: ' + action)
+            continue
+        if op not in known:
+            raise ValueError('unverified action: ' + action)
+        positional, keyword = [], {}
+        for item in arguments.split(',') if arguments else []:
+            item = item.strip()
+            if '=' in item:
+                key, value = item.split('=', 1)
+                if key in keyword:
+                    raise ValueError('duplicate action keyword: ' + action)
+                keyword[key] = value
+            else:
+                positional.append(item)
+        if op in ('goto', 'clear_chosen_enemy'):
+            keyword.setdefault('expected', '')
+        rows.append([op, positional, keyword])
+    return rows
+
+
+def compare_result(expected, actual):
+    if expected.get('error'):
+        return ['native_unverified: ' + expected['error']]
+    if actual.get('error'):
+        return ['csharp_error: ' + actual['error']]
+    differences = []
+    try:
+        actions = normalize_csharp(actual['actions'])
+    except (KeyError, TypeError, ValueError) as exc:
+        differences.append('action_encoding: ' + str(exc))
     else:
-        result = method(stub)
-    target = next((location for name, location in stub.calls
-                   if name in ("clear_chosen_enemy", "goto")), None)
-    return target, result, costs, normalize_upstream(stub.calls)
+        if actions != expected['actions']:
+            differences.append('actions')
+    # JSON/Python considers False == 0. The method contract must preserve types.
+    if 'value' not in actual or type(actual['value']) is not type(expected['value']) or actual['value'] != expected['value']:
+        differences.append('value')
+    if actual.get('state') != expected['state']:
+        differences.append('state')
+    return differences
 
 
-# 上游替身记录到的调用 → 与 C# `Actions` 可比的 (操作, 目标) 序列。
-# 只保留**设备动作**：上游的 `show_select_grids`/`show_fleet`/`map.show_cost` 是界面/日志行为，
-# `logger` 更不是动作；`switch_to` 是切舰队（C# 侧记为 `ensure_fleet`）。
-UPSTREAM_ACTION_MAP = {
-    "clear_chosen_enemy": "clear_chosen_enemy",
-    "goto": "goto",
-    "submarine_move_near_boss": "submarine_move_near_boss",
-    "switch_to": "ensure_fleet",
-    "clear_chosen_mystery": "clear_chosen_mystery",
-    "ensure_no_info_bar": "ensure_no_info_bar",
-}
-
-
-def normalize_upstream(calls: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    normalized = []
-    for name, argument in calls:
-        op = UPSTREAM_ACTION_MAP.get(name)
-        if op is None:
+def audit_results(expected, actual):
+    if not expected:
+        raise ValueError('empty native sample cannot prove equivalence')
+    expected_by_name = {row['name']: row for row in expected}
+    if len(expected_by_name) != len(expected):
+        raise ValueError('duplicate native case identity')
+    failures, seen = [], set()
+    for row in actual:
+        name = row.get('name')
+        if name in seen or name not in expected_by_name:
+            failures.append(dict(name=name, differences=['duplicate_or_unknown_result']))
             continue
-        if op == "ensure_fleet":
-            normalized.append((op, argument))       # 代理记录的就是舰队编号
-            continue
-        normalized.append((op, argument))
-    return normalized
+        seen.add(name)
+        differences = compare_result(expected_by_name[name], row)
+        if differences:
+            failures.append(dict(name=name, differences=differences))
+    for name in expected_by_name.keys() - seen:
+        failures.append(dict(name=name, differences=['missing_result']))
+    return failures
 
 
-def normalize_csharp(actions: list[str] | None) -> list[tuple[str, str]]:
-    """C# 记录的动作字符串 → (操作, 目标)。纯状态操作（如清塞壬标记）不算设备动作，跳过。"""
-    normalized = []
-    for action in actions or []:
-        op = action.split("(", 1)[0].strip()
-        if op in ("clear_caught_by_siren_flags", "mark_flare"):
-            continue    # 纯状态操作：上游的 helper 也是直接改属性，不产生设备动作
-        # C# 侧的动作名 → 与上游替身记录一致的名字
-        op = {"fleet_ensure": "ensure_fleet"}.get(op, op)
-        inside = action[len(op) + 1:].rstrip(")") if "(" in action else ""
-        first = inside.split(",", 1)[0].strip()
-        normalized.append((op, first))
-    return normalized
-
-
-# 只比**排序键**（上游能按 `weight`/`cost`/`cost_1`/`cost_2` 排序，四种都算）：
-# 上游 `SelectedGrids.add` 的 `set` 打乱的是"谁先被加入"，于是等价的格子可能来自不同过滤组
-# （如 enemy 与 fortress/siren），这同样是不可复现的集合序伪影。
-RANK_KEYS = ("weight", "cost", "cost_1", "cost_2")
-
-
-def find_grid(case: dict, location: str | None) -> dict | None:
-    if location is None:
-        return None
-    return next((grid for grid in case["grids"] if grid["location"] == location), None)
-
-
-def effective_sort_keys(case: dict) -> tuple[str, ...]:
-    """该用例**实际生效**的排序键。
-
-    `clear_filter_enemy` 在 `MAP_HAS_MOVABLE_NORMAL_ENEMY` 时会忽略过滤串、转
-    `clear_any_enemy(sort=("cost_2",))`（上游就这么写），所以那支只按 `cost_2` 排序；
-    其余情况按默认的 `("weight", "cost")`。判"同价位"必须用**实际**的键，否则会把
-    真正的等价平手误判成不一致（实测踩过）。
-    """
-    if case["kind"] == "primitive_clear_filter_enemy" and case.get("map_has_movable_normal_enemy"):
-        return ("cost_2",)
-    return ("weight", "cost")
-
-
-def same_rank(left: dict, right: dict, keys: tuple[str, ...]) -> bool:
-    """两个格子是否"同价位"：按**实际排序键**比，都一样就只是身份不同（不可复现的集合序）。"""
-    return all(left.get(key) == right.get(key) for key in keys)
-
-
-def only_submarine_arg_differs(left: list[tuple[str, str]], right: list[tuple[str, str]]) -> bool:
-    """两条序列是否**只在 `submarine_move_near_boss` 的实参**上不同。
-
-    上游 `clear_boss` 传给它的是 `grids[0]`，而那个 `grids` 是 `add()` 之后**未排序**的集合——
-    第一个元素取决于身份哈希序（与 `SelectedGrids.add` 用 `set` 同一个根因），不可复现。
-    真正有意义的动作 `clear_chosen_enemy(sorted[0])` 两边一致（目标比较已覆盖）。
-    """
-    if len(left) != len(right) or not left:
-        return False
-    differing = False
-    for (left_op, left_arg), (right_op, right_arg) in zip(left, right):
-        if left_op != right_op:
-            return False
-        if left_arg != right_arg:
-            if left_op != "submarine_move_near_boss":
-                return False
-            differing = True
-    return differing
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description="R5 复合原语扫描")
-    # 默认 20 个状态：上游 `clear_potential_boss` 的路障兜底会**指数枚举**敌人子集
-    # （`itertools.product(enemies, repeat)`），状态一多整体就超出可接受时长（实测 60 状态 >10 分钟）。
-    parser.add_argument("--states", type=int, default=20)
-    parser.add_argument("--seed", type=int, default=13)
-    parser.add_argument("--include-slow", action="store_true",
-                        help="把慢原语也算进去（" + ", ".join(SLOW_PRIMITIVES) + "；路障枚举无上限，可能很慢）")
-    options = parser.parse_args()
-    if not SERVER.is_file():
-        raise SystemExit(f"缺少 {SERVER.relative_to(ROOT)}；先运行 ./build.ps1 构建")
-
-    primitives = [*PRIMITIVES, *SLOW_PRIMITIVES] if options.include_slow else list(PRIMITIVES)
-    cases = build_cases(options.states, options.seed, primitives)
-
-    # 第一遍：跑上游拿期望，并把**上游算出的成本场**写回夹具，
-    # 这样 C# 侧读到的 cost/cost_1/cost_2 与上游看到的完全一致（否则是两套状态）。
-    expected_by_name: dict[str, tuple[str | None, list[tuple[str, str]]]] = {}
-    skipped: dict[str, int] = {}
-    skip_examples: dict[str, list[str]] = {}
-    for case in cases:
-        try:
-            target, _, costs, sequence = upstream_target(case)
-        except Exception as error:                     # noqa: BLE001 —— 上游跑不动就如实记，不算通过
-            key = f"上游执行失败：{type(error).__name__}: {error}"[:110]
-            skipped[key] = skipped.get(key, 0) + 1
-            bucket = skip_examples.setdefault(key, [])
-            if len(bucket) < 3:
-                bucket.append(case["name"])
-            continue
-        expected_by_name[case["name"]] = (target, sequence)
-        for grid in case["grids"]:
-            if grid["location"] in costs:
-                grid["cost"], grid["cost_1"], grid["cost_2"] = costs[grid["location"]]
-
+def run_csharp(cases):
     WORK.mkdir(parents=True, exist_ok=True)
-    fixture = WORK / "composite-sweep-fixture.json"
-    fixture.write_text(json.dumps({"cases": cases}, ensure_ascii=False), encoding="utf-8", newline="\n")
+    with tempfile.TemporaryDirectory(prefix='harness-', dir=WORK) as folder:
+        work = Path(folder)
+        (work / 'Program.cs').write_text(HARNESS, encoding='utf-8')
+        (work / 'check.csproj').write_text(f'''<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>
+<OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings>
+<Nullable>enable</Nullable></PropertyGroup><ItemGroup>
+<ProjectReference Include="{escape(str(ROOT / 'src/Alas.Core/Alas.Core.csproj'))}" />
+</ItemGroup></Project>''', encoding='utf-8')
+        (work / 'cases.json').write_text(json.dumps(cases), encoding='utf-8')
+        result = subprocess.run([str(dotnet_env.executable(ROOT)), 'run', '--project', str(work / 'check.csproj'),
+            '-c', 'Release', '--', str(work / 'cases.json'), str(work / 'actual.json')],
+            cwd=ROOT, env=dotnet_env.apply(os.environ, ROOT), capture_output=True,
+            encoding='utf-8', errors='replace', timeout=180)
+        if result.returncode:
+            raise RuntimeError('C# harness failed: ' + (result.stdout + result.stderr)[-2000:].replace(str(ROOT), '<repo>'))
+        return json.loads((work / 'actual.json').read_text(encoding='utf-8'))
 
-    completed = subprocess.run([str(SERVER), "r5-select", "--fixture", str(fixture)],
-                               cwd=ROOT, capture_output=True, text=True, timeout=1800,
-                               encoding="utf-8", errors="replace")
-    if completed.returncode != 0:
-        print(completed.stdout[-1500:], completed.stderr[-1500:])
-        raise SystemExit(f"r5-select 退出码 {completed.returncode}")
-    results = {item["name"]: item for item in json.loads(completed.stdout)["cases"]}
 
-    mismatches: list[tuple[str, str, str]] = []
-    artifacts: list[tuple[str, str, str]] = []
-    sequence_only_diffs: list[tuple[str, str, str]] = []
-    dry_run_prefix: list[tuple[str, str, str]] = []
-    order_diffs: list[tuple[str, str, str]] = []
-    set_order: list[tuple[str, str, str]] = []
-    compared = 0
-    sequence_compared = sequence_identical = 0
-    selection_compared = selection_identical = 0
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--states', type=int, default=20)
+    parser.add_argument('--seed', type=int, default=13)
+    parser.add_argument('--include-slow', action='store_true')
+    options = parser.parse_args()
+    if options.states < 1:
+        parser.error('--states must be positive')
+    primitives = [*PRIMITIVES, *SLOW_PRIMITIVES] if options.include_slow else PRIMITIVES
+    cases = build_cases(options.states, options.seed, primitives)
+    expected = []
+    prepared = []
     for case in cases:
-        result = results.get(case["name"])
-        if result is None:
-            mismatches.append((case["name"], case["kind"], "命令没返回这个用例"))
-            continue
-        if case["name"] not in expected_by_name:
-            continue                                   # 上游侧跳过过，如实计入 skipped
-        expected, expected_sequence = expected_by_name[case["name"]]
-        compared += 1
-
-        # `map_select`：比**整份选中集合**（它没有设备动作，比不了"动作序列"）
-        if case["kind"].replace("primitive_", "") in MAP_SELECT_PRIMITIVES:
-            want = upstream_selection.get(case["name"]) or []
-            got = sorted(result.get("selected_all") or [])
-            selection_compared += 1
-            if got == want:
-                selection_identical += 1
-            else:
-                mismatches.append((case["name"], f"map.select({case.get('flags')})",
-                                   f"C# {got} vs 上游 {want}"))
-            continue
-
-        # **整条动作序列**对拍（比"只看第一个目标"强：能抓到"打完又去踩 may_boss"这类后续动作）。
-        actual_sequence = normalize_csharp(result.get("actions"))
-        sequence_compared += 1
-        if actual_sequence == expected_sequence:
-            sequence_identical += 1
-        elif actual_sequence[:1] != expected_sequence[:1]:
-            # 第一动作就不同：可能是等价位集合序伪影（见下），也可能是**动作先后顺序**不同。
-            # 单列出来（只看"目标"时它们可能被判成一致），报告里带例子便于判断性质。
-            if only_submarine_arg_differs(actual_sequence, expected_sequence):
-                set_order.append((case["name"], case["kind"], f"C# {actual_sequence} vs 上游 {expected_sequence}"))
-            else:
-                order_diffs.append((case["name"], case["kind"],
-                                    f"C# {actual_sequence} vs 上游 {expected_sequence}"))
-        elif (actual_sequence
-              and len(actual_sequence) < len(expected_sequence)
-              and expected_sequence[:len(actual_sequence)] == actual_sequence
-              and all(item == actual_sequence[-1] for item in expected_sequence[len(actual_sequence):])):
-            # **干跑前缀**：上游那种"靠设备状态变化才会停"的循环（如 `fleet_2_protect` 的 20 轮），
-            # 干跑不改变状态，C# 只做一轮就退出（`Fleet2Protect`/`ClearAllMystery` 里都写明了）。
-            # 上游在替身上不会停，于是记满 20 轮同样的动作 —— 这是**有意的偏离**，单列不记为不一致。
-            dry_run_prefix.append((case["name"], case["kind"],
-                                   f"C# {len(actual_sequence)} 步 vs 上游 {len(expected_sequence)} 步"))
-        else:
-            sequence_only_diffs.append((
-                case["name"], f"{case['kind']}",
-                f"C# {actual_sequence} vs 上游 {expected_sequence}"))
-
-        if result["selected"] != expected:
-            # 上游 `SelectedGrids.add` 是 `set(self.grids + grids.grids)`——**走哈希集合**，
-            # 于是"追加顺序"其实是身份哈希序：等 (weight, cost) 的格子谁排前面不可复现。
-            # 所以两侧选了**同价位等价格**（同 weight/cost/标志/可达性）时不算不一致，单列伪影。
-            left = find_grid(case, result["selected"])
-            right = find_grid(case, expected)
-            if left is not None and right is not None and same_rank(left, right, effective_sort_keys(case)):
-                artifacts.append((case["name"], result["selected"], expected))
+        with contextlib.redirect_stdout(io.StringIO()):
+            try:
+                probe = prepare_case(case)
+            except Exception as exc:
+                expected.append(dict(name=case['name'], error='initial_state: ' + type(exc).__name__,
+                                     value=None, actions=[], state={}))
                 continue
-            mismatches.append((case["name"], f"{case['kind']} {json.dumps({k: v for k, v in case.items() if k not in ('grids', 'name', 'kind')}, ensure_ascii=False)}",
-                               f"C# {result['selected']!r} vs 上游 {expected!r}"))
-    mismatches.extend(sequence_only_diffs)
-
-    lines = ["# R5 复合原语扫描（C# 原语 vs 上游真实方法）", "",
-             "> 本报告由 `tools/diagnostics/r5_composite_sweep.py` 重建，不手写。",
-             "> 覆盖：`clear_enemy` / `clear_any_enemy` / `clear_siren` / `clear_boss` /", 
-             "> `clear_roadblocks` / `clear_potential_roadblocks` / `clear_first_roadblocks` / `pick_up_ammo`", 
-             "> 的判定（含路段、弹药与 2 队推进/护航语义），",
-             "> 含配置分支（优先级、全清、塞壬/要塞、FLEET_2 改排序键）；上游侧跑的是**它自己的方法**。", "",
-             f"- 状态数：**{options.states}**（seed={options.seed}，每种状态 × {len(PRIMITIVES)} 原语 × {len(CONFIGS)} 配置）",
-             f"- 用例数：**{len(cases)}**；实际比较 **{compared}**",
-             f"- 不一致：**{len(mismatches)}**",
-             f"- **`map.select` 集合对拍**：比较 {selection_compared} 条，完全相同 {selection_identical}",
-             f"- **动作序列对拍**：比较 {sequence_compared} 条，完全相同 {sequence_identical}；"
-             f"干跑前缀（有意偏离）{len(dry_run_prefix)} 条；"
-             f"集合序伪影（只在 `submarine_move_near_boss` 实参上不同）{len(set_order)} 条；"
-             f"其余顺序差异 {len(order_diffs)} 条",
-             f"- 等价位**集合序伪影**：**{len(artifacts)}** 处（上游 `SelectedGrids.add` 走 `set`，"
-             f"等 weight/cost 的格子谁在前不可复现；两侧都选中同价位格子）",
-             f"- 本次未跑的原语：{', '.join(SLOW_PRIMITIVES) if not options.include_slow else '无（--include-slow 全跑）'}",
-             f"- **未纳入的已知差异**：{', '.join(KNOWN_DIVERGENCE) or '无'}（路障**子集**选择不同："
-             "C# 寻路定点收敛会找到更小的可达子集；登记在重写文档的差异一节）", ""]
-    if order_diffs:
-        lines += ["## 顺序差异（前 10 条）", "",
-                  "性质：**切舰队的记录时机**不同。上游 `fleet_1/2/boss` 属性在访问时就 `fleet_ensure(index)`，",
-                  "C# 侧是显式 `EnsureFleet`，两条代码路径的调用点不一一对应；比的是同一批 clear/goto/submarine 动作，",
-                  "只是多/少一条 `ensure_fleet`。**不记为不一致**（属诊断记录口径），但要看得见。", "",
-                  "| 用例 | 种类 | 序列 |", "| --- | --- | --- |"]
-        lines += [f"| {name} | {kind} | {detail} |" for name, kind, detail in order_diffs[:10]]
-        lines.append("")
-    if artifacts:
-        lines += ["## 集合序伪影（前 10 条，信息项）", "", "| 用例 | C# | 上游 |", "| --- | --- | --- |"]
-        lines += [f"| {name} | `{left}` | `{right}` |" for name, left, right in artifacts[:10]]
-        lines.append("")
-    if mismatches:
-        lines += ["## 不一致（前 20 条）", "", "| 用例 | 配置 | 差异 |", "| --- | --- | --- |"]
-        lines += [f"| {name} | `{detail}` | {diff} |" for name, detail, diff in mismatches[:20]]
-        lines.append("")
-    if skipped:
-        lines += ["## 跳过（如实列出原因）", "", "| 原因 | 次数 |", "| --- | --- |"]
-        lines += [f"| {reason} | {count} |" for reason, count in sorted(skipped.items())]
-        lines.append("")
-        lines += ["### 例子（每类最多 3 条）", ""]
-        for reason, items in skip_examples.items():
-            lines.append(f"- **{reason}**")
-            lines += [f"  - `{item}`" for item in items]
-        lines.append("")
-    REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text("\n".join(lines), encoding="utf-8", newline="\n")
-    print(f"已重建 {REPORT.relative_to(ROOT)}：比较 {compared} 例 / 不一致 {len(mismatches)} / 跳过 {sum(skipped.values())}")
-    for item in mismatches[:5]:
-        print("  -", item)
-    for reason, count in list(skipped.items())[:2]:
-        print(f"  跳过 {count} 次：{reason}")
-    return 1 if mismatches else 0
+            expected.append(upstream_result(case, probe))
+            prepared.append(case)
+    actual = run_csharp(prepared)
+    failures = audit_results(expected, actual)
+    WORK.mkdir(parents=True, exist_ok=True)
+    (WORK / 'results.json').write_text(json.dumps(dict(cases=cases, expected=expected, actual=actual,
+        failures=failures), ensure_ascii=False, indent=2), encoding='utf-8')
+    counts = Counter(part.split(':', 1)[0] for row in failures for part in row['differences'])
+    lines = ['# R5 复合原语严格扫描', '', '> 由 `tools/diagnostics/r5_composite_sweep.py` 重建，不手写。',
+             '> 上游使用原生 Map/Fleet 属性及方法；C# 执行注册原语，保留 bool/None 返回。',
+             '> 动作只录制，计数反馈为显式替身假设；不证明设备效果、真实通关或完整状态等价。', '',
+             f'- 状态数：**{options.states}**（seed={options.seed}）',
+             f'- 用例数：**{len(cases)}**（{len(primitives)} 个原语 × {len(CONFIGS)} 种配置）',
+             f'- 完整比较通过：**{len(cases) - len(failures)}**',
+             f'- 失败或未验证：**{len(failures)}**',
+             '- 核对返回值及类型、全部动作及参数、计数/舰队/弹药/拾取列表与地图状态字段。',
+             '- 不豁免动作前缀、切队顺序、同权目标或潜艇目标；原生失败、缺结果也令检查失败。',
+             '- 原生寻路超过每例 3 秒诊断预算记为未验证，不改变上游结束判据。',
+             '- 未运行的慢原语：' + ('无' if options.include_slow else ', '.join(SLOW_PRIMITIVES)), '',
+             '| 差异类别（可重叠） | 次数 |', '| --- | --- |',
+             *[f'| {key} | {value} |' for key, value in sorted(counts.items())], '',
+             '## 失败样本（最多 30 条）', '', '| 用例 | 差异 |', '| --- | --- |',
+             *[f"| {row['name']} | {', '.join(row['differences']).replace('|', '/')} |" for row in failures[:30]], '',
+             '集合并集的身份哈希顺序可能造成目标差异；此扫描不据此豁免。需以具体候选集合、',
+             '状态与原生顺序证据继续定位；当前失败不能宣称为全量语义一致。', '']
+    REPORT.write_text('\n'.join(lines), encoding='utf-8')
+    print(f'{"FAIL" if failures else "PASS"}: composite scan {len(cases)} cases, {len(failures)} failures/unverified; {dict(counts)}')
+    return 1 if failures else 0
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -103,6 +103,7 @@ STEPS = [
     ('r5_state_mutation_audit.py', 'R5 状态写入审计（上游会改状态的方法 vs C# 替换的原语）', False, 300),
     ('r5_incomplete_hooks.py', 'R5 不完整钩子普查（成因分类 + 棘轮基线）', False, 300),
     ('verify_r5_audit_guards.py', 'R5 调用翻译与原语覆盖反例（递归结构/动态绑定/真实调用）', False, 120),
+    ('r5_composite_sweep.py', 'R5 复合原语严格对照（原生属性/返回/参数/完整动作/状态，差异不豁免）', False, 900),
     ('verify_r5_selection_sweep.py', 'R5 目标选择扫描新鲜度（重跑扫描 + 不一致数棘轮）', False, 900),
     ('r5_silent_fallback_audit.py', 'R5 静默兜底审计（catch 块里悄悄用兜底值的必须登记）', False, 120),
     ('r5_capability_matrix.py', 'R5 能力归属矩阵（IVisionEngine 逐方法归属，棘轮）', False, 180),

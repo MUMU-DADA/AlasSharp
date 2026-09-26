@@ -1,59 +1,60 @@
-# R5 复合原语扫描（C# 原语 vs 上游真实方法）
+# R5 复合原语严格扫描
 
-> 本报告由 `tools/diagnostics/r5_composite_sweep.py` 重建，不手写。
-> 覆盖：`clear_enemy` / `clear_any_enemy` / `clear_siren` / `clear_boss` /
-> `clear_roadblocks` / `clear_potential_roadblocks` / `clear_first_roadblocks` / `pick_up_ammo`
-> 的判定（含路段、弹药与 2 队推进/护航语义），
-> 含配置分支（优先级、全清、塞壬/要塞、FLEET_2 改排序键）；上游侧跑的是**它自己的方法**。
+> 由 `tools/diagnostics/r5_composite_sweep.py` 重建，不手写。
+> 上游使用原生 Map/Fleet 属性及方法；C# 执行注册原语，保留 bool/None 返回。
+> 动作只录制，计数反馈为显式替身假设；不证明设备效果、真实通关或完整状态等价。
 
-- 状态数：**20**（seed=13，每种状态 × 17 原语 × 12 配置）
-- 用例数：**4080**；实际比较 **4061**
-- 不一致：**0**
-- **`map.select` 集合对拍**：比较 240 条，完全相同 240
-- **动作序列对拍**：比较 3821 条，完全相同 3505；干跑前缀（有意偏离）4 条；集合序伪影（只在 `submarine_move_near_boss` 实参上不同）44 条；其余顺序差异 268 条
-- 等价位**集合序伪影**：**6** 处（上游 `SelectedGrids.add` 走 `set`，等 weight/cost 的格子谁在前不可复现；两侧都选中同价位格子）
-- 本次未跑的原语：fleet_2_rescue
-- **未纳入的已知差异**：无（路障**子集**选择不同：C# 寻路定点收敛会找到更小的可达子集；登记在重写文档的差异一节）
+- 状态数：**20**（seed=13）
+- 用例数：**4080**（17 个原语 × 12 种配置）
+- 完整比较通过：**3399**
+- 失败或未验证：**681**
+- 核对返回值及类型、全部动作及参数、计数/舰队/弹药/拾取列表与地图状态字段。
+- 不豁免动作前缀、切队顺序、同权目标或潜艇目标；原生失败、缺结果也令检查失败。
+- 原生寻路超过每例 3 秒诊断预算记为未验证，不改变上游结束判据。
+- 未运行的慢原语：fleet_2_rescue
 
-## 顺序差异（前 10 条）
-
-性质：**切舰队的记录时机**不同。上游 `fleet_1/2/boss` 属性在访问时就 `fleet_ensure(index)`，
-C# 侧是显式 `EnsureFleet`，两条代码路径的调用点不一一对应；比的是同一批 clear/goto/submarine 动作，
-只是多/少一条 `ensure_fleet`。**不记为不一致**（属诊断记录口径），但要看得见。
-
-| 用例 | 种类 | 序列 |
-| --- | --- | --- |
-| state0-brute_clear_boss-c8 | primitive_brute_clear_boss | C# [('ensure_fleet', '2'), ('submarine_move_near_boss', 'A2'), ('clear_chosen_enemy', 'A2'), ('clear_chosen_enemy', 'B1')] vs 上游 [('submarine_move_near_boss', 'A2'), ('clear_chosen_enemy', 'A2'), ('clear_chosen_enemy', 'B1')] |
-| state0-brute_clear_boss-c9 | primitive_brute_clear_boss | C# [('ensure_fleet', '2'), ('submarine_move_near_boss', 'A2'), ('clear_chosen_enemy', 'A2'), ('clear_chosen_enemy', 'B1')] vs 上游 [('submarine_move_near_boss', 'A2'), ('clear_chosen_enemy', 'A2'), ('clear_chosen_enemy', 'B1')] |
-| state0-pick_up_flare-c0 | primitive_pick_up_flare | C# [('set_flag', 'D3')] vs 上游 [] |
-| state0-pick_up_flare-c1 | primitive_pick_up_flare | C# [('set_flag', 'D3')] vs 上游 [] |
-| state0-pick_up_flare-c2 | primitive_pick_up_flare | C# [('set_flag', 'D3')] vs 上游 [] |
-| state0-pick_up_flare-c3 | primitive_pick_up_flare | C# [('set_flag', 'D3')] vs 上游 [] |
-| state0-pick_up_flare-c4 | primitive_pick_up_flare | C# [('set_flag', 'D3')] vs 上游 [] |
-| state0-pick_up_flare-c5 | primitive_pick_up_flare | C# [('set_flag', 'D3')] vs 上游 [] |
-| state0-pick_up_flare-c6 | primitive_pick_up_flare | C# [('set_flag', 'D3')] vs 上游 [] |
-| state0-pick_up_flare-c7 | primitive_pick_up_flare | C# [('set_flag', 'D3')] vs 上游 [] |
-
-## 集合序伪影（前 10 条，信息项）
-
-| 用例 | C# | 上游 |
-| --- | --- | --- |
-| state2-clear_filter_enemy-c9 | `B2` | `A1` |
-| state2-clear_filter_enemy-c11 | `B2` | `A1` |
-| state7-clear_filter_enemy-c9 | `B2` | `A1` |
-| state7-clear_filter_enemy-c11 | `B2` | `A1` |
-| state18-clear_filter_enemy-c9 | `A1` | `C1` |
-| state18-clear_filter_enemy-c11 | `A1` | `C1` |
-
-## 跳过（如实列出原因）
-
-| 原因 | 次数 |
+| 差异类别（可重叠） | 次数 |
 | --- | --- |
-| 上游执行失败：IndexError: list index out of range | 19 |
+| actions | 558 |
+| csharp_error | 15 |
+| native_unverified | 15 |
+| state | 248 |
+| value | 33 |
 
-### 例子（每类最多 3 条）
+## 失败样本（最多 30 条）
 
-- **上游执行失败：IndexError: list index out of range**
-  - `state5-fleet_2_protect-c8`
-  - `state10-clear_boss-c8`
-  - `state10-clear_boss-c9`
+| 用例 | 差异 |
+| --- | --- |
+| state0-clear_boss-c0 | actions |
+| state0-clear_boss-c1 | actions |
+| state0-clear_boss-c2 | actions |
+| state0-clear_boss-c3 | actions |
+| state0-clear_boss-c4 | actions |
+| state0-clear_boss-c5 | actions |
+| state0-clear_boss-c6 | actions |
+| state0-clear_boss-c7 | actions |
+| state0-clear_boss-c8 | actions, state |
+| state0-clear_boss-c9 | actions, state |
+| state0-clear_boss-c10 | actions |
+| state0-clear_boss-c11 | actions |
+| state0-brute_clear_boss-c0 | actions |
+| state0-brute_clear_boss-c1 | actions |
+| state0-brute_clear_boss-c2 | actions |
+| state0-brute_clear_boss-c3 | actions |
+| state0-brute_clear_boss-c4 | actions |
+| state0-brute_clear_boss-c5 | actions |
+| state0-brute_clear_boss-c6 | actions |
+| state0-brute_clear_boss-c7 | actions |
+| state0-brute_clear_boss-c8 | actions |
+| state0-brute_clear_boss-c9 | actions |
+| state0-brute_clear_boss-c10 | actions |
+| state0-brute_clear_boss-c11 | actions |
+| state0-clear_potential_boss-c0 | actions |
+| state0-clear_potential_boss-c1 | actions |
+| state0-clear_potential_boss-c2 | actions |
+| state0-clear_potential_boss-c3 | actions |
+| state0-clear_potential_boss-c4 | actions |
+| state0-clear_potential_boss-c5 | actions |
+
+集合并集的身份哈希顺序可能造成目标差异；此扫描不据此豁免。需以具体候选集合、
+状态与原生顺序证据继续定位；当前失败不能宣称为全量语义一致。

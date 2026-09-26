@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 import subprocess
 import tempfile
@@ -11,6 +12,7 @@ from unittest.mock import patch
 
 import verify_r5_calls as call_audit
 import verify_r5_coverage as coverage
+import r5_composite_sweep as composite
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVER = ROOT / 'src/Alas.Server/bin/Release/net10.0/Alas.Server.exe'
@@ -167,6 +169,53 @@ class AuditGuards(unittest.TestCase):
         incomplete, unresolved = coverage.plan_gaps(self.data, {'clear_enemy'})
         self.assertEqual(len(incomplete), 1)
         self.assertEqual(len(unresolved), 2)
+
+
+class CompositeGuards(unittest.TestCase):
+    def sample(self):
+        expected = dict(name='fixture', error=None, value=False, state={'fleet_current_index': 1}, actions=[
+            ['fleet_ensure', ['2'], {}],
+            ['clear_chosen_enemy', ['A1'], {'expected': 'siren'}]])
+        actual = dict(name='fixture', error=None, value=False, state={'fleet_current_index': 1}, actions=[
+            'fleet_ensure(2)', 'clear_chosen_enemy(A1, expected=siren)'])
+        self.assertEqual(composite.audit_results([expected], [actual]), [])
+        return expected, actual
+
+    def test_composite_rejects_returns_state_arguments_order_and_prefix(self):
+        expected, original = self.sample()
+        variants = [dict(value=None), dict(value=0), dict(state={'fleet_current_index': 2}),
+                    dict(actions=original['actions'][:1]), dict(actions=list(reversed(original['actions']))),
+                    dict(actions=['fleet_ensure(2)', 'clear_chosen_enemy(A1, expected=fortress)']),
+                    dict(actions=['fleet_ensure(2)', 'clear_chosen_enemy(B1, expected=siren)']),
+                    dict(actions=['fleet_ensure(2)', 'clear_chosen_enemy(A1, expected=siren, fleet=boss)']),
+                    dict(error='native channel refused'), dict(actions=['unknown(A1)'])]
+        for change in variants:
+            with self.subTest(change=change):
+                self.assertTrue(composite.audit_results([expected], [dict(original, **change)]))
+
+    def test_composite_never_exempts_submarine_targets_or_unverified_native(self):
+        expected, actual = self.sample()
+        expected['actions'] = [['submarine_move_near_boss', ['A1'], {}]]
+        actual['actions'] = ['submarine_move_near_boss(B1)']
+        self.assertTrue(composite.audit_results([expected], [actual]))
+        expected, actual = self.sample()
+        expected['error'] = actual['error'] = 'fixture native failure'
+        self.assertTrue(composite.audit_results([expected], [actual]))
+
+    def test_composite_accounts_for_every_case_and_verified_state_write(self):
+        expected, actual = self.sample()
+        for rows in ([], [actual, deepcopy(actual)], [dict(actual, name='unknown')]):
+            self.assertTrue(composite.audit_results([expected], rows))
+        with self.assertRaises(ValueError):
+            composite.audit_results([], [])
+        with self.assertRaises(ValueError):
+            composite.audit_results([expected, deepcopy(expected)], [actual])
+        actual['actions'].append('set_flag(A1,is_flare=True)')
+        # State is independently compared even for an accepted local write.
+        actual['state'] = dict(actual['state'], is_flare=True)
+        self.assertTrue(composite.audit_results([expected], [actual]))
+        with self.assertRaises(ValueError):
+            composite.normalize_csharp(['set_flag(A1,unverified=True)'])
 
 
 if __name__ == '__main__':
