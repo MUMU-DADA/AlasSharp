@@ -338,15 +338,35 @@ def check(repo: str, data: str) -> dict:
     #     不是我们的导出缺陷。这里**动态验证**：真的去 import 那个模块，ImportError 才算这一类。
     #   * **其余**：无法归因，继续当问题。
     upstream_broken, unexplained = [], []
-    for entry in campaign_bad:
-        module = entry['file'][:-3].replace('/', '.').replace('\\', '.')
-        try:
-            importlib.import_module(module)
-            unexplained.append(entry)
-        except ImportError as error:
-            upstream_broken.append(dict(entry, upstream_import_error=f'{type(error).__name__}: {error}'))
-        except Exception:                      # noqa: BLE001 —— 别的异常不算"上游缺常量"，仍当问题
-            unexplained.append(entry)
+    # 归类时要**按上游的导入视角**看：把仓库放进 sys.path，这样 `campaign/…` 里的模块
+    # （包括上游自己坏掉的那些）都定位得到；定位得到的才可能是"上游自身坏掉"，
+    # 定位不到（合成夹具的临时目录）继续当问题。跑完还原 sys.path。
+    added = repo not in sys.path
+    if added:
+        sys.path.insert(0, repo)
+    try:
+        for entry in campaign_bad:
+            module = entry['file'][:-3].replace('/', '.').replace('\\', '.')
+            try:
+                spec = importlib.util.find_spec(module)
+            except (ImportError, ValueError, ModuleNotFoundError):
+                spec = None
+            if spec is None:
+                unexplained.append(entry)
+                continue
+            try:
+                importlib.import_module(module)
+                unexplained.append(entry)
+            except ImportError as error:
+                upstream_broken.append(dict(entry, upstream_import_error=f'{type(error).__name__}: {error}'))
+            except Exception:                  # noqa: BLE001 —— 别的异常不算"上游缺常量"，仍当问题
+                unexplained.append(entry)
+    finally:
+        if added:
+            try:
+                sys.path.remove(repo)
+            except ValueError:
+                pass
     campaign_bad = unexplained
     stats['campaign_attribute_issues'] = len(campaign_bad)
     stats['campaign_attribute_upstream_broken'] = len(upstream_broken)

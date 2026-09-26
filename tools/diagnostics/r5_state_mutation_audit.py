@@ -28,13 +28,22 @@ UPSTREAM = ROOT / ".runtime" / "engine"
 REPORT = ROOT / "docs" / "archive" / "reports" / "r5-state-mutation-audit.md"
 REGISTRY = ROOT / "src" / "Alas.Core" / "Campaign" / "CampaignPrimitives.cs"
 
+# 内部原语名 → 上游方法名（少数原语两侧名字不同；不写在这里就会报成"未在上游定位到同名方法"）
+UPSTREAM_ALIASES = {
+    "ensure_fleet": "fleet_ensure",
+}
+
 # 写入模式：给"格子/地图/舰队状态"赋值，或调用会改状态的方法。
+# 注意：所有写入模式都用 `(?<![=!<>])=(?!=)` 而不是裸 `=` 来排除比较运算符——
+# 否则 `return self.fleet_1_location == grid.location` 这种**纯读取**会被当成赋值
+# （实测：加了 `fleet_at` 原语之后报了假阳性，误判成"舰队位置赋值"）。
 MUTATION_PATTERNS = [
-    (re.compile(r"\b\w+\.(is_|may_)[a-z_]+\s*="), "格子标志赋值"),
-    (re.compile(r"\bself\.fleet_\d_location\s*="), "舰队位置赋值"),
+    (re.compile(r"\b\w+\.(is_|may_)[a-z_]+\s*(?<![=!<>])=(?!=)"), "格子标志赋值"),
+    (re.compile(r"\bself\.fleet_\d_location\s*(?<![=!<>])=(?!=)"), "舰队位置赋值"),
     (re.compile(r"\.wipe_out\("), "wipe_out（清格子）"),
     (re.compile(r"\.select\([^)]*\)\.set\("), "SelectedGrids.set"),
-    (re.compile(r"\bself\.(picked_[a-z_]+|mystery_count|round)\b[^=]*[+-]?="), "实例计数/记账"),
+    (re.compile(r"\bself\.(picked_[a-z_]+|mystery_count|round)\b[^=]*[+-]?(?<![=!<>])=(?!=)"),
+     "实例计数/记账"),
 ]
 
 # 人工核对过的结论（逐条给依据）。新增的写入会以"待确认"出现在报告里，逼着再看一次。
@@ -111,10 +120,15 @@ def upstream_methods() -> dict[str, tuple[object, str]]:
 
     found: dict[str, tuple[object, str]] = {}
     for name in registry_primitives():
+        # 少数原语两侧名字不同（内部名 vs 上游名），先按别名找，再按原名找
+        candidates = ([UPSTREAM_ALIASES[name]] if name in UPSTREAM_ALIASES else []) + [name]
         for label, owner in owners:
-            method = getattr(owner, name, None)
-            if callable(method):
-                found[name] = (method, label)
+            for candidate in candidates:
+                method = getattr(owner, candidate, None)
+                if callable(method):
+                    found[name] = (method, f"{label}（上游名 {candidate}）" if candidate != name else label)
+                    break
+            if name in found:
                 break
     return found
 
