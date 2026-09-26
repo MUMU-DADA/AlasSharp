@@ -100,6 +100,27 @@ try
     await Throws<IOException>(() => application.IsRunningAsync(default).AsTask(), "Unknown foreground silently accepted");
     Console.WriteLine($"Local engine/transport checks passed: {checks}");
 
+    if (args is ["--data-key", var taskPython, var taskUpstream, var taskArtifacts])
+    {
+        string folder = Path.GetFullPath(taskArtifacts);
+        Directory.CreateDirectory(folder);
+        await DataKeyChecks.RunAsync(Path.GetFullPath(taskPython), Path.GetFullPath(taskUpstream), folder);
+        return 0;
+    }
+    if (args is ["--queue", var queuePython, var queueUpstream, var queueArtifacts])
+    {
+        string folder = Path.GetFullPath(queueArtifacts);
+        Directory.CreateDirectory(folder);
+        await QueueChecks.RunAsync(Path.GetFullPath(queuePython), Path.GetFullPath(queueUpstream), folder);
+        return 0;
+    }
+    if (args is ["--ocr", var ocrPython, var ocrUpstream, var ocrArtifacts])
+    {
+        string folder = Path.GetFullPath(ocrArtifacts);
+        Directory.CreateDirectory(folder);
+        await OcrChecks.RunAsync(Path.GetFullPath(ocrPython), Path.GetFullPath(ocrUpstream), folder);
+        return 0;
+    }
     if (args is ["--runtime", var runtimePython, var runtimeUpstream, var runtimeArtifacts])
     {
         string folder = Path.GetFullPath(runtimeArtifacts);

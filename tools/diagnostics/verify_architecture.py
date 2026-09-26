@@ -402,7 +402,7 @@ def executable_boundary_intact() -> list[str]:
                 problems.append(f"独立引擎依赖边界变化: {path.parent.name}")
     worker = ROOT / "src/Alas.Engine/Imaging/Worker/vision_worker.py"
     if worker.is_file():
-        allowed = {"base64", "io", "json", "sys", "cv2", "numpy", "imageio", "scipy"}
+        allowed = {"base64", "io", "json", "sys", "cv2", "numpy", "imageio", "scipy", "hashlib", "pathlib", "PIL", "onnxruntime"}
         for node in ast.walk(ast.parse(worker.read_text(encoding="utf-8"))):
             imports = ([alias.name for alias in node.names] if isinstance(node, ast.Import)
                        else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])

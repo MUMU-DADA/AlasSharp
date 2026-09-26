@@ -17,8 +17,9 @@ public sealed class PythonTemplateVision : IVision
     private int _disposed;
     private readonly object _errorGate = new();
     private string _errorTail = "";
+    private readonly OcrModels? _ocrModels;
 
-    public PythonTemplateVision(string python, string worker, TimeSpan? timeout = null)
+    public PythonTemplateVision(string python, string worker, TimeSpan? timeout = null, string? modelDirectory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(python);
         ArgumentException.ThrowIfNullOrWhiteSpace(worker);
@@ -38,6 +39,12 @@ public sealed class PythonTemplateVision : IVision
         start.ArgumentList.Add("-I");
         start.ArgumentList.Add("-u");
         start.ArgumentList.Add(Path.GetFullPath(worker));
+        if (modelDirectory is not null)
+        {
+            _ocrModels = new OcrModels(modelDirectory);
+            start.ArgumentList.Add("--models");
+            start.ArgumentList.Add(_ocrModels.Directory);
+        }
         start.Environment["OPENCV_IO_MAX_IMAGE_PIXELS"] = "16777216";
         _process = Process.Start(start) ?? throw new IOException("Cannot start pure vision worker");
         _stderr = DrainErrorAsync(_lifetime.Token);
@@ -167,8 +174,36 @@ public sealed class PythonTemplateVision : IVision
         finally { _gate.Release(); }
     }
 
-    public ValueTask<OcrObservation> ReadTextAsync(ScreenFrame frame, OcrRequest request, CancellationToken token = default)
-        => ValueTask.FromException<OcrObservation>(new NotSupportedException("The new pure vision service has no OCR implementation yet"));
+    public async ValueTask<OcrObservation> ReadTextAsync(ScreenFrame frame, OcrRequest request, CancellationToken token = default)
+    {
+        ValidateFrame(frame);
+        ValidateArea(request.Area);
+        var models = _ocrModels ?? throw new NotSupportedException("OCR model directory has not been configured");
+        if (new[] { request.LetterR, request.LetterG, request.LetterB }.Any(v => v is < 0 or > 255) ||
+            request.Threshold is < 1 or > 255 || !Enum.IsDefined(request.Preprocessing))
+            throw new ArgumentException("Invalid OCR image parameters");
+        var model = OcrModels.Find(request.Language);
+        var labels = await models.LabelsAsync(model.Name, token);
+        var candidates = OcrModels.CandidateIds(labels, request.Alphabet);
+        return await ExchangeAsync(frame, id => new
+        {
+            protocol = "alas-cv/1", id, operation = "ocr_infer", frame = frame.Sequence,
+            image = Convert.ToBase64String(frame.Png.Span), area = AreaValues(request.Area),
+            model = model.Name, model_sha256 = model.ModelSha256, num_classes = labels.Length, candidates,
+            letter = new[] { request.LetterR, request.LetterG, request.LetterB }, threshold = request.Threshold,
+            preprocessing = request.Preprocessing.ToString().ToLowerInvariant()
+        }, response =>
+        {
+            if (response.GetProperty("model_sha256").GetString() != model.ModelSha256)
+                throw new InvalidDataException("OCR response model identity mismatch");
+            var classes = response.GetProperty("classes").EnumerateArray().Select(v => v.GetInt32()).ToArray();
+            var probabilities = response.GetProperty("probabilities").EnumerateArray().Select(v => v.GetDouble()).ToArray();
+            if (candidates is not null && classes.Any(value => !candidates.Contains(value)))
+                throw new InvalidDataException("OCR response ignored candidate alphabet");
+            string text = OcrModels.Decode(classes, probabilities, response.GetProperty("width").GetInt32(), labels);
+            return new OcrObservation(frame.Sequence, text, null);
+        }, token);
+    }
 
     private async Task<string> ReadResponseAsync(CancellationToken token)
     {

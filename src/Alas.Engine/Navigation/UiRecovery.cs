@@ -13,9 +13,13 @@ namespace Alas.Engine.Navigation;
 
 public sealed record UiRecoveryOptions(int ButtonOffset = 30, int StoryOption = 0, bool StoryAllowSkip = true,
     bool MapIsThreatSafe = false, string CampaignEvent = "");
+public interface IPopupHandler
+{
+    ValueTask<bool> ConfirmAsync(CancellationToken token);
+}
 
 /// <summary>Direct port of UI recovery and InfoHandler story/popups. State is isolated to a session.</summary>
-public sealed class UiRecovery : IUiRecovery
+public sealed class UiRecovery : IUiRecovery, IPopupHandler
 {
     public static readonly SourceFile UiSource = new("module/ui/ui.py", "9f99734b71680492f78348cee7ea1c9a6e0bea2801aa3a7688bc5c32372d5f1d");
     public static readonly SourceFile InfoSource = new("module/handler/info_handler.py", "799551a37c8f771f4bd9023aa3477041f6c31b99fd60f25185dd0e829b9ccbf2");
@@ -60,6 +64,7 @@ public sealed class UiRecovery : IUiRecovery
         await _driver.ClickAsync(POPUP_CONFIRM_WHITE, token);
         return true;
     }
+    public ValueTask<bool> ConfirmAsync(CancellationToken token) => PopupConfirm(token);
     private async ValueTask<bool> UrgentCommission(CancellationToken token)
     {
         bool appeared = await Appear(GET_MISSION, ButtonOffset.Vertical(_options.ButtonOffset), 2, token);

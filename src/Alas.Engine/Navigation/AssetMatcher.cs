@@ -21,6 +21,7 @@ public sealed class AssetMatcher(GameServer server, IVision vision, AssetFiles f
         return _offsets.TryGetValue(asset.Id, out var offset) ? rectangle.Offset(offset.X, offset.Y) : rectangle;
     }
     public void ClearOffset(AssetRule asset) => _offsets.Remove(asset.Id);
+    public void Reset() => _offsets.Clear();
     public async ValueTask<bool> AppearsAsync(ScreenFrame frame, AssetRule asset, ButtonOffset offset,
         double similarity = 0.85, int colorThreshold = 10, TemplatePreprocessing preprocessing = TemplatePreprocessing.Color,
         CancellationToken token = default)

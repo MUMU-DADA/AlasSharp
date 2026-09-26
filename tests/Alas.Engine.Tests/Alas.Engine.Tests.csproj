@@ -11,5 +11,7 @@
     <None Include="native_campaign_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_ui_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_recovery_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_ocr_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_data_key_reference.py" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

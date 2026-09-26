@@ -128,6 +128,7 @@ internal class AppearanceProbe(GameServer server, string? positive) : IUiDriver
     public virtual ValueTask ClickAreaAsync(Rectangle area, CancellationToken token) => throw new InvalidOperationException("Unexpected rectangle click");
     public virtual ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token) => throw new InvalidOperationException("Unexpected color request");
     public virtual ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token) => throw new InvalidOperationException("Unexpected color bands request");
+    public virtual ValueTask<OcrObservation> ReadTextAsync(OcrRequest request, CancellationToken token) => throw new InvalidOperationException("Unexpected OCR request");
     public virtual void ClearOffset(AssetRule asset) { }
     public virtual IntervalTimer Timer(AssetRule asset, double seconds = 5, bool renew = false)
     {

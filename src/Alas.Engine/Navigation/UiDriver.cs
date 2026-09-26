@@ -18,6 +18,7 @@ public interface IUiDriver
     ValueTask ClickAreaAsync(Rectangle area, CancellationToken token);
     ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token);
     ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token);
+    ValueTask<OcrObservation> ReadTextAsync(OcrRequest request, CancellationToken token);
     void ClearOffset(AssetRule asset);
     IntervalTimer Timer(AssetRule asset, double seconds = 5, bool renew = false);
     void ResetInterval(AssetRule asset, double seconds = 3);
@@ -37,6 +38,7 @@ public sealed class UiDriver : IUiDriver
     public TimeProvider Clock { get; }
     public ScreenFrame? Frame { get; private set; }
     public bool HasFrame => Frame is not null;
+    public void ResetTask() { Frame = null; _timers.Clear(); _matcher.Reset(); }
 
     public UiDriver(GameServer server, IGameDevice device, IVision vision, AssetFiles assets,
         TimeProvider? clock = null, Random? random = null)
@@ -75,6 +77,9 @@ public sealed class UiDriver : IUiDriver
         => _vision.MeanColorAsync(Frame ?? throw new InvalidOperationException("No screenshot has been captured"), area.Area, token);
     public ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token)
         => _vision.ColorBandsAsync(Frame ?? throw new InvalidOperationException("No screenshot has been captured"), request, token);
+    public ValueTask<OcrObservation> ReadTextAsync(OcrRequest request, CancellationToken token)
+        => _vision.ReadTextAsync(Frame ?? throw new InvalidOperationException("No screenshot has been captured"), request with
+        { Language = OcrModels.LanguageFor(request.Language, Server) }, token);
     private int RandomCoordinate(int minimum, int maximum)
     {
         if (minimum >= maximum) return maximum;

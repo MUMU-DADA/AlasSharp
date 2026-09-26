@@ -11,9 +11,13 @@ public interface IUiRecovery
 }
 
 public sealed record NavigationObservation(string Page, bool Switched);
+public interface IPageNavigator
+{
+    ValueTask<NavigationObservation> EnsureAsync(string destination, TimeSpan timeout, bool skipFirstScreenshot = true, CancellationToken token = default);
+}
 
 /// <summary>Port of UI.ui_get_current_page/ui_goto/ui_ensure. Page parents are scoped to one navigation.</summary>
-public sealed class UiNavigator(IUiDriver driver, PageGraph graph, IUiRecovery recovery)
+public sealed class UiNavigator(IUiDriver driver, PageGraph graph, IUiRecovery recovery) : IPageNavigator
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly PageAppearance _appearance = new(driver);

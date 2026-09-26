@@ -12,7 +12,10 @@ public sealed record ColorBandRequest(PixelArea Area, int R, int G, int B, int C
     int RowThreshold, double PeakHeight, double PeakWidth, double PeakDistance, double RelativeHeight);
 public sealed record ColorBand(int Top, int Bottom);
 public sealed record ColorBandObservation(long FrameSequence, IReadOnlyList<ColorBand> Bands);
-public sealed record OcrRequest(PixelArea Area, string Language, string? Alphabet);
+public enum OcrPreprocessing { Letters, Luma, Grayscale }
+public sealed record OcrRequest(PixelArea Area, string Language, string? Alphabet,
+    int LetterR = 255, int LetterG = 255, int LetterB = 255, int Threshold = 128,
+    OcrPreprocessing Preprocessing = OcrPreprocessing.Letters);
 public sealed record OcrObservation(long FrameSequence, string Text, double? Confidence);
 
 /// <summary>Pure image computation. No devices, campaign ids, task names, or business RPC.</summary>

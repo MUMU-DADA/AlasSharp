@@ -1,13 +1,84 @@
 """Pure CV worker: image bytes in, image measurements out. No upstream imports."""
 import base64
+import hashlib
 import io
 import json
 import sys
+from pathlib import Path
 
 import cv2
 import numpy as np
 import imageio.v2 as imageio
 from scipy import signal
+
+MODEL_ROOT = None
+OCR_SESSIONS = {}
+
+
+def ocr_preprocess(image, letter, threshold, mode):
+    if mode == "letters":
+        # Preserve extract_letters' separate positive/negative uint8 scaling and rounding.
+        diff = image.astype(np.int16) - np.array(letter, dtype=np.int16)
+        positive = np.maximum(diff, 0).max(axis=2).astype(np.uint8)
+        negative = (-np.minimum(diff, 0).min(axis=2)).astype(np.uint8)
+        return cv2.addWeighted(positive, 255.0 / threshold, negative, 255.0 / threshold, 0)
+    if mode == "luma":
+        image_y = cv2.cvtColor(image, cv2.COLOR_RGB2YUV)[:, :, 0]
+        letter_y = int(cv2.cvtColor(np.array([[letter]], dtype=np.uint8), cv2.COLOR_RGB2YUV)[0, 0, 0])
+        return cv2.multiply(cv2.absdiff(image_y, np.full(image_y.shape, letter_y, dtype=np.uint8)), 255.0 / threshold)
+    if mode == "grayscale":
+        from PIL import Image
+        return np.array(Image.fromarray(image).convert("L"))
+    raise ValueError("ocr_preprocessing")
+
+
+def infer_ocr(image, request):
+    name, digest = request["model"], request["model_sha256"]
+    if MODEL_ROOT is None:
+        raise ValueError("ocr_models_unconfigured")
+    if not isinstance(name, str) or not name or any(c not in "abcdefghijklmnopqrstuvwxyz_" for c in name):
+        raise ValueError("ocr_model_name")
+    if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+        raise ValueError("ocr_model_hash")
+    classes = request["num_classes"]
+    if type(classes) is not int or not 1 <= classes <= 10000:
+        raise ValueError("ocr_classes")
+    key = (name, digest)
+    if key not in OCR_SESSIONS:
+        import onnxruntime as ort
+        data = (MODEL_ROOT / (name + ".onnx")).read_bytes()
+        if hashlib.sha256(data).hexdigest() != digest:
+            raise ValueError("ocr_model_hash_mismatch")
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 1
+        options.inter_op_num_threads = 1
+        options.log_severity_level = 3
+        OCR_SESSIONS[key] = ort.InferenceSession(data, sess_options=options, providers=["CPUExecutionProvider"])
+    session = OCR_SESSIONS[key]
+    letter, threshold = request["letter"], request["threshold"]
+    if not isinstance(letter, list) or len(letter) != 3 or any(type(v) is not int or not 0 <= v <= 255 for v in letter):
+        raise ValueError("ocr_letter")
+    if type(threshold) is not int or not 1 <= threshold <= 255:
+        raise ValueError("ocr_threshold")
+    prepared = ocr_preprocess(image, letter, threshold, request["preprocessing"])
+    width = max(1, min(round(32 / prepared.shape[0] * prepared.shape[1]), 280))
+    prepared = cv2.resize(prepared, (width, 32), interpolation=cv2.INTER_LINEAR)
+    prepared = np.pad(prepared, ((0, 0), (0, 280 - width)), constant_values=0)
+    tensor = prepared.astype(np.float32)[None, None, :, :] / 255.0
+    probabilities = session.run(None, {session.get_inputs()[0].name: tensor})[0]
+    if probabilities.shape != (70, classes) or not np.isfinite(probabilities).all():
+        raise ValueError("ocr_output_shape")
+    candidates = request["candidates"]
+    if candidates is not None:
+        if (not isinstance(candidates, list) or not candidates or candidates[0] != 0
+                or any(type(v) is not int or not 0 <= v < classes for v in candidates)):
+            raise ValueError("ocr_candidates")
+        mask = np.zeros(classes, dtype=np.int8)
+        mask[candidates] = 1
+        probabilities *= mask
+    # Return measurements; C# handles confidence threshold, padding cutoff and CTC decoding.
+    return dict(classes=np.argmax(probabilities, axis=-1).tolist(), probabilities=np.max(probabilities, axis=-1).tolist(),
+                width=width, model_sha256=digest)
 
 
 def decode(value):
@@ -58,13 +129,15 @@ def crop(image, x, y, width, height):
 
 
 def match(request):
-    if request.get("protocol") != "alas-cv/1" or request.get("operation") not in ("template_match", "color_mean", "color_bands"):
+    if request.get("protocol") != "alas-cv/1" or request.get("operation") not in ("template_match", "color_mean", "color_bands", "ocr_infer"):
         raise ValueError("unsupported_operation")
     fields = {"protocol", "id", "operation", "frame", "image", "area"}
     if request["operation"] == "template_match":
         fields |= {"template", "preprocessing", "template_area"}
     elif request["operation"] == "color_bands":
         fields |= {"color", "closing_size", "row_threshold", "peak_height", "peak_width", "peak_distance", "relative_height"}
+    elif request["operation"] == "ocr_infer":
+        fields |= {"model", "model_sha256", "num_classes", "candidates", "letter", "threshold", "preprocessing"}
     if set(request) != fields:
         raise ValueError("request_fields")
     for key in ("id", "frame"):
@@ -77,6 +150,8 @@ def match(request):
     image = decode(request["image"])
     if width <= 0 or height <= 0 or width * height > 16 * 1024 * 1024:
         raise ValueError("area_bounds")
+    if request["operation"] == "ocr_infer":
+        return infer_ocr(crop(image, x, y, width, height), request)
     if request["operation"] == "color_mean":
         return {"color": list(cv2.mean(crop(image, x, y, width, height))[:3])}
     if request["operation"] == "color_bands":
@@ -140,4 +215,8 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--models":
+        MODEL_ROOT = Path(sys.argv[2]).resolve()
+    elif len(sys.argv) != 1:
+        raise ValueError("worker_arguments")
     main()

@@ -25,7 +25,7 @@ R5 舰队属性分派已通过原生 Fleet 属性与双宿主的 592 场景离�
 
 `Alas.Engine.slnx` 已提供不引用旧 Core 的独立构建：首批四张主线规则、类型化章节覆盖、每局隔离状态、普通/全清/低地图信息三种分派、十次移动重试与二十轮循环均直接执行 C#。原生实际 Campaign 方法对照 18,628 个合成末端动作场景通过；25 项本地/进程检查覆盖依赖隔离、状态隔离、参数、并发流、超时、取消、输出超限、ADB 动作拒绝、前台应用判断与设备方向。进程输出超限的原始错误已保留，不再误报超时。
 
-独立纯视觉服务已实现彩色/亮度/二值模板匹配、GIF 逐帧测量、全图素材裁剪和 RGB 均值。C# 管理常驻进程、帧与请求身份、严格阈值、动画首个命中/末帧失败偏移、超时/取消及错误收尾；颜色判据也在 C#。Python worker 只依赖图像库，不导入上游模块，不解析素材 id，不接设备/页面/任务业务；越界裁剪保留上游补黑语义。21 项合成像素及协议反例通过，包含错帧拒绝、并发请求、超时/取消/释放、根因保留、模板尺寸拒绝与业务调用拒绝。OCR 仍明确未实现，不回退旧宿主；缩放、地图特征和原生完整视觉路径尚未验收。
+独立纯视觉服务已实现彩色/亮度/二值模板匹配、GIF 逐帧测量、全图素材裁剪和 RGB 均值。C# 管理常驻进程、帧与请求身份、严格阈值、动画首个命中/末帧失败偏移、超时/取消及错误收尾；颜色判据也在 C#。Python worker 只依赖图像库，不导入上游模块，不解析素材 id，不接设备/页面/任务业务；越界裁剪保留上游补黑语义。21 项合成像素及协议反例通过，包含错帧拒绝、并发请求、超时/取消/释放、根因保留、模板尺寸拒绝与业务调用拒绝。OCR 已接五套固定哈希 ONNX 模型：图像预处理/推理在 worker，字母表、服务器语言选择、置信阈值、CTC 解码和数字/计数器/时长解析在 C#。原生对照包含 81 次实际模型推理、14 个字母表拒绝、200 条 CTC 序列、13 个数值解析和 54 项逐像素预处理，模型及标签损坏明确拒绝。缩放、地图特征和原生完整视觉路径尚未验收。
 
 45 个上游模块的 1,793 个素材及 53 个页面关系已直接迁为可编译 C# 声明，保留四服参数、来源行/源码哈希与图片哈希；运行时不读取导出 JSON。构建期 `tools/migration/compile_static_rules.py --upstream .runtime/engine --check` 检查源码漂移，只支持声明迁移，未知控制流拒绝。四服实际原生对象对照通过 7,172 项素材、212 项页面、10,192 项可达最短路径与 1,040 项页面识别调用轨迹；2,499 项 C# 合成导航通过。原生同长路径用无序集合择路，因此比较可达性、最短长度和声明边，不声称同长路线顺序固定一致。630 项原生/C# 视觉对照覆盖所有页面检查素材的静态/GIF 帧、移位和空白图，核对颜色、匹配结果与点击偏移。
 
@@ -33,7 +33,9 @@ R5 舰队属性分派已通过原生 Fleet 属性与双宿主的 592 场景离�
 
 独立 `Alas.Engine.Cli` 的 `observe` 禁用动作，`navigate` 通过 `Runtime/NavigationRun` 组合 C# 设备、规则、恢复与导航；CLI 只解析参数和输出。每次运行保存图像哈希、导航观察、逐动作尝试/完成状态，失败保存调用栈并登记失败帧；取消与期限到期分别保留。8 项端到端离线重放使用实际 CV/子进程、上游素材截图和合成 ADB，覆盖到达、只读、点击失败、取消、超时及非标准尺寸拒绝。这不是设备验收：本轮 ADB 枚举未发现连接设备，未进行实机截图、点击或出击。发布依赖只含新引擎、CLI 和纯视觉 worker，不包含旧 Core；Python 图像库需由指定环境提供。
 
-这仍不是可用的新产品：`ICampaignOperations` 尚无真实游戏动作实现；地图观测/寻路/交互、其余规则、完整任务队列、配置/统计、结算证据与桌面/Server 切换均未完成。设备缩放/旋转归一化、原生卡死/连续点击检测和其他设备后端尚未迁完，当前 UI 明确拒绝非 1280×720 图像，并在动作前保存失败证据。完整游戏内导航仍待真机效果与性能验收，`navigate` 只是新架构的独立诊断入口。新循环结束值不表示通关，不生成 `cleared`。验证命令如下；本地无上游时可省略参数执行独立检查，原生对照和纯 CV 检查明确记为未跑，不能据此通过完整门槛。
+独立 `EngineSession`/`TaskQueue` 和 CLI `run` 已接 `observe`、`navigate`、`data_key`；一个队列共用一个设备和视觉进程，任务边界重置图像、按钮偏移、间隔与动作记录。队列区分五类结果、required/可选前置条件、依赖、失败即停、显式继续、取消与超时；dry-run 只校验且能沿依赖继续。恢复只跳过有成功工件的任务，核对队列/会话指纹、状态校验和及图像/动作/请求/结果文件哈希。33 项离线检查通过，覆盖篡改/缺帧拒绝、失败重试及真实 CV/合成 ADB 的连续任务。`data_key` 直接迁移原生领取逻辑、库存判断、弹窗和返回检查；四服 72 条原生任务调用轨迹对照通过，包含领取、已领、满库存、强制领取、失败和不结束情形。未验证实机资料密钥到账；其他业务任务尚未迁入。
+
+这仍不是可用的新产品：`ICampaignOperations` 尚无真实游戏动作实现；地图观测/寻路/交互、其余规则、其他任务域与连续调度、配置/统计、结算证据与桌面/Server 切换均未完成。设备缩放/旋转归一化、原生卡死/连续点击检测和其他设备后端尚未迁完，当前 UI 明确拒绝非 1280×720 图像，并在动作前保存失败证据。完整游戏内导航仍待真机效果与性能验收，独立 CLI 仍是新架构的验证入口。新循环结束值不表示通关，不生成 `cleared`。验证命令如下；本地无上游时可省略参数执行独立检查，原生对照和纯 CV 检查明确记为未跑，不能据此通过完整门槛。
 
 ```powershell
 dotnet build Alas.Engine.slnx -c Release
@@ -42,6 +44,9 @@ dotnet run --project tests/Alas.Engine.Tests -c Release -- --vision .runtime/ven
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --ui .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-ui-engine
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --recovery .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-ui-recovery
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --runtime .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-navigation-runtime
+dotnet run --project tests/Alas.Engine.Tests -c Release -- --ocr .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-ocr-engine
+dotnet run --project tests/Alas.Engine.Tests -c Release -- --queue .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-task-queue
+dotnet run --project tests/Alas.Engine.Tests -c Release -- --data-key .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-data-key
 ```
 
 ## 自动化规则覆盖与剩余项
