@@ -1995,18 +1995,6 @@ def apply_points_empty_compat():
 # ---------------------------------------------------------------------------
 _CAMPAIGN = {'obj': None, 'chapter': None}
 
-# 会**驱动作战/改变游戏状态**的方法名前缀：默认一律拒调，必须显式 allow_actions=True。
-# 这条联锁是硬性的 —— 项目早期误开自律寻敌、把一场战斗打完的教训还记着。
-_DANGER_PREFIX = ('battle', 'clear', 'enter_map', 'run', 'mob_move', 'fleet',
-                  'goto', 'map_', 'ambush', 'siren', 'submarine', 'auto_search',
-                  'combat', 'withdraw', 'retreat',
-                  # **补漏**：`execute_a_battle` 是上游真正的"打一步"入口（campaign_base.run()
-                  # 的循环体），但它不以 'battle' 开头，此前**绕过了 allow_actions 安全锁** ✗
-                  'execute', 'full_scan')
-
-
-
-
 
 def apply_withdraw_trace_compat():
     """把上游的 `withdraw()` 包一层：**打印调用栈**，用于查明"谁在主动撤退"。
@@ -2454,12 +2442,23 @@ def op_s3_campaign_init(args):
             'mro': [c.__name__ for c in type(inst).__mro__[:8]]}
 
 
+def _campaign_json_value(value):
+    # json_default is a fallback for numpy/opaque objects, not for native scalars.
+    return json.loads(json.dumps(value, default=json_default, ensure_ascii=False))
+
+
 def _campaign_arg(instance, value):
     """把 `s3_campaign_call` 的参数引用解析成上游对象（见调用处的三种形式）。
 
     只用**上游自己的类**做"数据 → 对象"的构造：格子走 `instance.map[...]`，
     多格走 `SelectedGrids`，道路走 `RoadGrids`。这里不判断地图/路线语义，那属于上游方法。
     """
+    if isinstance(value, dict) and set(value) == {'__tuple__'}:
+        if not isinstance(value['__tuple__'], list):
+            raise ValueError('__tuple__ must contain an array')
+        return tuple(_campaign_arg(instance, item) for item in value['__tuple__'])
+    if isinstance(value, list):
+        return [_campaign_arg(instance, item) for item in value]
     if not isinstance(value, str) or not value.startswith(('#', '@')):
         return value
     if value.startswith('@'):
@@ -2563,7 +2562,7 @@ def op_s3_campaign_grids(args):
              'is_ammo', 'is_fleet', 'is_current_fleet', 'is_submarine', 'is_missile_attack',
              'is_cleared', 'is_caught_by_siren', 'is_mechanism_block', 'is_spawn_point',
              'may_enemy', 'may_boss', 'may_mystery', 'may_ammo', 'may_siren', 'may_ambush',
-             'may_bouncing_enemy')
+             'may_bouncing_enemy', 'is_flare', 'is_mechanism_trigger')
     grids = []
     try:
         items = list(grid_map.grids.items())
@@ -2591,8 +2590,8 @@ def op_s3_campaign_grids(args):
 def op_s3_campaign_call(args):
     """调用 Campaign 实例上的方法（支持点号路径，如 `device.screenshot`）。
 
-    **安全联锁**：方法名以 `_DANGER_PREFIX` 里任一前缀开头时，必须显式传
-    `allow_actions=true` 才会执行；否则返回拒绝理由。默认只允许只读/观察类调用。
+    **安全联锁**：仅允许列明的状态与观察路径无动作授权访问；其他路径必须显式传
+    `allow_actions=true`，且在解析任何可能有副作用的中间属性前检查。
     """
     inst = _CAMPAIGN.get('obj')
     if inst is None:
@@ -2606,37 +2605,70 @@ def op_s3_campaign_call(args):
     # C# 侧替换了那些 helper，所以需要一个受限的写入通道把同样的状态同步过来。
     # **写入会改变后续上游调用读到的状态，因此与驱动类调用同一把锁：必须显式 allow_actions=true。**
     if 'set' in args:
-        if not args.get('allow_actions'):
+        if args.get('allow_actions') is not True:
             return {'refused': True, 'name': name,
                     'reason': '`set` 会改写上游地图对象的状态；确需执行请显式传 allow_actions=true'}
-        target, _, leaf = name.rpartition('.')
-        if not leaf:
-            return {'error': f'set 需要 `对象路径.属性` 形式，收到 {name!r}'}
+        parts = name.split('.')
+        writable_flags = {'is_flare', 'is_caught_by_siren', 'may_bouncing_enemy',
+                          'is_cleared', 'is_enemy', 'may_siren', 'may_enemy', 'may_boss',
+                          'may_mystery', 'may_ambush', 'may_ammo'}
         try:
-            obj = inst
-            for part in target.split('.'):
-                obj = getattr(obj, part)
-            setattr(obj, leaf, _campaign_arg(inst, args.get('set')))
+            value = args['set']
+            if len(parts) == 3 and parts[0] == 'map' and parts[2] in writable_flags:
+                if type(value) is not bool:
+                    raise ValueError('map flags require boolean values')
+                from module.base.utils import node2location
+                obj = inst.map[node2location(parts[1])]
+                setattr(obj, parts[2], value)
+            elif name in ('ammo_count', 'fleet_ammo'):
+                if type(value) is not int:
+                    raise ValueError('ammunition counters require integer values')
+                setattr(inst, name, value)
+            else:
+                raise ValueError('unsupported campaign state write')
         except Exception as e:
             return {'error': f'set {name} 失败: {type(e).__name__}: {e}', 'stage': 'set'}
         return {'name': name, 'set': True}
 
-    leaf = name.split('.')[-1]
-    if leaf.startswith(_DANGER_PREFIX) and not args.get('allow_actions'):
+    parts = name.split('.')
+    leaf = parts[-1]
+    read_only = args.get('read_only') is True
+    state_names = ('battle_count', 'fleet_current_index', 'fleet_1_location',
+                   'fleet_2_location', 'camera', 'ammo_count', 'fleet_ammo', 'mystery_count',
+                   'picked_light_house', 'picked_flare')
+    if read_only and name not in state_names:
+        return {'error': 'unsupported read-only campaign state', 'name': name}
+    # A deny-list missed device.click, update, focus_to, pick_up_* and action
+    # properties. Unknown paths are not evidence of a read-only operation.
+    observer_names = ('logger.info', 'device.screenshot')
+    if name not in state_names + observer_names and args.get('allow_actions') is not True:
         return {'refused': True, 'name': name,
-                'reason': f'`{leaf}` 属于会驱动作战/改游戏状态的方法；'
-                          '确需执行请显式传 allow_actions=true'}
+                'reason': f'`{name}` 未声明为只读路径；确需执行请显式传 allow_actions=true'}
     import time
     target = inst
     try:
-        parts = name.split('.')
-        for p in parts[:-1]:
-            target = getattr(target, p)
-        fn = getattr(target, parts[-1])
+        if name == 'logger.info':
+            from module.logger import logger
+            fn = logger.info
+        else:
+            for p in parts[:-1]:
+                target = getattr(target, p)
+            fn = getattr(target, parts[-1])
     except Exception as e:
         return {'error': f'取不到 {name}: {type(e).__name__}: {e}'}
     if not callable(fn):
-        return {'name': name, 'callable': False, 'value': json_default(fn)}
+        value = fn
+        if name in ('fleet_1_location', 'fleet_2_location', 'camera'):
+            from module.base.utils import location2node
+            value = location2node(fn) if fn is not None and len(fn) == 2 else ''
+        elif name in ('picked_light_house', 'picked_flare'):
+            from module.base.utils import location2node
+            if not isinstance(fn, list):
+                return {'error': f'{name} is not a native grid list', 'name': name}
+            value = [location2node(grid.location) for grid in fn]
+        return {'name': name, 'callable': False, 'value': _campaign_json_value(value)}
+    if read_only or name in state_names:
+        return {'error': 'read-only campaign state is callable', 'name': name}
     # 参数引用通道（JSON 传不过来的对象靠这三种形式表达，全部只做"数据 → 上游对象"的构造，
     # 不改写游戏状态、也不复制上游逻辑）：
     #   `@name`             → 实例属性（如 `@ENTRANCE`）
@@ -2674,10 +2706,14 @@ def op_s3_campaign_call(args):
             end = classify_campaign_end(e, _result_evidence)
             inst._s3_last_end = end
             return {'name': name, 'ms': round((time.time() - t0) * 1000, 1), **end}
+        from module.exception import MapEnemyMoved
+        if isinstance(e, MapEnemyMoved):
+            return {'name': name, 'control_flow': 'MapEnemyMoved', 'reason': str(e)}
         # **带上调用栈尾部**：上游内部抛错时，只回 `类型: 消息` 会丢掉定位信息
         # （实测 `execute_a_battle` 报 KeyError: () 时，栈是唯一线索 ✗）。
         return {'name': name, 'ms': round((time.time() - t0) * 1000, 1),
                 'error': f'{type(e).__name__}: {e}',
+                'exception_type': type(e).__name__,
                 'traceback_tail': [ln.strip()[:110] for ln in
                                    traceback.format_exc().strip().splitlines()[-8:]]}
     out = {'name': name, 'ms': round((time.time() - t0) * 1000, 1)}
@@ -2691,7 +2727,7 @@ def op_s3_campaign_call(args):
         except Exception as e:
             out['store_error'] = f'{type(e).__name__}: {e}'
     try:
-        out['value'] = json_default(value)
+        out['value'] = _campaign_json_value(value)
     except Exception:
         out['value_repr'] = str(value)[:200]
     return out

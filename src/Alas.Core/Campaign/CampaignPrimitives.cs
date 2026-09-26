@@ -1303,7 +1303,8 @@ public static class CampaignPrimitives
         }
         else
         {
-            host.UpdateMap();
+            if (!host.UpdateMap())
+                throw new NotSupportedException("MapDetectionError：没有重对焦 preset，不能继续使用旧地图");
             host.EnsureEdgeInsight();
         }
         host.Log("Refocus to previous camera position.");

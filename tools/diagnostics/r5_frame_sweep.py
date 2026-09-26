@@ -21,6 +21,7 @@ import pathlib
 import re
 import subprocess
 import sys
+from verify_r5_device import device_sequence, recording_sequence
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "data" / "fixtures"
@@ -52,18 +53,12 @@ def run(command: str, chapter: str, level: str, frame: pathlib.Path) -> dict | N
                                encoding="utf-8", errors="replace")
     text = completed.stdout + completed.stderr
     start = text.find("{")
-    if start < 0:
+    if completed.returncode != 0 or start < 0:
         return None
     try:
         return json.loads(text[start:])
     except json.JSONDecodeError:
         return None
-
-
-def sequence(payload: dict, key: str) -> list[str]:
-    if key == "actions":
-        return [item.split("(")[0] for item in payload.get("actions") or []]
-    return [call["name"] for call in payload.get("calls") or [] if call["name"] != "logger.info"]
 
 
 def main() -> int:
@@ -81,12 +76,11 @@ def main() -> int:
         if dry is None or device is None:
             rows.append({"frame": frame.name, "level": f"{chapter}/{level}", "detected": "识别失败"})
             continue
-        dry_sequence = sequence(dry, "actions")
-        device_sequence = sequence(device, "calls")
-        # 口径（与 verify_r5_device 一致）：录制宿主清掉敌人就撤退，而真机宿主用的是**静态桩状态**
-        # （`battle_count` 不增长）→ 会打到轮次上限。所以拿"干跑序列去掉收尾撤退"当设备序列的前缀比。
-        dry_core = [name for name in dry_sequence if name != "withdraw"]
-        hosts_match = bool(dry_core) and device_sequence[:len(dry_core)] == dry_core
+        dry_sequence = recording_sequence(dry)
+        device_actions = device_sequence(device)
+        hosts_match = (bool(dry_sequence) and device_actions == dry_sequence
+                       and dry.get("rounds") == device.get("rounds")
+                       and dry.get("outcome") == device.get("outcome"))
         rows.append({
             "frame": frame.name,
             "level": f"{chapter}/{level}",
@@ -94,7 +88,7 @@ def main() -> int:
             "outcome": dry.get("outcome"),
             "rounds": len(dry.get("rounds") or []),
             "actions": len(dry_sequence),
-            "calls": len(device_sequence),
+            "calls": len(device_actions),
             "hosts_match": hosts_match,
             "detail": dry.get("detail"),
         })
@@ -114,8 +108,8 @@ def main() -> int:
                                  actions=row.get("actions", "-"), calls=row.get("calls", "-"),
                                  match="是" if row.get("hosts_match") else ("—" if "hosts_match" not in row else "**否**")))
         matched = sum(1 for row in rows if row.get("hosts_match"))
-        lines += ["", f"小结：{len(rows)} 帧中 {matched} 帧的两宿主原语序列一致（前缀比对）。",
-                  "口径：序列按**共同前缀**比——录制渠道是静态桩（`battle_count` 不增长），真机宿主会打到轮次上限。", ""]
+        lines += ["", f"小结：{len(rows)} 帧中 {matched} 帧的两宿主原语序列、轮次和结论一致。",
+                  "口径：固定地图夹具和显式成功计数反馈；比较完整动作（舰队路径、目标、expected）、逐轮状态及结论。只省略未改变当前舰队的 ensure 查询，不证明实战效果。", ""]
 
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text("\n".join(lines), encoding="utf-8", newline="\n")

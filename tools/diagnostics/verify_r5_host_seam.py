@@ -90,7 +90,7 @@ def main() -> int:
     # 3) @属性 引用解析（用替身上无副作用的记录方法验证）
     seen: dict[str, object] = {}
     instance.record_argument = lambda value: seen.setdefault('value', value)
-    av.op_s3_campaign_call({'name': 'record_argument', 'args': ['@ENTRANCE']})
+    av.op_s3_campaign_call({'name': 'record_argument', 'allow_actions': True, 'args': ['@ENTRANCE']})
     if seen.get('value') is not instance.ENTRANCE:
         problems.append(f"`@ENTRANCE` 应解析成实例上的对象，实际 {seen.get('value')!r}")
 
@@ -107,14 +107,14 @@ def main() -> int:
     instance.map = campaign_map
     resolved: dict[str, object] = {}
     instance.record_grid = lambda value, roadblocks=None: resolved.update(value=value, roads=roadblocks)
-    av.op_s3_campaign_call({'name': 'record_grid', 'args': ['#C1']})
+    av.op_s3_campaign_call({'name': 'record_grid', 'allow_actions': True, 'args': ['#C1']})
     if str(resolved.get('value')) != 'C1':   # `location` 是元组坐标，`str(grid)` 才是节点名
         problems.append(f"`#C1` 应经 node2location 取到 C1 格，实际 {resolved.get('value')!r}")
-    av.op_s3_campaign_call({'name': 'record_grid', 'args': ['#grids:[C1,D1]']})
+    av.op_s3_campaign_call({'name': 'record_grid', 'allow_actions': True, 'args': ['#grids:[C1,D1]']})
     if not isinstance(resolved.get('value'), SelectedGrids) or len(resolved['value']) != 2:
         problems.append(f"`#grids:[C1,D1]` 应构造 SelectedGrids，实际 {resolved.get('value')!r}")
     av.op_s3_campaign_call({
-        'name': 'record_grid',
+        'name': 'record_grid', 'allow_actions': True,
         'args': ['#C1'],
         # 道路这一段宿主按 JSON 解析，节点名带引号；层级是"道路 → block → 格子"
         # （`[[["C1","D1"]]]` = 一条道路、一个 block、两个格子）
@@ -126,7 +126,7 @@ def main() -> int:
     # kwargs 必须按关键字传（不折算成位置参数）
     captured: dict[str, object] = {}
     instance.record_kwargs = lambda **kwargs: captured.update(kwargs)
-    av.op_s3_campaign_call({'name': 'record_kwargs', 'kwargs': {'preserve': 1}})
+    av.op_s3_campaign_call({'name': 'record_kwargs', 'allow_actions': True, 'kwargs': {'preserve': 1}})
     if captured.get('preserve') != 1:
         problems.append(f"kwargs 应按关键字传递，实际 {captured}")
 

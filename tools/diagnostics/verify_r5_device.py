@@ -41,22 +41,34 @@ def run(command: str, *extra: str) -> dict:
     return json.loads(text[start:])
 
 
-def device_sequence(payload: dict) -> list[tuple[str, str | None]]:
-    """设备宿主的调用序列：去掉日志调用，取 (方法名, 第一个格参数)。"""
+def device_sequence(payload: dict) -> list[tuple[str, str | None, str]]:
+    """完整动作序列保留舰队路径、目标和 expected；省略当前舰队不变的 ensure 查询。"""
     sequence = []
+    current_fleet = payload["initial_fleet"]
     for call in payload["calls"]:
         if call["name"] == "logger.info":
             continue
+        name = call["name"]
+        if name == "fleet_ensure":
+            index = int(call["kwargs"]["index"])
+            if index == current_fleet:
+                continue  # 原生 fleet_ensure 返回 False，没有发生切队动作。
+            current_fleet = index
+            sequence.append((name, str(index), ""))
+            continue
+        prefix = name.split(".")[0]
+        current_fleet = {"fleet_1": 1, "fleet_2": 2,
+                         "fleet_boss": payload["boss_fleet"]}.get(prefix, current_fleet)
         target = None
         for arg in call["args"]:
             if isinstance(arg, str) and arg.startswith("#"):
                 target = arg[1:]
                 break
-        sequence.append((call["name"], target))
+        sequence.append((name, target, call["kwargs"].get("expected", "")))
     return sequence
 
 
-def recording_sequence(payload: dict) -> list[tuple[str, str | None]]:
+def recording_sequence(payload: dict) -> list[tuple[str, str | None, str]]:
     """录制宿主的动作序列 → (原语名, 目标)。"""
     sequence = []
     for action in payload["actions"]:
@@ -65,34 +77,38 @@ def recording_sequence(payload: dict) -> list[tuple[str, str | None]]:
             continue
         name = match.group(1)
         target = (match.group(2) or "").strip() or None
-        sequence.append((name, target))
+        expected_match = re.search(r"(?:, )expected=([^,)]*)", action)
+        fleet_match = re.search(r"(?:, )fleet=([^,)]*)", action)
+        if fleet_match:
+            fleet = fleet_match.group(1)
+            name = ("fleet_boss" if fleet == "boss" else fleet) + "." + name
+        sequence.append((name, target, expected_match.group(1) if expected_match else ""))
     return sequence
 
 
 def compare(label: str, device: dict, recording: dict) -> list[str]:
-    """比**共同前缀**（两边都会发出的那段原语序列）。
-
-    为什么不是整段相等：录制渠道的状态是**静态桩**（`battle_count` 不会增长），所以真机宿主会一直打到
-    20 轮上限才撤退；而录制宿主每次 `ClearChosenEnemy` 会自增 `battle_count`，把敌人清掉后就提前撤退。
-    这是"桩状态 vs 自增状态"的差别，不是宿主缺陷——真机上 `battle_count` 由设备侧结算刷新。
-    因此断言：录制宿主发出的那段（撤退之前）必须是设备宿主序列的**前缀**，且设备宿主最后确实撤退。
-    """
+    """比较同一份状态反馈下两条宿主的完整原语序列。"""
     problems: list[str] = []
     left = device_sequence(device)
-    right = [item for item in recording_sequence(recording) if item[0] != "withdraw"]
-    shared = min(len(left), len(right))
-    if shared == 0:
+    right = recording_sequence(recording)
+    if device.get("rounds") != recording.get("rounds"):
+        problems.append(f"{label}: 钩子、计数或逐轮结果不同")
+    if device.get("outcome") != recording.get("outcome"):
+        problems.append(f"{label}: 循环结论不同")
+    if not left or not right:
         problems.append(f"{label}: 两边都没有发出原语（至少应各发一次）")
         return problems
-    if left[:shared] != right[:shared]:
-        first = next(index for index, (a, b) in enumerate(zip(left, right)) if a != b)
-        problems.append(f"{label}: 共同前缀不一致（第 {first + 1} 处）："
-                        f"设备宿主 {left[first]} vs 录制宿主 {right[first]}")
-    if right != left[:len(right)]:
-        problems.append(f"{label}: 录制宿主那一段（{right}）不是设备宿主序列的前缀")
-    if not any(name == "withdraw" for name, _ in left):
+    if left != right:
+        shared = min(len(left), len(right))
+        first = next((index for index, (a, b) in enumerate(zip(left, right)) if a != b), shared)
+        problems.append(f"{label}: 完整序列不一致（第 {first + 1} 处）："
+                        f"设备宿主 {left[first] if first < len(left) else '<结束>'} vs "
+                        f"录制宿主 {right[first] if first < len(right) else '<结束>'}")
+        if len(left) != len(right):
+            problems.append(f"{label}: 完整序列长度不同（设备 {len(left)}，录制 {len(right)}）")
+    if not any(name == "withdraw" for name, _, _ in left):
         problems.append(f"{label}: 设备宿主应在上限后撤退（序列里没有 withdraw）")
-    if not any(name.startswith("clear_") or name.startswith("battle") for name, _ in right):
+    if not any(name.split('.')[-1].startswith(("clear_", "battle")) for name, _, _ in right):
         problems.append(f"{label}: 录制宿主那一段里没有清敌/出击类原语，用例本身可能没生效")
     return problems
 
@@ -104,8 +120,23 @@ def main() -> int:
     skipped: list[str] = []
 
     extra = ("--detection", str(DETECTION), "--fleet-1", "A1")
-    fixture_problems = compare("识别夹具用例", run("r5-device", *extra), run("r5-run", *extra))
+    device, recording = run("r5-device", *extra), run("r5-run", *extra)
+    fixture_problems = compare("识别夹具用例", device, recording)
     problems += fixture_problems
+    # 反例必须捕获尾部丢步、目标/舰队/expected 和状态反馈漂移。
+    import copy
+    for field, value in (("name", "fleet_2.clear_chosen_enemy"), ("args", ["#A1"]),
+                         ("kwargs", {"expected": "siren"})):
+        bad = copy.deepcopy(device)
+        action = next(call for call in bad["calls"] if call["name"] == "clear_chosen_enemy")
+        action[field] = value
+        assert compare("损坏动作", bad, recording), field
+    bad = copy.deepcopy(device)
+    bad["calls"] = bad["calls"][:-1]
+    assert compare("缺少尾部动作", bad, recording)
+    bad = copy.deepcopy(device)
+    bad["rounds"][0]["battle_count"] += 1
+    assert compare("计数反馈漂移", bad, recording)
 
     if FRAME.is_file():
         frame_extra = ("--frame", str(FRAME), "--fleet-1", "A1")

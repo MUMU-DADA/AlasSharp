@@ -13,7 +13,7 @@ namespace Alas.Campaign;
 ///
 /// 两条纪律：
 /// <list type="number">
-///   <item>状态只**读**（`battle_count` / `fleet_*_location` / `camera` …），动作只调上游方法；</item>
+///   <item>计数和位置读取上游状态；已迁移原语产生的弹药与格子标志写入须同步上游；</item>
 ///   <item>上游没有对应方法的成员**如实抛 <see cref="NotSupportedException"/>**（带上原因），不静默降级。</item>
 /// </list>
 /// </summary>
@@ -29,6 +29,8 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
         _channel = channel;
         _grids = [.. grids];
         Config = config ?? new CampaignRuntimeConfig();
+        PickedLightHouse = new NativePickedGrids(channel, "picked_light_house");
+        PickedFlare = new NativePickedGrids(channel, "picked_flare");
     }
 
     public IReadOnlyList<CampaignGrid> Grids => _grids;
@@ -41,27 +43,27 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
     // ------------------------------------------------------------------ 状态（只读）
     public int BattleCount => ReadInt("battle_count");
 
-    public int FleetCurrentIndex => ReadInt("fleet_current_index", 1);
+    public int FleetCurrentIndex => ReadInt("fleet_current_index");
 
     public string Fleet1Location => ReadString("fleet_1_location");
 
     public string Fleet2Location => ReadString("fleet_2_location");
 
-    /// <summary>上游 `Camera.camera`（记录下来的机位）；读不到时给占位符而不是空串。</summary>
-    public string CameraLocation => ReadString("camera", "<未记录>");
+    /// <summary>上游 `Camera.camera` 转换后的格点；未定位为空串，读取错误直接报错。</summary>
+    public string CameraLocation => ReadString("camera");
 
     /// <summary>弹药数：上游 `Map.ammo_count`（`pick_up_ammo` 里就用它）。</summary>
     public int AmmoCount
     {
         get => ReadInt("ammo_count");
-        set { }                       // 上游自己维护；C# 侧不写回（避免与上游状态打架）
+        set => _channel.Set("ammo_count", JsonValue.Create(value));
     }
 
     /// <summary>舰队弹药：上游 `Map.fleet_ammo`。</summary>
     public int FleetAmmo
     {
         get => ReadInt("fleet_ammo");
-        set { }
+        set => _channel.Set("fleet_ammo", JsonValue.Create(value));
     }
 
     public CampaignGrid GridAt(string location) =>
@@ -73,12 +75,11 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
     public string? EndReason { get; private set; }
 
     /// <summary>
-    /// 已拾取记帐（上游在关卡层维护 `picked_light_house` / `picked_flare`；这里镜像一份用于**决策**，
-    /// 真正"是否已拾取"仍由上游自己那份决定——两边都不会重复拾取）。
+    /// 已拾取记账直接读取上游列表；追加复用原生 list.append，不维护会漂移的本地副本。
     /// </summary>
-    public ISet<string> PickedLightHouse { get; } = new HashSet<string>(StringComparer.Ordinal);
+    public ISet<string> PickedLightHouse { get; }
 
-    public ISet<string> PickedFlare { get; } = new HashSet<string>(StringComparer.Ordinal);
+    public ISet<string> PickedFlare { get; }
 
     /// <summary>巡逻路线：来自关卡导出的 `MAP.bouncing_enemy_data`（静态规则，不走宿主）。</summary>
     public IReadOnlyList<IReadOnlyList<string>> BouncingRoutes { get; init; } = [];
@@ -86,39 +87,41 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
     // ------------------------------------------------------------------ 动作（调上游方法）
     public bool EnsureFleet(int index)
     {
-        // 上游 `Fleet.fleet_1` / `fleet_2` 是属性：会先 `fleet_ensure(index=…)` 再返回 self。
-        // 所以访问这个属性就是"切队"这件事本身（`switch_to` 本身是 pass）。
-        _channel.Call(FleetPath(index, "switch_to"), [], []);
-        return true;
+        var result = _channel.Call("fleet_ensure", [], [new("index", JsonValue.Create(index))]);
+        RefreshFromUpstream();
+        return result?.GetValue<bool>() ?? throw new InvalidDataException("fleet_ensure 未返回布尔结果");
     }
 
     public bool ClearChosenEnemy(CampaignGrid grid, string expected, string fleet = "")
     {
         var (name, kwargs) = WithExpected(fleet, "clear_chosen_enemy", expected);
-        _channel.Call(name, [Node($"#{grid.Location}")], kwargs);
-        return true;
+        var value = _channel.Call(name, [Node($"#{grid.Location}")], kwargs);
+        RefreshFromUpstream();
+        return value?.GetValue<bool>() ?? throw new InvalidDataException("clear_chosen_enemy 未返回布尔结果");
     }
 
     /// <summary>上游 <c>mystery_count</c>：清掉一个神秘格子就 +1。</summary>
-    public int MysteryCount { get; private set; }
+    public int MysteryCount => ReadInt("mystery_count");
 
     public bool ClearChosenMystery(CampaignGrid grid)
     {
-        MysteryCount++;
         _channel.Call("clear_chosen_mystery", [Node($"#{grid.Location}")], []);
+        RefreshFromUpstream();
         return true;
     }
 
     public bool SubmarineMoveNearBoss(CampaignGrid grid)
     {
-        _channel.Call("submarine_move_near_boss", [Node($"#{grid.Location}")], []);
-        return true;
+        var result = _channel.Call("submarine_move_near_boss", [Node($"#{grid.Location}")], []);
+        RefreshFromUpstream();
+        return result?.GetValue<bool>() ?? throw new InvalidDataException("submarine_move_near_boss 未返回布尔结果");
     }
 
     public bool Goto(CampaignGrid grid, string expected = "")
     {
         var (name, kwargs) = WithExpected("", "goto", expected);
         _channel.Call(name, [Node($"#{grid.Location}")], kwargs);
+        RefreshFromUpstream();
         return true;
     }
 
@@ -126,9 +129,14 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
 
     public bool UpdateMap()
     {
-        // 上游 `update()` 失败会抛 `MapDetectionError`，宿主 `s3_campaign_call` 会把它变成 `error` 字段。
-        var result = _channel.Call("update", [], []);
-        return result is not JsonObject payload || !payload.ContainsKey("error");
+        try { _channel.Call("update", [], []); }
+        catch (CampaignNativeException error) when (error.NativeType == "MapDetectionError")
+        {
+            // 唯一可恢复类别：原生重对焦按 preset 处理 MapDetectionError。
+            _logs.Add(error.Message);
+            return false;
+        }
+        return RefreshFromUpstream();
     }
 
     public void MapSwipe((int X, int Y) preset) =>
@@ -139,25 +147,17 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
     public void EnsureEdgeInsight() => _channel.Call("ensure_edge_insight", [], []);
 
     /// <summary>
-    /// 把全图 <c>is_caught_by_siren</c> 置假。上游这一支**没有任何设备动作**：见
-    /// `module/map/map.py` 的 `fleet_2_break_siren_caught`——"抓着舰队的不是 2 队"时直接
-    /// `for grid in self.map: grid.is_caught_by_siren = False` 然后返回假。
-    /// 所以这里只改宿主自己持有的地图模型（等价于上游改 `GridInfo` 对象），**不调用渠道**；
-    /// 真机上下一次识别会把实际状态盖回来。
-    /// </summary>
-    /// <summary>
     /// 从**上游地图**重新取一次状态（只读 op `s3_campaign_grids`）。
     /// 上游的移动/识别会改它自己的 `CampaignMap`（`Fleet.goto` 结尾的 `wipe_out()` 与 `is_fleet` 重设、
     /// `find_path_initial` 重写成本场），所以每次设备动作之后都要刷新，否则后续决策基于过期状态。
-    /// 取不到（空列表）时**保持原状态**并记一条日志，不把模型清空。
+    /// 取不到地图时拒绝继续；不能把过期快照当作新状态。
     /// </summary>
     public bool RefreshFromUpstream()
     {
         var refreshed = _channel.ReadGrids();
         if (refreshed.Count == 0)
         {
-            _logs.Add("refresh_from_upstream：上游没给出地图状态，保持原状态");
-            return false;
+            throw new InvalidDataException("refresh_from_upstream：上游未提供地图状态");
         }
         _grids.Clear();
         _grids.AddRange(refreshed);
@@ -177,6 +177,7 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
 
     public void SetGridFlag(CampaignGrid grid, string flag, bool value)
     {
+        _channel.Set($"map.{grid.Location}.{flag}", JsonValue.Create(value));
         // 改自己的模型 + **同步到上游地图对象**：这些标志会被上游自己的代码读到
         // （`is_flare` → `Map.find_path` 的航点绕行；`may_bouncing_enemy` → 巡逻敌人路线筛选），
         // 不同步就会与上游状态分叉。标志名白名单在 `CampaignPrimitives.ApplyFlag` 里。
@@ -187,23 +188,26 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
                 _grids[i] = CampaignPrimitives.ApplyFlag(_grids[i], flag, value);
             }
         }
-        _channel.Set($"map.{grid.Location}.{flag}", JsonValue.Create(value));
     }
 
     public void ClearCaughtBySirenFlags()
     {
         for (int i = 0; i < _grids.Count; i++)
         {
-            if (_grids[i].IsCaughtBySiren) _grids[i] = _grids[i] with { IsCaughtBySiren = false };
+            if (_grids[i].IsCaughtBySiren) SetGridFlag(_grids[i], "is_caught_by_siren", false);
         }
     }
 
     public void Withdraw()
     {
-        _channel.Call("withdraw", [], []);
-        // 与录制宿主一致：撤退即"本关结束"（上游 `withdraw()` 检测到回到章节页会抛 `CampaignEnd`）
-        EndRequested = true;
-        EndReason ??= "Withdraw";
+        try { _channel.Call("withdraw", [], []); }
+        catch (CampaignControlFlowSignal signal) when (signal.Kind == "CampaignEnd")
+        {
+            EndRequested = true;
+            EndReason = signal.Message;
+            return;
+        }
+        throw new InvalidOperationException("withdraw 未返回 CampaignEnd，不能宣称已退出本关");
     }
 
     public void Log(string message)
@@ -213,13 +217,17 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
     }
 
     // ------------------------------------------------------------------ 内部
-    private static string FleetPath(int index, string method) =>
-        index == 2 ? $"fleet_2.{method}" : $"fleet_1.{method}";
-
     private static (string Name, List<KeyValuePair<string, JsonNode?>> Kwargs) WithExpected(
         string fleet, string method, string expected)
     {
-        string name = string.IsNullOrEmpty(fleet) ? method : $"{fleet}.{method}";
+        // 原语层用短名 `boss` 表示上游的 `fleet_boss` 属性；`fleet_1`/`fleet_2`
+        // 已经是上游属性名。保留点号路径让上游 property 自己完成必要的切队。
+        string prefix = fleet switch
+        {
+            "boss" => "fleet_boss",
+            _ => fleet,
+        };
+        string name = string.IsNullOrEmpty(prefix) ? method : $"{prefix}.{method}";
         var kwargs = new List<KeyValuePair<string, JsonNode?>>();
         if (!string.IsNullOrEmpty(expected)) kwargs.Add(new("expected", Node(expected)));
         return (name, kwargs);
@@ -227,46 +235,9 @@ public sealed class DeviceCampaignHost : ICampaignPrimitiveHost
 
     private static JsonNode? Node(string value) => JsonValue.Create(value);
 
-    /// <summary>
-    /// 读上游的整数值。**取不到或类型不对时会记日志**：这两个方法的调用方拿它做决策，
-    /// 静默用兜底值等于把"上游版本漂移/字段改名"藏起来（这类静默正是本项目反复踩到的坑）。
-    /// </summary>
-    private int ReadInt(string name, int fallback = 0)
-    {
-        var value = _channel.Read(name);
-        if (value is null)
-        {
-            Log($"读取上游字段 {name}：没有这个字段，用兜底值 {fallback}");
-            return fallback;
-        }
-        try
-        {
-            return value.GetValue<int>();
-        }
-        catch (Exception error) when (error is InvalidOperationException or FormatException)
-        {
-            Log($"读取上游字段 {name}：类型不是整数（{error.GetType().Name}），用兜底值 {fallback}");
-            return fallback;
-        }
-    }
+    private int ReadInt(string name) => _channel.Read(name)?.GetValue<int>()
+        ?? throw new InvalidDataException($"上游缺少整数字段 {name}");
 
-    /// <summary>读上游的字符串值；取不到或类型不对时同样**记日志**（理由见 <see cref="ReadInt"/>）。</summary>
-    private string ReadString(string name, string fallback = "")
-    {
-        var value = _channel.Read(name);
-        if (value is null)
-        {
-            Log($"读取上游字段 {name}：没有这个字段，用兜底值 \"{fallback}\"");
-            return fallback;
-        }
-        try
-        {
-            return value.GetValue<string>() ?? fallback;
-        }
-        catch (InvalidOperationException)
-        {
-            Log($"读取上游字段 {name}：类型不是字符串，用兜底值 \"{fallback}\"");
-            return fallback;
-        }
-    }
+    private string ReadString(string name) => _channel.Read(name)?.GetValue<string>()
+        ?? throw new InvalidDataException($"上游缺少字符串字段 {name}");
 }

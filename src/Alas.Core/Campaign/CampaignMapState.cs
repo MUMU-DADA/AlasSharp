@@ -28,6 +28,8 @@ public static class CampaignMapState
         "is_fleet", "is_submarine", "is_cleared", "is_caught_by_siren",
         "may_bouncing_enemy", "is_mechanism_block", "is_spawn_point",
         "is_current_fleet", "is_missile_attack",
+        "may_enemy", "may_boss", "may_mystery", "may_ammo", "may_siren", "may_ambush",
+        "is_flare", "is_land", "is_mechanism_trigger",
     };
 
     /// <summary>
@@ -92,8 +94,7 @@ public static class CampaignMapState
         if (payload is not System.Text.Json.Nodes.JsonObject root
             || root["grids"] is not System.Text.Json.Nodes.JsonArray items)
         {
-            unknownFlags = [];
-            return grids;
+            throw new InvalidDataException("上游地图响应缺少 grids 数组");
         }
 
         var flagMap = new Dictionary<string, List<string>>(StringComparer.Ordinal);
@@ -104,28 +105,44 @@ public static class CampaignMapState
             if (item is not System.Text.Json.Nodes.JsonObject entry
                 || entry["loca"] is not System.Text.Json.Nodes.JsonArray loca || loca.Count != 2)
             {
-                continue;
+                throw new InvalidDataException("上游地图格子缺少二维坐标");
             }
             int x = loca[0]!.GetValue<int>();
             int y = loca[1]!.GetValue<int>();
-            if (!CampaignLocations.TryToNode(x, y, out string node)) continue;
+            if (!CampaignLocations.TryToNode(x, y, out string node) || values.ContainsKey(node))
+                throw new InvalidDataException("上游地图含非法或重复坐标");
+            if (entry["flags"] is not System.Text.Json.Nodes.JsonArray list)
+                throw new InvalidDataException($"上游地图格子 {node} 缺少 flags 数组");
             var flags = new List<string>();
-            if (entry["flags"] is System.Text.Json.Nodes.JsonArray list)
+            foreach (var flag in list)
             {
-                foreach (var flag in list)
-                {
-                    string? text = flag?.GetValue<string>();
-                    if (text is not null) flags.Add(text);
-                }
+                if (flag is not System.Text.Json.Nodes.JsonValue value
+                    || !value.TryGetValue<string>(out string? text) || text is null)
+                    throw new InvalidDataException($"上游地图格子 {node} 含非字符串标志");
+                flags.Add(text);
             }
             flagMap[$"{x},{y}"] = flags;
+            static int RequiredInt(System.Text.Json.Nodes.JsonObject item, string name, string location)
+            {
+                if (item[name] is not System.Text.Json.Nodes.JsonValue value
+                    || !value.TryGetValue<int>(out int result))
+                    throw new InvalidDataException($"上游地图格子 {location} 缺少整数字段 {name}");
+                return result;
+            }
+            static string RequiredString(System.Text.Json.Nodes.JsonObject item, string name, string location)
+            {
+                if (item[name] is not System.Text.Json.Nodes.JsonValue value
+                    || !value.TryGetValue<string>(out string? result) || result is null)
+                    throw new InvalidDataException($"上游地图格子 {location} 缺少字符串字段 {name}");
+                return result;
+            }
             values[node] = (
-                entry["cost"]?.GetValue<int>() ?? 9999,
-                entry["cost_1"]?.GetValue<int>() ?? 9999,
-                entry["cost_2"]?.GetValue<int>() ?? 9999,
-                entry["weight"]?.GetValue<int>() ?? 0,
-                entry["enemy_scale"]?.GetValue<int>() ?? 0,
-                entry["enemy_genre"]?.GetValue<string>() ?? "");
+                RequiredInt(entry, "cost", node),
+                RequiredInt(entry, "cost_1", node),
+                RequiredInt(entry, "cost_2", node),
+                RequiredInt(entry, "weight", node),
+                RequiredInt(entry, "enemy_scale", node),
+                RequiredString(entry, "enemy_genre", node));
         }
 
         var baseGrids = values.Keys.Select(node => new CampaignGrid(node)).ToArray();
@@ -189,6 +206,15 @@ public static class CampaignMapState
                 grid = flag switch
                 {
                     "is_enemy" => grid with { IsEnemy = true },
+                    "is_land" => grid with { IsLand = true },
+                    "is_flare" => grid with { IsFlare = true },
+                    "is_mechanism_trigger" => grid with { IsMechanismTrigger = true },
+                    "may_enemy" => grid with { MayEnemy = true },
+                    "may_boss" => grid with { MayBoss = true },
+                    "may_mystery" => grid with { MayMystery = true },
+                    "may_ammo" => grid with { MayAmmo = true },
+                    "may_siren" => grid with { MaySiren = true },
+                    "may_ambush" => grid with { MayAmbush = true },
                     "is_boss" => grid with { IsBoss = true },
                     "is_siren" => grid with { IsSiren = true },
                     "is_fortress" => grid with { IsFortress = true },

@@ -65,6 +65,9 @@ public sealed class RecordingCampaignCallChannel : ICampaignCallChannel
 
     public IReadOnlyList<CampaignGrid> ReadGrids() => _grids;
 
+    /// <summary>离线对照显式采用成功动作计数反馈；地图仍是固定夹具，不表示真实结算。</summary>
+    public bool SimulateSuccessfulActions { get; init; }
+
     public List<CampaignCallRecord> Calls { get; } = [];
 
     public JsonNode? Call(string name, IReadOnlyList<JsonNode?> args,
@@ -73,6 +76,46 @@ public sealed class RecordingCampaignCallChannel : ICampaignCallChannel
         Calls.Add(new CampaignCallRecord(name,
             args.Select(Describe).ToArray(),
             kwargs.ToDictionary(pair => pair.Key, pair => Describe(pair.Value))));
+        if (name == "withdraw") throw new CampaignControlFlowSignal("CampaignEnd", "Withdraw");
+        if (name == "fleet_ensure")
+        {
+            int index = kwargs.Single(pair => pair.Key == "index").Value!.GetValue<int>();
+            int before = _state["fleet_current_index"]!.GetValue<int>();
+            _state["fleet_current_index"] = JsonValue.Create(index);
+            return JsonValue.Create(before != index);
+        }
+        if (name == "submarine_move_near_boss") return JsonValue.Create(false);
+        // The recorder models the selected-enemy endpoint's boolean result.
+        if (name.EndsWith("clear_chosen_enemy", StringComparison.Ordinal))
+        {
+            // 录制渠道要提供与上游战斗结算一致的反馈：成功清敌后 battle_count 增长。
+            // 这样 r5-device 与 r5-run 使用同一份状态演进，比较的是宿主逻辑而不是两个
+            // 不同的静态桩。
+            if (SimulateSuccessfulActions)
+            {
+                int count = _state["battle_count"]!.GetValue<int>();
+                _state["battle_count"] = JsonValue.Create(count + 1);
+                int? fleet = name.Split('.')[0] switch
+                {
+                    "fleet_1" => 1, "fleet_2" => 2,
+                    "fleet_boss" => _state["fleet_boss_index"]!.GetValue<int>(),
+                    _ => null,
+                };
+                if (fleet is int index) _state["fleet_current_index"] = JsonValue.Create(index);
+            }
+            return JsonValue.Create(true);
+        }
+        if (name == "clear_chosen_mystery" && SimulateSuccessfulActions)
+            _state["mystery_count"] = JsonValue.Create(_state["mystery_count"]!.GetValue<int>() + 1);
+        if (name is "picked_flare.append" or "picked_light_house.append")
+        {
+            var entries = _state[name.Split('.')[0]] as JsonArray
+                ?? throw new InvalidDataException($"录制状态缺少 {name}");
+            string location = args.Single()!.GetValue<string>();
+            if (!location.StartsWith('#') || !_grids.Any(grid => grid.Location == location[1..]))
+                throw new InvalidDataException($"录制地图没有拾取目标 {location}");
+            entries.Add(location[1..]);
+        }
         return null;
     }
 
@@ -81,8 +124,17 @@ public sealed class RecordingCampaignCallChannel : ICampaignCallChannel
     /// <summary>写入也记进 <see cref="Calls"/>（名字前缀 <c>set:</c>），便于离线断言"状态确实同步了"。</summary>
     public void Set(string name, JsonNode? value)
     {
+        if (name.StartsWith("map.", StringComparison.Ordinal))
+        {
+            string[] parts = name.Split('.');
+            if (parts.Length != 3 || !_grids.Any(grid => grid.Location == parts[1]))
+                throw new InvalidDataException($"录制地图没有写入目标 {name}");
+            var changed = _grids.Select(grid => grid.Location == parts[1]
+                ? CampaignPrimitives.ApplyFlag(grid, parts[2], value!.GetValue<bool>()) : grid).ToArray();
+            _grids = changed;
+        }
         Calls.Add(new CampaignCallRecord($"set:{name}", [Describe(value)], new Dictionary<string, string>()));
-        _state[name] = value;
+        _state[name] = value?.DeepClone();
     }
 
     /// <summary>

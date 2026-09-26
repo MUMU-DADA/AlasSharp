@@ -31,15 +31,12 @@ public sealed record CampaignLevelRun(
     string Level,
     CampaignLevelOutcome Outcome,
     string? Detail,
-    IReadOnlyList<CampaignBattleRound> Rounds)
-{
-    public bool Succeeded => Outcome == CampaignLevelOutcome.Ended;
-}
+    IReadOnlyList<CampaignBattleRound> Rounds);
 
 /// <summary>
 /// 关卡循环的 C# 移植，逐条对应上游 <c>module/campaign/campaign_base.py</c>：
 /// <list type="bullet">
-///   <item><c>run()</c>：最多 20 轮「出击」，捕获 <c>CampaignEnd</c> 即返回成功，否则记
+///   <item><c>run()</c>：最多 20 轮「出击」，捕获 <c>CampaignEnd</c> 即返回 Ended（不表示通关），否则记
 ///         <c>Battle function exhausted.</c> 并按 <c>Error_HandleError</c> 决定撤退还是抛 <c>ScriptError</c>；</item>
 ///   <item><c>execute_a_battle()</c>：最多 10 次尝试，捕获 <c>MapEnemyMoved</c>——期间 <c>battle_count</c> 增长就算成功，
 ///         否则重试；最终没打成时记 <c>No combat executed.</c> 并按 <c>Error_HandleError</c> 处理；</item>
@@ -52,9 +49,7 @@ public sealed record CampaignLevelRun(
 /// 这是**近似**，真机上要确认结束时机；
 /// ② 依赖设备状态变化的循环（`fleet_2_protect` 最多 20 轮、`clear_all_mystery` 的 `while 1`）在干跑里
 /// 只做一轮——干跑不改变状态，假装不了；
-/// ③ 原语层面没有"未实现"的分支了：29 个原语全部注册且有实现（`verify_r5_coverage.py` 逐个执行过），
-/// 之前列在这里的 `fleet_2_break_siren_caught` / `brute_clear_boss` / `clear_bouncing_enemy` 都已补上；
-/// 若真遇到没见过的分支，仍按 <c>Blocked</c> 停下报原因，不猜。
+/// ③ 注册表存在不等于完整上游语义；未迁移的参数、实例绑定或控制流按 Blocked 停下。
 /// </summary>
 public static class CampaignBattleLoop
 {

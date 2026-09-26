@@ -37,7 +37,17 @@ internal static class CampaignDeviceCheck
         }
         if (plan is null) return Fail("关卡计划为空");
 
-        var channel = new RecordingCampaignCallChannel();
+        var channel = new RecordingCampaignCallChannel(new Dictionary<string, JsonNode?>
+        {
+            ["battle_count"] = JsonValue.Create(0),
+            ["fleet_current_index"] = JsonValue.Create(options.CurrentFleet),
+            ["fleet_1_location"] = JsonValue.Create(options.Fleet1 ?? ""),
+            ["fleet_2_location"] = JsonValue.Create(options.Fleet2 ?? ""),
+            ["camera"] = JsonValue.Create(""), ["ammo_count"] = JsonValue.Create(3),
+            ["fleet_ammo"] = JsonValue.Create(5), ["mystery_count"] = JsonValue.Create(0),
+            ["fleet_boss_index"] = JsonValue.Create(CampaignDryRunHelper.BuildConfig(options).FleetBossIndex),
+            ["picked_light_house"] = new JsonArray(), ["picked_flare"] = new JsonArray(),
+        }) { SimulateSuccessfulActions = true }.WithGrids(grids);
         var host = new DeviceCampaignHost(channel, grids, CampaignDryRunHelper.BuildConfig(options))
         {
             BouncingRoutes = plan.Map?.BouncingEnemyData ?? [],
@@ -50,16 +60,18 @@ internal static class CampaignDeviceCheck
         var stateGrids = grids.Take(3)
             .Select((grid, index) => grid with { IsCaughtBySiren = index < 2 })
             .ToArray();
+        stateChannel.WithGrids(stateGrids);
         var stateHost = new DeviceCampaignHost(stateChannel, stateGrids);
         int caughtBefore = stateHost.Grids.Count(grid => grid.IsCaughtBySiren);
         stateHost.ClearCaughtBySirenFlags();
         int caughtAfter = stateHost.Grids.Count(grid => grid.IsCaughtBySiren);
-        int stateCalls = stateChannel.Calls.Count;
+        int stateCalls = stateChannel.Calls.Count(call => !call.Name.StartsWith("set:", StringComparison.Ordinal));
+        int stateWrites = stateChannel.Calls.Count(call => call.Name.StartsWith("set:", StringComparison.Ordinal));
 
         var dryHost = new RecordingCampaignHost(stateGrids);
         dryHost.ClearCaughtBySirenFlags();
         int dryCaughtAfter = dryHost.Grids.Count(grid => grid.IsCaughtBySiren);
-        if (caughtAfter != 0 || dryCaughtAfter != 0 || stateCalls != 0)
+        if (caughtAfter != 0 || dryCaughtAfter != 0 || stateCalls != 0 || stateWrites != caughtBefore)
         {
             return Fail($"ClearCaughtBySirenFlags 语义不符：设备宿主置假前 {caughtBefore} / 后 {caughtAfter}，" +
                         $"干跑宿主后 {dryCaughtAfter}，设备调用 {stateCalls}（都应清空且 0 次调用）");
@@ -67,7 +79,7 @@ internal static class CampaignDeviceCheck
 
         // `pick_up_flare` 的 `is_flare` 标记：**必须同步到上游地图对象**（上游 `Map.find_path` 的航点绕行会读它），
         // 所以断言的是"设备宿主发了一条 set 调用"，而不只是改了自己的模型。
-        var flareChannel = new RecordingCampaignCallChannel();
+        var flareChannel = new RecordingCampaignCallChannel().WithGrids(stateGrids);
         var flareHost = new DeviceCampaignHost(flareChannel, stateGrids);
         var flareGrid = flareHost.Grids[0];
         flareHost.SetGridFlag(flareGrid, "is_flare", true);
@@ -87,8 +99,9 @@ internal static class CampaignDeviceCheck
         bool refreshed = refreshHost.RefreshFromUpstream();
         bool refreshApplied = refreshHost.Grids.Count == 2
                               && refreshHost.Grids[0] is { Location: "A1", IsEnemy: true, Cost: 3 };
-        bool refreshKeeps = !new DeviceCampaignHost(new RecordingCampaignCallChannel(), stateGrids)
-            .RefreshFromUpstream();     // 上游没给状态时不许清空模型
+        bool refreshKeeps = false;
+        try { new DeviceCampaignHost(new RecordingCampaignCallChannel(), stateGrids).RefreshFromUpstream(); }
+        catch (InvalidDataException) { refreshKeeps = true; }
         if (!refreshed || !refreshApplied || !refreshKeeps)
         {
             return Fail($"RefreshFromUpstream 语义不符：刷新 {refreshed}，应用 {refreshApplied}，" +
@@ -102,6 +115,14 @@ internal static class CampaignDeviceCheck
                 ["chapter"] = run.Chapter,
                 ["level"] = run.Level,
                 ["outcome"] = run.Outcome.ToString(),
+                ["initial_fleet"] = options.CurrentFleet,
+                ["boss_fleet"] = host.Config.FleetBossIndex,
+                ["state_feedback"] = "successful-actions/fixed-map",
+                ["rounds"] = new JsonArray(run.Rounds.Select(round => (JsonNode)new JsonObject
+                {
+                    ["index"] = round.Index, ["battle_count"] = round.BattleCount,
+                    ["hook"] = round.Hook, ["result"] = round.Result, ["blocked"] = round.BlockedReason,
+                }).ToArray()),
                 ["detection"] = detectionSource,
                 ["state_ops"] = new JsonObject
                 {

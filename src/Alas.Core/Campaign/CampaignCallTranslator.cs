@@ -116,6 +116,10 @@ public static class CampaignCallTranslator
         {
             case null:
                 return null;
+            case JsonObject payload when payload["__tuple__"] is JsonArray tuple:
+                var tupleItems = new List<JsonNode?>();
+                foreach (var item in tuple) tupleItems.Add(Encode(item, ref runtimeOnly));
+                return new JsonObject { ["__tuple__"] = new JsonArray(tupleItems.ToArray()) };
             case JsonObject payload when payload.ContainsKey("__local_grids__"):
                 // 局部**格子集合**引用：执行器在调用前换成 `{"__grids__": …}`（`SubstituteLocals`）
                 runtimeOnly = true;
