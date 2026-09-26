@@ -77,7 +77,7 @@ public sealed class GridGeometry
     }
     private static PixelArea Pad(PixelArea area, int pad) => new(checked(area.X + pad), checked(area.Y + pad),
         checked(area.Width - 2 * pad), checked(area.Height - 2 * pad));
-    private static ScreenPoint Transform(ScreenPoint point, double[] matrix)
+    internal static ScreenPoint Transform(ScreenPoint point, double[] matrix)
     {
         if (!double.IsFinite(point.X) || !double.IsFinite(point.Y)) throw new ArgumentException("Invalid projection point", nameof(point));
         double divisor = matrix[6] * point.X + matrix[7] * point.Y + matrix[8];
@@ -86,7 +86,7 @@ public sealed class GridGeometry
         if (!double.IsFinite(x) || !double.IsFinite(y)) throw new MapGeometryException("Projection intersects the horizon");
         return new(x, y);
     }
-    private static double[] Solve(ScreenPoint[] source, ScreenPoint[] destination)
+    internal static double[] Solve(ScreenPoint[] source, ScreenPoint[] destination)
     {
         var equations = new double[8, 9];
         for (int i = 0; i < 4; i++)
@@ -122,7 +122,7 @@ public sealed class GridGeometry
         return [equations[0, 8], equations[1, 8], equations[2, 8], equations[3, 8], equations[4, 8],
             equations[5, 8], equations[6, 8], equations[7, 8], 1];
     }
-    private static double[] Invert(double[] m)
+    internal static double[] Invert(double[] m)
     {
         double[] adjugate = [m[4] * m[8] - m[5] * m[7], m[2] * m[7] - m[1] * m[8], m[1] * m[5] - m[2] * m[4],
             m[5] * m[6] - m[3] * m[8], m[0] * m[8] - m[2] * m[6], m[2] * m[3] - m[0] * m[5],

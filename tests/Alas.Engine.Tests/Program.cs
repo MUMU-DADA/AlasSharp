@@ -12,6 +12,7 @@ using Alas.Engine.Tests;
 Console.OutputEncoding = Encoding.UTF8;
 Console.InputEncoding = Encoding.UTF8;
 if (args is ["-s", "offline-replay", ..]) return await RuntimeChecks.FakeAdbAsync(args[2..]);
+if (args is ["-s", "offline-map", ..]) return await DetectorChecks.FakeAdbAsync(args[2..]);
 
 if (args is ["--echo", var argument])
 {
@@ -123,6 +124,13 @@ try
     await Throws<IOException>(() => application.IsRunningAsync(default).AsTask(), "Unknown foreground silently accepted");
     Console.WriteLine($"Local engine/transport checks passed: {checks}");
 
+    if (args is ["--detector", var detectorPython, var detectorUpstream, var detectorArtifacts, .. var savedFrames])
+    {
+        string folder = Path.GetFullPath(detectorArtifacts);
+        Directory.CreateDirectory(folder);
+        await DetectorChecks.RunAsync(Path.GetFullPath(detectorPython), Path.GetFullPath(detectorUpstream), folder, savedFrames);
+        return 0;
+    }
     if (args is ["--view", var viewPython, var viewUpstream, var viewArtifacts])
     {
         string folder = Path.GetFullPath(viewArtifacts);

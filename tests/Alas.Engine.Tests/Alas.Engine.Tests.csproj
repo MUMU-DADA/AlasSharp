@@ -20,5 +20,6 @@
     <None Include="native_recognition_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_spawn_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_view_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_detector_reference.py" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

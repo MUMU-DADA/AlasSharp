@@ -135,7 +135,7 @@ public sealed partial class PythonTemplateVision : IVision
     }
 
     private async ValueTask<T> ExchangeAsync<T>(ScreenFrame frame, Func<long, object> commandFactory,
-        Func<JsonElement, T> parse, CancellationToken token)
+        Func<JsonElement, T> parse, CancellationToken token, int responseLimit = 65536)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         await _gate.WaitAsync(token);
@@ -151,7 +151,7 @@ public sealed partial class PythonTemplateVision : IVision
             {
                 await _process.StandardInput.WriteLineAsync(command.AsMemory(), limit.Token);
                 await _process.StandardInput.FlushAsync(limit.Token);
-                string line = await ReadResponseAsync(limit.Token);
+                string line = await ReadResponseAsync(limit.Token, responseLimit);
                 using var document = JsonDocument.Parse(line);
                 var response = document.RootElement;
                 if (response.GetProperty("protocol").GetString() != "alas-cv/1" || response.GetProperty("id").GetInt64() != id ||
@@ -205,14 +205,14 @@ public sealed partial class PythonTemplateVision : IVision
         }, token);
     }
 
-    private async Task<string> ReadResponseAsync(CancellationToken token)
+    private async Task<string> ReadResponseAsync(CancellationToken token, int maximum)
     {
-        // Responses contain numbers only; bound input before constructing a full line.
+        // Most responses are numeric; image operations opt into a larger, still bounded limit.
         var text = new StringBuilder();
-        char[] character = new char[1];
-        while (text.Length < 65536)
+        char[] buffer = new char[4096];
+        while (text.Length < maximum)
         {
-            int count = await _process.StandardOutput.ReadAsync(character.AsMemory(), token);
+            int count = await _process.StandardOutput.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, maximum - text.Length)), token);
             if (count == 0)
             {
                 // EOF normally follows process exit; give the concurrently drained error stream a bounded finish.
@@ -220,8 +220,13 @@ public sealed partial class PythonTemplateVision : IVision
                 catch (TimeoutException) { }
                 lock (_errorGate) throw new EndOfStreamException("Pure vision worker exited before responding: " + _errorTail);
             }
-            if (character[0] == '\n') return text.ToString();
-            text.Append(character[0]);
+            int newline = Array.IndexOf(buffer, '\n', 0, count);
+            if (newline >= 0)
+            {
+                if (newline != count - 1) throw new InvalidDataException("CV emitted unsolicited trailing data");
+                text.Append(buffer, 0, newline); return text.ToString();
+            }
+            text.Append(buffer, 0, count);
         }
         throw new InvalidDataException("Pure vision response exceeded its protocol limit");
     }

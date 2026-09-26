@@ -161,7 +161,7 @@ internal static class VisionChecks
             """);
         var rejection = await new ProcessRunner().RunAsync(python, ["-I", probe, worker], TimeSpan.FromSeconds(30));
         Check(rejection.ExitCode == 0, "Pure CV imported upstream or accepted business calls: " + rejection.Error);
-        return checks;
+        return checks + await GridFeatureChecks.RunAsync(python, artifacts);
     }
 
     internal static byte[] Png(int width, int height, byte[] rgb)

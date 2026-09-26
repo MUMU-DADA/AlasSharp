@@ -1,5 +1,13 @@
 # 任务队列与业务域
 
+本文主体描述旧产品的 Core 队列。独立重写使用 `Alas.Engine/Tasks` 与 `Alas.Engine.Cli run`，不通过旧 runner 执行业务；支持范围见[迁移路线](architecture-roadmap.md)。新入口的只读地图任务示例：
+
+```json
+[{"id":"map","kind":"map_observe","input":{"campaign":"campaign_main/campaign_1_1"},"timeoutSeconds":30}]
+```
+
+通过 `Alas.Engine.Cli run --queue <文件>` 配合 `--adb`、`--serial`、`--server`、`--assets`、`--python` 和 `--artifacts` 指定会话；不需要 `--allow-actions`。该任务仅观测当前 1280×720 在图截图，用户须先处于地图内；不执行导航或战斗。输入只接受 `campaign`，且限已迁移的 Campaign 类型；其他规则明确拒绝。`succeeded` 只表示获得局部格子/几何，证据固定标明全图定位和结算均未验证；失败保存原图、调用栈与 `failureFrames`，工件留在本地忽略目录。
+
 新业务域先在 `Alas.Core/Tasks/` 实现 `ITaskRunner.Kind / Preconditions / Run`，
 再由 `QueueExecution` 注册并交给 `TaskQueue`。CLI 和前端不解释业务输入或复制调度状态机。
 

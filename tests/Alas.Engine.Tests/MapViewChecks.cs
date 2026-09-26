@@ -112,6 +112,12 @@ internal static class MapViewChecks
             var evidence = new FixedEvidence(sample["predicted"] is { } d ? Cell(d) : null);
             await state.UpdateAsync(next, new(evidence), B(sample["predict"]!));
             Equal(Pair(state.Position.Column, state.Position.Row), expected["position"], "Camera edge correction");
+            if (sample["pending"] is null)
+            {
+                var initial = new MapCameraState(new(9, 7), new(5, 4), next);
+                Equal(Pair(initial.Position.Column, initial.Position.Row), expected["position"], "Initial camera edge correction");
+                Check(initial.PendingSwipe is null && initial.Previous is null, "Initial correction fabricated swipe state");
+            }
             Equal(state.PendingSwipe is { } p ? Pair(p) : null, expected["pending"], "Camera pending swipe");
             Check((state.Previous is not null) == B(expected["previous"]!), "Camera pending frame drifted");
             bool predicts = sample["pending"] is { } pend && Cell(pend) != default && B(sample["predict"]!);

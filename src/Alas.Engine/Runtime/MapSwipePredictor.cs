@@ -82,7 +82,7 @@ public sealed class MapCameraState
     {
         if (shape.Column < 1 || shape.Row < 1) throw new ArgumentOutOfRangeException(nameof(shape));
         ArgumentNullException.ThrowIfNull(view);
-        _shape = shape; Position = position; View = view;
+        _shape = shape; Position = CorrectEdges(position, view.Geometry); View = view;
     }
 
     public ScreenPoint PrepareSwipe(ViewCell requested)
@@ -105,15 +105,20 @@ public sealed class MapCameraState
             if (predict) swipe = await predictor.PredictAsync(Previous!, view, currentFleet, seaGrids, token) ?? swipe;
             position = new(checked(position.Column + swipe.X), checked(position.Row + swipe.Y));
         }
-        var geometry = view.Geometry;
+        position = CorrectEdges(position, view.Geometry);
+        token.ThrowIfCancellationRequested();
+        Position = position; View = view;
+        // Native zero-vector refocusing retains pending data and does not predict a displacement.
+        if (consumed) { Previous = null; PendingSwipe = null; }
+    }
+
+    private Cell CorrectEdges(Cell position, MapViewGeometry geometry)
+    {
         // The native names lower/upper denote detected screen edges, not map row order.
         int x = geometry.Edges.Left ? checked(1 + geometry.Center.X) : geometry.Edges.Right
             ? checked(_shape.Column - geometry.Shape.X + geometry.Center.X) : position.Column;
         int y = geometry.Edges.Upper ? checked(_shape.Row - geometry.Shape.Y + geometry.Center.Y) : geometry.Edges.Lower
             ? checked(1 + geometry.Center.Y) : position.Row;
-        token.ThrowIfCancellationRequested();
-        Position = new(x, y); View = view;
-        // Native zero-vector refocusing retains pending data and does not predict a displacement.
-        if (consumed) { Previous = null; PendingSwipe = null; }
+        return new(x, y);
     }
 }

@@ -12,11 +12,12 @@ public sealed record EngineSessionOptions(string Adb, string Serial, GameServer 
     string? ApplicationPackage = null, string? ModelDirectory = null, bool AllowActions = false);
 
 /// <summary>One device and one pure-vision process for the entire new execution graph.</summary>
-public sealed class EngineSession : IAsyncDisposable
+public sealed class EngineSession : IAsyncDisposable, IMapObservationService
 {
     private readonly PythonTemplateVision _vision;
     private readonly JournalDevice _device;
     private readonly IApplicationHealth _application;
+    private readonly AssetFiles _assets;
     public UiDriver Driver { get; }
     public PageGraph Pages { get; } = UpstreamPages.Create();
     public TaskCapabilities Capabilities { get; }
@@ -29,14 +30,51 @@ public sealed class EngineSession : IAsyncDisposable
         _application = options.ApplicationPackage is null ? new UnconfiguredApplication() :
             new JournalApplication(new AdbApplication(options.Adb, options.Serial, options.ApplicationPackage, options.AllowActions), _device);
         _vision = new PythonTemplateVision(Path.GetFullPath(options.Python), Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"), modelDirectory: options.ModelDirectory);
-        Driver = new UiDriver(options.Server, _device, _vision, new AssetFiles(options.Assets));
+        _assets = new AssetFiles(options.Assets);
+        Driver = new UiDriver(options.Server, _device, _vision, _assets);
+    }
+    public async ValueTask<MapCamera> CreateMapCameraAsync(CampaignState state, Cell initialPosition,
+        MapDetectionRules detection, GridRecognitionRules recognition, MapCameraRules cameraRules,
+        TimeSpan timeout, CancellationToken token = default)
+    {
+        if (timeout <= TimeSpan.Zero || timeout.TotalMilliseconds > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(timeout));
+        if (detection.OperationSiren) throw new NotSupportedException("Operation Siren geometry is available, but its grid predictor and camera workflow are not ported");
+        detection.Validate(); recognition.Validate(); cameraRules.Validate();
+        using var deadline = new CancellationTokenSource(timeout);
+        using var combined = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
+        try
+        {
+            var detector = new GridDetector(_vision, _assets, detection);
+            async ValueTask<ScreenFrame> Capture(CancellationToken ct)
+            { await Driver.ScreenshotAsync(ct); return Driver.Frame!; }
+            var source = new MapViewSource(Capture, detector);
+            var first = await source.CaptureAsync(combined.Token);
+            var predictor = new GridRecognition(_vision, _assets, Driver.Server, recognition);
+            var mask = await _assets.ReadAsync(detection.OperationSiren ? MapDetectionAssets.OsMask : MapDetectionAssets.Mask, combined.Token);
+            var evidence = new MapSwipeEvidence(predictor, _vision, _vision, new(1, DateTimeOffset.UnixEpoch, mask), MapDetectionAssets.MaskOrigin);
+            return new MapCamera(state, initialPosition, first, source, new MapSwipeInput(_device), predictor,
+                new(evidence), cameraRules, MapControlMethod.Adb, timeout);
+        }
+        catch (OperationCanceledException error) when (!token.IsCancellationRequested && deadline.IsCancellationRequested)
+        { throw new TimeoutException("Map camera initialization exceeded its time limit", error); }
+    }
+    public async ValueTask<MapVisualObservation> ObserveMapAsync(CampaignRule rule, CancellationToken token)
+    {
+        var configuration = rule.Configure(new());
+        var detector = new GridDetector(_vision, _assets, new MapDetectionRules().WithChapter(configuration.Vision));
+        await Driver.ScreenshotAsync(token);
+        var view = await detector.DetectAsync(Driver.Frame!, token);
+        var recognition = new GridRecognition(_vision, _assets, Driver.Server, new());
+        // This task reports local geometry only; a screenshot alone does not establish global map position.
+        var cells = await recognition.ObserveAsync(view, new(1, 1), token: token);
+        return new(view, cells.Cells);
     }
     public TaskContext BeginTask(TimeSpan timeout)
     {
         _device.Actions.Clear();
         Driver.ResetTask();
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
-        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout);
+        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this);
     }
     public async Task<JsonObjectEvidence> SaveEvidenceAsync(string directory, bool failed)
     {

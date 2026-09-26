@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Alas.Engine.Navigation;
+using Alas.Engine.Runtime;
 
 namespace Alas.Engine.Tasks;
 
@@ -8,7 +9,8 @@ public sealed record TaskRequest(string Id, string Kind, JsonObject? Input = nul
     string[]? DependsOn = null, double TimeoutSeconds = 120);
 public sealed record TaskResult(string Id, string Kind, TaskOutcome Outcome, string Reason,
     JsonObject? Evidence = null, string? Error = null, string[]? FailureFrames = null, double ElapsedSeconds = 0);
-public sealed record TaskContext(IUiDriver Driver, IPageNavigator Navigator, IPopupHandler Popups, TimeSpan Timeout);
+public sealed record TaskContext(IUiDriver Driver, IPageNavigator Navigator, IPopupHandler Popups, TimeSpan Timeout,
+    IMapObservationService? Map = null);
 
 /// <summary>Each business domain owns its input schema and completion evidence.</summary>
 public interface ITaskRunner

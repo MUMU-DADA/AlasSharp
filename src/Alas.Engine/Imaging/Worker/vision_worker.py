@@ -207,7 +207,125 @@ def pair_measure(image, request):
     return dict(value=float(value), second_frame=request["second_frame"])
 
 
+def gray(image):
+    return cv2.add(cv2.convertScaleAbs(image.max(axis=2), alpha=0.5), cv2.convertScaleAbs(image.min(axis=2), alpha=0.5))
+
+
+def decode_gray(value):
+    # Native Mask preserves grayscale PNG values. Expanding to RGB then applying
+    # rgb2gray rounds odd grayscale values twice and changes template scores.
+    encoded = base64.b64decode(value, validate=True)
+    if len(encoded) > 16 * 1024 * 1024: raise ValueError('image_size')
+    image = cv2.imdecode(np.frombuffer(encoded, np.uint8), cv2.IMREAD_UNCHANGED)
+    if image is None: raise ValueError('image_decode')
+    return image if image.ndim == 2 else gray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+
+
+def png(image):
+    ok, data = cv2.imencode('.png', image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+    if not ok:
+        raise ValueError('image_encode')
+    return base64.b64encode(data).decode('ascii')
+
+
+def feature_measure(request):
+    operation = request['operation']
+    fields = {'protocol', 'id', 'frame', 'operation', 'image'}
+    additional = {
+        'image_mask': {'mask', 'origin'},
+        'line_features': {'mask', 'area', 'inner_peaks', 'edge_peaks', 'inner_hough', 'edge_hough'},
+        'warp_features': {'mask', 'area', 'matrix', 'size', 'canny', 'edge_color', 'hough'},
+        'correlation_features': {'template', 'threshold', 'flip'},
+        'contour_features': {'kernels'},
+    }
+    if set(request) != fields | additional[operation]:
+        raise ValueError('request_fields')
+    if request['protocol'] != 'alas-cv/1' or any(type(request[k]) is not int or request[k] < 1 for k in ('id', 'frame')):
+        raise ValueError('request_identity')
+    image = decode_gray(request['image']) if operation in ('correlation_features','contour_features') else decode(request['image'])
+    if operation == 'image_mask':
+        origin = request['origin']
+        if not isinstance(origin, list) or len(origin) != 2 or any(type(v) is not int for v in origin):
+            raise ValueError('mask_origin')
+        mask = crop(decode(request['mask']), -origin[0], -origin[1], image.shape[1], image.shape[0])
+        return dict(image=png(cv2.copyTo(image, gray(mask))))
+    if operation == 'correlation_features':
+        template = decode_gray(request['template'])
+        flip = request['flip']
+        if flip is not None:
+            if type(flip) is not int or flip not in (-1,0,1): raise ValueError('template_flip')
+            template = cv2.flip(template, flip)
+        threshold = request['threshold']
+        if type(threshold) not in (int,float) or not np.isfinite(threshold) or not -1 <= threshold <= 1:
+            raise ValueError('correlation_threshold')
+        if template.shape[0] > image.shape[0] or template.shape[1] > image.shape[1]: raise ValueError('template_bounds')
+        result = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
+        _, maximum, _, location = cv2.minMaxLoc(result)
+        points = np.argwhere(result > threshold)[:, ::-1]
+        if len(points) > 1000000: raise ValueError('feature_count')
+        return dict(maximum=maximum, location=location, points=points.tolist())
+    if operation == 'contour_features':
+        kernels = request['kernels']
+        if not isinstance(kernels,list) or len(kernels)>16 or any(type(k) is not int or not 1 <= k <= 255 for k in kernels):
+            raise ValueError('contour_kernels')
+        result = []
+        for size in kernels:
+            kernel=cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(size,size))
+            contours,_=cv2.findContours(cv2.morphologyEx(image,cv2.MORPH_CLOSE,kernel),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+            result.append([cv2.boundingRect(cv2.convexHull(c).astype(np.float32)) for c in contours])
+        return dict(rectangles=result)
+    area = request['area']
+    if (not isinstance(area,list) or len(area)!=4 or any(type(v) is not int for v in area) or
+            area[2]<1 or area[3]<1 or area[2]*area[3]>16*1024*1024): raise ValueError('area_bounds')
+    image = gray(crop(image,*area))
+    mask = decode_gray(request['mask'])
+    def hough(pixels, threshold):
+        if type(threshold) is not int or threshold < 1: raise ValueError('hough_threshold')
+        lines = cv2.HoughLines(pixels,1,np.pi/180,threshold)
+        return [] if lines is None else lines[:,0,:].tolist()
+    if operation == 'line_features':
+        if mask.shape != image.shape: raise ValueError('mask_shape')
+        image = cv2.bitwise_not(cv2.bitwise_and(image,mask))
+        stroke = cv2.erode(mask,cv2.getStructuringElement(cv2.MORPH_RECT,(3,3)))
+        def peaks(horizontal,parameters,pad):
+            if not isinstance(parameters,dict) or set(parameters)!={'height','width','prominence','distance','wlen'}:
+                raise ValueError('peak_parameters')
+            source = image.T if horizontal else image
+            if pad: source=np.pad(source,((0,0),(0,pad)),constant_values=255)
+            out=np.zeros(source.size,dtype=np.uint8)
+            locations,_=signal.find_peaks(source.ravel(),**parameters);out[locations]=255;out=out.reshape(source.shape)
+            if pad:out=out[:,:-pad]
+            if horizontal:out=out.T
+            return cv2.bitwise_and(out,stroke)
+        return dict(inner_h=hough(peaks(True,request['inner_peaks'],0),request['inner_hough']),
+                    inner_v=hough(peaks(False,request['inner_peaks'],0),request['inner_hough']),
+                    edge_h=hough(peaks(True,request['edge_peaks'],area[2]),request['edge_hough']),
+                    edge_v=hough(peaks(False,request['edge_peaks'],area[3]),request['edge_hough']))
+    matrix = np.array(request['matrix'],dtype=float)
+    size = request['size']
+    if matrix.shape != (9,) or not np.isfinite(matrix).all(): raise ValueError('warp_matrix')
+    if not isinstance(size,list) or len(size)!=2 or any(type(v) is not int or v<1 for v in size) or size[0]*size[1]>16*1024*1024:
+        raise ValueError('warp_size')
+    for key in ('canny','edge_color'):
+        v=request[key]
+        if not isinstance(v,list) or len(v)!=2 or not np.isfinite(v).all() or v[0]>v[1]:raise ValueError('image_threshold')
+    matrix=matrix.reshape(3,3)
+    warped=cv2.warpPerspective(image,matrix,tuple(size))
+    stroke=cv2.warpPerspective(mask,matrix,tuple(size))
+    stroke=cv2.erode(stroke,cv2.getStructuringElement(cv2.MORPH_RECT,(5,5))).astype(np.uint8)
+    stroke[:2,:]=stroke[-2:,:]=stroke[:,:2]=stroke[:,-2:]=0
+    kernel=cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5))
+    edge=cv2.morphologyEx(cv2.bitwise_and(cv2.Canny(warped,*request['canny']),stroke),cv2.MORPH_CLOSE,kernel)
+    lines=[]
+    if request['hough'] is not None:
+        filtered=cv2.bitwise_and(cv2.dilate(edge,kernel),cv2.inRange(warped,*request['edge_color']))
+        lines=hough(cv2.bitwise_and(filtered,stroke),request['hough'])
+    return dict(image=png(edge),lines=lines)
+
+
 def match(request):
+    if request.get('operation') in ('image_mask','line_features','warp_features','correlation_features','contour_features'):
+        return feature_measure(request)
     if request.get("protocol") != "alas-cv/1" or request.get("operation") not in ("template_match", "color_mean", "color_bands", "ocr_infer", "image_patch", "image_pair"):
         raise ValueError("unsupported_operation")
     fields = {"protocol", "id", "operation", "frame", "image", "area"}
