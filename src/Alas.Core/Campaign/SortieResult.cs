@@ -333,6 +333,8 @@ public class SortieResult
     /// <summary>生产方自报的违例码；消费方不信它，自己再判一次。</summary>
     [JsonPropertyName("contract_violations")] public List<string>? ContractViolations { get; set; }
     [JsonPropertyName("steps")] public List<Dictionary<string, JsonElement>>? Steps { get; set; }
+    /// <summary>Optional current-run observation; never used to judge the sortie outcome.</summary>
+    [JsonPropertyName("shadow_observation")] public JsonElement? ShadowObservation { get; set; }
 }
 
 /// <summary>通关证据链。缺任何一项都不能判 `cleared`。</summary>

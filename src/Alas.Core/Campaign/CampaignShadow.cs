@@ -36,7 +36,7 @@ public sealed record UpstreamRunObservation(
 /// </summary>
 public static class UpstreamLogParser
 {
-    private static readonly Regex HeaderRule = new(@"^\s*[─-]{3,}\s*([A-Z_]+?\d+)\s*[─-]{3,}\s*$", RegexOptions.Compiled);
+    private static readonly Regex HeaderRule = new(@"^\s*[─-]{3,}\s*(BATTLE_\d+)\s*[─-]{3,}\s*$", RegexOptions.Compiled);
     private static readonly Regex HeaderPlain = new(@"^\s*(?:INFO|\S+)?\s*.*?\b(BATTLE_\d+)\b\s*$", RegexOptions.Compiled);
     private static readonly Regex UsingFunction = new(@"Using function:\s*([A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Compiled);
 
@@ -119,7 +119,7 @@ public sealed record ShadowComparison(
     int Mismatched,
     int Skipped)
 {
-    public bool Clean => Mismatched == 0;
+    public bool Clean => Matched > 0 && Mismatched == 0 && Skipped == 0;
 }
 
 /// <summary>

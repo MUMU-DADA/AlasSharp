@@ -136,6 +136,9 @@ def run_native_campaign(inst, *, max_rounds=20, max_seconds=1500, withdraw_file=
     for method in ('enter_map', 'handle_map_fleet_lock', 'map_init',
                    'execute_a_battle', 'auto_search_execute_a_battle', 'withdraw'):
         wrap(method)
+    from campaign_shadow_observation import CampaignShadowObservation
+    shadow = CampaignShadowObservation(inst)
+    logger.addHandler(shadow)
     try:
         with observe_battle_result(inst) as evidence:
             out['upstream_returned'] = inst.run()
@@ -156,6 +159,9 @@ def run_native_campaign(inst, *, max_rounds=20, max_seconds=1500, withdraw_file=
         if terminal_failure is step:
             steps.append(step)
     finally:
+        logger.removeHandler(shadow)
+        shadow.close()
+        out['shadow_observation'] = shadow.document
         for name, (owned, value) in originals.items():
             if owned:
                 setattr(inst, name, value)

@@ -147,7 +147,6 @@ public sealed class CampaignBatchRunner
             }
 
             var stageWatch = System.Diagnostics.Stopwatch.StartNew();
-            var stageStarted = DateTimeOffset.Now;
             try
             {
                 stage.Result = _session.Vision.RunCampaignPlan(
@@ -185,7 +184,7 @@ public sealed class CampaignBatchRunner
             Judge(stage);
             stage.ArtifactPath = WriteStageArtifact(stage);
             LogStage(stage);
-            CompareShadow(stage, run, stageStarted);
+            CompareShadow(stage);
 
             if (stage.Failed && StopOnFailure)
             {
@@ -321,93 +320,81 @@ public sealed class CampaignBatchRunner
     /// 下应选的钩子，与上游实际打的 <c>Using function: …</c> 逐步比对；结果写进本次运行目录并记一条会话日志。
     ///
     /// 边界（重要）：这是**观测项**——漂移只记 WARN，**不影响关卡结论**，也不改变任何设备动作；
-    /// 关卡计划读不出来（导出里没有这一关）或找不到本次日志时静默跳过，不猜。
+    /// 计划、当前运行观测或影子工件失败时告警；空观测不能判定一致。
     /// </summary>
-    private void CompareShadow(StageRun stage, CampaignRunSettings run, DateTimeOffset stageStarted)
+    private void CompareShadow(StageRun stage)
     {
-        // 域级开关（P2 回退能力的骨架）：upstream = 不记录影子；shadow = 记录（默认）；
-        // csharp 只可能在显式闸门放行后出现，而"由 C# 执行关卡循环"尚未接线 → 如实告警并退回影子。
-        var loopMode = CampaignEngineSwitch.LoopMode();
-        if (loopMode == CampaignEngineMode.Upstream)
+        if (_session.Options.DryRun || stage.Result is null || _session.RunDirectory is null)
+            return;
+        var mode = CampaignEngineSwitch.LoopMode();
+        if (mode == CampaignEngineMode.Upstream) return;
+        if (mode == CampaignEngineMode.CSharp)
+            _session.Log.Warn("shadow", "C# 循环尚未接线，本次仍由上游运行并记录影子观测");
+        try
         {
-            _session.Log.Info("shadow", "影子比对已关闭（ALAS_ENGINE_LOOP=upstream）", new Dictionary<string, object?>
+            // The native invocation owns this observation. Shared daily logs can contain
+            // previous sorties, other chapters, or open writers and are not run evidence.
+            var raw = stage.Result.ShadowObservation;
+            if (raw is null)
+            {
+                _session.Log.Warn("shadow", "本次运行没有影子观测，不能判定一致");
+                return;
+            }
+            var observationData = JsonNode.Parse(raw.Value.GetRawText())!.AsObject();
+            if (observationData["source"]?.GetValue<string>() != "native_run_logger/1"
+                || observationData["error"] is not null)
+                throw new InvalidDataException("本次影子观测来源无效或采集失败: " + observationData["error"]);
+            var variants = observationData["variants"]?.AsArray();
+            if (variants?.Count != 1)
+                throw new InvalidDataException("本次影子观测缺少唯一的原生运行变体");
+            string variant = variants[0]!.GetValue<string>();
+            if (variant is not ("default_hooks" or "clear_all" or "battle_with_poor_map_data"))
+                throw new InvalidDataException("未知原生运行变体: " + variant);
+            if (!CampaignPlanReader.TryReadModule(_session.Options.DataDirectory, stage.Chapter, out var plan))
+                throw new InvalidDataException("无法读取本关的影子计划");
+            var lines = observationData["lines"]!.AsArray().Select(line => line!.GetValue<string>());
+            var observation = UpstreamLogParser.Parse(string.Join("\n", lines));
+            var comparison = CampaignShadow.Compare(plan!, observation, variant);
+            var document = new JsonObject
             {
                 ["chapter"] = stage.Chapter,
-            });
-            return;
-        }
-        if (loopMode == CampaignEngineMode.CSharp)
-        {
-            _session.Log.Warn("shadow", "ALAS_ENGINE_LOOP=csharp 尚未接线（生产路径仍走上游），本次按影子模式处理",
-                new Dictionary<string, object?> { ["chapter"] = stage.Chapter });
-        }
-        if (_session.RunDirectory is null || stage.Result is null) return;
-        if (!TryReadPlan(stage.Chapter, out var plan)) return;
-        string? logPath = FindUpstreamLog(stageStarted);
-        if (logPath is null) return;
-
-        var observation = Alas.Campaign.UpstreamLogParser.Parse(File.ReadAllText(logPath));
-        if (observation.Rounds.Count == 0) return;
-
-        string variant = run.ClearAll ? "clear_all" : CampaignShadow.DefaultVariant;
-        var comparison = Alas.Campaign.CampaignShadow.Compare(plan!, observation, variant);
-        var document = new JsonObject
-        {
-            ["chapter"] = stage.Chapter,
-            ["variant"] = variant,
-            ["upstream_log"] = Path.GetFileName(logPath),
-            ["campaign_end"] = observation.CampaignEnd,
-            ["exhausted"] = observation.BattleFunctionExhausted,
-            ["matched"] = comparison.Matched,
-            ["mismatched"] = comparison.Mismatched,
-            ["skipped"] = comparison.Skipped,
-            ["rows"] = new JsonArray(comparison.Rows.Select(row => (JsonNode)new JsonObject
+                ["variant"] = variant,
+                ["observation"] = observationData,
+                ["campaign_end"] = observation.CampaignEnd,
+                ["exhausted"] = observation.BattleFunctionExhausted,
+                ["matched"] = comparison.Matched,
+                ["mismatched"] = comparison.Mismatched,
+                ["skipped"] = comparison.Skipped,
+                ["clean"] = comparison.Clean,
+                ["rows"] = new JsonArray(comparison.Rows.Select(row => (JsonNode)new JsonObject
+                {
+                    ["battle_count"] = row.BattleCount,
+                    ["shadow"] = row.Expected,
+                    ["upstream"] = row.Actual,
+                    ["verdict"] = row.Verdict,
+                    ["note"] = row.Note,
+                }).ToArray()),
+            };
+            // The sortie artifact already has a unique per-attempt name.
+            string name = "shadow-" + Path.GetFileNameWithoutExtension(stage.ArtifactPath) + ".json";
+            _session.WriteArtifact(name, document);
+            var fields = new Dictionary<string, object?>
             {
-                ["battle_count"] = row.BattleCount,
-                ["shadow"] = row.Expected,
-                ["upstream"] = row.Actual,
-                ["verdict"] = row.Verdict,
-                ["note"] = row.Note,
-            }).ToArray()),
-        };
-        string name = "shadow-" + stage.Chapter.Replace('.', '-') + ".json";
-        string path = Path.Combine(_session.RunDirectory, name);
-        File.WriteAllText(path, document.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-
-        var fields = new Dictionary<string, object?>
-        {
-            ["chapter"] = stage.Chapter,
-            ["variant"] = variant,
-            ["matched"] = comparison.Matched,
-            ["mismatched"] = comparison.Mismatched,
-            ["skipped"] = comparison.Skipped,
-            ["artifact"] = name,
-        };
-        if (comparison.Mismatched == 0)
-        {
-            _session.Log.Info("shadow", "影子比对一致（C# 决策与上游实际出击相同）", fields);
+                ["chapter"] = stage.Chapter, ["variant"] = variant,
+                ["matched"] = comparison.Matched, ["mismatched"] = comparison.Mismatched,
+                ["skipped"] = comparison.Skipped, ["artifact"] = name,
+            };
+            if (comparison.Clean)
+                _session.Log.Info("shadow", "本次已观测轮次的钩子选择一致", fields);
+            else
+                _session.Log.Warn("shadow", "影子比对存在漂移或证据不完整", fields);
         }
-        else
+        catch (Exception error)
         {
-            _session.Log.Warn("shadow", "影子比对发现漂移（不影响本关结论，供排查）", fields);
+            // An optional observer must not abort the batch or erase its index.
+            _session.Log.Warn("shadow", "影子比对失败，保留出击结论与队列工件",
+                new Dictionary<string, object?> { ["error"] = error.ToString(), ["chapter"] = stage.Chapter });
         }
-    }
-
-    /// <summary>把模块名映射到导出里的关卡计划（映射逻辑在 `CampaignPlanReader.TryReadModule`，运行外可单独测）。</summary>
-    private bool TryReadPlan(string chapterModule, out Alas.Campaign.CampaignPlan? plan) =>
-        CampaignPlanReader.TryReadModule(_session.Options.DataDirectory, chapterModule, out plan);
-
-    /// <summary>本次关卡运行期间上游写的日志（ALAS 把日志写在引擎仓库的 `log/` 下）。</summary>
-    private string? FindUpstreamLog(DateTimeOffset since)
-    {
-        string directory = Path.Combine(_session.Options.RepoDirectory, "log");
-        if (!Directory.Exists(directory)) return null;
-        return Directory.GetFiles(directory, "*.txt")
-            .Select(path => new FileInfo(path))
-            .Where(info => info.LastWriteTime >= since.LocalDateTime.AddSeconds(-5))
-            .OrderByDescending(info => info.LastWriteTime)
-            .Select(info => info.FullName)
-            .FirstOrDefault();
     }
 
     private string? WriteStageArtifact(StageRun stage)
