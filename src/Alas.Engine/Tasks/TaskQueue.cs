@@ -19,7 +19,7 @@ public sealed class TaskQueue
     private readonly IReadOnlyDictionary<string, ITaskRunner> _runners;
     public TaskQueue(IEnumerable<ITaskRunner>? runners = null)
         => _runners = (runners ?? [new ObserveTask(), new NavigateTask(), new DataKeyTask(),
-            new MapObserveTask(), new CampaignStagesTask(), new CampaignSelectTask(),
+            new MapObserveTask(), new CampaignStagesTask(), new CampaignSelectTask(), new CampaignFleetPreparationTask(),
             new CampaignResumeTask()]).ToDictionary(r => r.Kind, StringComparer.Ordinal);
     private static JsonSerializerOptions CreateJson()
     {

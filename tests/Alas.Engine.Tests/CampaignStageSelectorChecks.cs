@@ -70,7 +70,43 @@ internal static class CampaignStageSelectorChecks
             result.Evidence["mapEntered"]?.GetValue<bool>() == false &&
             result.Evidence["cleared"]?.GetValue<bool>() == false,
             "Selection task claimed map entry or a cleared sortie");
-        Console.WriteLine("Campaign stage selection: mode, chapter, unique stage and preparation transitions passed offline; no sortie entered.");
+
+        driver = new Driver { Chapter = 1 };
+        navigator = new Navigator();
+        var fleetTask = new CampaignFleetPreparationTask();
+        result = await fleetTask.RunAsync(request with { Kind = fleetTask.Kind },
+            new TaskContext(driver, navigator, null!, TimeSpan.FromSeconds(60), Stages: new Stages(driver)), default);
+        Check(result.Outcome == TaskOutcome.Succeeded && navigator.Called &&
+            driver.ClickedAssets.SequenceEqual(["MAP_PREPARATION"]) && driver.FleetPreparationOpen &&
+            result.Evidence?["fleetPreparationObserved"]?.GetValue<bool>() == true &&
+            result.Evidence["mapEntered"]?.GetValue<bool>() == false &&
+            result.Evidence["cleared"]?.GetValue<bool>() == false,
+            "Fleet preparation task entered the map or claimed a cleared sortie");
+
+        driver = new Driver { Chapter = 1, MapPreparationVisible = false };
+        await driver.ClickAreaAsync(new(200, 250, 230, 280), default);
+        await Throws<InvalidDataException>(() => new CampaignPreparation(driver).OpenFleetAsync("normal").AsTask(),
+            "Missing map preparation caused a blind click");
+        Check(driver.ClickedAssets.Count == 0, "Missing preparation caused a device click");
+
+        driver = new Driver { Chapter = 1, OpenFleetOnClick = false };
+        await driver.ClickAreaAsync(new(200, 250, 230, 280), default);
+        await Throws<TimeoutException>(() => new CampaignPreparation(driver).OpenFleetAsync("normal").AsTask(),
+            "Map preparation clicks without fleet observation became success");
+        Check(driver.ClickedAssets.Count == 6, "Unconfirmed preparation exceeded its click limit");
+
+        driver = new Driver { Chapter = 1, DockFullOnPreparationClick = true };
+        await driver.ClickAreaAsync(new(200, 250, 230, 280), default);
+        await Throws<CampaignDockFullException>(() => new CampaignPreparation(driver).OpenFleetAsync("normal").AsTask(),
+            "Dock-full interruption was retried as an ordinary preparation click");
+        Check(driver.ClickedAssets.SequenceEqual(["MAP_PREPARATION"]),
+            "Dock-full interruption caused another device action");
+
+        driver = new Driver { Chapter = 1, EnterMapOnPreparationClick = true };
+        await driver.ClickAreaAsync(new(200, 250, 230, 280), default);
+        await Throws<InvalidDataException>(() => new CampaignPreparation(driver).OpenFleetAsync("normal").AsTask(),
+            "Unexpected map entry became verified fleet preparation");
+        Console.WriteLine("Campaign stage/fleet preparation: mode, chapter, unique stage, map and fleet preparation transitions passed offline; no sortie entered.");
     }
 
     private static void Check(bool value, string message)
@@ -124,6 +160,12 @@ internal static class CampaignStageSelectorChecks
         public bool StallChapter { get; set; }
         public bool ConfirmPreparation { get; set; } = true;
         public bool EnterMap { get; set; }
+        public bool MapPreparationVisible { get; set; } = true;
+        public bool OpenFleetOnClick { get; set; } = true;
+        public bool EnterMapOnPreparationClick { get; set; }
+        public bool DockFullOnPreparationClick { get; set; }
+        public bool DockFullVisible { get; private set; }
+        public bool FleetPreparationOpen { get; private set; }
         public bool Selected { get; private set; }
         public List<string> ClickedAssets { get; } = [];
         public List<Rectangle> ClickedAreas { get; } = [];
@@ -139,7 +181,10 @@ internal static class CampaignStageSelectorChecks
                 asset == UiAssets.Campaign.SWITCH_1_HARD ? ModeNormal :
                 asset == UiAssets.Campaign.SWITCH_1_NORMAL ? !ModeNormal :
                 asset == UiAssets.Campaign.CHAPTER_NEXT || asset == UiAssets.Campaign.CHAPTER_PREV ? false :
-                asset == UiAssets.Map.MAP_PREPARATION ? Selected && ConfirmPreparation && !EnterMap :
+                asset == UiAssets.Map.MAP_PREPARATION ? Selected && ConfirmPreparation && MapPreparationVisible &&
+                    !FleetPreparationOpen && !EnterMap :
+                asset == UiAssets.Map.FLEET_PREPARATION ? FleetPreparationOpen :
+                asset == UiAssets.Retire.RETIRE_APPEAR_1 || asset == UiAssets.Retire.RETIRE_APPEAR_3 ? DockFullVisible :
                 asset == UiAssets.Handler.IN_MAP ? Selected && EnterMap : false;
             return ValueTask.FromResult(present);
         }
@@ -151,6 +196,9 @@ internal static class CampaignStageSelectorChecks
             else if (asset == UiAssets.Campaign.SWITCH_1_NORMAL) ModeNormal = true;
             else if (!StallChapter && asset == UiAssets.Campaign.CHAPTER_PREV) Chapter--;
             else if (!StallChapter && asset == UiAssets.Campaign.CHAPTER_NEXT) Chapter++;
+            else if (asset == UiAssets.Map.MAP_PREPARATION && EnterMapOnPreparationClick) EnterMap = true;
+            else if (asset == UiAssets.Map.MAP_PREPARATION && DockFullOnPreparationClick) DockFullVisible = true;
+            else if (asset == UiAssets.Map.MAP_PREPARATION && OpenFleetOnClick) FleetPreparationOpen = true;
             return ValueTask.CompletedTask;
         }
         public ValueTask ClickAreaAsync(Rectangle area, CancellationToken token)

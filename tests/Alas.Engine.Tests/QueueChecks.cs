@@ -58,6 +58,16 @@ internal static class QueueChecks
             offline with { ModelDirectory = "offline-models" }, new(artifacts, DryRun: true));
         Check(invalidSelect.Failed && invalidSelect.Tasks.Single().Outcome == TaskOutcome.Refused,
             "Uncompiled campaign selection reached the device gate");
+        var fleetRequest = selectRequest with { Id = "fleet", Kind = "campaign_fleet_prepare" };
+        var fleetNoModels = await queue.RunAsync([fleetRequest], offline, new(artifacts, DryRun: true));
+        var fleetDry = await queue.RunAsync([fleetRequest], offline with { ModelDirectory = "offline-models" },
+            new(artifacts, DryRun: true));
+        var fleetRefused = await queue.RunAsync([fleetRequest], offline with { ModelDirectory = "offline-models" },
+            new(artifacts));
+        Check(fleetNoModels.Failed && fleetNoModels.Tasks.Single() is { Outcome: TaskOutcome.Skipped, Reason: "preconditions_unmet" } &&
+            fleetDry.Tasks.Single().Outcome == TaskOutcome.DryRun &&
+            fleetRefused.Tasks.Single() is { Outcome: TaskOutcome.Refused, Reason: "actions_disabled" },
+            "Fleet preparation bypassed OCR, dry-run or action gating");
         var skipped = await queue.RunAsync([new("key", "data_key"), new("observe", "observe")], offline, new(artifacts, DryRun: true));
         Check(!skipped.Failed && skipped.Tasks[0] is { Outcome: TaskOutcome.Skipped, Reason: "preconditions_unmet" } &&
             skipped.Tasks[1].Outcome == TaskOutcome.DryRun, "Optional precondition failure did not remain skipped");
