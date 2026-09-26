@@ -1,199 +1,113 @@
 #!/usr/bin/env python3
-"""R5 原语覆盖核对：已登记原语里哪些被夹具真正执行过（离线，无设备）。
-
-用法：
-    python tools/diagnostics/verify_r5_coverage.py
-
-做的事：
-  1. 跑 `r5-exec`（钩子级夹具）与 `r5-loop`（关卡循环/变体夹具），把两边**实际执行到的步骤与动作**
-     归一成原语名（剥掉 `fleet_1.` / `fleet_2.` / `fleet_boss.` 前缀与 `super().`）；
-  2. 与 `verify_r5_execution.EXPECTED_PRIMITIVES`（已登记原语的唯一来源）对照；
-  3. **没有被任何夹具覆盖的原语必须在 <ALLOWED_GAPS> 里显式声明并写清原因**，否则失败——
-     这样"缺口"是**被声明的**，而不是悄悄漏掉的；
-  4. 打印覆盖率。
-
-只读：不连设备、不改变任何运行状态。
-"""
+"""Check actual primitive invocations and expose every missing coverage prerequisite."""
 from __future__ import annotations
 
 import json
-import pathlib
+import os
+from pathlib import Path
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tools" / "diagnostics"))
-from verify_r5_execution import EXPECTED_PRIMITIVES  # noqa: E402
+from verify_r5_execution import EXPECTED_PRIMITIVES
 
-SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
-EXEC_FIXTURE = ROOT / "tools" / "diagnostics" / "r5-execution-fixture.json"
-LOOP_FIXTURE = ROOT / "tools" / "diagnostics" / "r5-loop-fixture.json"
-
-# 允许的覆盖缺口：**必须写清原因**，且不能用来掩盖"其实能测但没测"的情况。
-ALLOWED_GAPS: dict[str, str] = {
-    # 已实现、也有上游真实方法对拍（复合原语扫描的 `check_accessibility`），但**暂时没有夹具钩子路径**：
-    # 它只出现在目前 `plan_complete=false` 的钩子体里（需要导出器支持"局部变量 + 条件"后才会进计划），
-    # 所以这里的"夹具覆盖"统计到不了它。写明原因，而不是悄悄漏掉。
-    "check_accessibility": "只在 plan_complete=false 的钩子体里出现；已由复合原语扫描对拍，等结构建模后进计划",
-    # 同上：已实现（`host.EnsureFleet`），但全库计划里唯一一次调用带的是**未求值实参**
-    # （`fleet_ensure(index=<expr>)`），执行器在"实参未求值"那一步就阻塞，走不到原语，夹具统计不到。
-    "ensure_fleet": "计划里唯一一次调用带未求值实参（`index=<expr>`），执行器进入原语前就阻塞；等该表达式可求值后补夹具",
-    "fleet_ensure": "上游名别名，同上（唯一调用点带未求值实参）",
-}
-
-# 日志标记 → 原语：有些原语是**被别的原语内部调用**的（`battle_boss` 由 clear_all 变体在无剩余敌人时调、
-# `fleet_2_break_siren_caught` 由变体与 fleet_2_* 调用），它们不发设备动作、只留日志，
-# 所以覆盖统计要把这些**我们自己写的日志标记**也算进来（标记就是原语里的原话，改原语时同步改这里）。
-LOG_MARKERS: dict[str, str] = {
-    "No battle executed.": "battle_boss",
-    "Break siren caught, fleet_2:": "fleet_2_break_siren_caught",
-    "No fleet caught by siren.": "fleet_2_break_siren_caught",
-    "Appear caught by siren, but not fleet_2.": "fleet_2_break_siren_caught",
-    "Brute clear roadblocks between fleets.": "brute_fleet_meet",
-    "Fleet_2 rescue": "fleet_2_rescue",
-    "Clear bouncing enemy": "clear_bouncing_enemy",
-}
+ROOT = Path(__file__).resolve().parents[2]
+SERVER = ROOT / 'src/Alas.Server/bin/Release/net10.0/Alas.Server.exe'
+DATA = Path(os.environ.get('ALAS_DATA') or ROOT / 'data')
+EXEC_FIXTURE = ROOT / 'tools/diagnostics/r5-execution-fixture.json'
+LOOP_FIXTURE = ROOT / 'tools/diagnostics/r5-loop-fixture.json'
 
 
 def normalize(name: str) -> str:
-    """`fleet_boss.clear_boss` → `clear_boss`；`super().X` → `X`。"""
-    text = name.strip()
-    for prefix in ("fleet_1.", "fleet_2.", "fleet_boss.", "fleet_submarine.", "super()."):
-        if text.startswith(prefix):
-            text = text[len(prefix):]
-    return text.split(" ")[0].strip()
+    for prefix in ('fleet_1.', 'fleet_2.', 'fleet_boss.', 'fleet_submarine.', 'super().'):
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return name
 
 
-def run(command: str, fixture: pathlib.Path) -> dict:
-    completed = subprocess.run([str(SERVER), command, "--fixture", str(fixture), "--json"],
-                               cwd=ROOT, capture_output=True, text=True, timeout=600,
-                               encoding="utf-8", errors="replace")
-    text = completed.stdout + completed.stderr
-    start = text.find("{")
-    if start < 0:
-        raise SystemExit(f"{command} 没有输出 JSON：{text.strip().splitlines()[-3:]}")
-    return json.loads(text[start:])
+def run(command: str, fixture: Path) -> dict:
+    result = subprocess.run([str(SERVER), command, '--fixture', str(fixture), '--data', str(DATA), '--json'],
+                            cwd=ROOT, capture_output=True, text=True, timeout=600,
+                            encoding='utf-8', errors='replace')
+    if result.returncode != 0:
+        raise RuntimeError(f'{command} 退出码 {result.returncode}: {result.stderr[-500:]}')
+    return json.loads(result.stdout)
+
+
+def observed(payload: dict, fixture: Path) -> set[str]:
+    fixtures = json.loads(fixture.read_text(encoding='utf-8')).get('cases')
+    cases = payload.get('cases')
+    if not isinstance(fixtures, list) or not fixtures or not isinstance(cases, list) or not cases:
+        raise ValueError('缺少非空夹具/执行结果，不能统计覆盖率')
+    expected = [case['name'] for case in fixtures]
+    actual = [case.get('name') for case in cases]
+    if len(actual) != len(set(actual)) or sorted(actual) != sorted(expected):
+        raise ValueError('实际结果没有逐项覆盖夹具用例')
+    covered = set()
+    for case in cases:
+        invocations = case.get('invoked_ops')
+        if not isinstance(invocations, list) or any(not isinstance(op, str) or not op for op in invocations):
+            raise ValueError(f"{case.get('name')} 缺少真实 invoked_ops；动作、步骤文本和日志不能代替调用记录")
+        covered.update(normalize(op) for op in invocations)
+    return covered
+
+
+def plan_gaps(data: Path, registered: set[str]) -> tuple[list[str], list[str]]:
+    paths = sorted((data / 'campaign').rglob('*.json'))
+    if not paths:
+        raise ValueError('缺少 campaign 导出，不能统计计划覆盖')
+    incomplete, unresolved = [], []
+    hook_count = 0
+
+    def calls(value):
+        if isinstance(value, dict):
+            # Both step objects and nested condition-call objects carry op.
+            if value.get('op') and ('kind' in value or 'args' in value):
+                yield normalize(value['op'])
+            for key, child in value.items():
+                if key == 'call' and isinstance(child, dict) and child.get('op'):
+                    yield normalize(child['op'])
+                else:
+                    yield from calls(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from calls(child)
+
+    for path in paths:
+        battles = json.loads(path.read_text(encoding='utf-8'))['campaign']['battles']
+        hooks = {battle['method'] for battle in battles}
+        for battle in battles:
+            hook_count += 1
+            source = path.relative_to(data / 'campaign').as_posix() + ':' + battle['method']
+            if battle.get('plan_complete') is not True:
+                incomplete.append(source)
+                continue
+            for op in set(calls(battle['steps'])) - registered - hooks - {'map.select'}:
+                unresolved.append(source + ':' + op)
+    if hook_count == 0:
+        raise ValueError('导出没有钩子，不能统计计划覆盖')
+    return incomplete, unresolved
 
 
 def main() -> int:
-    if not SERVER.is_file():
-        raise SystemExit(f"缺少 {SERVER.relative_to(ROOT)}；先运行 ./build.ps1 构建")
-    covered: dict[str, str] = {}
-
-    def note(name: str, where: str) -> None:
-        key = normalize(name)
-        if key and key[0].isalpha() and key not in covered:
-            covered[key] = where
-
-    for case in run("r5-exec", EXEC_FIXTURE)["cases"]:
-        for step in case.get("steps") or []:
-            note(step.split("：")[0].split(":")[0], f"r5-exec/{case['name'][:28]}")
-        for action in case.get("actions") or []:
-            note(action.split("(")[0], f"r5-exec/{case['name'][:28]}")
-        # C# 侧**实际调用过**的原语（诊断宿主记录）：静态扫描夹具文本认不出
-        # "由夹具钩子的计划间接执行"的原语（实测 `fleet_at` 就漏了）。
-        for op in case.get("invoked_ops") or []:
-            note(op, f"r5-exec/{case['name'][:28]}（执行记录）")
-    for case in run("r5-loop", LOOP_FIXTURE)["cases"]:
-        for round_ in case.get("rounds") or []:
-            note(round_.get("hook") or "", f"r5-loop/{case['name'][:28]}")
-        for action in case.get("actions") or []:
-            note(action.split("(")[0], f"r5-loop/{case['name'][:28]}")
-        for log in case.get("logs") or []:
-            note(log.split("：")[0], f"r5-loop/{case['name'][:28]}")
-            for marker, primitive in LOG_MARKERS.items():
-                if log.startswith(marker):
-                    note(primitive, f"r5-loop/{case['name'][:28]}（日志标记）")
-
-    missing = [name for name in EXPECTED_PRIMITIVES if name not in covered]
-    undeclared = [name for name in missing if name not in ALLOWED_GAPS]
-    declared = [name for name in missing if name in ALLOWED_GAPS]
-
-    total = len(EXPECTED_PRIMITIVES)
-    print(f"[r5-coverage] 已登记原语 {total} 个：夹具覆盖 {total - len(missing)}"
-          f"（{100 * (total - len(missing)) / total:.1f}%）")
-
-    # 计划完整性：`plan_complete=false` 的钩子 `steps` 恒为空——**必须由引擎拒绝执行**，
-    # 否则等于"静默什么都不做"。这里把数量报出来（口径只说清楚"有多少钩子没有可执行计划"，
-    # 不假装 100%）；引擎侧的拒绝行为由 `r5-exec` 的夹具用例断言。
-    incomplete = 0
-    hooks = 0
-    for path in sorted((ROOT / "data" / "campaign").rglob("*.json")):
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        for battle in (payload.get("campaign") or {}).get("battles") or []:
-            if not str(battle.get("method", "")).startswith("battle_"):
-                continue
-            hooks += 1
-            if not battle.get("plan_complete", True):
-                incomplete += 1
-    print(f"[r5-coverage] battle_* 钩子 {hooks} 个：有可执行计划 {hooks - incomplete}"
-          f"，**plan_complete=false（引擎拒绝执行并报原因）{incomplete}**")
-
-    # **计划完整 ≠ 原语齐全**：计划完整但步骤里引用了没登记的原语时，执行器会如实阻塞。
-    # 分开报出来，免得"有可执行计划"这个口径把未实现的调用也算成可执行。
     registered = set(EXPECTED_PRIMITIVES)
-    structural = {"branch", "return", "raise", "log", "map_set", "state_set"}
-    # 特例：map.select 由执行器直接处理（不是注册原语）；舰队前缀 leet_boss.clear_boss
-    # 由执行器剥前缀后查注册表（SplitFleetPrefix）。不这样归一，统计会虚高（实测第一版报了 755 个）。
-    special_ops = {"map.select"}
-
-    def normalize_op(op: str) -> str:
-        """leet_boss.clear_boss → clear_boss（执行器会剥前缀）；super().x 同理。"""
-        if op.startswith("super()"):
-            return op.split(".", 1)[-1]
-        head, _, tail = op.partition(".")
-        return tail if head.startswith("fleet") and tail else op
-
-    def step_ops(steps) -> set:
-        found = set()
-        for step in steps or []:
-            kind = step.get("kind")
-            if kind not in structural and step.get("op"):
-                found.add(normalize_op(step["op"]))
-            if kind in ("call", "conditional", "conditional_negated", "terminal", "assign", "super_delegate") \
-                    and step.get("op") and step["op"] not in structural:
-                found.add(normalize_op(step["op"]))
-            if step.get("test", {}).get("call", {}).get("op"):
-                found.add(step["test"]["call"]["op"])
-            found |= step_ops(step.get("body"))
-            found |= step_ops(step.get("orelse"))
-        return found
-
-    blocked_by_missing = []
-    missing_ops: dict[str, int] = {}
-    for path in sorted((ROOT / "data" / "campaign").rglob("*.json")):
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        for battle in (payload.get("campaign") or {}).get("battles") or []:
-            if not battle.get("plan_complete") or not str(battle.get("method", "")).startswith("battle_"):
-                continue
-            # 同关卡内其它钩子的名字（self.battle_0() 这种跨钩子调用）由执行器递归执行，
-            # 不是"未登记原语"；名称别名（如 leet_ensure → nsure_fleet）这里不展开，如实列出原名。
-            hook_names = {b.get("method") for b in (payload.get("campaign") or {}).get("battles") or []}
-            missing = {op for op in step_ops(battle.get("steps"))
-                       if op not in registered and op not in special_ops and op not in hook_names}
-            if missing:
-                blocked_by_missing.append(f"{path.stem}:{battle['method']}")
-                for op in missing:
-                    missing_ops[op] = missing_ops.get(op, 0) + 1
-    if blocked_by_missing:
-        detail = "、".join(f"{op} × {count}" for op, count in sorted(missing_ops.items(),
-                                                                   key=lambda kv: -kv[1]))
-        print(f"[r5-coverage] 其中 **{len(blocked_by_missing)} 个钩子**计划完整但引用了未登记的原语"
-              f"（执行时会阻塞）：{detail}")
-    if declared:
-        print("[已声明缺口]")
-        for name in declared:
-            print(f"  {name}：{ALLOWED_GAPS[name]}")
-    if undeclared:
-        print("[未声明缺口]")
-        for name in undeclared:
-            print(f"  {name}：没有任何夹具执行到它，也没有在 ALLOWED_GAPS 里声明原因")
-    if undeclared:
-        print(f"FAIL: {len(undeclared)} 个原语没有夹具覆盖且未声明")
+    incomplete, unresolved = plan_gaps(DATA, registered)
+    execution = run('r5-exec', EXEC_FIXTURE)
+    if set(execution.get('implemented_primitives') or []) != registered:
+        raise ValueError('实际注册表与执行回归的原语词表不一致')
+    covered = observed(execution, EXEC_FIXTURE) | observed(run('r5-loop', LOOP_FIXTURE), LOOP_FIXTURE)
+    missing = sorted(registered - covered)
+    print(f'[r5-coverage] 注册原语 {len(registered)}；真实调用覆盖 {len(registered & covered)}；缺口 {len(missing)}')
+    for op in missing:
+        print('  未调用: ' + op)
+    print(f'计划缺口：不完整钩子 {len(incomplete)}；需确认方法绑定 {len(unresolved)}')
+    for source in (incomplete + unresolved)[:20]:
+        print('  ' + source)
+    if missing or incomplete or unresolved:
+        print('FAIL: 覆盖不完整；登记原因、日志命中或静态步骤均不能抵消缺口')
         return 1
-    print("PASS: 每个已登记原语都被夹具执行过，或已在 ALLOWED_GAPS 里写明原因")
+    print('PASS: 登记原语均有真实调用记录且扫描计划无缺口；不证明真机行为')
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())
