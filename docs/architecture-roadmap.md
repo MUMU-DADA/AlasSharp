@@ -29,6 +29,8 @@ R5 舰队属性分派已通过原生 Fleet 属性与双宿主的 592 场景离�
 
 `MapObservation` 已将整帧观测接入 C# 权威状态与寻路输入，覆盖相机偏移、局部坐标、编译后的忽略规则、整帧预检、两处冲突拒绝和初始化潜艇/舰队纠正。532 个上游实际 `CampaignMap.update` 场景、1,565 帧（1,278 接受、287 拒绝）、67 个忽略预测对照通过，并核对全部状态字段及非法输入无部分写入。输入仍是合成观测，未证明截图检测、寻敌或设备动作有效。
 
+`GridRecognition` 已将 `GridPredictor.predict` 的逐格判定顺序迁入 C#；Python 视觉 worker 仅提供 `image_patch` 数值测量，不加载上游模块、不解释素材 id。90 个含模板、颜色和 HSV 的合成识别场景、90 次完整视野合并及 96 个基础测量通过；此验证使用上游提供的几何和合成像素，线段/透视/单应性检测、实机截图和战斗仍未验收。
+
 `MapPathfinder` 已在该状态层上接通拓扑、墙、单向传送门、伏击权重、敌人格停止扩散、机关阻挡、迷宫邻域、路径回溯、转弯/步长节点和双舰队成本。C# 使用正权最短路，修复上游以“前沿集合不增长”提前停止造成的伏击成本偏大；路线仍保留上游目的地回退语义，但明确标记不可达。325 个地图案例、9,206 个成本格、9,206 组邻接集合、28,460 次原生节点回放通过；其中 12 个上游早停成本被修正，39 条等成本路线选择不同合法前驱。路径尚未由真实设备动作消费，不能据此证明真机寻敌或战斗成功。
 
 独立纯视觉服务已实现彩色/亮度/二值模板匹配、GIF 逐帧测量、全图素材裁剪和 RGB 均值。C# 管理常驻进程、帧与请求身份、严格阈值、动画首个命中/末帧失败偏移、超时/取消及错误收尾；颜色判据也在 C#。Python worker 只依赖图像库，不导入上游模块，不解析素材 id，不接设备/页面/任务业务；越界裁剪保留上游补黑语义。21 项合成像素及协议反例通过，包含错帧拒绝、并发请求、超时/取消/释放、根因保留、模板尺寸拒绝与业务调用拒绝。OCR 已接五套固定哈希 ONNX 模型：图像预处理/推理在 worker，字母表、服务器语言选择、置信阈值、CTC 解码和数字/计数器/时长解析在 C#。原生对照包含 81 次实际模型推理、14 个字母表拒绝、200 条 CTC 序列、13 个数值解析和 54 项逐像素预处理，模型及标签损坏明确拒绝。缩放、地图特征和原生完整视觉路径尚未验收。
@@ -56,6 +58,7 @@ dotnet run --project tests/Alas.Engine.Tests -c Release -- --data-key .runtime/v
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --grid .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-grid-state
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --path .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-path
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --observation .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-observation
+dotnet run --project tests/Alas.Engine.Tests -c Release -- --recognition .runtime/venv314/Scripts/python.exe .runtime/engine .runtime/verification/native-recognition
 ```
 
 ## 自动化规则覆盖与剩余项

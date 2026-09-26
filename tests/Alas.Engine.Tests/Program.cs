@@ -100,6 +100,13 @@ try
     await Throws<IOException>(() => application.IsRunningAsync(default).AsTask(), "Unknown foreground silently accepted");
     Console.WriteLine($"Local engine/transport checks passed: {checks}");
 
+    if (args is ["--recognition", var recognitionPython, var recognitionUpstream, var recognitionArtifacts])
+    {
+        string folder = Path.GetFullPath(recognitionArtifacts);
+        Directory.CreateDirectory(folder);
+        await RecognitionChecks.RunAsync(Path.GetFullPath(recognitionPython), Path.GetFullPath(recognitionUpstream), folder);
+        return 0;
+    }
     if (args is ["--observation", var observationPython, var observationUpstream, var observationArtifacts])
     {
         string folder = Path.GetFullPath(observationArtifacts);

@@ -128,8 +128,64 @@ def crop(image, x, y, width, height):
     return out
 
 
+def patch_measure(image, request):
+    size = request["size"]
+    if (not isinstance(size, list) or len(size) != 2 or any(type(v) is not int or v < 1 for v in size)
+            or size[0] * size[1] > 1024 * 1024):
+        raise ValueError("patch_size")
+    image = cv2.resize(image, tuple(size), interpolation=cv2.INTER_CUBIC)
+    measure, processing = request["measure"], request["processing"]
+    if measure == "hsvcount":
+        lower, upper = request["lower"], request["upper"]
+        if any(not isinstance(v, list) or len(v) != 3 or not np.isfinite(v).all() for v in (lower, upper)):
+            raise ValueError("hsv_bounds")
+        return int(cv2.countNonZero(cv2.inRange(cv2.cvtColor(image, cv2.COLOR_RGB2HSV), tuple(lower), tuple(upper))))
+    if processing == "colorsimilarity":
+        color = request["color"]
+        if not isinstance(color, list) or len(color) != 3 or any(type(v) is not int or not 0 <= v <= 255 for v in color):
+            raise ValueError("patch_color")
+        diff = image.astype(np.int16) - np.array(color, dtype=np.int16)
+        distance = np.maximum(diff, 0).max(axis=2) - np.minimum(diff, 0).min(axis=2)
+        image = (255 - np.minimum(distance, 255)).astype(np.uint8)
+    elif processing == "gray":
+        # Native rgb2gray rounds each half separately, then adds with saturation.
+        high, low = image.max(axis=2), image.min(axis=2)
+        image = cv2.add(cv2.convertScaleAbs(high, alpha=0.5), cv2.convertScaleAbs(low, alpha=0.5))
+    elif processing != "color":
+        raise ValueError("patch_processing")
+    if measure == "similaritycount":
+        minimum = request["minimum"]
+        if image.ndim != 2 or type(minimum) is not int or not 0 <= minimum <= 255:
+            raise ValueError("patch_minimum")
+        return int(cv2.countNonZero(cv2.inRange(image, minimum, 255)))
+    if measure != "template":
+        raise ValueError("patch_measure")
+    encoded = base64.b64decode(request["template"], validate=True)
+    if len(encoded) > 16 * 1024 * 1024:
+        raise ValueError("image_size")
+    # Native Template preserves grayscale PNGs and includes mirrored GIF frames.
+    if encoded[:6] in (b"GIF87a", b"GIF89a"):
+        frames = imageio.mimread(io.BytesIO(encoded), format="GIF", memtest="256MB")
+        if not frames or len(frames) > 512:
+            raise ValueError("template_frames")
+        channels = frames[0].ndim
+        frames = [f[:, :, :3].copy() if channels == 3 else f[:, :, 0].copy() if f.ndim == 3 else f for f in frames]
+        frames = [variant for f in frames for variant in (f, cv2.flip(f, 1))]
+    else:
+        template = cv2.imdecode(np.frombuffer(encoded, np.uint8), cv2.IMREAD_UNCHANGED)
+        if template is None:
+            raise ValueError("image_decode")
+        frames = [cv2.cvtColor(template, cv2.COLOR_BGR2RGB) if template.ndim == 3 else template]
+    values = []
+    for template in frames:
+        if template.shape[0] > image.shape[0] or template.shape[1] > image.shape[1] or template.ndim != image.ndim:
+            raise ValueError("patch_template_shape")
+        values.append(float(cv2.minMaxLoc(cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED))[1]))
+    return max(values)
+
+
 def match(request):
-    if request.get("protocol") != "alas-cv/1" or request.get("operation") not in ("template_match", "color_mean", "color_bands", "ocr_infer"):
+    if request.get("protocol") != "alas-cv/1" or request.get("operation") not in ("template_match", "color_mean", "color_bands", "ocr_infer", "image_patch"):
         raise ValueError("unsupported_operation")
     fields = {"protocol", "id", "operation", "frame", "image", "area"}
     if request["operation"] == "template_match":
@@ -138,6 +194,8 @@ def match(request):
         fields |= {"color", "closing_size", "row_threshold", "peak_height", "peak_width", "peak_distance", "relative_height"}
     elif request["operation"] == "ocr_infer":
         fields |= {"model", "model_sha256", "num_classes", "candidates", "letter", "threshold", "preprocessing"}
+    elif request["operation"] == "image_patch":
+        fields |= {"size", "measure", "processing", "color", "template", "minimum", "lower", "upper"}
     if set(request) != fields:
         raise ValueError("request_fields")
     for key in ("id", "frame"):
@@ -152,6 +210,8 @@ def match(request):
         raise ValueError("area_bounds")
     if request["operation"] == "ocr_infer":
         return infer_ocr(crop(image, x, y, width, height), request)
+    if request["operation"] == "image_patch":
+        return {"value": patch_measure(crop(image, x, y, width, height), request)}
     if request["operation"] == "color_mean":
         return {"color": list(cv2.mean(crop(image, x, y, width, height))[:3])}
     if request["operation"] == "color_bands":

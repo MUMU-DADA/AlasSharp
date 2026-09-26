@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace Alas.Engine.Imaging;
 
 /// <summary>One persistent, image-only worker. Protocol failures permanently close this instance.</summary>
-public sealed class PythonTemplateVision : IVision
+public sealed partial class PythonTemplateVision : IVision
 {
     private readonly Process _process;
     private readonly SemaphoreSlim _gate = new(1, 1);
