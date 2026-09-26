@@ -15,7 +15,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools'))
-from export_upstream_data import export_assets, export_campaign
+from export_upstream_data import export_pages, export_assets, export_campaign
 from verify_export import check
 
 
@@ -44,14 +44,32 @@ class ExportIntegrityTests(unittest.TestCase):
                 source.write_text('from module.map.map_base import CampaignMap\nclass Grid: pass\nMAP = CampaignMap("fixture")\nMAP.shape = "A1"\nMAP.grid_class = Grid\nA1, = MAP.flatten()\nMAP.fortress_data = [A1, (A1,)]\nMAP.ignore_prediction(A1, is_siren=True)\nclass Config:\n    FLAG = True\nclass Campaign:\n    grid_class = Grid\n    MACHINE_FORTRESS = [A1]\n    def battle_0(self): return True\n    battle_1 = battle_0\n', encoding='utf-8')
             manifest = {'errors': []}
             export_assets(str(repo), str(data), manifest)
+            # 页面图导出也要在夹具里跑一遍，否则完整性用例覆盖不到这条契约
+            (repo / 'module' / 'ui').mkdir(parents=True, exist_ok=True)
+            (repo / 'module' / 'ui' / 'page.py').write_text(
+                'class Page:\n'
+                '    def __init__(self, check_button):\n'
+                '        self.check_button = check_button\n'
+                '        self.links = {}\n'
+                '    def link(self, button, destination):\n'
+                '        self.links[destination] = button\n'
+                'page_main = Page(BUTTON)\n'
+                'page_other = Page(BUTTON)\n'
+                'page_main.link(button=BUTTON, destination=page_other)\n',
+                encoding='utf-8')
+            export_pages(str(repo), str(data), manifest)
             export_campaign(str(repo), str(data), manifest)
             (data / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
             baseline = {name: json.loads((data / name).read_text(encoding='utf-8'))
-                        for name in ('assets.json', 'campaign_index.json', 'manifest.json',
+                        for name in ('assets.json', 'campaign_index.json', 'pages.json', 'manifest.json',
                                      'campaign/fixture/first.json', 'campaign/fixture/second.json')}
 
             def missing_server(values):
                 values['assets.json']['assets']['one/BUTTON']['file'].pop('jp')
+
+            def dangling_page_link(values):
+                # 悬空边：目标不是已知页面 → 校验必须拒绝
+                values['pages.json']['pages'][0]['links'][0]['destination'] = 'page_missing'
 
             def wrong_source(values):
                 values['assets.json']['assets']['one/BUTTON']['source'] = 'module/two/assets.py'

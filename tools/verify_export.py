@@ -47,6 +47,41 @@ def check(repo: str, data: str) -> dict:
     assets = json.loads(Path(data, 'assets.json').read_text(encoding='utf-8'))
     index = json.loads(Path(data, 'campaign_index.json').read_text(encoding='utf-8'))
     manifest = json.loads(Path(data, 'manifest.json').read_text(encoding='utf-8'))
+
+    # 页面图导出（第三阶段「只依赖上游静态规则」的静态数据之一）：
+    # 页面名唯一、每条边的目标都是已知页面、源文件哈希与当前上游文件一致（漂移即失败）。
+    # 契约门槛：`manifest.pages.present` 为真才要求 `pages.json`
+    # （合成夹具的上游仓库可能没有 `module/ui/page.py`，那时导出会记 `present: false`）。
+    pages_declared = bool((manifest.get('pages') or {}).get('present'))
+    pages_path = Path(data, 'pages.json')
+    if pages_declared and not pages_path.is_file():
+        problems.append('缺少 pages.json（页面图导出）；先跑 tools/export_upstream_data.py')
+    elif pages_declared:
+        pages_doc = json.loads(pages_path.read_text(encoding='utf-8'))
+        pages = pages_doc.get('pages') or []
+        stats['pages'] = len(pages)
+        stats['page_links'] = sum(len(page.get('links') or []) for page in pages)
+        names = [page.get('name') for page in pages]
+        if len(names) != len(set(names)):
+            problems.append('pages.json 里有重名页面')
+        known = set(names)
+        for page in pages:
+            for link in page.get('links') or []:
+                if link.get('destination') not in known:
+                    problems.append(f"pages.json：{page.get('name')} 的边指向未知页面 "
+                                    f"{link.get('destination')}")
+        recorded = (pages_doc.get('source_files') or {})
+        for rel, digest in recorded.items():
+            live = Path(repo, rel)
+            if not live.is_file():
+                problems.append(f'pages.json 记的源文件 {rel} 不存在')
+                continue
+            actual = hashlib.sha256(live.read_bytes()).hexdigest()
+            if actual != digest:
+                problems.append(f'pages.json 的源哈希与 {rel} 不一致（上游文件变了，重跑导出）')
+        manifest_pages = (manifest.get('pages') or {})
+        if manifest_pages.get('count') != len(pages):
+            problems.append('manifest.pages.count 与 pages.json 的页数不一致')
     from export_upstream_data import SERVERS
     if len(assets.get('servers', [])) != len(SERVERS) or set(assets.get('servers', [])) != set(SERVERS):
         problems.append('素材目录服务器清单缺失、重复或与导出契约不一致')
@@ -249,15 +284,34 @@ def check(repo: str, data: str) -> dict:
             rendered_checked += 1
             src = Path(repo, entry['source']).read_text(encoding='utf-8')
             ok = True
-            for b in ir['campaign']['battles']:
-                for s in b['steps']:
+            # 结构化步骤（分支/返回/信号/日志/整图设标志/状态/局部绑定）**没有 `op`**：
+            # 它们不是"源码里的一次调用"，跳过；分支体要递归进去查（`body`/`orelse`）。
+            structural = {'branch', 'return', 'raise', 'log', 'map_set', 'state_set', 'local_set'}
+
+            def check_steps(steps):
+                good = True
+                for s in steps:
+                    if s.get('kind') in structural:
+                        good = check_steps(s.get('body') or []) and good
+                        good = check_steps(s.get('orelse') or []) and good
+                        continue
+                    if not s.get('op'):
+                        plan_bad.append({'file': entry['source'],
+                                         'issue': f"步骤 {s.get('kind')} 既不是结构化步骤也没有 op"})
+                        good = False
+                        continue
                     if s['kind'] == 'super_delegate':
                         # op 形如 super().X，源码里应出现 `super().X(`
-                        pat = re.escape(s['op'].replace('super().', 'super().')) + r'\('
+                        pat = re.escape(s['op']) + r'\('
                     else:
                         pat = r'self\.' + re.escape(s['op']) + r'\('
                     if not re.search(pat, src):
-                        ok = False
+                        good = False
+                return good
+
+            for b in ir['campaign']['battles']:
+                if not check_steps(b['steps']):
+                    ok = False
             if ok:
                 rendered_ok += 1
             else:

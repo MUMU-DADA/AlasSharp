@@ -45,7 +45,7 @@ except ImportError:
     from upstream_map_export import MapResolver
     from upstream_campaign_export import CampaignResolver
 
-EXPORTER_VERSION = '2.9.0'
+EXPORTER_VERSION = '2.10.0'
 SERVERS = ('cn', 'en', 'jp', 'tw')
 SKIP_DIRS = {'.venv', '.git', '__pycache__', '.pytest_cache', '.ruff_cache', '.trial-merge'}
 
@@ -1016,6 +1016,72 @@ def derive_plan(body: list, where: str, resolve=None):
     return steps, plan_complete, unparsed, dead
 
 
+def export_pages(root: str, out_dir: str, manifest: dict):
+    """导出上游页面图：页面（含校验按钮）与页面之间的跳转边。
+
+    只做**静态提取**（不导入上游代码）：`page_x = Page(CHECK_BUTTON)` 与
+    `page_x.link(button=…, destination=…)`。这是第三阶段「只依赖上游静态规则」要用的数据之一；
+    运行时导航仍然走上游对象与原生流程，本导出只用于离线展示、溯源与漂移校验。
+    """
+    source = os.path.join(root, 'module', 'ui', 'page.py')
+    if not os.path.isfile(source):
+        manifest['pages'] = {'present': False, 'reason': 'module/ui/page.py 不存在'}
+        return
+    with open(source, encoding='utf-8') as handle:
+        tree = ast.parse(handle.read())
+
+    pages, order, edges, unresolved = {}, [], [], []
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name) \
+                and isinstance(node.value, ast.Call) \
+                and isinstance(node.value.func, ast.Name) and node.value.func.id == 'Page':
+            name = node.targets[0].id
+            args = node.value.args
+            pages[name] = {'name': name,
+                           'check_button': ast.unparse(args[0]) if args else '',
+                           'links': []}
+            order.append(name)
+            continue
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) \
+                and isinstance(node.value.func, ast.Attribute) and node.value.func.attr == 'link':
+            owner = ast.unparse(node.value.func.value)
+            pair = {}
+            if len(node.value.args) == 2:
+                pair['button'] = ast.unparse(node.value.args[0])
+                pair['destination'] = ast.unparse(node.value.args[1])
+            for keyword in node.value.keywords:
+                if keyword.arg in ('button', 'destination'):
+                    pair[keyword.arg] = ast.unparse(keyword.value)
+            if 'button' in pair and 'destination' in pair:
+                edges.append((owner, pair['button'], pair['destination']))
+            else:
+                unresolved.append(f'{owner}.link(...)（第 {node.lineno} 行）不是 button/destination 形态')
+
+    for owner, button, destination in edges:
+        if owner not in pages:
+            unresolved.append(f'{owner} 不是本文件里的页面（link 目标写出去了？）')
+            continue
+        pages[owner]['links'].append({'button': button, 'destination': destination})
+
+    records = [pages[name] for name in order]
+    _write_json(os.path.join(out_dir, 'pages.json'), {
+        'version': EXPORTER_VERSION,
+        'source_files': {os.path.relpath(source, root).replace('\\', '/'): sha256_file(source)},
+        'pages': records,
+    })
+    manifest['pages'] = {
+        'present': True,
+        'count': len(records),
+        'links': sum(len(page['links']) for page in records),
+        'dangling': [f'{owner}.{button} → {destination}' for owner, button, destination in edges
+                     if destination not in pages],
+        'unresolved': unresolved,
+        'source_files': 1,
+        'source_hashes': {os.path.relpath(source, root).replace('\\', '/'): sha256_file(source)},
+    }
+
+
 def export_campaign(root: str, out_dir: str, manifest: dict):
     index, unresolved_all = [], []
     source_files = []
@@ -1505,9 +1571,10 @@ def main():
 
 
 def _run_export(repo, out, manifest):
-    for name in ('assets', 'campaign'):
+    for name in ('assets', 'campaign', 'pages'):
         manifest[name] = {}
     export_assets(repo, out, manifest)
+    export_pages(repo, out, manifest)
     export_campaign(repo, out, manifest)
     _write_json(os.path.join(out, 'schema', 'assets.schema.json'), ASSETS_SCHEMA)
     _write_json(os.path.join(out, 'schema', 'campaign.schema.json'), CAMPAIGN_SCHEMA)

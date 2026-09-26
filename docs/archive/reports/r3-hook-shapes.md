@@ -26,19 +26,15 @@
 | `handle_clear_mode_config_cover` | 3 | 2 | 1 | 0 | 0 | 0 | `t4.py`(data_only) |
 | `map_init` | 3 | 0 | 3 | 0 | 0 | 0 | `campaign_16_3.py`(data_only) |
 | `before_boss` | 2 | 0 | 2 | 0 | 0 | 0 | `b2.py`(data_only) |
-| `bored_visit` | 2 | 0 | 0 | 0 | 2 | 0 | `a1.py`(engine_calls) |
 | `brute_clear_boss` | 2 | 0 | 0 | 2 | 0 | 0 | `b2.py`(chapter_local) |
-| `find_current_fleet` | 2 | 0 | 2 | 0 | 0 | 0 | `a1.py`(data_only) |
-| `handle_in_stage` | 2 | 0 | 0 | 0 | 2 | 0 | `c2.py`(engine_calls) |
 | `_campaign_ocr_result_process` | 1 | 0 | 1 | 0 | 0 | 0 | `sp.py`(data_only) |
 | `catch_camera_repositioning` | 1 | 0 | 1 | 0 | 0 | 0 | `t4.py`(data_only) |
 | `execute_actions` | 1 | 0 | 0 | 0 | 1 | 0 | `sp.py`(engine_calls) |
-| `is_event_animation` | 1 | 0 | 0 | 0 | 1 | 0 | `sp.py`(engine_calls) |
 
 ## 结论（用数据说话）
 
-- **有引擎能力候选（出现 `self_calls`）的钩子：6 个** —— `bored_visit`、`clear_boss`、`execute_actions`、`handle_in_stage`、`in_sight`、`is_event_animation`
-- 只做数据改写（`data_only`）的钩子：10 个 —— 这些留在上游，不搬进 C#。
+- **有引擎能力候选（出现 `self_calls`）的钩子：3 个** —— `clear_boss`、`execute_actions`、`in_sight`
+- 只做数据改写（`data_only`）的钩子：9 个 —— 这些留在上游，不搬进 C#。
 - 纯委托（`pure_delegate`）：2 个 —— 没有工作量。
 
 > 与 `docs/archive/reports/r3-candidates.md`（按覆盖数排序）**配合使用**：覆盖数决定"影响面"，

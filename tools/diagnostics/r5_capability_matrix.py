@@ -61,8 +61,8 @@ OWNERSHIP: dict[str, tuple[str, str]] = {
 STATIC_DATA: dict[str, str] = {
     "SetServer": "已导出（`data/assets.json` 的 `servers`）",
     "AssetButtonCenter": "已导出（`data/assets.json` 的 `assets` 绑定）",
-    "PageList": "**未导出**（上游页面定义还没导出）",
-    "PageGraph": "**未导出**（上游 `Page.links` 还没导出）",
+    "PageList": "已导出（`data/pages.json` 的页面清单与校验按钮）",
+    "PageGraph": "已导出（`data/pages.json` 的 127 条 `link` 边）",
     "TaskCatalog": "**未导出**（上游 `task/` 配置还没导出）",
 }
 

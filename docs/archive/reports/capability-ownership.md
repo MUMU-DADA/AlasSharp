@@ -14,9 +14,9 @@
 | `LoadScreenshot` | 设备帧 | — | 5 | 4 | 从设备/存盘取帧；替换时自己实现截图通道 |
 | `SetScreenshot` | 设备帧 | — | 4 | 3 | 把已有帧交给宿主（夹具与回放用） |
 | `ScaleScreenshot` | 设备帧 | — | 1 | 1 | 帧缩放，属识图预处理 |
-| `PageList` | 可静态化 | **未导出**（上游页面定义还没导出） | 2 | 2 | 页面清单来自上游页面定义，可导出为静态规则 |
+| `PageList` | 可静态化 | 已导出（`data/pages.json` 的页面清单与校验按钮） | 2 | 2 | 页面清单来自上游页面定义，可导出为静态规则 |
 | `PageCurrent` | 识图保留 | — | 3 | 2 | 当前页判定要跑上游 `ui_page_appear` |
-| `PageGraph` | 可静态化 | **未导出**（上游 `Page.links` 还没导出） | 1 | 1 | 页面跳转关系来自上游 `Page.links`，可导出 |
+| `PageGraph` | 可静态化 | 已导出（`data/pages.json` 的 127 条 `link` 边） | 1 | 1 | 页面跳转关系来自上游 `Page.links`，可导出 |
 | `AssetButtonCenter` | 可静态化 | 已导出（`data/assets.json` 的 `assets` 绑定） | 0 | 0 | 按钮坐标来自上游素材绑定，已在 `data/assets.json` |
 | `PageAppear` | 识图保留 | — | 1 | 1 | 页面出现判定，必须借上游模板匹配 |
 | `AppearOn` | 识图保留 | — | 4 | 2 | 素材出现判定，同上 |
