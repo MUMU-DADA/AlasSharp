@@ -40,6 +40,15 @@ public sealed partial class CampaignState
     public Cell? Fleet2Location { get; set; }
     public Cell? SubmarineLocation { get; set; }
     public MapProgress Progress => new(BattleCount, MysteryCount, SirenCount, CarrierCount);
+    internal void CommitBattle(bool siren)
+    {
+        int battle = checked(BattleCount + 1);
+        int ammo = checked(AmmoCount - 1);
+        int sirens = checked(SirenCount + (siren ? 1 : 0));
+        BattleCount = battle;
+        AmmoCount = ammo;
+        SirenCount = sirens;
+    }
     // Upstream names this is_map_data_poor, although True means declarations exist.
     public bool HasCompleteSpawnDeclarations => Cells.Any(g => g.MayEnemy) && Cells.Any(g => g.MayBoss) &&
         Cells.Any(g => g.IsSpawnPoint) && !ActiveWaves.IsEmpty;

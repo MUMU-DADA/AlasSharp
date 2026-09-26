@@ -79,10 +79,10 @@ public sealed class MapAirRaidHandler(IUiDriver ui, MapEncounterProbe probe, Fun
     IMapEncounterHandler? next = null)
     : IMapEncounterHandler
 {
-    public async ValueTask<bool> HandleAsync(MapEncounterKind encounter, CancellationToken token)
+    public async ValueTask<MapEncounterHandling> HandleAsync(MapEncounterKind encounter, CancellationToken token)
     {
         if (encounter != MapEncounterKind.AirRaid)
-            return next is not null && await next.HandleAsync(encounter, token);
+            return next is null ? new(MapEncounterContinuation.Unhandled) : await next.HandleAsync(encounter, token);
         var disappear = new IntervalTimer(ui.Clock, 0.5);
         var timeout = new IntervalTimer(ui.Clock, 2.5, count: 2);
         disappear.Reset();
@@ -91,9 +91,9 @@ public sealed class MapAirRaidHandler(IUiDriver ui, MapEncounterProbe probe, Fun
         {
             token.ThrowIfCancellationRequested();
             await ui.ScreenshotAsync(token);
-            if (timeout.Reached()) return true;
+            if (timeout.Reached()) return new(MapEncounterContinuation.InMap);
             if (await probe.IsAirRaidAsync(frameSequence(), token)) disappear.Reset();
-            else if (disappear.Reached()) return true;
+            else if (disappear.Reached()) return new(MapEncounterContinuation.InMap);
         }
     }
 }

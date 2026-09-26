@@ -18,21 +18,24 @@ public interface IMapArrivalCamera
     void Invalidate();
 }
 
-public enum MapArrivalOutcome { MarkerConfirmed, MapInterrupted, Unconfirmed }
+public enum MapArrivalOutcome { MarkerConfirmed, MapInterrupted, Unconfirmed, StageReturned }
 public sealed record MapArrivalResult(MapArrivalOutcome Outcome, long FrameSequence, int FreshFrames,
     MapEncounterKind Encounter = MapEncounterKind.None)
 {
     public ImmutableArray<MapEncounterKind> HandledEncounters { get; init; } = [];
+    public ImmutableArray<CombatFlowResult> Combats { get; init; } = [];
 }
 public sealed record MapArrivalOptions(TimeSpan ConfirmDelay, TimeSpan WalkTimeout, bool AllowCurrentMarker = false)
 {
     public static MapArrivalOptions Default { get; } = new(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(20));
 }
 
+public enum MapEncounterContinuation { Unhandled, InMap, InStage }
+public sealed record MapEncounterHandling(MapEncounterContinuation Continuation, CombatFlowResult? Combat = null);
+
 public interface IMapEncounterHandler
 {
-    /// <summary>True only after C# has finished this interaction and the map can be relocalized.</summary>
-    ValueTask<bool> HandleAsync(MapEncounterKind encounter, CancellationToken token);
+    ValueTask<MapEncounterHandling> HandleAsync(MapEncounterKind encounter, CancellationToken token);
 }
 
 /// <summary>Checks a clicked cell against fresh map frames; no sortie state changes until a caller handles all interactions.</summary>
@@ -64,8 +67,10 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
         int frames = 0;
         bool confirmed = false;
         var handled = ImmutableArray.CreateBuilder<MapEncounterKind>();
+        var combats = ImmutableArray.CreateBuilder<CombatFlowResult>();
         MapArrivalResult Result(MapArrivalOutcome outcome, MapEncounterKind encounter = MapEncounterKind.None)
-            => new(outcome, sequence, frames, encounter) { HandledEncounters = handled.ToImmutable() };
+            => new(outcome, sequence, frames, encounter)
+            { HandledEncounters = handled.ToImmutable(), Combats = combats.ToImmutable() };
         try
         {
             await camera.PrepareTapAsync(destination, token);
@@ -119,9 +124,24 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                 }
                 if (handler is null) return Result(MapArrivalOutcome.MapInterrupted, encounter);
                 camera.Suspend();
-                if (!await handler.HandleAsync(encounter, token))
+                var resolution = await handler.HandleAsync(encounter, token);
+                if (!Enum.IsDefined(resolution.Continuation))
+                    throw new InvalidDataException("Encounter handler returned an unknown continuation");
+                if (resolution.Continuation == MapEncounterContinuation.Unhandled)
                     return Result(MapArrivalOutcome.MapInterrupted, encounter);
+                if (encounter == MapEncounterKind.Combat)
+                {
+                    if (resolution.Combat is not { } combat ||
+                        combat.Return != (resolution.Continuation == MapEncounterContinuation.InStage
+                            ? CombatReturn.InStage : CombatReturn.InMap))
+                        throw new InvalidDataException("Combat encounter has no matching C# battle result");
+                    combats.Add(combat);
+                }
+                else if (resolution.Combat is not null || resolution.Continuation == MapEncounterContinuation.InStage)
+                    throw new InvalidDataException("Noncombat interaction returned battle or stage evidence");
                 handled.Add(encounter);
+                if (resolution.Continuation == MapEncounterContinuation.InStage)
+                    return Result(MapArrivalOutcome.StageReturned, encounter);
                 await camera.RelocalizeAsync(token);
                 if (camera.FrameSequence <= sequence)
                     throw new InvalidDataException("Interaction recovery reused a stale map frame");

@@ -64,10 +64,12 @@ internal static class MapEncounterProbeChecks
         foreach (var red in new double[] { 160, 160, 100, 100, 100 }) ui.ScreenshotReds.Enqueue(red);
         int before = ui.Screenshots;
         var airHandler = new MapAirRaidHandler(ui, airProbe, () => ui.Sequence);
-        Check(await airHandler.HandleAsync(MapEncounterKind.AirRaid, default) && ui.Screenshots - before == 5,
+        Check((await airHandler.HandleAsync(MapEncounterKind.AirRaid, default)).Continuation == MapEncounterContinuation.InMap &&
+              ui.Screenshots - before == 5,
             "Air raid did not wait for a stable disappearance using C# screenshots");
         before = ui.Screenshots;
-        Check(!await airHandler.HandleAsync(MapEncounterKind.Combat, default) && ui.Screenshots == before,
+        Check((await airHandler.HandleAsync(MapEncounterKind.Combat, default)).Continuation == MapEncounterContinuation.Unhandled &&
+              ui.Screenshots == before,
             "Unimplemented combat was silently accepted by the air raid handler");
 
         ui.Sequence = 20; ui.AirRed = ui.AmbushRed = 100;
@@ -76,7 +78,8 @@ internal static class MapEncounterProbeChecks
         for (int i = 0; i < 16; i++) ui.ScreenshotReds.Enqueue(160);
         before = ui.Screenshots;
         airHandler = new MapAirRaidHandler(ui, airProbe, () => ui.Sequence);
-        Check(await airHandler.HandleAsync(MapEncounterKind.AirRaid, default) && ui.Screenshots - before >= 11,
+        Check((await airHandler.HandleAsync(MapEncounterKind.AirRaid, default)).Continuation == MapEncounterContinuation.InMap &&
+              ui.Screenshots - before >= 11,
             "Air raid timeout no longer follows the upstream 2.5-second wait");
     }
 
