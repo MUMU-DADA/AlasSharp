@@ -357,6 +357,11 @@ public sealed class RecordingCampaignHost : ICampaignPrimitiveHost
 /// </summary>
 public static class CampaignPrimitives
 {
+    internal static void RecordInvocation(ICampaignPrimitiveHost host, string method)
+    {
+        if (host is RecordingCampaignHost recorder) recorder.InvokedOps.Add(method);
+    }
+
     /// <summary>按标志名写格子；名字不在模型里就报错（拼错不许静默）。</summary>
     internal static CampaignGrid ApplyFlag(CampaignGrid grid, string flag, bool value) => flag switch
     {
@@ -377,54 +382,82 @@ public static class CampaignPrimitives
 
     /// <summary>
     /// 上游 `CampaignMap.select(**kwargs)`：按属性筛格子（`is_boss=True` 这类）。
-    /// 判定与上游 `SelectedGrids.select` 一致：**类型相同且值相等**才算命中；只支持布尔标志，
-    /// 出现没移植的键就显式报错（不猜语义）。
+    /// 判定与上游 `SelectedGrids.select` 一致：**类型相同且值相等**才算命中。
+    /// 布尔、整数和字符串保持原值；未迁移的属性和容器类型显式报错。
     /// </summary>
     public static CampaignGridSet MapSelect(ICampaignPrimitiveHost host, CampaignPlanStep step)
     {
-        var flags = new Dictionary<string, bool>(StringComparer.Ordinal);
+        RecordInvocation(host, "map.select");
+        if (step.Args?.Positional.Count > 0)
+            throw new NotSupportedException("map.select 只接受属性关键字参数");
+        var predicates = new List<(Func<CampaignGrid, object?> Read, object? Expected)>();
         foreach (var (key, value) in step.Args?.Keyword ?? new Dictionary<string, JsonNode?>())
         {
-            flags[key] = value is JsonValue json && json.TryGetValue<bool>(out bool parsed) && parsed;
+            object? expected;
+            if (value is null) expected = null;
+            else if (value is JsonValue json && json.TryGetValue<bool>(out bool flag)) expected = flag;
+            else if (value is JsonValue number && number.TryGetValue<int>(out int integer)) expected = integer;
+            else if (value is JsonValue text && text.TryGetValue<string>(out string? stringValue)) expected = stringValue;
+            else throw new NotSupportedException($"map.select 的 {key} 实参类型未迁移");
+            predicates.Add((GridAttribute(key), expected));
         }
-        return MapSelect(host, flags);
+        return new CampaignGridSet(host.Grids.Where(grid => predicates.All(predicate =>
+        {
+            object? actual = predicate.Read(grid);
+            return actual?.GetType() == predicate.Expected?.GetType() && Equals(actual, predicate.Expected);
+        })));
     }
+
+    private static Func<CampaignGrid, object?> GridAttribute(string key) => key switch
+    {
+        "is_enemy" => grid => grid.IsEnemy,
+        "is_boss" => grid => grid.IsBoss,
+        "is_siren" => grid => grid.IsSiren,
+        "is_fortress" => grid => grid.IsFortress,
+        "is_mystery" => grid => grid.IsMystery,
+        "is_ammo" => grid => grid.IsAmmo,
+        "is_fleet" => grid => grid.IsFleet,
+        "is_current_fleet" => grid => grid.IsCurrentFleet,
+        "is_submarine" => grid => grid.IsSubmarine,
+        "is_flare" => grid => grid.IsFlare,
+        "is_cleared" => grid => grid.IsCleared,
+        "is_caught_by_siren" => grid => grid.IsCaughtBySiren,
+        "is_land" => grid => grid.IsLand,
+        "is_sea" => grid => grid.IsSea,
+        "is_mechanism_block" => grid => grid.IsMechanismBlock,
+        "is_mechanism_trigger" => grid => grid.IsMechanismTrigger,
+        "is_missile_attack" => grid => grid.IsMissileAttack,
+        "may_enemy" => grid => grid.MayEnemy,
+        "may_boss" => grid => grid.MayBoss,
+        "may_siren" => grid => grid.MaySiren,
+        "may_mystery" => grid => grid.MayMystery,
+        "may_ammo" => grid => grid.MayAmmo,
+        "may_ambush" => grid => grid.MayAmbush,
+        "may_bouncing_enemy" => grid => grid.MayBouncingEnemy,
+        "is_accessible" => grid => grid.IsAccessible,
+        "is_accessible_1" => grid => grid.IsAccessible1,
+        "is_accessible_2" => grid => grid.IsAccessible2,
+        "is_nearby" => grid => grid.IsNearby,
+        "enemy_scale" => grid => grid.EnemyScale,
+        "enemy_genre" => grid => grid.EnemyGenre,
+        "weight" => grid => grid.Weight,
+        "cost" => grid => grid.Cost,
+        "cost_1" => grid => grid.Cost1,
+        "cost_2" => grid => grid.Cost2,
+        _ => throw new NotSupportedException($"map.select 的键 {key} 不在已迁移属性中"),
+    };
 
     /// <summary>同上，但直接吃"标志 → 真假"的字典（诊断命令与对拍用）。</summary>
     public static CampaignGridSet MapSelect(ICampaignPrimitiveHost host, IReadOnlyDictionary<string, bool> flags)
-    {
-        var filter = new CampaignGridFilter();
-        foreach (var (key, expected) in flags)
+        => MapSelect(host, new CampaignPlanStep
         {
-            filter = key switch
+            Kind = "call",
+            Op = "map.select",
+            Args = new CampaignPlanStepArgs
             {
-                "is_enemy" => filter with { IsEnemy = expected },
-                "is_boss" => filter with { IsBoss = expected },
-                "is_siren" => filter with { IsSiren = expected },
-                "is_fortress" => filter with { IsFortress = expected },
-                "is_mystery" => filter with { IsMystery = expected },
-                "is_ammo" => filter with { IsAmmo = expected },
-                "is_fleet" => filter with { IsFleet = expected },
-                "is_current_fleet" => filter with { IsCurrentFleet = expected },
-                "is_submarine" => filter with { IsSubmarine = expected },
-                "is_flare" => filter with { IsFlare = expected },
-                "is_cleared" => filter with { IsCleared = expected },
-                "is_caught_by_siren" => filter with { IsCaughtBySiren = expected },
-                "may_enemy" => filter with { MayEnemy = expected },
-                "may_boss" => filter with { MayBoss = expected },
-                "may_siren" => filter with { MaySiren = expected },
-                "may_mystery" => filter with { MayMystery = expected },
-                "may_ammo" => filter with { MayAmmo = expected },
-                "may_ambush" => filter with { MayAmbush = expected },
-                "may_bouncing_enemy" => filter with { MayBouncingEnemy = expected },
-                "is_land" => filter with { IsLand = expected },
-                "is_mechanism_block" => filter with { IsMechanismBlock = expected },
-                _ => throw new NotSupportedException(
-                    $"map.select 的键 {key} 不在已移植白名单里（上游支持任意属性）——要支持时在这里显式加"),
-            };
-        }
-        return new CampaignGridSet(host.Grids).Select(filter);
-    }
+                Keyword = flags.ToDictionary(pair => pair.Key, pair => (JsonNode?)JsonValue.Create(pair.Value)),
+            },
+        });
 
     /// <summary>干跑时的循环上限，避免"清不完的神秘格子"把进程拖死。</summary>
     private const int MaxMysteryRounds = 100;
@@ -432,6 +465,7 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>Map.clear_enemy(**kwargs)</c>。</summary>
     public static bool ClearEnemy(ICampaignPrimitiveHost host, CampaignTargetOptions? options = null)
     {
+        RecordInvocation(host, "clear_enemy");
         var decision = CampaignTargetSelector.SelectEnemyTarget(
             new CampaignGridSet(host.Grids), host.Config.EnemyPriority, host.Config.MapClearAllThisTime, options);
         if (decision.Unsupported is not null)
@@ -448,6 +482,7 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>Map.clear_any_enemy(**kwargs)</c>：敌人 + （有塞壬时）塞壬 + （有要塞时）要塞。</summary>
     public static bool ClearAnyEnemy(ICampaignPrimitiveHost host, CampaignTargetOptions? options = null)
     {
+        RecordInvocation(host, "clear_any_enemy");
         var all = new CampaignGridSet(host.Grids);
         var grids = all.Select(new CampaignGridFilter(IsEnemy: true, IsBoss: false));
         if (host.Config.MapHasSiren)
@@ -470,6 +505,7 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>Map.clear_siren(**kwargs)</c>：无塞壬/要塞配置时直接返回假。</summary>
     public static bool ClearSiren(ICampaignPrimitiveHost host, CampaignTargetOptions? options = null)
     {
+        RecordInvocation(host, "clear_siren");
         if (!host.Config.MapHasSiren && !host.Config.MapHasFortress)
         {
             host.Log("clear_siren：地图没有塞壬也没有要塞，直接返回假");
@@ -504,6 +540,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool ClearBoss(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "clear_boss");
         var all = new CampaignGridSet(host.Grids);
         var grids = all.Select(new CampaignGridFilter(IsBoss: true, IsAccessible: true));
         grids = grids.Add(all.Select(new CampaignGridFilter(MayBoss: true, IsCaughtBySiren: true)));
@@ -532,6 +569,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool ClearPotentialBoss(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "clear_potential_boss");
         var all = new CampaignGridSet(host.Grids);
         var reachable = all.Select(new CampaignGridFilter(MayBoss: true, IsAccessible: true)).Sort("weight", "cost");
         int battleCount = host.BattleCount;
@@ -583,6 +621,7 @@ public static class CampaignPrimitives
     public static bool ClearRoadblocks(ICampaignPrimitiveHost host, IReadOnlyList<CampaignRoad> roads,
                                        CampaignTargetOptions? options = null)
     {
+        RecordInvocation(host, "clear_roadblocks");
         var all = new CampaignGridSet(host.Grids);
         var grids = CampaignGridSet.Empty;
         foreach (var road in roads) grids = grids.Add(road.Roadblocks(all));
@@ -593,6 +632,7 @@ public static class CampaignPrimitives
     public static bool ClearPotentialRoadblocks(ICampaignPrimitiveHost host, IReadOnlyList<CampaignRoad> roads,
                                                 CampaignTargetOptions? options = null)
     {
+        RecordInvocation(host, "clear_potential_roadblocks");
         var all = new CampaignGridSet(host.Grids);
         var grids = CampaignGridSet.Empty;
         foreach (var road in roads) grids = grids.Add(road.PotentialRoadblocks(all));
@@ -603,6 +643,7 @@ public static class CampaignPrimitives
     public static bool ClearFirstRoadblocks(ICampaignPrimitiveHost host, IReadOnlyList<CampaignRoad> roads,
                                             CampaignTargetOptions? options = null)
     {
+        RecordInvocation(host, "clear_first_roadblocks");
         var all = new CampaignGridSet(host.Grids);
         var grids = CampaignGridSet.Empty;
         foreach (var road in roads) grids = grids.Add(road.FirstRoadblocks(all));
@@ -639,6 +680,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool PickUpAmmo(ICampaignPrimitiveHost host, CampaignGrid? grid = null)
     {
+        RecordInvocation(host, "pick_up_ammo");
         var all = new CampaignGridSet(host.Grids);
         if (grid is null)
         {
@@ -674,6 +716,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool PickUpLightHouse(ICampaignPrimitiveHost host, CampaignGrid grid)
     {
+        RecordInvocation(host, "pick_up_light_house");
         if (host.PickedLightHouse.Contains(grid.Location))
         {
             host.Log($"pick_up_light_house：{grid.Location} already picked up");
@@ -698,6 +741,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool PickUpFlare(ICampaignPrimitiveHost host, CampaignGrid grid)
     {
+        RecordInvocation(host, "pick_up_flare");
         // 上游第一行就是 `grid.is_flare = True`（在"已拾取/可达"判断**之前**），照抄顺序
         host.SetGridFlag(grid, "is_flare", true);
         if (host.PickedFlare.Contains(grid.Location))
@@ -724,6 +768,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool CaptureClearBoss(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "capture_clear_boss");
         var all = new CampaignGridSet(host.Grids);
         var grids = all.Select(new CampaignGridFilter(IsBoss: true, IsAccessible: true));
         grids = grids.Add(all.Select(new CampaignGridFilter(MayBoss: true, IsCaughtBySiren: true)));
@@ -750,6 +795,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool Fleet2PushForward(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "fleet_2_push_forward");
         if (host.Config.FleetBossIndex != 2) return false;
         host.Log("fleet_2_push_forward：Fleet_2 push forward");
 
@@ -793,6 +839,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool Fleet2Protect(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "fleet_2_protect");
         if (!host.Config.Fleet2 || !host.Config.MapHasMovableEnemy) return false;
 
         var options = new CampaignTargetOptions { Sort = ["cost_2", "cost_1"] };
@@ -837,6 +884,7 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>clear_chosen_enemy(grid, expected='')</c>：打指定格子（设备侧动作交给宿主）。</summary>
     public static bool ClearChosenEnemy(ICampaignPrimitiveHost host, CampaignGrid grid, string expected = "")
     {
+        RecordInvocation(host, "clear_chosen_enemy");
         host.Log($"clear_chosen_enemy：targetEnemyScale={host.Config.EnemyPriority}，格子 {grid.Location}");
         return host.ClearChosenEnemy(grid, expected);
     }
@@ -848,6 +896,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool SwitchTo(ICampaignPrimitiveHost host, string fleet)
     {
+        RecordInvocation(host, "switch_to");
         host.Log($"switch_to：上游 Fleet.switch_to() 是 pass（切舰队已由 {fleet} 前缀完成）");
         return false;
     }
@@ -858,6 +907,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool ClearMapItems(ICampaignPrimitiveHost host, IReadOnlyList<CampaignGrid> grids)
     {
+        RecordInvocation(host, "clear_map_items");
         var ordered = grids.OrderBy(grid => grid.Cost).ToArray();
         foreach (var grid in ordered)
         {
@@ -874,6 +924,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool ClearMechanism(ICampaignPrimitiveHost host, IReadOnlyList<CampaignGrid>? grids = null)
     {
+        RecordInvocation(host, "clear_mechanism");
         if (!host.Config.MapHasLandBased) return false;
 
         var pool = grids is null ? new CampaignGridSet(host.Grids) : new CampaignGridSet(grids);
@@ -901,6 +952,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool BruteClearBoss(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "brute_clear_boss");
         var all = new CampaignGridSet(host.Grids);
         var boss = all.Select(new CampaignGridFilter(IsBoss: true));
         if (!boss.IsEmpty)
@@ -941,6 +993,7 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>Map.brute_fleet_meet()</c>：为会合清掉两支舰队之间的路障。</summary>
     public static bool BruteFleetMeet(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "brute_fleet_meet");
         if (host.Config.FleetBossIndex != 2 || string.IsNullOrEmpty(host.Fleet2Location))
         {
             // 说明为什么跳过：这两个条件任一不满足时，上游同样不会走会合清障这条路。
@@ -967,6 +1020,7 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>Map.fleet_2_rescue(grid)</c>：用道中队清掉挡在目标格前的敌人。</summary>
     public static bool Fleet2Rescue(ICampaignPrimitiveHost host, CampaignGrid grid)
     {
+        RecordInvocation(host, "fleet_2_rescue");
         if (host.Config.FleetBossIndex != 2) return false;
         var search = CampaignBruteFinder.FindRoadblocks(host.Grids, grid.Location,
             FleetStart(host, 2), host.Config.MapHasAmbush, liveCost: LiveCostFor(host, grid, 2));
@@ -993,6 +1047,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool CheckAccessibility(ICampaignPrimitiveHost host, CampaignGrid grid, string? fleet = null)
     {
+        RecordInvocation(host, "check_accessibility");
         if (string.IsNullOrEmpty(fleet)) return grid.IsAccessible;
         int index = fleet == "boss"
             ? host.Config.FleetBossIndex
@@ -1007,6 +1062,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool FleetAt(ICampaignPrimitiveHost host, CampaignGrid grid, string? fleet = null)
     {
+        RecordInvocation(host, "fleet_at");
         string location = fleet switch
         {
             "1" => host.Fleet1Location,
@@ -1045,6 +1101,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool ClearBouncingEnemy(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "clear_bouncing_enemy");
         if (!host.Config.MapHasBouncingEnemy) return false;
 
         IReadOnlyList<string>? route = null;
@@ -1087,6 +1144,7 @@ public static class CampaignPrimitives
     public static bool Fleet2StepOn(ICampaignPrimitiveHost host, IReadOnlyList<CampaignGrid> grids,
                                     IReadOnlyList<CampaignRoad> roads)
     {
+        RecordInvocation(host, "fleet_2_step_on");
         if (!host.Config.Fleet2) return false;
         if (grids.Any(grid => host.Fleet2Location == grid.Location)) return false;
 
@@ -1118,6 +1176,7 @@ public static class CampaignPrimitives
     /// </summary>
     private static bool CheckAccessibility(ICampaignPrimitiveHost host, CampaignGrid grid, int fleetIndex)
     {
+        RecordInvocation(host, "check_accessibility");
         if (fleetIndex == host.FleetCurrentIndex) return grid.IsAccessible;
         var field = CampaignPathfinder.FindPathInitial(host.Grids, FleetStart(host, fleetIndex),
                                                       host.Config.MapHasAmbush, hasEnemy: true);
@@ -1127,6 +1186,7 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>Map.fleet_2_break_siren_caught()</c>：2 队被塞壬抓住时先挣脱。</summary>
     public static bool Fleet2BreakSirenCaught(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "fleet_2_break_siren_caught");
         if (host.Config.FleetBossIndex != 2) return false;
         if (!host.Config.MapHasSiren || !host.Config.MapHasMovableEnemy) return false;
 
@@ -1157,6 +1217,7 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>CampaignBase.battle_boss()</c>：`brute_clear_boss()` 打成就真，否则记 No battle executed.</summary>
     public static bool BattleBoss(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "battle_boss");
         if (BruteClearBoss(host)) return true;
         host.Log("No battle executed.");
         return false;
@@ -1168,6 +1229,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool PoorMapDataVariant(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "battle_with_poor_map_data");
         host.Log("Using function: battle_with_poor_map_data");
         if (Fleet2BreakSirenCaught(host)) return true;
         ClearAllMystery(host);
@@ -1191,6 +1253,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool ClearAllVariant(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "clear_all");
         host.Log("Using function: clear_all");
         if (Fleet2BreakSirenCaught(host)) return true;
         ClearAllMystery(host);
@@ -1227,6 +1290,7 @@ public static class CampaignPrimitives
     /// </summary>
     public static bool HandleBossAppearRefocus(ICampaignPrimitiveHost host, (int X, int Y)? preset)
     {
+        RecordInvocation(host, "handle_boss_appear_refocus");
         string camera = host.CameraLocation;
         var swipe = preset ?? host.Config.MapBossAppearRefocusSwipe;
         if (swipe is not null && (swipe.Value.X != 0 || swipe.Value.Y != 0))
@@ -1251,6 +1315,7 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>CampaignBase.battle_default()</c>。</summary>
     public static bool BattleDefault(ICampaignPrimitiveHost host)
     {
+        RecordInvocation(host, "battle_default");
         if (ClearEnemy(host)) return true;
         host.Log("battle_default：No battle executed.");
         return false;
@@ -1259,6 +1324,7 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>Map.clear_all_mystery(**kwargs)</c>：恒返回假。</summary>
     public static bool ClearAllMystery(ICampaignPrimitiveHost host, CampaignTargetOptions? options = null)
     {
+        RecordInvocation(host, "clear_all_mystery");
         options = (options ?? new CampaignTargetOptions()) with { Sort = ["cost"] };
         for (int round = 0; round < MaxMysteryRounds; round++)
         {
@@ -1276,6 +1342,7 @@ public static class CampaignPrimitives
     /// <summary>上游 <c>Map.clear_filter_enemy(string, preserve)</c>。</summary>
     public static bool ClearFilterEnemy(ICampaignPrimitiveHost host, string filter, int preserve)
     {
+        RecordInvocation(host, "clear_filter_enemy");
         // 上游：`MAP_HAS_MOVABLE_NORMAL_ENEMY` 时**整个过滤串被忽略**，直接转成
         // `clear_any_enemy(sort=('cost_2',))`。`cost_2` 排序键早已支持，所以这条分支现在直接委托，
         // 不再报"未移植"。
@@ -1958,7 +2025,6 @@ public static class CampaignHookRunner
         if (UnevaluatedArguments(step) is { } argument)
             throw new NotSupportedException($"实参未求值：{argument}");
         CampaignPrimitiveRegistry.ValidateArguments(step);
-        if (host is RecordingCampaignHost recorder) recorder.InvokedOps.Add(step.Op);
         return primitive.Execute(host, step);
     }
 
@@ -2227,7 +2293,6 @@ public static class CampaignHookRunner
                 try
                 {
                     CampaignPrimitiveRegistry.ValidateArguments(delegated.Step);
-                    if (host is RecordingCampaignHost recorder) recorder.InvokedOps.Add(delegated.Step.Op);
                     object? returned = basePrimitive.Execute(host, delegated.Step);
                     stepLog.Add($"{step.Op} → 父类实现 {delegated.Step.Op}：已执行" +
                                   (delegated.Note is null ? "" : $"（{delegated.Note}）"));
@@ -2475,16 +2540,33 @@ public static class CampaignPrimitiveRegistry
                 host, RequireGrid(host, step), OptionalFleet(step))),
         ["ensure_fleet"] = new CampaignPrimitive(
             "ensure_fleet", "切换舰队（上游 Fleet.fleet_ensure(index)）", NeedsArguments: true,
-            (host, step) => host.EnsureFleet(DecodeFleetIndex(step))),
+            (host, step) =>
+            {
+                int index = DecodeFleetIndex(step);
+                CampaignPrimitives.RecordInvocation(host, "ensure_fleet");
+                return host.EnsureFleet(index);
+            }),
         ["fleet_ensure"] = new CampaignPrimitive(
             "fleet_ensure", "上游名别名 → ensure_fleet", NeedsArguments: true,
-            (host, step) => host.EnsureFleet(DecodeFleetIndex(step))),
+            (host, step) =>
+            {
+                int index = DecodeFleetIndex(step);
+                CampaignPrimitives.RecordInvocation(host, "fleet_ensure");
+                return host.EnsureFleet(index);
+            }),
         ["fleet_at"] = new CampaignPrimitive(
             "fleet_at", "舰队是否在该格（上游 Fleet.fleet_at；纯状态判断）", NeedsArguments: true,
             (host, step) => CampaignPrimitives.FleetAt(host, RequireGrid(host, step), OptionalFleet(step))),
         ["goto"] = new CampaignPrimitive(
             "goto", "走到指定格（上游 Fleet.goto；移动本身由宿主执行）", NeedsArguments: true,
-            (host, step) => { host.Goto(RequireGrid(host, step), OptionalExpected(step)); return null; }),
+            (host, step) =>
+            {
+                var grid = RequireGrid(host, step);
+                string expected = OptionalExpected(step);
+                CampaignPrimitives.RecordInvocation(host, "goto");
+                host.Goto(grid, expected);
+                return null;
+            }),
         ["clear_chosen_enemy"] = new CampaignPrimitive(
             "clear_chosen_enemy", "打指定格子（上游 Map.clear_chosen_enemy 的动作入口）", NeedsArguments: true,
             (host, step) => CampaignPrimitives.ClearChosenEnemy(host, RequireGrid(host, step), OptionalExpected(step))),

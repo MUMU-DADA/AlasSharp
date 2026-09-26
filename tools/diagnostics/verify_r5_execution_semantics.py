@@ -217,6 +217,51 @@ def main():
             if value and (value["completed"] or reason not in (value["blocked"] or "") or value["actions"]):
                 failures.append(f"{name}: expected explicit rejection without actions")
 
+        # SelectedGrids.select uses exact Python type and value equality, including bool versus int.
+        select_grids = [*enemies, {"location": "C1", "is_enemy": False, "enemy_scale": 3,
+            "enemy_genre": None, "cost": 9999}]
+        for kwargs in ({"enemy_scale": 3}, {"enemy_genre": "Main"}, {"enemy_genre": None},
+                {"is_enemy": True}, {"is_enemy": False}, {"is_enemy": 1}, {"is_enemy": "x"},
+                {"enemy_scale": True}, {"cost": 9999}, {"enemy_genre": "main"}):
+            checked += 1
+            name = f"map_select_{kwargs!r}"
+            selected = [grid for grid in select_grids if all(type(grid[key]) is type(expected)
+                and grid[key] == expected for key, expected in kwargs.items())]
+            value = run(name, [{**call("map.select", **kwargs), "kind": "assign", "target": "picked"},
+                branch({"local": "picked"}, [call("goto", {"__local__": "picked", "__index__": 0})]),
+                ret(True)], grids=select_grids)
+            expected_actions = [f"goto({selected[0]['location']})"] if selected else []
+            if value and (not value["completed"] or value["actions"] != expected_actions):
+                failures.append(f"{name}: expected {expected_actions}, got {value['actions']}")
+
+        for kwargs in ({"enemy_scale": [3]}, {"unknown_attribute": True}):
+            checked += 1
+            value = run(f"map_select_rejected_{kwargs!r}", [
+                {**call("map.select", **kwargs), "kind": "assign", "target": "picked"}, ret(True)])
+            if value and (value["completed"] or value["actions"]):
+                failures.append(f"map.select silently accepted unsupported input {kwargs!r}")
+
+        invocation_cases = [
+            ("composite_entries", [call("battle_default", kind="terminal")], {},
+                {"battle_default", "clear_enemy"}),
+            ("override_entry", [call("battle_default", kind="terminal")], {"extra_hooks": [
+                {"method": "battle_default", "plan_complete": True, "steps": [call("goto", GRID), ret(True)]}]},
+                {"goto"}),
+            ("short_circuit_entry", [branch({"and": [lit(False), {"call": {"op": "clear_enemy"}}]},
+                [ret(True)]), ret(False)], {}, set()),
+            ("argument_decode_entry", [call("goto", {"__grid__": [10, 10]})], {}, set()),
+            ("loop_variant_entries", [], {"command": "r5-loop", "config": {
+                "poor_map_data": True, "error_handle_error": False}, "grids": []},
+                {"battle_with_poor_map_data", "fleet_2_break_siren_caught", "clear_all_mystery",
+                 "clear_siren", "clear_enemy"}),
+        ]
+        for name, steps, options, expected in invocation_cases:
+            checked += 1
+            value = run(name, steps, **options)
+            if value and ("invoked_ops" not in value or set(value["invoked_ops"]) != expected):
+                failures.append(f"{name}: expected actual implementation entries {sorted(expected)}, "
+                    f"got {value.get('invoked_ops')}")
+
     print(f"[r5 execution semantics] {checked} checks; {len(failures)} failures (offline)")
     for failure in failures:
         print(f"  FAIL {failure}")
