@@ -90,6 +90,8 @@ internal static class CampaignLoopCheck
                     ["result"] = round.Result,
                     ["blocked"] = round.BlockedReason,
                 }).ToArray()),
+                ["invoked_ops"] = new JsonArray(host.InvokedOps.Distinct(StringComparer.Ordinal)
+                    .Select(op => (JsonNode)op).ToArray()),
                 ["actions"] = new JsonArray(host.Actions.Select(text => (JsonNode)text!).ToArray()),
                 ["logs"] = new JsonArray(host.Logs.Select(text => (JsonNode)text!).ToArray()),
             });

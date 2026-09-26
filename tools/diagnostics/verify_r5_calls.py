@@ -1,91 +1,128 @@
 #!/usr/bin/env python3
-"""R5 宿主调用翻译核对：计划步骤 → 上游方法 + 参数引用形式（离线，无设备）。
-
-用法：
-    python tools/diagnostics/verify_r5_calls.py
-
-做的事：
-  1. 跑 `Alas.Server r5-calls --json`（**全库 5694 个步骤**），核对：
-     - **零不支持**：每个计划步骤都能翻成一次宿主调用（否则退出码非 0，并列出原因）；
-     - 抽查参数编码：`clear_filter_enemy` 的 `preserve` 走 **kwargs**（不折算成位置参数）、
-       `fleet_2_step_on` 的 `roadblocks` 走 `#roads:[[...]]`、格参数走 `#<节点>`；
-  2. 核对 `super().X` 被翻成**直接调 `X`**（基类实现），且舰队前缀不会被误当成方法名。
-
-只读：不连设备、不改变任何运行状态（翻译是纯函数，参数引用形式由宿主侧 `_campaign_arg` 解析）。
-"""
+"""Audit recursive static call encoding; native dynamic callability is not established here."""
 from __future__ import annotations
 
 import json
-import pathlib
+import os
+from pathlib import Path
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-SERVER = ROOT / "src" / "Alas.Server" / "bin" / "Release" / "net10.0" / "Alas.Server.exe"
+ROOT = Path(__file__).resolve().parents[2]
+SERVER = ROOT / "src/Alas.Server/bin/Release/net10.0/Alas.Server.exe"
+DATA = Path(os.environ.get("ALAS_DATA") or ROOT / "data")
+STRUCTURAL = {"branch", "return", "local_set", "state_set", "map_set", "raise", "log"}
+CALLS = {"call", "conditional", "conditional_negated", "terminal", "assign", "super_delegate"}
+
+
+def inventory(data: Path) -> dict:
+    files = sorted((data / "campaign").rglob("*.json"))
+    if not files:
+        raise ValueError("缺少 campaign 导出，不能将空扫描当作全量通过")
+    counts = dict(plans=len(files), hooks=0, steps=0, structural=0, condition_calls=0, calls=0)
+    call_sources = set()
+    incomplete = set()
+
+    def expressions(value, source):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key == "call" and isinstance(child, dict):
+                    counts['condition_calls'] += 1
+                    counts['calls'] += 1
+                    call_sources.add(source + '.call')
+                else:
+                    expressions(child, source + '.' + key)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                expressions(child, f'{source}[{index}]')
+
+    def steps(sequence, source):
+        if not isinstance(sequence, list):
+            raise ValueError(f'{source} 不是步骤数组')
+        for index, step in enumerate(sequence):
+            item = f'{source}[{index}]'
+            counts['steps'] += 1
+            if step.get('kind') in STRUCTURAL:
+                counts['structural'] += 1
+            elif step.get('kind') in CALLS:
+                counts['calls'] += 1
+                call_sources.add(item)
+            else:
+                raise ValueError(f'{item} 未知步骤类型')
+            for key in ('test', 'expr', 'value'):
+                expressions(step.get(key), item + '.' + key)
+            for key in ('body', 'orelse'):
+                if key in step:
+                    steps(step[key], item + '.' + key)
+
+    for path in files:
+        document = json.loads(path.read_text(encoding='utf-8'))
+        for battle in document['campaign']['battles']:
+            counts['hooks'] += 1
+            source = path.relative_to(data / 'campaign').as_posix() + ':' + battle['method']
+            if battle.get('plan_complete') is not True:
+                incomplete.add(source)
+            steps(battle['steps'], source + '.steps')
+    if not counts['hooks']:
+        raise ValueError('导出没有钩子，不能完成调用审计')
+    return dict(counts=counts, call_sources=call_sources, incomplete=incomplete)
+
+
+def validate(payload: dict, expected: dict, returncode: int) -> list[str]:
+    problems = []
+    if returncode != 0:
+        problems.append(f'调用审计退出码 {returncode}')
+    if payload.get('scope') != 'recursive_static_encoding/1':
+        problems.append('缺少递归静态编码审计合同')
+    for key, count in expected['counts'].items():
+        if payload.get(key) != count:
+            problems.append(f'{key}: C#={payload.get(key)}，独立 JSON 遍历={count}')
+    samples = payload.get('sample') or []
+    failures = payload.get('unsupported') or []
+    sources = [row['source'] for row in samples + failures]
+    if set(sources) != expected['call_sources'] or len(sources) != len(set(sources)):
+        problems.append('逐调用来源不完整、重复或包含非调用，不能据汇总数声称全量')
+    actual_incomplete = {row['source'] for row in payload.get('incomplete_hooks') or []}
+    if actual_incomplete != expected['incomplete']:
+        problems.append('不完整钩子清单与导出不一致')
+    if actual_incomplete:
+        problems.append(f'{len(actual_incomplete)} 个钩子没有完整计划，调用面尚未覆盖')
+    if failures:
+        problems.append(f'{len(failures)} 个调用无法编码')
+    unbound = payload.get('unresolved_bindings') or []
+    if unbound:
+        problems.append(f'{len(unbound)} 个方法绑定需要原生环境解析，不能证明可运行')
+    if payload.get('dynamic_callability_verified') is not False:
+        problems.append('静态检查不能宣称验证过动态可调用性')
+    if any(row.get('dynamic_callable') is not None for row in samples):
+        problems.append('调用样例不应冒充动态执行证据')
+    static = sum(row.get('encoding') == 'static' for row in samples)
+    runtime = sum(row.get('encoding') == 'runtime' for row in samples)
+    if payload.get('static_encoded') != static or payload.get('runtime_resolved') != runtime:
+        problems.append('静态编码与运行期求值计数不一致')
+    if static + runtime + len(failures) != expected['counts']['calls']:
+        problems.append('调用分类没有覆盖全部递归调用')
+    return problems
 
 
 def main() -> int:
-    if not SERVER.is_file():
-        raise SystemExit(f"缺少 {SERVER.relative_to(ROOT)}；先运行 ./build.ps1 构建")
-    completed = subprocess.run([str(SERVER), "r5-calls", "--json"],
-                               cwd=ROOT, capture_output=True, text=True, timeout=600,
-                               encoding="utf-8", errors="replace")
-    text = completed.stdout + completed.stderr
-    start = text.find("{")
-    if start < 0:
-        raise SystemExit(f"没有解析到 JSON 输出：{text.strip().splitlines()[-3:]}")
-    payload = json.loads(text[start:])
-
-    problems: list[str] = []
-    runtime_only = payload.get("runtime_only") or []
-    if completed.returncode != 0:
-        problems.append(f"翻译应零不支持，命令退出码 {completed.returncode}：{payload.get('unsupported')}")
-    if payload["translated"] + payload.get("structural", 0) != payload["steps"]:
-        problems.append(f"应全部可处理（调用 + 结构步骤）：{payload['translated']} + "
-                        f"{payload.get('structural', 0)}/{payload['steps']}")
-    if payload.get("structural"):
-        print(f"  [结构步骤] {payload['structural']} 个（`branch`/`return`：不是调用，由执行器处理）")
-    # 运行期解析**不算不支持**，但要看得见：这类实参（`__local__` 局部变量 / `__param__` 钩子参数）
-    # 由执行器在调用前替换成具体值，静态翻译到这里为止。
-    for item in runtime_only:
-        print(f"  [运行期解析] {item['op']} × {item['count']}：{item['reason']}")
-
-    sample = payload["sample"]
-    by_op: dict[str, list[dict]] = {}
-    for row in sample:
-        by_op.setdefault(row["op"], []).append(row)
-
-    filter_rows = by_op.get("clear_filter_enemy") or []
-    if filter_rows:
-        row = filter_rows[0]
-        if "preserve" not in (row.get("kwargs") or {}):
-            problems.append(f"clear_filter_enemy 的 preserve 应走 kwargs，实际 {row}")
-    step_on = by_op.get("fleet_2_step_on") or []
-    if step_on:
-        args = step_on[0].get("args") or []
-        if not any(isinstance(a, str) and a.startswith("#roads:") for a in args) and \
-                not any(isinstance(v, str) and v.startswith("#roads:")
-                        for v in (step_on[0].get("kwargs") or {}).values()):
-            problems.append(f"fleet_2_step_on 的道路参数应编码成 #roads:[...]，实际 {step_on[0]}")
-    grid_rows = [row for row in sample if any(isinstance(a, str) and a.startswith("#") for a in (row.get("args") or []))]
-    if not grid_rows:
-        problems.append("样例里应至少出现一次 `#<节点>` 形式的格参数")
-    super_rows = by_op.get("super().handle_boss_appear_refocus") or []
-    if super_rows and super_rows[0]["method"] != "handle_boss_appear_refocus":
-        problems.append(f"super().X 应翻成直接调 X，实际 {super_rows[0]}")
-    if super_rows and super_rows[0].get("fleet_prefix"):
-        problems.append("super() 不是舰队前缀，不应出现在 fleet_prefix 里")
-
-    print(f"[r5-calls] 步骤 {payload['steps']} 个 → 翻译 {payload['translated']} 个，"
-          f"不支持 {len(payload['unsupported'])} 个；上游方法 {len(payload['methods'])} 个")
-    if problems:
-        print(f"FAIL: {len(problems)} 个问题")
-        for item in problems:
-            print(f"  - {item}")
+    expected = inventory(DATA)
+    result = subprocess.run([str(SERVER), 'r5-calls', '--data', str(DATA), '--json'],
+                            cwd=ROOT, capture_output=True, text=True, timeout=600,
+                            encoding='utf-8', errors='replace')
+    if not result.stdout.lstrip().startswith('{'):
+        print(result.stderr or result.stdout)
         return 1
-    print("PASS: 全部计划步骤都能翻成宿主调用，参数引用形式（#节点/#grids/#roads/kwargs）与 super 处理符合预期")
-    return 0
+    payload = json.loads(result.stdout)
+    problems = validate(payload, expected, result.returncode)
+    print(f"[r5-calls] 递归步骤 {payload['steps']} / 条件调用 {payload['condition_calls']} / "
+          f"静态编码 {payload['static_encoded']} / 需环境求值 {payload['runtime_resolved']}；动态可调用性未验证")
+    for problem in problems:
+        print('FAIL: ' + problem)
+    if not problems:
+        print('PASS: 递归静态编码来源与导出一致；不证明动态方法可调用或实战成功')
+    return int(bool(problems))
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())
