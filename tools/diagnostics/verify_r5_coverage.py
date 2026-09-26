@@ -18,7 +18,7 @@ LOOP_FIXTURE = ROOT / 'tools/diagnostics/r5-loop-fixture.json'
 
 
 def normalize(name: str) -> str:
-    for prefix in ('fleet_1.', 'fleet_2.', 'fleet_boss.', 'fleet_submarine.', 'super().'):
+    for prefix in ('fleet_1.', 'fleet_2.', 'fleet_boss.', 'fleet_submarine.'):
         if name.startswith(prefix):
             return name[len(prefix):]
     return name

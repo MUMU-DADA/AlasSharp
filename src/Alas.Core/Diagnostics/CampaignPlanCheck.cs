@@ -274,7 +274,8 @@ internal static class CampaignPlanCheck
     /// <summary>步骤的执行侧状态标记（干跑判定，不执行任何东西）。</summary>
     private static string StatusNote(CampaignPlanStep step)
     {
-        if (step.Kind == "super_delegate") return "    [委托父类]";
+        if (step.Kind == "super_delegate" || step.Op.StartsWith("super().", StringComparison.Ordinal))
+            return $"    [不可执行：{CampaignPrimitiveRegistry.ResolveSuperDelegate(step).Reason}]";
         return CampaignPrimitiveRegistry.IsImplemented(step.Op) ? "    [可执行]" : "    [原语未实现]";
     }
 

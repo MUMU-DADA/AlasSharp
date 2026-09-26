@@ -61,8 +61,8 @@ public sealed class CampaignPlanBattle
 
     /// <summary>
     /// 钩子签名的参数默认值（`{参数名: 字面量}`，无默认值记 null）。
-    /// 用途：`super().X(preset)` 这类**委托实参**在计划里记的是参数引用 `{"__param__": "preset"}`，
-    /// 执行时用这里的默认值还原实参。
+    /// BindArguments 将默认值与跨钩子调用实参绑定，再解析参数引用 {"__param__": "preset"}。
+    /// 参数默认值不证明 super 的词法类/MRO 绑定。
     /// </summary>
     [JsonPropertyName("parameters")]
     public IReadOnlyDictionary<string, JsonNode?> Parameters { get; init; } =

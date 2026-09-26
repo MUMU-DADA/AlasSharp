@@ -14,7 +14,7 @@ public sealed record CampaignHostCall(
 {
     /// <summary>
     /// 实参里有**只能运行期解析**的引用（局部变量 / 钩子参数）：执行器在调用前会替换成具体值
-    /// （`SubstituteLocals` / `ResolveSuperDelegate`），静态翻译到这里只能到此为止。
+    /// （`BindArguments` / `SubstituteLocals`），静态翻译到这里只能到此为止。
     /// **与 <see cref="Unsupported"/> 分开**：这不是"翻译不了"，而是"翻译的时机在运行期"。
     /// </summary>
     public string? RuntimeOnly { get; init; }
@@ -61,7 +61,7 @@ public static class CampaignCallTranslator
         if (prefix == "super()")
         {
             return new CampaignHostCall(step.Op, step.Op, null, [], [],
-                "super 委托缺少词法定义类与原生 MRO 绑定，宿主不能将其编码为普通实例方法调用");
+                CampaignPrimitiveRegistry.ResolveSuperDelegate(step).Reason);
         }
         else if (prefix.Length > 0)
         {
@@ -132,8 +132,8 @@ public static class CampaignCallTranslator
                 runtimeOnly = true;
                 return JsonValue.Create("#runtime-local");
             case JsonObject payload when payload.ContainsKey("__param__"):
-                // 钩子**参数引用**（`super().handle_boss_appear_refocus(preset)`）：执行器用计划里记的
-                // 参数默认值还原（`ResolveSuperDelegate`），同样是运行期解析。
+                // 钩子参数引用由 BindArguments 绑定默认值或调用实参，SubstituteLocals 再求值。
+                // 参数求值不构成 super 绑定证据；super 已在翻译入口拒绝。
                 runtimeOnly = true;
                 return JsonValue.Create("#runtime-param");
             case JsonObject payload when payload.ContainsKey("__grid__"):

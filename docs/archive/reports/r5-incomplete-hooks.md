@@ -1,72 +1,173 @@
-# R5 不完整钩子普查（`plan_complete=false` 的成因与先决条件）
+# R5 不完整钩子普查（事实计数与棘轮）
 
 > 本报告由 `tools/diagnostics/r5_incomplete_hooks.py` 重建，不手写。
-> 这些钩子**有真实语句**但导出器表示不了；引擎侧会**拒绝执行并报原因**（tier C 守卫），
-> 所以是「少做」而不是「做错」。本报告只说清还差什么。
+> 计数首先来自导出 JSON 的 `plan_complete=false`；源代码形态只用于解释和历史棘轮。
+> 本审计不宣称生产战役可由静态计划替代；生产路径仍由上游 `Campaign.run()` 负责。
 
-- 导出里的钩子条目：**3019**
-- `plan_complete=false` 且上游**有 ≥2 条语句**的：**62**（其中 `battle_*` **18**、变体/其它 **44**）
-- 棘轮基线：**5**（只允许下降）
+- 导出钩子条目总数：**3019**
+- `plan_complete=false` 条目：**74**
+- 其中 `battle_*`：**18**；其它钩子/方法：**56**
+- 源体语句数 > 1（解释性统计）：**62**；其中 `battle_*`：**18**
+- 历史棘轮基线（`battle_*` 源体语句数 > 1）：**5**；当前值高于基线即失败，不能调高或调低掩盖变化。
 
-## `if` 的形态分布（条件 / 语句体）
+## 不完整原因（仅来自导出 `unparsed`）
 
-口径：这些是**不完整钩子体内**所有的 `if`，包含那些**本身支持**的形态
-（`self_call` + 纯 `return True`）——不完整的成因在别的语句上。要看的行是
-`local_name`、`not_self_call/if`、`other/*` 这几类。
+| 原因前缀 | 次数 |
+| --- | ---: |
+| `Assign` | 64 |
+| `Expr` | 32 |
+| `Return(expr)` | 12 |
+| `If(cond)` | 8 |
+| `variadic method signature requires native execution` | 8 |
+| `If(nested)` | 7 |
+| `Arguments(battle_function): unsupported argument: f'Enemy remain: {remain}'` | 4 |
+| `Arguments(battle_function): unsupported argument: f'Using function: {func}'` | 3 |
+| `For` | 2 |
+| `Arguments(battle_0): unsupported argument: f'A1.battle_0() did not cleared siren'` | 2 |
+| `Arguments(in_sight): unsupported argument: 'In sight: %s' % location2node(location)` | 2 |
+| `Arguments(before_boss): unsupported argument: grid` | 2 |
+| `Arguments(clear_boss): unsupported argument: 'May boss: %s' % self.map.select(may_boss=True)` | 1 |
+| `Arguments(battle_1): unsupported argument: 3 - self.fleet_boss_index` | 1 |
+| `Arguments(battle_0): unsupported argument: 3 - self.fleet_boss_index` | 1 |
+| `Arguments(battle_5): unsupported argument: f'Unexpected boss grid: {boss}'` | 1 |
+| `Arguments(handle_in_stage): unsupported argument: ENTRANCE` | 1 |
+| `Arguments(handle_in_stage): unsupported argument: CAMPAIGN_GOTO_DAILY` | 1 |
+| `Arguments(battle_0): unsupported argument: self.siren_list.pop()` | 1 |
+| `Arguments(battle_0): unsupported argument: self.is_left` | 1 |
+| `method transformation requires native execution` | 1 |
+
+## 源体条件形态（解释性统计）
 
 | 条件形态 | 语句体形态 | 次数 |
-| --- | --- | --- |
+| --- | --- | ---: |
 | self_call | return | 20 |
-| other | expr | 10 |
-| other | assign+expr+return | 8 |
-| other | return | 6 |
+| boolean_expression | expr | 9 |
+| boolean_expression | assign+expr+return | 8 |
 | compare | return | 6 |
 | other | assign+expr+if | 6 |
+| other | return | 5 |
 | compare | assign | 5 |
 | other | if+return | 3 |
 | self_call | assign | 3 |
 | other | if | 3 |
-| other | expr+return | 2 |
+| boolean_expression | expr+return | 2 |
 | compare | expr+if+return | 2 |
+| compare | if | 2 |
+| local_name | if | 2 |
+| local_name | assign+expr+raise | 1 |
+| other | for | 1 |
+| other | expr+if+return | 1 |
+| other | expr | 1 |
+| boolean_expression | assign+if | 1 |
+| self_call | expr+if+return | 1 |
+| boolean_expression | assign+return | 1 |
+| boolean_expression | return | 1 |
+| local_name | assign+if | 1 |
+| not_self_call | return | 1 |
+| self_call | expr+return | 1 |
+| local_name | expr | 1 |
+| compare | raise | 1 |
+| compare | break | 1 |
+| other | assign+for | 1 |
+| other | expr+return | 1 |
+| other | assign | 1 |
 
 ## 例子
 
-- `campaign_hard/campaign_hard` clear_boss：`if grids` → 体内有 assign+expr+raise
-- `campaign_main/campaign_14_4` map_data_init：`if not self.map_is_clear_mode` → 体内有 for
-- `campaign_main/campaign_15_1` battle_function：`if self.config.MAP_CLEAR_ALL_THIS_TIME and self.bat` → 体内有 assign+expr+return
-- `campaign_main/campaign_15_2` battle_function：`if self.config.MAP_CLEAR_ALL_THIS_TIME and self.bat` → 体内有 assign+expr+return
-- `campaign_main/campaign_15_3` battle_function：`if not self.config.MAP_CLEAR_ALL_THIS_TIME` → 体内有 return
-- `campaign_main/campaign_15_3` battle_function：`if self.battle_count == 3 or (self.battle_count == ` → 体内有 assign+expr+return
-- `campaign_main/campaign_15_4` battle_function：`if not self.config.MAP_CLEAR_ALL_THIS_TIME` → 体内有 return
-- `campaign_main/campaign_15_4` battle_function：`if self.battle_count in [3, 6] or (self.battle_coun` → 体内有 assign+expr+return
-- `campaign_main/campaign_16_3` battle_1：`if self.map_has_mob_move` → 体内有 expr+if+return
-- `campaign_main/campaign_16_3` battle_1：`if self.use_support_fleet and (not self.map_is_clea` → 体内有 expr
+- `campaign_hard/campaign_hard` `clear_boss`：`if grids` → assign+expr+raise
+- `campaign_main/campaign_14_4` `map_data_init`：`if not self.map_is_clear_mode` → for
+- `campaign_main/campaign_15_1` `battle_function`：`if self.config.MAP_CLEAR_ALL_THIS_TIME and self.battle_count == 0 a` → assign+expr+return
+- `campaign_main/campaign_15_2` `battle_function`：`if self.config.MAP_CLEAR_ALL_THIS_TIME and self.battle_count == 0 a` → assign+expr+return
+- `campaign_main/campaign_15_3` `battle_function`：`if not self.config.MAP_CLEAR_ALL_THIS_TIME` → return
+- `campaign_main/campaign_15_3` `battle_function`：`if self.battle_count == 3 or (self.battle_count == 0 and (not self.` → assign+expr+return
+- `campaign_main/campaign_15_4` `battle_function`：`if not self.config.MAP_CLEAR_ALL_THIS_TIME` → return
+- `campaign_main/campaign_15_4` `battle_function`：`if self.battle_count in [3, 6] or (self.battle_count in [0, 1] and ` → assign+expr+return
+- `campaign_main/campaign_16_3` `battle_1`：`if self.map_has_mob_move` → expr+if+return
+- `campaign_main/campaign_16_3` `battle_1`：`if self.use_support_fleet and (not self.map_is_clear_mode)` → expr
+- `campaign_main/campaign_16_3` `battle_1`：`if not self.use_single_fleet` → expr
+- `campaign_main/campaign_16_4` `battle_0`：`if self.map_has_mob_move and (not self.use_single_fleet)` → assign+if
 
-## 先决条件（按出现频次）
+## 全部不完整条目
 
-1. **局部变量 + `if <局部变量>:` + 分支体**：`boss = self.map.select(is_boss=True)` 这类「观察」，
-   以及 `branch` 步骤（条件为局部变量或一次原语调用，体内是步骤序列）；
-2. **局部变量的实参引用**：`check_accessibility(boss[0], fleet='boss')` 里的 `boss[0]`；
-3. **运行期标志**：`self.map_is_clear_mode` 由上游 handler 层设置（`module/handler/fast_forward.py` 的 `handle_fast_forward`），语义是`map_has_clear_mode and config.Campaign_UseClearMode` —— **已实现**（默认没开快进 → 确定为假；开了但还没识别到 `map_has_clear_mode` → 阻塞报原因）。**更正**：本报告此前写成「上游快照里只有使用、没有定义」，那是本机 grep 用错参数（`-Include` 在递归下漏扫 `module/handler/`）造成的误判；快照里该文件与完整仓库哈希一致；
-4. 其它形态（`compare` 条件、`for` 循环、`raise` 体）另计，需要单独设计，不要硬塞进上面的结构。
+| 模块 | 方法 | 源体语句数（不含 docstring） | 导出原因 |
+| --- | --- | ---: | --- |
+| `campaign_hard/campaign_hard` | `_expected_end` | 1 | Return(expr)@39: 'in_stage' |
+| `campaign_hard/campaign_hard` | `clear_boss` | 9 | Arguments(clear_boss): unsupported argument: 'May boss: %s' % self.map.select(may_boss=True) |
+| `campaign_main/campaign_14_4` | `map_data_init` | 2 | Expr@109: super().map_data_init(map_); If(nested)@110: not self.map_is_clear_mode; For@111: for override_grid in OVERRIDE: self.map[override_grid.location].may_en |
+| `campaign_main/campaign_15_1` | `battle_function` | 2 | Arguments(battle_function): unsupported argument: f'Using function: {func}' |
+| `campaign_main/campaign_15_2` | `battle_function` | 2 | Arguments(battle_function): unsupported argument: f'Using function: {func}' |
+| `campaign_main/campaign_15_3` | `battle_function` | 3 | Arguments(battle_function): unsupported argument: f'Using function: {func}' |
+| `campaign_main/campaign_15_4` | `battle_function` | 3 | If(cond)@83: self.battle_count in [3, 6] or (self.battle_count in [0, 1] and (not s |
+| `campaign_main/campaign_16_3` | `map_init` | 3 | Expr@74: super().map_init(map_); Assign@76: self.use_single_fleet = 'standby' in self.config.Fleet_FleetOrder |
+| `campaign_main/campaign_16_3` | `battle_1` | 3 | Arguments(battle_1): unsupported argument: 3 - self.fleet_boss_index |
+| `campaign_main/campaign_16_4` | `map_init` | 4 | Expr@80: super().map_init(map_); Assign@83: self.use_single_fleet = 'standby' in self.config.Fleet_FleetOrder |
+| `campaign_main/campaign_16_4` | `battle_0` | 2 | Arguments(battle_0): unsupported argument: 3 - self.fleet_boss_index |
+| `campaign_main/campaign_16_4` | `battle_1` | 7 | Assign@108: grid = grids.delete(grids.select(enemy_genre='Main')).first_or_none(); If(cond)@109: grid is not None and self.mob_move(F5, F6) |
+| `campaign_main/campaign_16_4` | `battle_3` | 6 | If(nested)@133: self.F5_is_moved; If(cond)@134: I6.enemy_genre == 'Main' and self.mob_move(I6, I7) |
+| `campaign_main/campaign_7_3` | `battle_5` | 4 | Arguments(battle_5): unsupported argument: f'Unexpected boss grid: {boss}' |
+| `campaign_main/campaign_9_2` | `battle_0` | 6 | If(nested)@68: self.fleet_at(D5, fleet=2); Assign@69: self.map.weight_data = '\n 10 10 30 10 10 20 30 40 10\n 10 10 10 10 10; If(nested)@76: self.fleet_at(F4, fleet=2); Assign@77: self.map.weight_data = '\n 10 10 30 10 10 10 10 10 10\n 10 10 20 30 10; If(nested)@84: self.fleet_at(F5, fleet=2); Assign@85: self.map.weight_data = '\n 10 10 30 10 10 10 10 10 10\n 10 10 20 30 10 |
+| `event_20200227_cn/c2` | `handle_in_stage` | 1 | Arguments(handle_in_stage): unsupported argument: ENTRANCE |
+| `event_20200312_cn/sp3` | `handle_in_stage` | 1 | Arguments(handle_in_stage): unsupported argument: CAMPAIGN_GOTO_DAILY |
+| `event_20210121_cn/a2` | `get_map_clear_percentage` | 1 | Return(expr)@72: super().get_map_clear_percentage() * 1.4 |
+| `event_20210121_cn/a3` | `get_map_clear_percentage` | 1 | Return(expr)@75: super().get_map_clear_percentage() * 1.4 |
+| `event_20210121_cn/c2` | `get_map_clear_percentage` | 1 | Return(expr)@72: super().get_map_clear_percentage() * 1.4 |
+| `event_20210121_cn/c3` | `get_map_clear_percentage` | 1 | Return(expr)@75: super().get_map_clear_percentage() * 1.4 |
+| `event_20211125_cn/t4` | `catch_camera_repositioning` | 3 | If(cond)@91: super().catch_camera_repositioning(destination); If(cond)@93: not self.map_is_clear_mode and destination.is_fortress |
+| `event_20211125_cn/t4` | `map_data_init` | 2 | Assign@102: self.config.MAP_HAS_FORTRESS = True; Expr@103: super().map_data_init(map_) |
+| `event_20211125_cn/t4` | `handle_clear_mode_config_cover` | 1 | Assign@107: self.map.fortress_data = [self.map.fortress_data[0], ()] |
+| `event_20220915_cn/sp` | `map_data_init` | 5 | Expr@92: super().map_data_init(map_); Assign@93: D4.is_siren = True; Assign@94: D6.is_siren = True; Assign@95: F4.is_siren = True; Assign@96: F6.is_siren = True |
+| `event_20230223_cn/sp` | `map_data_init` | 5 | Expr@81: super().map_data_init(map_); Assign@82: D4.is_siren = True; Assign@83: D6.is_siren = True; Assign@84: F4.is_siren = True; Assign@85: F6.is_siren = True |
+| `event_20230525_cn/ht3` | `combat_status` | 2 | Expr@89: super().combat_status(*args, **kwargs); variadic method signature requires native execution |
+| `event_20230525_cn/ht6` | `combat_status` | 2 | Expr@102: super().combat_status(*args, **kwargs); variadic method signature requires native execution |
+| `event_20230525_cn/sp` | `execute_actions` | 2 | For@118: for action in self.action[step]: fleet_index, movement, step, battle = |
+| `event_20230525_cn/sp` | `battle_0` | 2 | Arguments(battle_0): unsupported argument: self.siren_list.pop() |
+| `event_20230525_cn/t3` | `combat_status` | 2 | Expr@86: super().combat_status(*args, **kwargs); variadic method signature requires native execution |
+| `event_20230525_cn/t6` | `combat_status` | 2 | Expr@87: super().combat_status(*args, **kwargs); variadic method signature requires native execution |
+| `event_20231026_cn/sp` | `map_data_init` | 4 | Expr@89: super().map_data_init(map_); Assign@90: C2.is_siren = True; Assign@91: D3.is_siren = True; Assign@92: E2.is_siren = True |
+| `event_20231221_cn/sp` | `map_data_init` | 4 | Expr@85: super().map_data_init(map_); Assign@86: C2.is_siren = True; Assign@87: E2.is_siren = True; Assign@88: G2.is_siren = True |
+| `event_20240425_cn/sp` | `map_data_init` | 5 | Expr@83: super().map_data_init(map_); Assign@84: D4.is_siren = True; Assign@85: D6.is_siren = True; Assign@86: F4.is_siren = True; Assign@87: F6.is_siren = True |
+| `event_20240521_cn/a1` | `map_data_init` | 4 | Expr@99: super().map_data_init(map_); Assign@103: self.config.FLEET_BOSS = 1 |
+| `event_20240521_cn/a1` | `battle_function` | 2 | Arguments(battle_function): unsupported argument: f'Enemy remain: {remain}' |
+| `event_20240521_cn/a1` | `battle_0` | 3 | Arguments(battle_0): unsupported argument: f'A1.battle_0() did not cleared siren' |
+| `event_20240521_cn/b3` | `in_sight` | 5 | Arguments(in_sight): unsupported argument: 'In sight: %s' % location2node(location) |
+| `event_20240521_cn/c1` | `map_init` | 4 | Expr@99: super().map_init(map_); Assign@103: self.config.FLEET_BOSS = 1 |
+| `event_20240521_cn/c1` | `battle_function` | 2 | Arguments(battle_function): unsupported argument: f'Enemy remain: {remain}' |
+| `event_20240521_cn/c1` | `battle_0` | 3 | Arguments(battle_0): unsupported argument: f'A1.battle_0() did not cleared siren' |
+| `event_20240521_cn/d3` | `in_sight` | 5 | Arguments(in_sight): unsupported argument: 'In sight: %s' % location2node(location) |
+| `event_20240521_cn/sp` | `map_data_init` | 4 | Expr@103: super().map_data_init(map_); Assign@104: B7.is_siren = True; Assign@105: C8.is_siren = True; Assign@106: D7.is_siren = True |
+| `event_20240521_cn/sp` | `battle_0` | 5 | Arguments(battle_0): unsupported argument: self.is_left |
+| `event_20240815_cn/b2` | `before_boss` | 4 | Arguments(before_boss): unsupported argument: grid |
+| `event_20240815_cn/b2` | `clear_boss` | 2 | Expr@93: super().clear_boss() |
+| `event_20240815_cn/b2` | `brute_clear_boss` | 2 | Expr@97: super().brute_clear_boss() |
+| `event_20240815_cn/d2` | `before_boss` | 4 | Arguments(before_boss): unsupported argument: grid |
+| `event_20240815_cn/d2` | `clear_boss` | 2 | Expr@102: super().clear_boss() |
+| `event_20240815_cn/d2` | `brute_clear_boss` | 2 | Expr@106: super().brute_clear_boss() |
+| `event_20240815_cn/sp` | `map_data_init` | 4 | Expr@97: super().map_data_init(map_); Assign@98: E5.is_siren = True; Assign@99: D6.is_siren = True; Assign@100: F6.is_siren = True |
+| `event_20241024_cn/sp` | `map_data_init` | 4 | Expr@70: super().map_data_init(map_); Assign@71: I2.is_siren = True; Assign@72: J3.is_siren = True; Assign@73: L3.is_siren = True |
+| `event_20241121_cn/sp` | `map_data_init` | 4 | Expr@87: super().map_data_init(map_); Assign@88: D5.is_siren = True; Assign@89: E4.is_siren = True; Assign@90: E6.is_siren = True |
+| `event_20250520_cn/b3` | `battle_function` | 3 | Arguments(battle_function): unsupported argument: f'Enemy remain: {remain}' |
+| `event_20250520_cn/d3` | `battle_function` | 3 | Arguments(battle_function): unsupported argument: f'Enemy remain: {remain}' |
+| `event_20250724_cn/sp` | `_campaign_ocr_result_process` | 3 | Assign@100: result = CampaignBase._campaign_ocr_result_process(result); If(cond)@101: result in ['ysp', 'usp', 'iisp', 'ijsp', 'jjsp']; Return(expr)@103: result; method transformation requires native execution |
+| `event_20250912_cn/sp` | `map_data_init` | 12 | Expr@94: super().map_data_init(map_); Assign@96: B4.is_enemy = True; Assign@97: B5.is_enemy = True; Assign@98: C3.is_enemy = True; Assign@99: C6.is_enemy = True; Assign@100: G3.is_enemy = True; Assign@101: G6.is_enemy = True; Assign@102: H4.is_enemy = True; Assign@103: H5.is_enemy = True; Assign@105: D3.is_siren = True; Assign@106: E4.is_siren = True; Assign@107: F3.is_siren = True |
+| `event_20251023_cn/sp` | `map_data_init` | 4 | Expr@98: super().map_data_init(map_); Assign@99: F4.is_siren = True; Assign@100: F6.is_siren = True; Assign@101: G5.is_siren = True |
+| `event_20260326_cn/sp` | `map_data_init` | 4 | Expr@98: super().map_data_init(map_); Assign@99: C1.is_siren = True; Assign@100: D2.is_siren = True; Assign@101: E1.is_siren = True |
+| `event_20260417_cn/sp` | `_expected_end` | 2 | If(nested)@112: self.battle_count == 3; Return(expr)@113: self.event_animation_end |
+| `event_20260417_cn/sp3` | `_expected_end` | 2 | If(nested)@89: self.battle_count == 3; Return(expr)@90: self.event_animation_end |
+| `event_20260520_cn/b3` | `in_sight` | 4 | Assign@82: location = location_ensure(location); Assign@83: node = location2node(location); If(cond)@84: node == 'E3' |
+| `event_20260520_cn/d3` | `in_sight` | 4 | Assign@99: location = location_ensure(location); Assign@100: node = location2node(location); If(cond)@101: node == 'E3' |
+| `war_archives_20190911_cn/a2` | `get_map_clear_percentage` | 1 | Return(expr)@72: super().get_map_clear_percentage() * 1.4 |
+| `war_archives_20190911_cn/a3` | `get_map_clear_percentage` | 1 | Return(expr)@77: super().get_map_clear_percentage() * 1.4 |
+| `war_archives_20190911_cn/c2` | `get_map_clear_percentage` | 1 | Return(expr)@72: super().get_map_clear_percentage() * 1.4 |
+| `war_archives_20190911_cn/c3` | `get_map_clear_percentage` | 1 | Return(expr)@75: super().get_map_clear_percentage() * 1.4 |
+| `war_archives_20211229_cn/a1` | `handle_clear_mode_config_cover` | 2 | Expr@81: super().handle_clear_mode_config_cover(); Assign@82: self.config.MAP_HAS_MISSILE_ATTACK = False |
+| `war_archives_20211229_cn/c1` | `handle_clear_mode_config_cover` | 2 | Expr@81: super().handle_clear_mode_config_cover(); Assign@82: self.config.MAP_HAS_MISSILE_ATTACK = False |
+| `war_archives_20230525_cn/ht3` | `combat_status` | 2 | Expr@89: super().combat_status(*args, **kwargs); variadic method signature requires native execution |
+| `war_archives_20230525_cn/ht6` | `combat_status` | 2 | Expr@102: super().combat_status(*args, **kwargs); variadic method signature requires native execution |
+| `war_archives_20230525_cn/t3` | `combat_status` | 2 | Expr@86: super().combat_status(*args, **kwargs); variadic method signature requires native execution |
+| `war_archives_20230525_cn/t6` | `combat_status` | 2 | Expr@87: super().combat_status(*args, **kwargs); variadic method signature requires native execution |
 
-## 剩下这几个为什么先不做（按出现次数算成本/收益）
+## 口径边界
 
-| 偏门写法 | 全库出现 | 涉及文件 | 结论 |
-| --- | --- | --- | --- |
-| 改写地图数据 `self.map.weight_data = …` | 3 处 | `campaign_9_2` 一个文件 | 只值 1 个钩子，不做 |
-| 动态派发 `getattr`/`setattr` | 1 处 | `event_20230525_cn/sp` 一个文件 | 运行时拼函数名，静态表达不了，不做 |
-| 局部路段表 `road_x = [road_y]` | 4 处 | `campaign_7_3` 一个文件 | 只值 1 个钩子，不做 |
-| `FUNCTION_NAME_BASE` 拼函数名 | 5 处 | `campaign_15_1..15_4` | 只有 2 个钩子受影响，其余已可表达；不做 |
-
-判断依据：这四类各自只影响 **1-2 个钩子**，而每加一种语言特性都要动导出器 + 执行器 + 检查三处；相比之下**设备路径**（`loop=csharp` 接线与同局对照）才是剩下的主要工作。棘轮基线会保证这几个数不会再涨。
-
-## 已经量化过、结论是「先不做」的两条路
-
-| 设想 | 量化结果 | 为什么不做 |
-| --- | --- | --- |
-| 实例属性状态（`self.X = …` / `if self.X:`） | 只差这一项就能变完整的钩子：**0 / 101** | 读到的属性要么**全库没有写过**（`self.map_is_clear_mode`），要么这些钩子还被别的语句挡着 |
-| 复合条件（`and`/`or` 组合已有条件形态） | 解锁钩子数：**0**；唯一可达的复合计划 `event_20200312_cn/sp3:handle_in_stage` 还卡在未实现的 `appear` | 不完整钩子里的复合式**每一个**都含 `self.map_is_clear_mode` 读取 |
-
-结论：剩下的不完整钩子主要卡在**上游定义或原语的缺失**（`self.map_is_clear_mode` 72 处、`appear`、`self.fleet_at(...)`、`self.map.weight_data` 改写等），不是计划语言的表达力。继续加语言特性收益已经很低；要么拿到 `map_is_clear_mode` 的定义证据，要么把精力放到设备路径。
-
+- 全部条目都保留在事实计数中；单语句、继承方法和非 `battle_*` 条目不会被静默删掉。
+- `battle_*` 棘轮只衡量历史上用于计划语言回归的源体语句数；它不等价于全部缺口，也不产生“0 gap/0 blocked”的结论。
+- 本报告不按地图名称给出迁移价值判断。每个未解析原因仍需结合上游调用链、设备状态和真实证据处理。

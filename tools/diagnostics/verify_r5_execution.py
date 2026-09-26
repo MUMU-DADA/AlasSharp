@@ -139,6 +139,9 @@ def main() -> int:
             problems.append(f"{case['name']}: 命令没有返回这个用例")
             continue
         expect = case.get("expect") or {}
+        for field in ("actions", "invoked_ops"):
+            if field in expect and result.get(field) != expect[field]:
+                problems.append(f"{case['name']}: {field}={result.get(field)!r}, expected {expect[field]!r}")
         if "return" in expect and result["return"] != expect["return"]:
             problems.append(f"{case['name']}: 返回 {result['return']!r}，期望 {expect['return']!r}")
         if "completed" in expect and result["completed"] != expect["completed"]:

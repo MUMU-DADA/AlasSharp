@@ -38,7 +38,7 @@ public sealed record CampaignExecutionTrace(
     public int Attempts => Steps.Count(step => step.Role == CampaignStepRole.Attempt);
     public bool HasFallback => Steps.Any(step => step.Role == CampaignStepRole.Fallback);
     public int Delegated => Steps.Count(step => step.Role == CampaignStepRole.Delegate);
-    public int Unimplemented => Steps.Count(step => !step.Implemented && step.Role != CampaignStepRole.Delegate);
+    public int Unimplemented => Steps.Count(step => !step.Implemented);
 }
 
 /// <summary>
@@ -137,11 +137,10 @@ public static class CampaignPlanExecutor
                 _ => CampaignStepRole.Setup,
             };
             // 跨钩子调用（`self.battle_0()`）：op 与同关卡另一个钩子同名，执行器会递归执行它。
-            // `super().X(...)`：委托父类实现，执行器会用基类实现跑——只要**基类方法已登记**且
-            // 实参里的参数引用都能用签名默认值还原，这一步就是可执行的（否则如实记为未实现）。
+            // super 委托必须由同一解析器确认词法类/MRO 绑定；同名注册原语不能证明可执行。
             bool implemented = CampaignPrimitiveRegistry.IsImplemented(step.Op)
                                || plan.Header.Battles.Any(item => item.Method == step.Op)
-                               || IsExecutableSuperDelegate(plan, battle, step);
+                               || IsExecutableSuperDelegate(step);
             steps.Add(new CampaignExecutionStep(role, step.Op, implemented, Describe(step)));
         }
         return new CampaignExecutionTrace(plan.Chapter, plan.Level, battle.Method, steps);
@@ -188,35 +187,10 @@ public static class CampaignPlanExecutor
     }
 
     /// <summary>
-    /// `super().X(...)` 这一步能不能执行：基类方法已登记，且实参里的每个参数引用都能用
-    /// **钩子签名的字面量默认值**还原（与执行器 <c>ResolveSuperDelegate</c> 同一判据）。
+    /// super 委托的静态可执行性与执行器使用同一绑定判据。
     /// </summary>
-    private static bool IsExecutableSuperDelegate(CampaignPlan plan, CampaignPlanBattle battle,
-                                                  CampaignPlanStep step)
-    {
-        const string prefix = "super().";
-        if (!step.Op.StartsWith(prefix, StringComparison.Ordinal) || step.Op.Length == prefix.Length)
-        {
-            return false;
-        }
-        if (!CampaignPrimitiveRegistry.IsImplemented(step.Op[prefix.Length..])) return false;
-        if (step.Args is null) return true;
-        foreach (var value in step.Args.Positional.Concat(step.Args.Keyword.Values))
-        {
-            if (value is not System.Text.Json.Nodes.JsonObject payload
-                || !payload.TryGetPropertyValue("__param__", out var name))
-            {
-                continue;
-            }
-            string? parameter = name?.GetValue<string>();
-            if (parameter is null || !battle.Parameters.TryGetValue(parameter, out var fallback)
-                || battle.RequiredParameters.Contains(parameter, StringComparer.Ordinal))
-            {
-                return false;
-            }
-        }
-        return true;
-    }
+    private static bool IsExecutableSuperDelegate(CampaignPlanStep step) =>
+        CampaignPrimitiveRegistry.ResolveSuperDelegate(step).Step is not null;
 
     private static string Describe(CampaignPlanStep step)
     {

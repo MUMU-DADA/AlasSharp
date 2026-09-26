@@ -2013,6 +2013,8 @@ public static class CampaignHookRunner
     private static object? Invoke(CampaignPlan plan, CampaignPlanStep step, ICampaignPrimitiveHost host,
                                   Dictionary<string, object?> state, int depth)
     {
+        if (step.Op.StartsWith("super().", StringComparison.Ordinal))
+            throw new NotSupportedException(CampaignPrimitiveRegistry.ResolveSuperDelegate(step).Reason);
         var nested = plan.Header.Battles.FirstOrDefault(item => item.Method == step.Op);
         if (nested is not null)
         {
@@ -2280,33 +2282,10 @@ public static class CampaignHookRunner
 
             if (step.Kind == "super_delegate")
             {
-                // 委托父类：`super().X(...)` 在上游会调用**基类实现**（这 7 处实测都是 Fleet 的实现）。
-                // 实参里的参数引用用钩子签名的默认值还原，然后按普通原语执行——不再当"本层未执行"跳过。
-                var delegated = CampaignPrimitiveRegistry.ResolveSuperDelegate(plan, battle, step);
-                if (delegated.Step is null)
-                {
-                    stepLog.Add($"{step.Op}: {delegated.Reason}");
-                    return Result(plan, battle, null, delegated.Reason, stepLog, host, actionsBefore, actions);
-                }
-                if (!CampaignPrimitiveRegistry.TryGet(delegated.Step.Op, out var basePrimitive))
-                {
-                    string reason = $"父类实现 {delegated.Step.Op} 尚未迁移（super 委托无法执行）";
-                    stepLog.Add($"{step.Op}: {reason}");
-                    return Result(plan, battle, null, reason, stepLog, host, actionsBefore, actions);
-                }
-                try
-                {
-                    CampaignPrimitiveRegistry.ValidateArguments(delegated.Step);
-                    object? returned = basePrimitive.Execute(host, delegated.Step);
-                    stepLog.Add($"{step.Op} → 父类实现 {delegated.Step.Op}：已执行" +
-                                  (delegated.Note is null ? "" : $"（{delegated.Note}）"));
-                    return Result(plan, battle, HookReturn(returned), null, stepLog, host, actionsBefore, actions);
-                }
-                catch (NotSupportedException error)
-                {
-                    stepLog.Add($"{step.Op}: {error.Message}");
-                    return Result(plan, battle, null, error.Message, stepLog, host, actionsBefore, actions);
-                }
+                // 当前计划没有词法定义类与完整 MRO；不能以同名原语替代父类绑定。
+                var delegated = CampaignPrimitiveRegistry.ResolveSuperDelegate(step);
+                stepLog.Add($"{step.Op}: {delegated.Reason}");
+                return Result(plan, battle, null, delegated.Reason, stepLog, host, actionsBefore, actions);
             }
 
             if (step.Kind is not ("call" or "conditional" or "terminal"))
@@ -2411,67 +2390,18 @@ public sealed record CampaignSuperDelegate(CampaignPlanStep? Step, string Reason
 public static class CampaignPrimitiveRegistry
 {
     /// <summary>
-    /// 解析 `super().X(...)`：把 op 归一成基类方法名，并把实参里的**参数引用**（`{"__param__": name}`）
-    /// 用钩子签名的默认值还原。还原不了（参数没有字面量默认值）就返回原因——不猜一个值去执行。
+    /// 当前计划只记录方法名和实参，不携带方法的词法定义类及完整实例 MRO。
+    /// 默认参数和同名注册原语均不能证明 super 的目标；保留原生调用边界并明确拒绝。
+    /// 执行器、干跑与宿主翻译共用此判据。
     /// </summary>
-    public static CampaignSuperDelegate ResolveSuperDelegate(CampaignPlan plan, CampaignPlanBattle battle,
-                                                             CampaignPlanStep step)
+    public static CampaignSuperDelegate ResolveSuperDelegate(CampaignPlanStep step)
     {
         const string prefix = "super().";
         if (!step.Op.StartsWith(prefix, StringComparison.Ordinal) || step.Op.Length == prefix.Length)
-        {
             return new CampaignSuperDelegate(null, $"无法识别的 super 委托写法：{step.Op}");
-        }
-        string target = step.Op[prefix.Length..];
-
-        string? note = null;
-        CampaignPlanStepArgs? args = step.Args;
-        if (args is not null && (args.Keyword.Count > 0 || args.Positional.Count > 0))
-        {
-            var positional = new List<JsonNode?>();
-            foreach (var value in args.Positional)
-            {
-                if (ParameterName(value) is { } name)
-                {
-                    if (!battle.Parameters.TryGetValue(name, out var fallback)
-                        || battle.RequiredParameters.Contains(name, StringComparer.Ordinal))
-                    {
-                        return new CampaignSuperDelegate(null,
-                            $"super 委托实参 {name} 没有字面量默认值，无法还原（{step.Op}）");
-                    }
-                    positional.Add(fallback?.DeepClone());
-                    note = $"实参 {name} 用签名默认值 {fallback?.ToJsonString() ?? "null"}";
-                    continue;
-                }
-                positional.Add(value?.DeepClone());
-            }
-            var keyword = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
-            foreach (var (key, value) in args.Keyword)
-            {
-                if (ParameterName(value) is { } name)
-                {
-                    if (!battle.Parameters.TryGetValue(name, out var fallback)
-                        || battle.RequiredParameters.Contains(name, StringComparer.Ordinal))
-                    {
-                        return new CampaignSuperDelegate(null,
-                            $"super 委托关键字实参 {name} 没有字面量默认值，无法还原（{step.Op}）");
-                    }
-                    keyword[key] = fallback?.DeepClone();
-                    note = $"关键字实参 {name} 用签名默认值 {fallback?.ToJsonString() ?? "null"}";
-                    continue;
-                }
-                keyword[key] = value?.DeepClone();
-            }
-            args = new CampaignPlanStepArgs { Positional = positional, Keyword = keyword };
-        }
-        return new CampaignSuperDelegate(new CampaignPlanStep { Kind = "call", Op = target, Args = args },
-                                         "ok", note);
+        return new CampaignSuperDelegate(null,
+            "super 委托缺少词法定义类与原生 MRO 绑定，不能以同名原语或普通实例方法替代");
     }
-
-    private static string? ParameterName(JsonNode? value) =>
-        value is JsonObject payload && payload.TryGetPropertyValue("__param__", out var name)
-            ? name?.GetValue<string>()
-            : null;
 
     private static readonly Dictionary<string, CampaignPrimitive> Table = new(StringComparer.Ordinal)
     {

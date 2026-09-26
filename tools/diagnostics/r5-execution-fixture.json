@@ -1992,7 +1992,7 @@
       }
     },
     {
-      "name": "campaign_1_1 handle_boss_appear_refocus：update 失败（上游 MapDetectionError）→ 按 preset 滑动再对齐",
+      "name": "campaign_1_1 handle_boss_appear_refocus：update 失败时仍拒绝无 MRO 的 super 委托",
       "chapter": "campaign_main",
       "level": "campaign_1_1",
       "hook": "handle_boss_appear_refocus",
@@ -2011,12 +2011,14 @@
       ],
       "expect": {
         "return": null,
-        "log_contains": "MapDetectionError occurs after boss appear, trying swipe preset (-3, 0)",
-        "action_contains": "map_swipe(-3, 0)"
+        "completed": false,
+        "blocked_contains": "MRO",
+        "actions": [],
+        "invoked_ops": []
       }
     },
     {
-      "name": "campaign_1_1 handle_boss_appear_refocus：非零 preset + update 成功 → 不滑动，只对齐边缘并回到机位",
+      "name": "campaign_1_1 handle_boss_appear_refocus：update 成功时仍拒绝无 MRO 的 super 委托",
       "chapter": "campaign_main",
       "level": "campaign_1_1",
       "hook": "handle_boss_appear_refocus",
@@ -2035,8 +2037,10 @@
       ],
       "expect": {
         "return": null,
-        "log_contains": "Refocus to previous camera position.",
-        "action_contains": "focus_to(D4)"
+        "completed": false,
+        "blocked_contains": "MRO",
+        "actions": [],
+        "invoked_ops": []
       }
     },
     {
