@@ -1301,8 +1301,8 @@ public static class CampaignPrimitives
 
 /// <summary>
 /// 上游用异常做控制流的信号（如 <c>clear_mechanism</c> 结尾的 <c>raise MapEnemyMoved</c>）。
-/// 战役循环（尚未迁移）会捕获它并重新识别地图——在那之前，执行器把它转成**阻塞原因**如实报出，
-/// 而不是假装继续往下跑。
+/// 执行器保留类型交给关卡循环处理：CampaignEnd 展开整个调用栈；MapEnemyMoved 按战斗计数重试。
+/// 单钩子诊断仍保留信号原因，不能用这类信号推断成功结算。
 /// </summary>
 public sealed class CampaignControlFlowSignal(string kind, string message) : Exception(message)
 {
@@ -1321,6 +1321,12 @@ public sealed record CampaignHookExecution(
     IReadOnlyList<string> Logs)
 {
     public bool Completed => BlockedReason is null;
+
+    /// <summary>显式 return 与分支体自然结束必须区分，None 也会终止整个钩子。</summary>
+    public bool DidReturn { get; init; }
+
+    /// <summary>上游异常控制流；不得用错误消息的子串推断信号类型。</summary>
+    public string? Signal { get; init; }
 }
 
 /// <summary>
@@ -1380,7 +1386,7 @@ public static class CampaignHookRunner
             };
             why = $"battle_count({count}) {compare} {threshold}";
         }
-        else if (test.BattleCountIn is { Count: > 0 } allowed)
+        else if (test.BattleCountIn is { } allowed)
         {
             value = allowed.Contains(host.BattleCount);
             why = $"battle_count({host.BattleCount}) in {string.Join(",", allowed)}";
@@ -1482,10 +1488,6 @@ public static class CampaignHookRunner
             catch (NotSupportedException error)
             {
                 return (null, error.Message);
-            }
-            catch (CampaignControlFlowSignal signal)
-            {
-                return (null, signal.Message);
             }
             why = $"{call.Op} → {value}";
         }
@@ -1600,16 +1602,13 @@ public static class CampaignHookRunner
             }
             try
             {
+                if (host is RecordingCampaignHost recorder) recorder.InvokedOps.Add(callName);
                 bool callResult = callPrimitive.Execute(host, resolvedStep);
                 return (callResult, $"{callName} → {callResult}");
             }
             catch (NotSupportedException error)
             {
                 return (null, error.Message);
-            }
-            catch (CampaignControlFlowSignal signal)
-            {
-                return (null, signal.Message);
             }
         }
         if (node["grids"] is JsonArray cells)
@@ -1635,11 +1634,12 @@ public static class CampaignHookRunner
             {
                 return (null, $"局部名 {localList} 不是可用的格子集合（取下标失败）");
             }
-            if (offsetIndex < 0 || offsetIndex >= list.Count)
+            int normalizedIndex = offsetIndex < 0 ? list.Count + offsetIndex : offsetIndex;
+            if (normalizedIndex < 0 || normalizedIndex >= list.Count)
             {
                 return (null, $"局部名 {localList} 的下标 {offsetIndex} 越界（共 {list.Count} 格）");
             }
-            return (list[offsetIndex], $"{localList}[{offsetIndex}] = {list[offsetIndex].Location}");
+            return (list[normalizedIndex], $"{localList}[{offsetIndex}] = {list[normalizedIndex].Location}");
         }
         if (node["local"] is JsonValue localValueNode && localValueNode.TryGetValue<string>(out string? localRef))
         {
@@ -1679,6 +1679,20 @@ public static class CampaignHookRunner
                 "cost_1" => grid.Cost1,
                 "cost_2" => grid.Cost2,
                 "enemy_genre" => grid.EnemyGenre,
+                "is_accessible" => grid.IsAccessible,
+                "is_enemy" => grid.IsEnemy,
+                "is_boss" => grid.IsBoss,
+                "is_siren" => grid.IsSiren,
+                "is_fortress" => grid.IsFortress,
+                "is_mystery" => grid.IsMystery,
+                "is_ammo" => grid.IsAmmo,
+                "is_land" => grid.IsLand,
+                "is_cleared" => grid.IsCleared,
+                "is_fleet" => grid.IsFleet,
+                "may_enemy" => grid.MayEnemy,
+                "may_boss" => grid.MayBoss,
+                "may_siren" => grid.MaySiren,
+                "may_ambush" => grid.MayAmbush,
                 _ => null,
             };
             if (read is null) return (null, $"值表达式里的格子属性 {attribute} 还没映射");
@@ -1704,7 +1718,15 @@ public static class CampaignHookRunner
                 };
                 return (gridResult, $"{leftWhy} {compareOp} {rightWhy} → {gridResult}");
             }
-            if (left is not int leftNumber || right is not int rightNumber)
+            // Python bool 是 int 的子类；None/字符串也允许等值比较。
+            object numericLeft = left is bool leftFlag ? (leftFlag ? 1 : 0) : left;
+            object numericRight = right is bool rightFlag ? (rightFlag ? 1 : 0) : right;
+            if (compareOp is "==" or "!=")
+            {
+                bool same = Equals(numericLeft, numericRight);
+                return (compareOp == "==" ? same : !same, $"{leftWhy} {compareOp} {rightWhy}");
+            }
+            if (numericLeft is not int leftNumber || numericRight is not int rightNumber)
             {
                 return (null, $"比较 {leftWhy} {compareOp} {rightWhy} 不是整数，无法比较");
             }
@@ -1740,22 +1762,24 @@ public static class CampaignHookRunner
         {
             if (node[operatorName] is not JsonArray items || items.Count == 0) continue;
             var parts = new List<string>();
+            object? lastValue = null;
             foreach (var item in items)
             {
                 var (value, why) = EvaluateExpr(item, host, state, env);
                 if (value is null) return (null, why);
                 bool truth = Truthy(value);
+                lastValue = value;
                 parts.Add($"{why}={truth}");
                 // 短路：与 Python 的 `and`/`or` 一致
-                if (isAnd && !truth) return (false, $"{operatorName}({string.Join(", ", parts)})");
-                if (!isAnd && truth) return (true, $"{operatorName}({string.Join(", ", parts)})");
+                if (isAnd && !truth) return (value, $"{operatorName}({string.Join(", ", parts)})");
+                if (!isAnd && truth) return (value, $"{operatorName}({string.Join(", ", parts)})");
             }
-            return (isAnd, $"{operatorName}({string.Join(", ", parts)})");
+            return (lastValue, $"{operatorName}({string.Join(", ", parts)})");
         }
         return (null, "值表达式的形态不在白名单里");
     }
 
-    /// <summary>局部变量的真假：格子集合看"非空"，布尔直接看值。</summary>
+    /// <summary>Python 真值：None、空字符串、零和空格子集合为假。</summary>
     private static bool Truthy(object? value) => value switch
     {
         null => false,
@@ -1763,6 +1787,7 @@ public static class CampaignHookRunner
         bool flag => flag,
         // Python 的真假：整数 0 为假
         int number => number != 0,
+        string text => text.Length != 0,
         CampaignGridSet set => !set.IsEmpty,
         _ => true,
     };
@@ -1825,18 +1850,27 @@ public static class CampaignHookRunner
             {
                 return node;
             }
-            if (!env.TryGetValue(name, out var bound) || bound is not CampaignGridSet set || set.IsEmpty)
+            if (!env.TryGetValue(name, out var bound))
             {
-                throw new NotSupportedException($"局部变量 {name} 不是可用的格子集合（不能当实参）");
+                throw new NotSupportedException($"局部变量 {name} 没有绑定值");
             }
-            int index = payload["__index__"] is JsonValue indexNode && indexNode.TryGetValue<int>(out int parsed)
-                ? parsed
-                : 0;
-            if (index < 0 || index >= set.Count)
+            CampaignGrid grid;
+            if (bound is CampaignGrid single && !payload.ContainsKey("__index__"))
             {
-                throw new NotSupportedException($"局部变量 {name} 的下标 {index} 越界（共 {set.Count} 格）");
+                grid = single;
             }
-            var grid = set[index];
+            else if (bound is CampaignGridSet set && payload["__index__"] is JsonValue indexNode
+                     && indexNode.TryGetValue<int>(out int index))
+            {
+                int normalized = index < 0 ? set.Count + index : index;
+                if (normalized < 0 || normalized >= set.Count)
+                    throw new NotSupportedException($"局部变量 {name} 的下标 {index} 越界（共 {set.Count} 格）");
+                grid = set[normalized];
+            }
+            else
+            {
+                throw new NotSupportedException($"局部变量 {name} 不是单个格子或带下标的格子集合");
+            }
             if (!CampaignLocations.TryParse(grid.Location, out int x, out int y))
             {
                 throw new NotSupportedException($"格子 {grid.Location} 解析不出坐标");
@@ -1881,12 +1915,56 @@ public static class CampaignHookRunner
                                              Dictionary<string, object?>? env = null,
                                              Dictionary<string, object?>? state = null)
     {
+        int actionsBefore = host is RecordingCampaignHost recorder ? recorder.Actions.Count : 0;
+        try
+        {
+            return RunCore(plan, battle, host, depth, env, state);
+        }
+        catch (CampaignControlFlowSignal signal)
+        {
+            if (signal.Kind == "CampaignEnd")
+            {
+                host.RequestCampaignEnd(signal.Message);
+                return Result(plan, battle, null, null, ["控制流信号 CampaignEnd"], host, actionsBefore, []);
+            }
+            return Result(plan, battle, null, signal.Message, [$"控制流信号 {signal.Kind}"],
+                          host, actionsBefore, []) with { Signal = signal.Kind };
+        }
+        catch (NotSupportedException error)
+        {
+            return Result(plan, battle, null, error.Message, [error.Message], host, actionsBefore, []);
+        }
+    }
+
+    internal static Dictionary<string, object?> CreateInitialState(CampaignPlan plan)
+    {
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var (name, node) in plan.Header.InitialState)
+        {
+            if (node is null) result[name] = PythonNone;
+            else if (node is JsonValue value)
+            {
+                if (value.TryGetValue<bool>(out bool flag)) result[name] = flag;
+                else if (value.TryGetValue<int>(out int number)) result[name] = number;
+                else if (value.TryGetValue<string>(out string? text)) result[name] = text;
+                else throw new NotSupportedException($"实例属性 {name} 的初值类型未支持");
+            }
+            else throw new NotSupportedException($"实例属性 {name} 的初值类型未支持");
+        }
+        return result;
+    }
+
+    private static CampaignHookExecution RunCore(CampaignPlan plan, CampaignPlanBattle battle,
+                                             ICampaignPrimitiveHost host, int depth,
+                                             Dictionary<string, object?>? env,
+                                             Dictionary<string, object?>? state)
+    {
         // **局部变量环境**：上游 `boss = self.map.select(is_boss=True)` 这类"观察"的绑定，
         // 后续 `if boss:` / `check_accessibility(boss[0], …)` 都从它取值。分支体共享同一份（Python 作用域）。
         env ??= new Dictionary<string, object?>(StringComparer.Ordinal);
         // **关卡实例属性**（跨钩子存在，如 `self._is_D9`）：由关卡循环创建、初值来自计划的
-        // `initial_state`；这里兜底建一份空的（诊断命令直接跑单个钩子时用）。
-        state ??= new Dictionary<string, object?>(StringComparer.Ordinal);
+        // `initial_state`；单钩子诊断使用同一套初值转换。
+        state ??= CreateInitialState(plan);
         var stepLog = new List<string>();
         var actions = new List<string>();
         int actionsBefore = host is RecordingCampaignHost recording ? recording.Actions.Count : 0;
@@ -1903,8 +1981,11 @@ public static class CampaignHookRunner
             return Result(plan, battle, null, $"计划不完整：{reason}", stepLog, host, actionsBefore, actions);
         }
 
-        foreach (var step in battle.Steps)
+        foreach (var originalStep in battle.Steps)
         {
+            if (host.EndRequested)
+                return Result(plan, battle, null, null, stepLog, host, actionsBefore, actions);
+            var step = SubstituteLocals(originalStep, env);
             // `branch`：条件分支。条件要么看**局部变量**（`if boss:`），要么调一次原语
             // （`if not self.check_accessibility(boss[0], fleet='boss')`）。分支体是步骤序列，可再嵌套。
             if (step.Kind == "branch")
@@ -1929,12 +2010,12 @@ public static class CampaignHookRunner
                 };
                 var branchRun = Run(plan, innerBattle, host, depth, env, state);
                 stepLog.AddRange(branchRun.StepLog);
-                if (branchRun.Actions.Count > 0) actions.AddRange(branchRun.Actions);
                 if (branchRun.BlockedReason is not null)
                 {
-                    return Result(plan, battle, null, branchRun.BlockedReason, stepLog, host, actionsBefore, actions);
+                    return Result(plan, battle, null, branchRun.BlockedReason, stepLog, host, actionsBefore, actions)
+                        with { Signal = branchRun.Signal };
                 }
-                if (branchRun.ReturnValue is not null)
+                if (branchRun.DidReturn || host.EndRequested)
                 {
                     return Result(plan, battle, branchRun.ReturnValue, null, stepLog, host, actionsBefore, actions);
                 }
@@ -2057,11 +2138,6 @@ public static class CampaignHookRunner
                     stepLog.Add($"{step.Op}: {error.Message}");
                     return Result(plan, battle, null, error.Message, stepLog, host, actionsBefore, actions);
                 }
-                catch (CampaignControlFlowSignal signal)
-                {
-                    stepLog.Add($"{step.Op}: 控制流信号 {signal.Kind}");
-                    return Result(plan, battle, null, signal.Message, stepLog, host, actionsBefore, actions);
-                }
                 env[bind] = assignedValue;
                 stepLog.Add($"{step.Op}: {(assignedValue ? "真" : "假")}（绑定 {bind}）");
                 continue;
@@ -2085,22 +2161,20 @@ public static class CampaignHookRunner
                 }
                 try
                 {
-                    basePrimitive.Execute(host, delegated.Step);
+                    bool returned = basePrimitive.Execute(host, delegated.Step);
                     stepLog.Add($"{step.Op} → 父类实现 {delegated.Step.Op}：已执行" +
                                   (delegated.Note is null ? "" : $"（{delegated.Note}）"));
-                }
-                catch (CampaignControlFlowSignal signal)
-                {
-                    stepLog.Add($"{step.Op}: 控制流信号 {signal.Kind}");
-                    return Result(plan, battle, null, signal.Message, stepLog, host, actionsBefore, actions);
+                    return Result(plan, battle, returned, null, stepLog, host, actionsBefore, actions);
                 }
                 catch (NotSupportedException error)
                 {
                     stepLog.Add($"{step.Op}: {error.Message}");
                     return Result(plan, battle, null, error.Message, stepLog, host, actionsBefore, actions);
                 }
-                continue;
             }
+
+            if (step.Kind is not ("call" or "conditional" or "terminal"))
+                return Result(plan, battle, null, $"未知步骤类型 {step.Kind}", stepLog, host, actionsBefore, actions);
 
             var role = step.Kind switch
             {
@@ -2117,7 +2191,7 @@ public static class CampaignHookRunner
 
             // 跨钩子调用：`self.battle_0()` 这类步骤（上游确实存在），在本关卡内递归执行那个钩子。
             var nested = plan.Header.Battles.FirstOrDefault(item => item.Method == step.Op);
-            if (nested is not null && !CampaignPrimitiveRegistry.IsImplemented(step.Op))
+            if (nested is not null)
             {
                 if (depth >= MaxCallDepth)
                 {
@@ -2130,7 +2204,7 @@ public static class CampaignHookRunner
                 if (inner.BlockedReason is not null)
                 {
                     return Result(plan, battle, null, $"跨钩子 {step.Op} 被阻塞：{inner.BlockedReason}",
-                                  stepLog, host, actionsBefore, actions);
+                                  stepLog, host, actionsBefore, actions) with { Signal = inner.Signal };
                 }
                 if (role == CampaignStepRole.Attempt && inner.ReturnValue == true)
                 {
@@ -2160,11 +2234,6 @@ public static class CampaignHookRunner
                 stepLog.Add($"{step.Op}: {error.Message}");
                 return Result(plan, battle, null, error.Message, stepLog, host, actionsBefore, actions);
             }
-            catch (CampaignControlFlowSignal signal)
-            {
-                stepLog.Add($"{step.Op}: 控制流信号 {signal.Kind}");
-                return Result(plan, battle, null, signal.Message, stepLog, host, actionsBefore, actions);
-            }
 
             stepLog.Add($"{step.Op}: {(executed ? "真" : "假")}（{Role(role)}）");
 
@@ -2179,12 +2248,12 @@ public static class CampaignHookRunner
         }
 
         // 没有 terminal 兜底且所有尝试都没成功：上游会落到方法末尾（返回 None，视为假）
-        return Result(plan, battle, false, null, stepLog, host, actionsBefore, actions);
+        return Result(plan, battle, false, null, stepLog, host, actionsBefore, actions, didReturn: false);
     }
 
     private static CampaignHookExecution Result(CampaignPlan plan, CampaignPlanBattle battle, bool? returned,
                                                 string? blocked, List<string> stepLog, ICampaignPrimitiveHost host,
-                                                int actionsBefore, List<string> actions)
+                                                int actionsBefore, List<string> actions, bool didReturn = true)
     {
         if (host is RecordingCampaignHost recording)
         {
@@ -2192,7 +2261,7 @@ public static class CampaignHookRunner
         }
         var logs = host is RecordingCampaignHost recorder ? recorder.Logs.ToList() : [];
         return new CampaignHookExecution(plan.Chapter, plan.Level, battle.Method, returned, blocked,
-                                         stepLog, actions, logs);
+                                         stepLog, actions, logs) { DidReturn = didReturn };
     }
 
     private static string Role(CampaignStepRole role) => role switch
@@ -2305,7 +2374,7 @@ public static class CampaignPrimitiveRegistry
     {
         ["clear_enemy"] = new CampaignPrimitive(
             "clear_enemy", "选一个非 boss 敌人并清掉（上游 Map.clear_enemy）", NeedsArguments: false,
-            (host, step) => CampaignPrimitives.ClearEnemy(host, DecodeOptions(step))),
+            (host, step) => CampaignPrimitives.ClearEnemy(host, DecodeOptions(host, step))),
         ["battle_default"] = new CampaignPrimitive(
             "battle_default", "默认战斗：clear_enemy 成功即真（上游 CampaignBase.battle_default）", false,
             (host, _) => CampaignPrimitives.BattleDefault(host)),
@@ -2314,30 +2383,30 @@ public static class CampaignPrimitiveRegistry
             // 上游这里把 kwargs 转发给 `select_grids`：关卡会传 `ignore=SelectedGrids([...])`
             // 表示"这些格子别动"。不接的话会**静默忽略** ignore（比阻塞更糟）。
             (host, step) => CampaignPrimitives.ClearAllMystery(
-                host, new CampaignTargetOptions(Ignore: OptionalIgnore(host, step)))),
+                host, DecodeOptions(host, step))),
         ["clear_filter_enemy"] = new CampaignPrimitive(
             "clear_filter_enemy", "按过滤串选敌人并清掉（上游 Map.clear_filter_enemy）", NeedsArguments: true,
             (host, step) => CampaignPrimitives.ClearFilterEnemy(host, DecodeFilter(step), DecodePreserve(step))),
         ["clear_any_enemy"] = new CampaignPrimitive(
             "clear_any_enemy", "敌人+塞壬+要塞一起选（上游 Map.clear_any_enemy）", false,
-            (host, step) => CampaignPrimitives.ClearAnyEnemy(host, DecodeOptions(step))),
+            (host, step) => CampaignPrimitives.ClearAnyEnemy(host, DecodeOptions(host, step))),
         ["clear_siren"] = new CampaignPrimitive(
             "clear_siren", "打塞壬/要塞，无配置直接返回假（上游 Map.clear_siren）", false,
-            (host, step) => CampaignPrimitives.ClearSiren(host, DecodeOptions(step))),
+            (host, step) => CampaignPrimitives.ClearSiren(host, DecodeOptions(host, step))),
         ["clear_boss"] = new CampaignPrimitive(
             "clear_boss", "找 boss 并清掉，找不到踩 may_boss（上游 Map.clear_boss）", false,
             (host, _) => CampaignPrimitives.ClearBoss(host)),
         ["clear_roadblocks"] = new CampaignPrimitive(
             "clear_roadblocks", "打掉路段里的路障（上游 Map.clear_roadblocks）", NeedsArguments: true,
-            (host, step) => CampaignPrimitives.ClearRoadblocks(host, DecodeRoads(step), DecodeOptions(step))),
+            (host, step) => CampaignPrimitives.ClearRoadblocks(host, DecodeRoads(step), DecodeOptions(host, step))),
         ["clear_potential_roadblocks"] = new CampaignPrimitive(
             "clear_potential_roadblocks", "避免只剩一格空的路障（上游 Map.clear_potential_roadblocks）",
             NeedsArguments: true,
-            (host, step) => CampaignPrimitives.ClearPotentialRoadblocks(host, DecodeRoads(step), DecodeOptions(step))),
+            (host, step) => CampaignPrimitives.ClearPotentialRoadblocks(host, DecodeRoads(step), DecodeOptions(host, step))),
         ["clear_first_roadblocks"] = new CampaignPrimitive(
             "clear_first_roadblocks", "保证每个路障块有一个已清格子（上游 Map.clear_first_roadblocks）",
             NeedsArguments: true,
-            (host, step) => CampaignPrimitives.ClearFirstRoadblocks(host, DecodeRoads(step), DecodeOptions(step))),
+            (host, step) => CampaignPrimitives.ClearFirstRoadblocks(host, DecodeRoads(step), DecodeOptions(host, step))),
         ["pick_up_ammo"] = new CampaignPrimitive(
             "pick_up_ammo", "捡弹药（上游 Map.pick_up_ammo）", false,
             (host, step) => CampaignPrimitives.PickUpAmmo(host, DecodeGrid(host, step))),
@@ -2366,10 +2435,10 @@ public static class CampaignPrimitiveRegistry
                 host, RequireGrid(host, step), OptionalFleet(step))),
         ["ensure_fleet"] = new CampaignPrimitive(
             "ensure_fleet", "切换舰队（上游 Fleet.fleet_ensure(index)）", NeedsArguments: true,
-            (host, step) => { host.EnsureFleet(DecodeFleetIndex(step)); return true; }),
+            (host, step) => host.EnsureFleet(DecodeFleetIndex(step))),
         ["fleet_ensure"] = new CampaignPrimitive(
             "fleet_ensure", "上游名别名 → ensure_fleet", NeedsArguments: true,
-            (host, step) => { host.EnsureFleet(DecodeFleetIndex(step)); return true; }),
+            (host, step) => host.EnsureFleet(DecodeFleetIndex(step))),
         ["fleet_at"] = new CampaignPrimitive(
             "fleet_at", "舰队是否在该格（上游 Fleet.fleet_at；纯状态判断）", NeedsArguments: true,
             (host, step) => CampaignPrimitives.FleetAt(host, RequireGrid(host, step), OptionalFleet(step))),
@@ -2378,7 +2447,7 @@ public static class CampaignPrimitiveRegistry
             (host, step) => host.Goto(RequireGrid(host, step), OptionalExpected(step))),
         ["clear_chosen_enemy"] = new CampaignPrimitive(
             "clear_chosen_enemy", "打指定格子（上游 Map.clear_chosen_enemy 的动作入口）", NeedsArguments: true,
-            (host, step) => CampaignPrimitives.ClearChosenEnemy(host, RequireGrid(host, step))),
+            (host, step) => CampaignPrimitives.ClearChosenEnemy(host, RequireGrid(host, step), OptionalExpected(step))),
         ["switch_to"] = new CampaignPrimitive(
             "switch_to", "上游 Fleet.switch_to() 是 pass（切舰队由前缀完成）", false,
             (host, step) => CampaignPrimitives.SwitchTo(host, CampaignPrimitiveRegistry.SplitFleetPrefix(step.Op).Prefix)),
@@ -2494,26 +2563,33 @@ public static class CampaignPrimitiveRegistry
     }
 
     /// <summary>把计划步骤的关键字实参解成选择条件（<c>scale</c> / <c>genre</c> / <c>preserve</c> 等）。</summary>
-    private static CampaignTargetOptions DecodeOptions(CampaignPlanStep step)
+    private static JsonArray? Sequence(JsonNode? node) =>
+        node as JsonArray ?? (node as JsonObject)?["__tuple__"] as JsonArray;
+
+    private static CampaignTargetOptions DecodeOptions(ICampaignPrimitiveHost host, CampaignPlanStep step)
     {
         var options = new CampaignTargetOptions();
         if (step.Args is not { } args) return options;
-        if (args.Keyword.TryGetValue("scale", out var scaleNode) && scaleNode is JsonArray scaleArray)
+        options = options with { Ignore = OptionalIgnore(host, step) };
+        if (args.Keyword.TryGetValue("nearby", out var nearby) && nearby is not null)
+            options = options with { Nearby = nearby.GetValue<bool>() };
+        if (args.Keyword.TryGetValue("is_accessible", out var accessible) && accessible is not null)
+            options = options with { IsAccessible = accessible.GetValue<bool>() };
+        if (args.Keyword.TryGetValue("scale", out var scaleNode) && Sequence(scaleNode) is { } scaleArray)
         {
             options = options with
             {
                 Scale = scaleArray.OfType<JsonValue>().Select(value => value.GetValue<int>()).ToArray(),
-                // 上游：元组是并集、列表是"取到即止"。导出里无法区分，默认按**列表**（取到即止）处理，
-                // 并在说明里标注；两者只有在 scale 同时命中多档时结果才不同。
-                ScaleInOrder = true,
+                // 上游：元组为并集，列表按优先级取到即止。__tuple__ 保留这个运行语义。
+                ScaleInOrder = scaleNode is JsonArray,
             };
         }
-        if (args.Keyword.TryGetValue("genre", out var genreNode) && genreNode is JsonArray genreArray)
+        if (args.Keyword.TryGetValue("genre", out var genreNode) && Sequence(genreNode) is { } genreArray)
         {
             options = options with
             {
                 Genre = genreArray.OfType<JsonValue>().Select(value => value.GetValue<string>()).ToArray(),
-                GenreInOrder = true,
+                GenreInOrder = genreNode is JsonArray,
             };
         }
         if (args.Keyword.TryGetValue("weakest", out var weakest) && weakest is JsonValue weakValue
@@ -2526,7 +2602,7 @@ public static class CampaignPrimitiveRegistry
         {
             options = options with { Strongest = strongFlag };
         }
-        if (args.Keyword.TryGetValue("sort", out var sortNode) && sortNode is JsonArray sortArray)
+        if (args.Keyword.TryGetValue("sort", out var sortNode) && Sequence(sortNode) is { } sortArray)
         {
             options = options with
             {
@@ -2610,7 +2686,8 @@ public static class CampaignPrimitiveRegistry
     {
         var positional = step.Args?.Positional;
         if (positional is null || positional.Count == 0) return null;
-        if (positional[0] is not JsonArray pair || pair.Count != 2
+        if (positional[0] is null) return null;
+        if (Sequence(positional[0]) is not { } pair || pair.Count != 2
             || pair[0] is null || pair[1] is null)
         {
             throw new NotSupportedException($"preset 实参形状不支持（{step.Op}）：{positional[0]?.ToJsonString()}");
@@ -2655,7 +2732,9 @@ public static class CampaignPrimitiveRegistry
             Args = new CampaignPlanStepArgs { Positional = [node] },
         };
         var grids = DecodeGrids(host, synthetic);
-        return grids is null ? null : new CampaignGridSet(grids);
+        return grids is null
+            ? throw new NotSupportedException($"{step.Op} 的 ignore 不是格子集合")
+            : new CampaignGridSet(grids);
     }
 
     private static IReadOnlyList<CampaignGrid>? OptionalGrids(ICampaignPrimitiveHost host, CampaignPlanStep step)
