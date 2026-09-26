@@ -1,20 +1,8 @@
 #!/usr/bin/env python3
-"""R5 不完整钩子普查：把 `plan_complete=false` 的钩子按**成因**分类，并给出先决条件。
+"""审计导出计划中不完整的战役钩子。
 
-用法：
-    python tools/diagnostics/r5_incomplete_hooks.py
-
-背景：导出器只归一"能完整表示"的方法体，表示不了就 `plan_complete=false` 且 `steps` 作废
-（保真红线：绝不给一份少几步的"完整"计划）。引擎侧已经**拒绝执行**这些钩子并报原因
-（`CampaignHookRunner` 的 tier C 守卫，`r5-exec` 有夹具用例断言）。本脚本回答两个问题：
-
-  1. **还有多少、都是什么形态**：用 `ast` 看这些钩子体里的 `if`，按"条件形态 / 语句体形态"分类；
-  2. **差什么才能表达**：把出现最多的形态列成先决条件清单（例如"局部变量 + `if <局部>` + 分支体"）。
-
-**棘轮**：`BASELINE` 记下当前的"有真实语句的不完整钩子"数量；只允许下降，涨了就失败——
-避免以后悄悄多出来一批不可执行的钩子。
-
-只读：不导入设备侧、不执行游戏动作。
+全部 plan_complete=false 条目参与事实计数；源体语句数大于一的子集只用于
+保留历史棘轮，不能用这个子集代替全部缺口。只解析文件，不执行上游模块。
 """
 from __future__ import annotations
 
@@ -22,29 +10,32 @@ import ast
 import collections
 import json
 import os
-import pathlib
+from pathlib import Path
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-UPSTREAM = pathlib.Path(os.environ.get("ALAS_REPO") or ROOT / ".runtime" / "engine").resolve()
-DATA = pathlib.Path(os.environ.get("ALAS_DATA") or ROOT / "data") / "campaign"
+ROOT = Path(__file__).resolve().parents[2]
+UPSTREAM = Path(os.environ.get("ALAS_REPO") or ROOT / ".runtime" / "engine").resolve()
+DATA = Path(os.environ.get("ALAS_DATA") or ROOT / "data") / "campaign"
 REPORT = ROOT / "docs" / "archive" / "reports" / "r5-incomplete-hooks.md"
 
-# 棘轮基线：上次普查的"不完整且上游有 ≥2 条语句"的钩子数（只许下降）
-BASELINE = 5        # `battle_*` 里"不完整且上游有 ≥2 条语句"的钩子数（实测；随计划语言扩展下降）
+# 保留历史棘轮：只衡量源体语句数 >1 的不完整 battle_*，不随新快照改阈值。
+BASELINE = 5
 
 
-def is_self_call(node) -> bool:
+def is_self_call(node: ast.AST) -> bool:
     return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
             and isinstance(node.func.value, ast.Name) and node.func.value.id == "self")
 
 
-def stmt_kind(node) -> str:
-    return {ast.Return: "return", ast.If: "if", ast.Assign: "assign", ast.For: "for",
-            ast.Expr: "expr", ast.Raise: "raise", ast.Break: "break"}.get(type(node), type(node).__name__)
+def stmt_kind(node: ast.AST) -> str:
+    return {
+        ast.Return: "return", ast.If: "if", ast.Assign: "assign", ast.AnnAssign: "assign",
+        ast.AugAssign: "augassign", ast.For: "for", ast.While: "while", ast.Expr: "expr",
+        ast.Raise: "raise", ast.Break: "break", ast.Continue: "continue",
+    }.get(type(node), type(node).__name__)
 
 
-def cond_kind(test) -> str:
+def cond_kind(test: ast.AST) -> str:
     if is_self_call(test):
         return "self_call"
     if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not) and is_self_call(test.operand):
@@ -53,122 +44,145 @@ def cond_kind(test) -> str:
         return "local_name"
     if isinstance(test, ast.Compare):
         return "compare"
+    if isinstance(test, ast.BoolOp):
+        return "boolean_expression"
     return "other"
 
 
-def main() -> int:
-    hooks = 0
-    incomplete_real = 0
-    variants = 0
-    shapes: collections.Counter = collections.Counter()
-    examples: list[tuple[str, str, str, str]] = []
-    plans_total = 0
+def source_inventory() -> tuple[dict[str, dict[str, ast.FunctionDef]], set[str]]:
+    methods: dict[str, dict[str, ast.FunctionDef]] = {}
+    campaign_sources: set[str] = set()
     source_paths = sorted((UPSTREAM / "campaign").rglob("*.py"))
-    exports = sorted(DATA.rglob("*.json"))
-    if not source_paths or not exports:
-        raise FileNotFoundError("缺少上游 campaign 源文件或章节导出，不能将空扫描当作通过")
+    if not source_paths:
+        raise FileNotFoundError("缺少上游 campaign 源文件，不能将空扫描当作通过")
     for path in source_paths:
-        level = str(path.relative_to(UPSTREAM / "campaign")).replace("\\", "/")[:-3]
-        payload_path = DATA / f"{level}.json"
+        level = path.relative_to(UPSTREAM / "campaign").with_suffix("").as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=level)
-        has_campaign = any(isinstance(node, ast.ClassDef) and node.name == "Campaign"
-                           for node in tree.body)
-        if not payload_path.is_file():
-            if has_campaign:
-                raise FileNotFoundError(f"缺少章节导出 campaign/{level}.json")
+        classes = [node for node in ast.walk(tree)
+                   if isinstance(node, ast.ClassDef) and node.name == "Campaign"]
+        if not classes:
             continue
-        payload = json.loads(payload_path.read_text(encoding="utf-8"))
-        battles = (payload.get("campaign") or {}).get("battles") or []
-        incomplete = {b["method"] for b in battles if not b.get("plan_complete", True)}
-        plans_total += len(battles)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef) or node.name != "Campaign":
-                continue
-            for item in node.body:
-                if not isinstance(item, ast.FunctionDef):
-                    continue
-                body = list(item.body)
-                if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
-                    body = body[1:]
-                if item.name not in incomplete:
-                    continue
-                if len(body) <= 1:
-                    continue        # 只有 `pass`/单条 return 的"不完整"不算实质缺口
-                incomplete_real += 1
-                if item.name.startswith("battle_"):
-                    hooks += 1
-                else:
-                    variants += 1
-                for sub in ast.walk(item):
-                    if isinstance(sub, ast.If):
-                        body_kinds = "+".join(sorted({stmt_kind(s) for s in sub.body})) or "empty"
-                        shapes[(cond_kind(sub.test), body_kinds)] += 1
-                        if len(examples) < 10:
-                            examples.append((level, item.name, ast.unparse(sub.test)[:48], body_kinds))
+        campaign_sources.add(level)
+        methods[level] = {
+            item.name: item for cls in classes for item in cls.body
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+    return methods, campaign_sources
 
+
+def load_incomplete(methods: dict[str, dict[str, ast.FunctionDef]],
+                    campaign_sources: set[str]) -> tuple[list[dict[str, object]], int]:
+    exports = sorted(DATA.rglob("*.json"))
+    if not exports:
+        raise FileNotFoundError("缺少章节导出，不能将空扫描当作通过")
+    records: list[dict[str, object]] = []
+    plans_total = 0
+    seen_sources: set[str] = set()
+    for path in exports:
+        level = path.relative_to(DATA).with_suffix("").as_posix()
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for battle in (payload.get("campaign") or {}).get("battles") or []:
+            plans_total += 1
+            if type(battle.get("plan_complete")) is not bool or not battle.get("method"):
+                raise ValueError(f"导出钩子缺少 method/plan_complete：campaign/{level}.json")
+            if not battle["plan_complete"]:
+                method = str(battle.get("method") or "<missing method>")
+                records.append({"level": level, "method": method, "battle": battle,
+                                "source": methods.get(level, {}).get(method)})
+        if level in campaign_sources:
+            seen_sources.add(level)
+    missing = sorted(campaign_sources - seen_sources)
+    if missing:
+        raise FileNotFoundError(f"缺少章节导出 campaign/{missing[0]}.json")
     if not plans_total:
         raise ValueError("导出中没有钩子条目，不能完成不完整钩子审计")
+    return records, plans_total
 
-    lines = ["# R5 不完整钩子普查（`plan_complete=false` 的成因与先决条件）", "",
-             "> 本报告由 `tools/diagnostics/r5_incomplete_hooks.py` 重建，不手写。",
-             "> 这些钩子**有真实语句**但导出器表示不了；引擎侧会**拒绝执行并报原因**（tier C 守卫），",
-             "> 所以是「少做」而不是「做错」。本报告只说清还差什么。", "",
-             f"- 导出里的钩子条目：**{plans_total}**",
-             f"- `plan_complete=false` 且上游**有 ≥2 条语句**的：**{incomplete_real}**"
-             f"（其中 `battle_*` **{hooks}**、变体/其它 **{variants}**）",
-             f"- 棘轮基线：**{BASELINE}**（只允许下降）", "",
-             "## `if` 的形态分布（条件 / 语句体）", "",
-             "口径：这些是**不完整钩子体内**所有的 `if`，包含那些**本身支持**的形态",
-             "（`self_call` + 纯 `return True`）——不完整的成因在别的语句上。要看的行是",
-             "`local_name`、`not_self_call/if`、`other/*` 这几类。", "",
-             "| 条件形态 | 语句体形态 | 次数 |", "| --- | --- | --- |"]
-    lines += [f"| {cond} | {body} | {count} |" for (cond, body), count in shapes.most_common(12)]
+
+def source_statement_count(node: ast.AST | None, battle: dict[str, object]) -> int:
+    if node is not None:
+        body = list(getattr(node, "body", []))
+        if (body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            body = body[1:]
+        return len(body)
+    raise ValueError("未定位不完整钩子源体，不能用导出的 stmt_count 猜测棘轮")
+
+
+def cell(value: object) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+
+
+def main() -> int:
+    methods, campaign_sources = source_inventory()
+    records, plans_total = load_incomplete(methods, campaign_sources)
+    missing_source = [row for row in records if row["source"] is None]
+    if missing_source:
+        names = ", ".join(f"{row['level']}:{row['method']}" for row in missing_source)
+        raise ValueError(f"未定位不完整钩子源体，不能完成棘轮：{names}")
+    battle_records = [row for row in records if str(row["method"]).startswith("battle_")]
+    substantive = [row for row in records
+                   if source_statement_count(row["source"], row["battle"]) > 1]
+    substantive_battle = [row for row in substantive
+                          if str(row["method"]).startswith("battle_")]
+    shapes: collections.Counter[tuple[str, str]] = collections.Counter()
+    reasons: collections.Counter[str] = collections.Counter()
+    examples: list[tuple[str, str, str, str]] = []
+    for row in records:
+        battle = row["battle"]
+        for reason in battle.get("unparsed") or []:
+            reasons[str(reason).split("@", 1)[0]] += 1
+        node = row["source"]
+        if node is None:
+            continue
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.If):
+                body_kinds = "+".join(sorted({stmt_kind(item) for item in sub.body})) or "empty"
+                shapes[(cond_kind(sub.test), body_kinds)] += 1
+                if len(examples) < 12:
+                    examples.append((str(row["level"]), str(row["method"]),
+                                     ast.unparse(sub.test)[:64], body_kinds))
+
+    lines = [
+        "# R5 不完整钩子普查（事实计数与棘轮）", "",
+        "> 本报告由 `tools/diagnostics/r5_incomplete_hooks.py` 重建，不手写。",
+        "> 计数首先来自导出 JSON 的 `plan_complete=false`；源代码形态只用于解释和历史棘轮。",
+        "> 本审计不宣称生产战役可由静态计划替代；生产路径仍由上游 `Campaign.run()` 负责。", "",
+        f"- 导出钩子条目总数：**{plans_total}**",
+        f"- `plan_complete=false` 条目：**{len(records)}**",
+        f"- 其中 `battle_*`：**{len(battle_records)}**；其它钩子/方法：**{len(records) - len(battle_records)}**",
+        f"- 源体语句数 > 1（解释性统计）：**{len(substantive)}**；其中 `battle_*`：**{len(substantive_battle)}**",
+        f"- 历史棘轮基线（`battle_*` 源体语句数 > 1）：**{BASELINE}**；当前值高于基线即失败，不能调高或调低掩盖变化。", "",
+        "## 不完整原因（仅来自导出 `unparsed`）", "",
+        "| 原因前缀 | 次数 |", "| --- | ---: |",
+    ]
+    lines += [f"| `{cell(reason)}` | {count} |" for reason, count in reasons.most_common()]
+    lines += ["", "## 源体条件形态（解释性统计）", "",
+              "| 条件形态 | 语句体形态 | 次数 |", "| --- | --- | ---: |"]
+    lines += [f"| {condition} | {body} | {count} |"
+              for (condition, body), count in shapes.most_common()]
     lines += ["", "## 例子", ""]
-    lines += [f"- `{level}` {method}：`if {test}` → 体内有 {body}" for level, method, test, body in examples]
-    lines += ["", "## 先决条件（按出现频次）", "",
-              "1. **局部变量 + `if <局部变量>:` + 分支体**：`boss = self.map.select(is_boss=True)` 这类「观察」，",
-              "   以及 `branch` 步骤（条件为局部变量或一次原语调用，体内是步骤序列）；",
-              "2. **局部变量的实参引用**：`check_accessibility(boss[0], fleet='boss')` 里的 `boss[0]`；",
-              "3. **运行期标志**：`self.map_is_clear_mode` 由上游 handler 层设置"
-              "（`module/handler/fast_forward.py` 的 `handle_fast_forward`），语义是"
-              "`map_has_clear_mode and config.Campaign_UseClearMode` —— **已实现**"
-              "（默认没开快进 → 确定为假；开了但还没识别到 `map_has_clear_mode` → 阻塞报原因）。"
-              "**更正**：本报告此前写成「上游快照里只有使用、没有定义」，那是本机 grep 用错参数"
-              "（`-Include` 在递归下漏扫 `module/handler/`）造成的误判；快照里该文件与完整仓库哈希一致；",
-             "4. 其它形态（`compare` 条件、`for` 循环、`raise` 体）另计，需要单独设计，不要硬塞进上面的结构。", "",
-             "## 剩下这几个为什么先不做（按出现次数算成本/收益）", "",
-             "| 偏门写法 | 全库出现 | 涉及文件 | 结论 |", "| --- | --- | --- | --- |",
-             "| 改写地图数据 `self.map.weight_data = …` | 3 处 | `campaign_9_2` 一个文件 | 只值 1 个钩子，不做 |",
-             "| 动态派发 `getattr`/`setattr` | 1 处 | `event_20230525_cn/sp` 一个文件 | 运行时拼函数名，静态表达不了，不做 |",
-             "| 局部路段表 `road_x = [road_y]` | 4 处 | `campaign_7_3` 一个文件 | 只值 1 个钩子，不做 |",
-             "| `FUNCTION_NAME_BASE` 拼函数名 | 5 处 | `campaign_15_1..15_4` | 只有 2 个钩子受影响，其余已可表达；不做 |",
-             "",
-             "判断依据：这四类各自只影响 **1-2 个钩子**，而每加一种语言特性都要动"
-             "导出器 + 执行器 + 检查三处；相比之下**设备路径**（`loop=csharp` 接线与同局对照）"
-             "才是剩下的主要工作。棘轮基线会保证这几个数不会再涨。", "",
-             "## 已经量化过、结论是「先不做」的两条路", "",
-             "| 设想 | 量化结果 | 为什么不做 |", "| --- | --- | --- |",
-             "| 实例属性状态（`self.X = …` / `if self.X:`）"
-             " | 只差这一项就能变完整的钩子：**0 / 101**"
-             " | 读到的属性要么**全库没有写过**（`self.map_is_clear_mode`），"
-             "要么这些钩子还被别的语句挡着 |",
-             "| 复合条件（`and`/`or` 组合已有条件形态）"
-             " | 解锁钩子数：**0**；唯一可达的复合计划 `event_20200312_cn/sp3:handle_in_stage` 还卡在未实现的 `appear`"
-             " | 不完整钩子里的复合式**每一个**都含 `self.map_is_clear_mode` 读取 |",
-             "",
-             "结论：剩下的不完整钩子主要卡在**上游定义或原语的缺失**"
-             "（`self.map_is_clear_mode` 72 处、`appear`、`self.fleet_at(...)`、`self.map.weight_data` 改写等），"
-             "不是计划语言的表达力。继续加语言特性收益已经很低；要么拿到 `map_is_clear_mode` 的定义证据，"
-             "要么把精力放到设备路径。", ""]
-    lines.append("")
+    lines += [f"- `{level}` `{method}`：`if {test}` → {body}"
+              for level, method, test, body in examples]
+    lines += ["", "## 全部不完整条目", "",
+              "| 模块 | 方法 | 源体语句数（不含 docstring） | 导出原因 |",
+              "| --- | --- | ---: | --- |"]
+    lines += [f"| `{cell(row['level'])}` | `{cell(row['method'])}` | "
+              f"{source_statement_count(row['source'], row['battle'])} | "
+              f"{cell('; '.join(row['battle'].get('unparsed') or ['未记录原因']))} |"
+              for row in records]
+    lines += ["", "## 口径边界", "",
+              "- 全部条目都保留在事实计数中；单语句、继承方法和非 `battle_*` 条目不会被静默删掉。",
+              "- `battle_*` 棘轮只衡量历史上用于计划语言回归的源体语句数；它不等价于全部缺口，也不产生“0 gap/0 blocked”的结论。",
+              "- 本报告不按地图名称给出迁移价值判断。每个未解析原因仍需结合上游调用链、设备状态和真实证据处理。", ""]
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text("\n".join(lines), encoding="utf-8", newline="\n")
-    print(f"已重建 {REPORT.relative_to(ROOT)}：不完整且有真实语句 {incomplete_real} 个"
-          f"（battle_* {hooks} / 其它 {variants}）/ 基线 {BASELINE}")
-    if hooks > BASELINE:
-        print(f"FAIL: battle_* 里比基线多了 {hooks - BASELINE} 个（棘轮只允许下降）")
+    print(f"已重建 {REPORT.relative_to(ROOT)}：plan_complete=false {len(records)}（battle_* {len(battle_records)}），"
+          f"源体语句数 >1 {len(substantive)}（battle_* {len(substantive_battle)}），棘轮 {BASELINE}")
+    if len(substantive_battle) > BASELINE:
+        print(f"FAIL: battle_* 棘轮超出基线 {len(substantive_battle) - BASELINE} 条；保留基线，不降低标准")
         return 1
-    print("PASS: 不完整钩子数量没有超过基线（当前成因与先决条件见报告）")
+    print("PASS: 不完整钩子棘轮未超基线")
     return 0
 
 
