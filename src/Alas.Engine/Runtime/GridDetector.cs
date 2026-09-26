@@ -95,7 +95,12 @@ public sealed class GridDetector(IGridFeatureVision vision, AssetFiles assets, M
                 grids = detected.Grids; edges = detected.Edges;
             }
             token.ThrowIfCancellationRequested();
-            return new(frame, new(grids, rules.Area, rules.ScreenCenter, rules.Tile, edges));
+            try { return new(frame, new(grids, rules.Area, rules.ScreenCenter, rules.Tile, edges)); }
+            catch (CameraOutsideViewException error)
+            {
+                if (error.Geometry is { } geometry) error.PartialView = new(frame, geometry);
+                throw;
+            }
         }
         finally { _gate.Release(); }
     }
@@ -157,7 +162,22 @@ public sealed class GridDetector(IGridFeatureVision vision, AssetFiles assets, M
     }
 }
 
-public sealed class MapViewSource(Func<CancellationToken, ValueTask<ScreenFrame>> capture, GridDetector detector) : IMapViewSource
+public sealed class MapViewSource(Func<CancellationToken, ValueTask<ScreenFrame>> capture, GridDetector detector,
+    IMapViewGuard? guard = null) : IMapViewSource
 {
-    public async ValueTask<MapViewFrame> CaptureAsync(CancellationToken token) => await detector.DetectAsync(await capture(token), token);
+    public async ValueTask<MapViewFrame> CaptureAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        var frame = await capture(token);
+        try
+        {
+            if (guard is not null && !await guard.CanDetectAsync(token)) throw new MapGeometryException("Image to detect is not in_map");
+            return await detector.DetectAsync(frame, token);
+        }
+        catch (MapGeometryException error)
+        {
+            if (guard is null || !await guard.RecoverAsync(error, token)) throw;
+            throw new MapInterruptionHandledException();
+        }
+    }
 }

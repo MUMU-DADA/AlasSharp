@@ -165,7 +165,7 @@ internal static class DetectorChecks
                     Grids(repeated.Geometry.Grids, expected["grids"]!, "Repeated frame");
                 }
             }
-            catch (MapGeometryException error)
+            catch (MapGeometryException error) when (error is not CameraOutsideViewException)
             { Check(error.Message == sample["expected"]!["error"]?.GetValue<string>(), $"{name}: Detector error differs: {error.Message}"); negative++; }
             catch (CameraOutsideViewException error)
             { Check(sample["expected"]!["error"]?.GetValue<string>() == $"Camera outside map: offset=({error.Offset.X}, {error.Offset.Y})", "Outside view failure differs"); negative++; }
@@ -234,7 +234,7 @@ internal static class DetectorChecks
     private static async Task SessionAsync(string python, string upstream, string artifacts, JsonNode sample)
     {
         string? previous = Environment.GetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE");
-        string fixture = Path.Combine(artifacts, sample["image"]!.GetValue<string>());
+        string fixture = Path.Combine(artifacts, "session-map.png");
         Environment.SetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE", fixture);
         try
         {

@@ -35,7 +35,8 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService
     }
     public async ValueTask<MapCamera> CreateMapCameraAsync(CampaignState state, Cell initialPosition,
         MapDetectionRules detection, GridRecognitionRules recognition, MapCameraRules cameraRules,
-        TimeSpan timeout, CancellationToken token = default)
+        TimeSpan timeout, CancellationToken token = default, StageEntranceKind entrances = StageEntranceKind.Normal,
+        UiRecoveryOptions? recoveryOptions = null)
     {
         if (timeout <= TimeSpan.Zero || timeout.TotalMilliseconds > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(timeout));
         if (detection.OperationSiren) throw new NotSupportedException("Operation Siren geometry is available, but its grid predictor and camera workflow are not ported");
@@ -47,13 +48,16 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService
             var detector = new GridDetector(_vision, _assets, detection);
             async ValueTask<ScreenFrame> Capture(CancellationToken ct)
             { await Driver.ScreenshotAsync(ct); return Driver.Frame!; }
-            var source = new MapViewSource(Capture, detector);
-            var first = await source.CaptureAsync(combined.Token);
+            var recovery = new UiRecovery(Driver, _application, Pages, recoveryOptions ?? new UiRecoveryOptions());
+            var observations = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No map screenshot"),
+                _vision, _assets, Driver.Server, entrances);
+            var guard = new MapUiRecovery(Driver, observations, _application, recovery, recovery);
+            var source = new MapViewSource(Capture, detector, guard);
             var predictor = new GridRecognition(_vision, _assets, Driver.Server, recognition);
             var mask = await _assets.ReadAsync(detection.OperationSiren ? MapDetectionAssets.OsMask : MapDetectionAssets.Mask, combined.Token);
             var evidence = new MapSwipeEvidence(predictor, _vision, _vision, new(1, DateTimeOffset.UnixEpoch, mask), MapDetectionAssets.MaskOrigin);
-            return new MapCamera(state, initialPosition, first, source, new MapSwipeInput(_device), predictor,
-                new(evidence), cameraRules, MapControlMethod.Adb, timeout);
+            return await MapCamera.CreateAsync(state, initialPosition, source, new MapSwipeInput(_device), predictor,
+                new(evidence), cameraRules, timeout, combined.Token);
         }
         catch (OperationCanceledException error) when (!token.IsCancellationRequested && deadline.IsCancellationRequested)
         { throw new TimeoutException("Map camera initialization exceeded its time limit", error); }

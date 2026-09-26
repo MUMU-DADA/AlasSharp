@@ -78,11 +78,11 @@ public sealed class MapCameraState
     public MapViewFrame? Previous { get; private set; }
     private readonly Cell _shape;
 
-    public MapCameraState(Cell shape, Cell position, MapViewFrame view)
+    public MapCameraState(Cell shape, Cell position, MapViewFrame view, bool correctInitialEdges = true)
     {
         if (shape.Column < 1 || shape.Row < 1) throw new ArgumentOutOfRangeException(nameof(shape));
         ArgumentNullException.ThrowIfNull(view);
-        _shape = shape; Position = CorrectEdges(position, view.Geometry); View = view;
+        _shape = shape; Position = correctInitialEdges ? CorrectEdges(position, view.Geometry) : position; View = view;
     }
 
     public ScreenPoint PrepareSwipe(ViewCell requested)

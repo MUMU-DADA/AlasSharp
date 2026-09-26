@@ -17,9 +17,14 @@ public interface IPopupHandler
 {
     ValueTask<bool> ConfirmAsync(CancellationToken token);
 }
+public interface IStoryHandler
+{
+    ValueTask<bool> StorySkipAsync(CancellationToken token = default);
+    ValueTask EnsureNoStoryAsync(bool skipFirstScreenshot, CancellationToken token);
+}
 
 /// <summary>Direct port of UI recovery and InfoHandler story/popups. State is isolated to a session.</summary>
-public sealed class UiRecovery : IUiRecovery, IPopupHandler
+public sealed class UiRecovery : IUiRecovery, IPopupHandler, IStoryHandler
 {
     public static readonly SourceFile UiSource = new("module/ui/ui.py", "9f99734b71680492f78348cee7ea1c9a6e0bea2801aa3a7688bc5c32372d5f1d");
     public static readonly SourceFile InfoSource = new("module/handler/info_handler.py", "799551a37c8f771f4bd9023aa3477041f6c31b99fd60f25185dd0e829b9ccbf2");
@@ -198,6 +203,24 @@ public sealed class UiRecovery : IUiRecovery, IPopupHandler
     {
         // Original InfoHandler.handle_story_skip exception, preserved in the rule port.
         if (_options.MapIsThreatSafe && _options.CampaignEvent != "event_20201012_cn") return false;
+        return await StoryCoreAsync(token);
+    }
+    public async ValueTask EnsureNoStoryAsync(bool skipFirstScreenshot, CancellationToken token)
+    {
+        var quiet = new IntervalTimer(_driver.Clock, 3, 6);
+        quiet.Reset();
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            if (!skipFirstScreenshot) await _driver.ScreenshotAsync(token);
+            skipFirstScreenshot = false;
+            // Native ensure_no_story calls story_skip directly, without the threat-safe guard.
+            if (await StoryCoreAsync(token)) quiet.Reset();
+            if (quiet.Reached()) return;
+        }
+    }
+    private async ValueTask<bool> StoryCoreAsync(CancellationToken token)
+    {
         if (_storyPopup.Started && !_storyPopup.Reached() && await PopupConfirm(token))
         {
             _storyPopup = new IntervalTimer(_driver.Clock, 10);

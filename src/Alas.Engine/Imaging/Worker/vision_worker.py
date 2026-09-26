@@ -323,7 +323,60 @@ def feature_measure(request):
     return dict(image=png(edge),lines=lines)
 
 
+def profile_measure(request):
+    operation=request['operation']
+    fields={'protocol','id','frame','operation','image','area'}
+    extra={'color_profile_peaks':{'color','height','prominence','distance'},
+           'template_points':{'template','preprocessing','letter','threshold','similarity'},
+           'letter_column_means':{'letter','threshold'}}
+    if set(request)!=fields|extra[operation]:raise ValueError('request_fields')
+    if request['protocol']!='alas-cv/1' or any(type(request[k]) is not int or request[k]<1 for k in ('id','frame')):raise ValueError('request_identity')
+    area=request['area']
+    if not isinstance(area,list) or len(area)!=4 or any(type(v) is not int for v in area) or area[2]<1 or area[3]<1 or area[2]*area[3]>16*1024*1024:raise ValueError('area_bounds')
+    image=crop(decode(request['image']),*area)
+    color=request['color'] if operation=='color_profile_peaks' else request['letter']
+    if not isinstance(color,list) or len(color)!=3 or any(type(v) is not int or not 0<=v<=255 for v in color):raise ValueError('profile_color')
+    if operation=='color_profile_peaks':
+        values=[request[k] for k in ('height','prominence','distance')]
+        if any(type(v) not in (int,float) or not np.isfinite(v) for v in values) or not 0<=values[0]<=255 or values[1]<0 or values[2]<1:raise ValueError('peak_parameters')
+        line=cv2.reduce(image,1,cv2.REDUCE_AVG).astype(np.int16)-np.array(color,dtype=np.int16)
+        distance=np.maximum(line,0).max(axis=2)-np.minimum(line,0).min(axis=2)
+        line=(255-np.minimum(distance,255)).astype(np.uint8)[:,0]
+        peaks,_=signal.find_peaks(line,height=values[0],prominence=values[1],distance=values[2])
+        return dict(peaks=peaks.tolist())
+    threshold=request['threshold']
+    if type(threshold) is not int or not 1<=threshold<=255:raise ValueError('profile_threshold')
+    if operation=='letter_column_means':
+        return dict(means=ocr_preprocess(image,color,threshold,'letters').mean(axis=0).tolist())
+    mode=request['preprocessing']
+    if mode not in ('gray','letters'):raise ValueError('profile_preprocessing')
+    image=gray(image) if mode=='gray' else ocr_preprocess(image,color,threshold,'letters')
+    similarity=request['similarity']
+    if type(similarity) not in (int,float) or not np.isfinite(similarity) or not -1<=similarity<=1:raise ValueError('template_threshold')
+    encoded=base64.b64decode(request['template'],validate=True)
+    if len(encoded)>16*1024*1024:raise ValueError('image_size')
+    if encoded[:6] in (b'GIF87a',b'GIF89a'):
+        frames=imageio.mimread(io.BytesIO(encoded),format='GIF',memtest='256MB')
+        if not frames or len(frames)>512:raise ValueError('template_frames')
+        channels=frames[0].ndim
+        frames=[f[:,:,:3].copy() if channels==3 else f[:,:,0].copy() if f.ndim==3 else f for f in frames]
+        frames=[variant for f in frames for variant in (f,cv2.flip(f,1))]
+    else:
+        template=cv2.imdecode(np.frombuffer(encoded,np.uint8),cv2.IMREAD_UNCHANGED)
+        if template is None:raise ValueError('image_decode')
+        frames=[template]
+    points=[];size=frames[0].shape[:2][::-1]
+    for template in frames:
+        if template.ndim!=2 or template.shape[0]>image.shape[0] or template.shape[1]>image.shape[1]:raise ValueError('template_shape')
+        result=cv2.matchTemplate(image,template,cv2.TM_CCOEFF_NORMED)
+        points.extend(np.argwhere(result>similarity)[:,::-1].tolist())
+        if len(points)>1000000:raise ValueError('feature_count')
+    return dict(size=size,points=points)
+
+
 def match(request):
+    if request.get('operation') in ('color_profile_peaks','template_points','letter_column_means'):
+        return profile_measure(request)
     if request.get('operation') in ('image_mask','line_features','warp_features','correlation_features','contour_features'):
         return feature_measure(request)
     if request.get("protocol") != "alas-cv/1" or request.get("operation") not in ("template_match", "color_mean", "color_bands", "ocr_infer", "image_patch", "image_pair"):

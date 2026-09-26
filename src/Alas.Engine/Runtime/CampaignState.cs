@@ -103,5 +103,5 @@ public interface ICampaignOperations
 }
 
 public sealed class MapEnemyMovedException : Exception;
-public sealed class CampaignEndedException : Exception;
+public sealed class CampaignEndedException(string? message = null) : Exception(message);
 public sealed class CampaignScriptException(string message) : Exception(message);

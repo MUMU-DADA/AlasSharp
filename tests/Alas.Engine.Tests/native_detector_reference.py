@@ -82,6 +82,11 @@ def main():
             k=(0-vanish[1])/(360-vanish[1]);top=(round(vanish[0]+(x-vanish[0])*k),0)
             cv2.line(synthetic,top,bottom,(30,30,30),3)
         images=[('synthetic',synthetic),('blank',np.zeros((720,1280,3),dtype=np.uint8))]
+        # Camera session fixtures must satisfy the actual in-map gate; the read-only detector keeps its original pixels.
+        from module.handler.assets import IN_MAP
+        session_image=synthetic.copy();x,y,r,b=IN_MAP.area
+        session_image[y:b,x:r]=IN_MAP.color
+        cv2.imwrite('session-map.png',cv2.cvtColor(session_image,cv2.COLOR_RGB2BGR))
         for path in inputs:
             image=cv2.imread(str(path))
             if image is None:raise ValueError('fixture_decode')

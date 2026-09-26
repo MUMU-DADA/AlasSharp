@@ -4,12 +4,15 @@ using Alas.Engine.Rules;
 
 namespace Alas.Engine.Runtime;
 
-public sealed class MapGeometryException(string message) : Exception(message);
+public class MapGeometryException(string message) : Exception(message);
+public sealed class MapInterruptionHandledException() : Exception("Map UI interruption was handled");
 public sealed class CameraOutsideViewException(ViewCell offset, ViewCell center)
-    : Exception($"Camera outside detected view: offset=({offset.X}, {offset.Y})")
+    : MapGeometryException($"Camera outside detected view: offset=({offset.X}, {offset.Y})")
 {
     public ViewCell Offset { get; } = offset;
     public ViewCell Center { get; } = center;
+    public MapViewFrame? PartialView { get; internal set; }
+    internal MapViewGeometry? Geometry { get; init; }
 }
 public readonly record struct MapEdges(bool Left = false, bool Right = false, bool Lower = false, bool Upper = false);
 
@@ -174,14 +177,17 @@ public sealed class MapViewGeometry
         // numpy.astype(int) truncates toward zero, including negative coordinates.
         int dx = checked((int)offset.X), dy = checked((int)offset.Y);
         Center = new(checked(Grids[0].LocalCell.X + dx), checked(Grids[0].LocalCell.Y + dy));
-        if (!Projections.TryGetValue(Center, out var center))
-            throw new CameraOutsideViewException(new(Center.X > 0 ? Math.Max(Center.X - Shape.X, 0) : Center.X,
-                Center.Y > 0 ? Math.Max(Center.Y - Shape.Y, 0) : Center.Y), Center);
-        CenterOffset = center.ScreenToGrid(screenCenter);
         static double Distance(ScreenPoint a, ScreenPoint b) => double.Hypot(a.X - b.X, a.Y - b.Y);
         SwipeBase = new(Distance(first.GridToScreen(new(dx + 0.5, dy)), first.GridToScreen(new(dx - 0.5, dy))),
             Distance(first.GridToScreen(new(dx, dy + 0.5)), first.GridToScreen(new(dx, dy - 0.5))));
         if (SwipeBase.X <= 0 || SwipeBase.Y <= 0) throw new MapGeometryException("Invalid projected swipe distance");
         Edges = edges;
+        if (!Projections.TryGetValue(Center, out var center))
+        {
+            CenterOffset = new(dx - Center.X, dy - Center.Y);
+            throw new CameraOutsideViewException(new(Center.X > 0 ? Math.Max(Center.X - Shape.X, 0) : Center.X,
+                Center.Y > 0 ? Math.Max(Center.Y - Shape.Y, 0) : Center.Y), Center) { Geometry = this };
+        }
+        CenterOffset = center.ScreenToGrid(screenCenter);
     }
 }

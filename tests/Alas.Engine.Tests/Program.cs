@@ -124,6 +124,13 @@ try
     await Throws<IOException>(() => application.IsRunningAsync(default).AsTask(), "Unknown foreground silently accepted");
     Console.WriteLine($"Local engine/transport checks passed: {checks}");
 
+    if (args is ["--map-recovery", var recoveryMapPython, var recoveryMapUpstream, var recoveryMapArtifacts])
+    {
+        string folder = Path.GetFullPath(recoveryMapArtifacts);
+        Directory.CreateDirectory(folder);
+        await MapRecoveryChecks.RunAsync(Path.GetFullPath(recoveryMapPython), Path.GetFullPath(recoveryMapUpstream), folder);
+        return 0;
+    }
     if (args is ["--detector", var detectorPython, var detectorUpstream, var detectorArtifacts, .. var savedFrames])
     {
         string folder = Path.GetFullPath(detectorArtifacts);
