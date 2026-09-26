@@ -42,6 +42,22 @@ internal static class QueueChecks
         Check(stagesSkipped.Tasks.Single() is { Outcome: TaskOutcome.Skipped, Reason: "preconditions_unmet" } &&
             stagesDry.Tasks.Single().Outcome == TaskOutcome.DryRun,
             "Read-only stage observation ignored OCR model availability or queue registration");
+        var selectRequest = new TaskRequest("select", "campaign_select",
+            new JsonObject { ["campaign"] = "campaign_main/campaign_1_1" }, Required: true);
+        var selectNoModels = await queue.RunAsync([selectRequest], offline, new(artifacts, DryRun: true));
+        var selectDry = await queue.RunAsync([selectRequest], offline with { ModelDirectory = "offline-models" },
+            new(artifacts, DryRun: true));
+        var selectRefused = await queue.RunAsync([selectRequest], offline with { ModelDirectory = "offline-models" },
+            new(artifacts));
+        Check(selectNoModels.Failed && selectNoModels.Tasks.Single() is { Outcome: TaskOutcome.Skipped, Reason: "preconditions_unmet" } &&
+            selectDry.Tasks.Single().Outcome == TaskOutcome.DryRun &&
+            selectRefused.Tasks.Single() is { Outcome: TaskOutcome.Refused, Reason: "actions_disabled" },
+            "Campaign selection bypassed OCR, dry-run or action gating");
+        var invalidSelect = await queue.RunAsync([selectRequest with
+            { Input = new JsonObject { ["campaign"] = "campaign_main/not_compiled" } }],
+            offline with { ModelDirectory = "offline-models" }, new(artifacts, DryRun: true));
+        Check(invalidSelect.Failed && invalidSelect.Tasks.Single().Outcome == TaskOutcome.Refused,
+            "Uncompiled campaign selection reached the device gate");
         var skipped = await queue.RunAsync([new("key", "data_key"), new("observe", "observe")], offline, new(artifacts, DryRun: true));
         Check(!skipped.Failed && skipped.Tasks[0] is { Outcome: TaskOutcome.Skipped, Reason: "preconditions_unmet" } &&
             skipped.Tasks[1].Outcome == TaskOutcome.DryRun, "Optional precondition failure did not remain skipped");

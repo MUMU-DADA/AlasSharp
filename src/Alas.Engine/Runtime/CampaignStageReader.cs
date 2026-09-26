@@ -8,6 +8,7 @@ public sealed record CampaignStageReading(StageEntrance Entrance, string Raw, st
     string? Chapter, string? Index);
 public sealed record CampaignStages(long FrameSequence, string Chapter,
     IReadOnlyList<CampaignStageReading> Readings);
+public sealed class CampaignStageUnknownException(string message) : Exception(message);
 
 /// <summary>Upstream CampaignOcr name rules over pure CV entrance and OCR observations.</summary>
 public sealed class CampaignStageReader(
@@ -22,7 +23,7 @@ public sealed class CampaignStageReader(
         CancellationToken token = default)
     {
         var entrances = await find(frame, kinds, token);
-        if (entrances.Count == 0) throw new InvalidDataException("No stage entrance was found");
+        if (entrances.Count == 0) throw new CampaignStageUnknownException("No stage entrance was found");
         var readings = new List<CampaignStageReading>(entrances.Count);
         string language = OcrModels.LanguageFor("azur_lane", server);
         foreach (var entrance in entrances)
@@ -39,7 +40,7 @@ public sealed class CampaignStageReader(
             .GroupBy(r => r.Chapter!, StringComparer.Ordinal)
             .OrderByDescending(group => group.Count()).ToArray();
         if (chapters.Length == 0 || chapters[0].Key == "0")
-            throw new InvalidDataException("Stage OCR did not identify a chapter");
+            throw new CampaignStageUnknownException("Stage OCR did not identify a chapter");
         return new(frame.Sequence, chapters[0].Key, readings);
     }
 

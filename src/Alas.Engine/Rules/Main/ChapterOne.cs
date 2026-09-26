@@ -16,6 +16,7 @@ public abstract class ChapterOneRule : CampaignRule
 public sealed class Campaign11 : ChapterOneRule
 {
     public override string Id => "campaign_main/campaign_1_1";
+    public override string StageName => "1-1";
     public override ImmutableArray<SourceFile> Sources => [BaseSource, ConfigurationSource];
     public override MapDefinition Map => CampaignMapCatalog.Get(Id).Map;
     protected override IReadOnlyDictionary<int, BattleHook> Hooks { get; }
@@ -29,6 +30,7 @@ public sealed class Campaign11 : ChapterOneRule
 public sealed class Campaign12 : ChapterOneRule
 {
     public override string Id => "campaign_main/campaign_1_2";
+    public override string StageName => "1-2";
     public override ImmutableArray<SourceFile> Sources => [BaseSource, ConfigurationSource,
         new("campaign/campaign_main/campaign_1_2.py", "be2827f79338da75b042baca3b3f6e6b185da4bcee4e773ff9ba7207246d329a")];
     public override MapDefinition Map => CampaignMapCatalog.Get(Id).Map;
@@ -49,6 +51,7 @@ public sealed class Campaign12 : ChapterOneRule
 public sealed class Campaign13 : ChapterOneRule
 {
     public override string Id => "campaign_main/campaign_1_3";
+    public override string StageName => "1-3";
     public override ImmutableArray<SourceFile> Sources => [BaseSource, ConfigurationSource,
         new("campaign/campaign_main/campaign_1_3.py", "85c14c3159eb51a60329ccf12e62da81e86a76944e4942edcbb997744baa38ae")];
     public override MapDefinition Map => CampaignMapCatalog.Get(Id).Map;
@@ -69,6 +72,7 @@ public sealed class Campaign13 : ChapterOneRule
 public sealed class Campaign14 : ChapterOneRule
 {
     public override string Id => "campaign_main/campaign_1_4";
+    public override string StageName => "1-4";
     public override ImmutableArray<SourceFile> Sources => [BaseSource, ConfigurationSource,
         new("campaign/campaign_main/campaign_1_4.py", "523e70ab86bd8b2f8fa580cfd64dac41913ac9b2e65d4c32fb638f6bc370369d")];
     public override MapDefinition Map => CampaignMapCatalog.Get(Id).Map;

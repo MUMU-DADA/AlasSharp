@@ -54,7 +54,7 @@ internal static class ProfileChecks
                 withOcr, GameServer.Cn);
             bool unknown = false;
             try { await reader.ObserveAsync(synthetic, StageEntranceKind.Normal); }
-            catch (InvalidDataException error) { unknown = error.Message.Contains("identify a chapter", StringComparison.Ordinal); }
+            catch (CampaignStageUnknownException error) { unknown = error.Message.Contains("identify a chapter", StringComparison.Ordinal); }
             Check(unknown, "Synthetic entrance geometry was promoted to a stage name without OCR evidence");
         }
         await NegativeAsync(python, artifacts, last!, await assets.ReadAsync(UiAssets.Template.TEMPLATE_STAGE_CLEAR.For(GameServer.Cn)));

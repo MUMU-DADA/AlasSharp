@@ -57,7 +57,7 @@ internal static class CampaignStageReaderChecks
         var unknown = new CampaignStageReader((_, _, _) =>
             ValueTask.FromResult<IReadOnlyList<StageEntrance>>([entrances[0]]),
             new Vision(["49X"]), GameServer.Cn);
-        await Throws<InvalidDataException>(() => unknown.ObserveAsync(frame, StageEntranceKind.Normal).AsTask(),
+        await Throws<CampaignStageUnknownException>(() => unknown.ObserveAsync(frame, StageEntranceKind.Normal).AsTask(),
             "Unknown stage OCR acquired a chapter");
 
         var task = new CampaignStagesTask();

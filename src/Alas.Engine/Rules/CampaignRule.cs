@@ -8,6 +8,7 @@ public abstract class CampaignRule
 {
     public delegate ValueTask<bool> BattleHook(CampaignContext context);
     public abstract string Id { get; }
+    public virtual string? StageName => null;
     public abstract MapDefinition Map { get; }
     public abstract ImmutableArray<SourceFile> Sources { get; }
     protected abstract IReadOnlyDictionary<int, BattleHook> Hooks { get; }
