@@ -27,6 +27,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
             throw new InvalidOperationException("Selected mechanism has no confirmed fleet route");
         foreach (var cell in route.Waypoints)
         {
+            await WaitForMazeAsync(cell, token);
             var grid = state[cell];
             // Native goto also handles an enemy or mystery occupying the trigger.
             var result = grid.IsEnemy || grid.IsSiren || grid.IsBoss || grid.IsFortress
@@ -57,6 +58,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         for (int index = 0; index < route.Waypoints.Count; index++)
         {
             var cell = route.Waypoints[index];
+            await WaitForMazeAsync(cell, token);
             bool final = index == route.Waypoints.Count - 1;
             var result = final ? await movement.CollectAmmoAsync(cell, token: token) :
                 await movement.MoveAsync(cell, token: token);
@@ -83,6 +85,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
             {
                 token.ThrowIfCancellationRequested();
                 var cell = route.Waypoints[index];
+                await WaitForMazeAsync(cell, token);
                 var result = index == route.Waypoints.Count - 1
                     ? await movement.CollectMysteryAsync(cell, token: token)
                     : await movement.MoveAsync(cell, token: token);
@@ -190,6 +193,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
             {
                 token.ThrowIfCancellationRequested();
                 var cell = route.Waypoints[index];
+                await WaitForMazeAsync(cell, token);
                 bool final = index == route.Waypoints.Count - 1;
                 var options = potential.Length == 1
                     ? new MapArrivalOptions(TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(20)) : null;
@@ -250,6 +254,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         {
             token.ThrowIfCancellationRequested();
             var cell = route.Waypoints[index];
+            await WaitForMazeAsync(cell, token);
             bool final = index == route.Waypoints.Count - 1;
             var result = final ? await movement.FightAsync(cell, token: token) :
                 await movement.MoveAsync(cell, token: token);
@@ -270,5 +275,17 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         await scanner.ScanAsync(state.Progress, TimeSpan.FromMinutes(2),
             fleet: new FleetScanOptions(Fleet2Enabled: configuration.Fleet2 != 0), token: token);
         state.RefreshFleetPaths(configuration);
+    }
+
+    private async ValueTask WaitForMazeAsync(Cell waypoint, CancellationToken token)
+    {
+        var result = await movement.WaitForMazeAsync(waypoint, token);
+        if (result is null) return;
+        if (result.Outcome == MapMoveOutcome.StageReturned)
+        {
+            StageReturn = result.Arrival;
+            throw new CampaignEndedException("Encounter while waiting for maze returned to stage");
+        }
+        throw new CampaignScriptException($"Maze wait for {waypoint} ended as {result.Outcome}");
     }
 }

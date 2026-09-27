@@ -32,6 +32,7 @@ public sealed record CampaignConfiguration
     public int MovableEnemyStep { get; init; } = 2;
     public double SirenMoveWait { get; init; } = 1.5;
     public bool HasMaze { get; init; }
+    public bool WalkUseCurrentFleet { get; init; }
     public bool HasWall { get; init; }
     public bool HasPortal { get; init; }
     public bool HasLandBased { get; init; }

@@ -23,6 +23,9 @@ public sealed partial class CampaignState
     private readonly List<MovableScanEvidence> _movableScans = [];
     public IReadOnlyList<MovableScanEvidence> MovableScans => _movableScans.AsReadOnly();
     internal void RecordMovableScan(MovableScanEvidence evidence) => _movableScans.Add(evidence);
+    private readonly List<MazeWaitEvidence> _mazeWaits = [];
+    public IReadOnlyList<MazeWaitEvidence> MazeWaits => _mazeWaits.AsReadOnly();
+    internal void RecordMazeWait(MazeWaitEvidence evidence) => _mazeWaits.Add(evidence);
     public CampaignState(MapDefinition map)
     {
         Map = map;

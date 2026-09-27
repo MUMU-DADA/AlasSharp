@@ -205,6 +205,13 @@ try
         await CampaignFleetSwitcherChecks.RunAsync();
         return 0;
     }
+    if (args is ["--maze", var mazePython, var mazeUpstream, var mazeArtifacts])
+    {
+        string folder = Path.GetFullPath(mazeArtifacts);
+        Directory.CreateDirectory(folder);
+        await MapMazeChecks.RunAsync(Path.GetFullPath(mazePython), Path.GetFullPath(mazeUpstream), folder);
+        return 0;
+    }
     if (args is ["--movable", var movablePython, var movableUpstream, var movableArtifacts])
     {
         string folder = Path.GetFullPath(movableArtifacts);

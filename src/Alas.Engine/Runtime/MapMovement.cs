@@ -8,6 +8,8 @@ public sealed record AmmoPickupEvidence(Cell Location, int ExpectedRecovered, in
     int FleetBefore, int FleetAfter, long ArrivalSequence, long SettledSequence);
 public sealed record MechanismReleaseEvidence(Cell Location, ImmutableArray<Cell> Triggers, ImmutableArray<Cell> Blocks,
     double ConfirmSeconds, long ArrivalSequence);
+public sealed record MazeWaitEvidence(Cell WaitingFor, Cell From, Cell To, int RoundBefore, int RoundAfter,
+    double ConfirmSeconds, long ArrivalSequence);
 public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arrival)
 {
     public AmmoPickupEvidence? AmmoPickup { get; init; }
@@ -42,17 +44,49 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         CancellationToken token = default)
         => MoveCoreAsync(destination, MapAction.Ammo, options, token);
 
+    /// <summary>Native goto's maze waypoint prelude. Raw neighbor taps do not recurse into another maze wait.</summary>
+    public async ValueTask<MapMoveResult?> WaitForMazeAsync(Cell waypoint, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!configuration.HasMaze) return null;
+        if (!state.IsMapInitialized || state.MovementInvalidated || !state.Rounds.Initialized)
+            throw new InvalidOperationException("Maze waiting requires an initialized, usable sortie and rounds");
+        state.Rounds.RequireConfiguration(configuration);
+        if (state[waypoint].IsMaze && state.MazeRound <= 0)
+            throw new InvalidDataException("Maze phase period must be positive");
+        if (!state.Rounds.MazeActive(waypoint)) return null;
+        var nearby = state[waypoint].MazeNearby;
+        if (state.MazeRound <= 0 || nearby is not { Count: > 0 } ||
+            nearby.Any(cell => !state.Contains(cell.Location) || !ReferenceEquals(state[cell.Location], cell) || cell.Location == waypoint))
+            throw new InvalidDataException("Maze neighbors must belong to this sortie and exclude the active waypoint");
+        // Native evaluates active-on once; _goto raises at the next phase change.
+        // Preserve its ten-move bound rather than inventing a per-map wait route.
+        for (int attempt = 0; attempt < 10; attempt++)
+        {
+            token.ThrowIfCancellationRequested();
+            var choices = nearby.Where(cell => !cell.IsFleet).ToArray();
+            if (choices.Any(cell => !cell.IsEnemy)) choices = choices.Where(cell => !cell.IsEnemy).ToArray();
+            var target = choices.OrderBy(cell => cell.Cost).FirstOrDefault()
+                ?? throw new CampaignScriptException("Active maze waypoint has no unoccupied waiting neighbor");
+            var action = target.IsEnemy || target.IsSiren || target.IsBoss || target.IsFortress || target.IsCaughtBySiren
+                ? MapAction.Fight : target.IsMystery ? MapAction.Mystery : MapAction.Move;
+            var result = await MoveCoreAsync(target.Location, action, null, token, waypoint);
+            if (result.Outcome != MapMoveOutcome.Committed) return result;
+        }
+        return null;
+    }
+
     private async ValueTask<MapMoveResult> MoveCoreAsync(Cell destination, MapAction action,
-        MapArrivalOptions? options, CancellationToken token)
+        MapArrivalOptions? options, CancellationToken token, Cell? mazeWaitFor = null)
     {
         if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before moving a fleet");
         if (state.MovementInvalidated) throw new InvalidOperationException("Map movement state was invalidated; this sortie cannot be reused");
         _ = state.Paths.Connections;
-        if (configuration.HasMaze || state.Cells.Any(cell => cell.IsMaze))
-            throw new NotSupportedException("Maze movement requires its active-wall waypoint workflow");
+        if (!configuration.HasMaze && state.Cells.Any(cell => cell.IsMaze))
+            throw new InvalidDataException("Maze map state requires its maze configuration");
         bool dynamic = configuration.HasMovableEnemy || configuration.HasMovableNormalEnemy;
         if (dynamic && (movableScan is null || !state.Rounds.Initialized || state.SpawnStack.IsEmpty) ||
-            configuration.HasBouncingEnemy && !state.Rounds.Initialized)
+            (configuration.HasBouncingEnemy || configuration.HasMaze) && !state.Rounds.Initialized)
             throw new NotSupportedException("Dynamic movement requires initialized rounds, spawn declarations and movable scanning");
         if (state.FleetIndex is not (1 or 2)) throw new InvalidOperationException("Invalid current fleet index");
         Cell origin = (state.FleetIndex == 1 ? state.Fleet1Location : state.Fleet2Location)
@@ -78,9 +112,9 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             throw new ArgumentException("Potential boss destination must be a declared boss spawn", nameof(destination));
         if (ammo && (!target.MayAmmo || enemy || target.IsPortal))
             throw new ArgumentException("Supply destination must be a declared ammo tile without an enemy", nameof(destination));
-        if (target.IsMaze || target.IsMechanismBlock ||
+        if (target.IsMechanismBlock ||
             (action is MapAction.Move or MapAction.Mystery && enemy) ||
-            (target.IsMystery && !mystery) || (target.IsAmmo && !ammo && !mechanism) || target.IsCarrier ||
+            (target.IsMystery && !mystery) || (target.IsAmmo && !ammo && !mechanism && mazeWaitFor is null) || target.IsCarrier ||
             (target.IsFleet && !((ammo || mechanism && action == MapAction.Move) && destination == origin)))
             throw new NotSupportedException("Destination requires a map interaction that is not committed by ordinary movement");
         Cell landing = target.IsPortal
@@ -115,6 +149,9 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
 
         // Native removes the enemy animation wait after combat but keeps mechanism and base delays.
         var before = dynamic ? MovableEnemySnapshot.Capture(state) : null;
+        options ??= MapArrivalOptions.Default;
+        bool expectedBoss = mazeWaitFor is null && (probeBoss || fight && (target.IsBoss || target.MayBoss));
+        options = options with { AllowCurrentMarker = !expectedBoss && (options.AllowCurrentMarker || configuration.WalkUseCurrentFleet) };
         if (state.Rounds.Initialized)
         {
             state.Rounds.RequireConfiguration(configuration);
@@ -183,8 +220,10 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
                     throw new InvalidDataException("Supply acknowledgement reused the arrival frame");
             }
             bool battled = fight || probeBoss && combatConfirmed;
-            bool siren = battled && target.IsSiren;
-            bool cleared = battled && target.MayEnemy;
+            // A maze detour is native _goto(expected=''). Native attributes its
+            // unplanned battle to sirens only when movable sirens are enabled.
+            bool siren = battled && (mazeWaitFor is not null ? configuration.HasMovableEnemy : target.IsSiren);
+            bool cleared = battled && !siren && target.MayEnemy;
             int mysteryCount = checked(state.MysteryCount + result.AmmoNotificationFrames.Length +
                 (mystery ? result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) : 0));
             if (battled) state.CommitBattle(siren);
@@ -205,13 +244,19 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             }
             if (state.Rounds.Initialized)
             {
+                int roundBefore = state.Rounds.Round;
                 if (battled) state.Rounds.RecordBattle();
                 state.Rounds.Advance();
+                if (mazeWaitFor is { } waitingFor)
+                    state.RecordMazeWait(new(waitingFor, origin, landing, roundBefore, state.Rounds.Round,
+                        (battled ? options!.AfterCombatConfirmDelay ?? options.ConfirmDelay : options!.ConfirmDelay).TotalSeconds,
+                        result.FrameSequence));
                 if (state.Rounds.EnemyMoved)
                 {
                     await movableScan!.ScanAsync(before!, battled, token);
                     redispatch = true;
                 }
+                else if (state.Rounds.MazeChanged) redispatch = true;
             }
             AmmoPickupEvidence? pickup = null;
             // Native goto raises the round change before pick_up_ammo's inventory update.

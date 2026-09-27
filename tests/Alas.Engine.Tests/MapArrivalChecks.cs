@@ -521,7 +521,7 @@ internal static class MapArrivalChecks
             try { await new MapMovement(state, config, camera, () => arrival).MoveAsync(destination, options); }
             catch (NotSupportedException) { rejected = true; }
             Check(rejected && camera.Taps == 0 && state.Fleet1Location == new Cell(1, 1),
-                "An unported map-round mode was clicked before its state transition was implemented");
+                "A dynamic map was clicked before its rounds and scanner were initialized");
         }
     }
 
