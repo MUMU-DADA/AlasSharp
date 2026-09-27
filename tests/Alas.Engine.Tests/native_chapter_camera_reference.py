@@ -1,6 +1,7 @@
 """Offline native calibration/view and first edge gesture for stored chapter geometry."""
 import contextlib
 import importlib
+import itertools
 import json
 import os
 from pathlib import Path
@@ -27,7 +28,7 @@ def main():
         class FirstGesture(Exception): pass
 
         result = []
-        for chapter, stage in [(9, 1), (10, 2)]:
+        for chapter, stage in [(9, 1), (10, 2), (11, 2), (11, 3)]:
             module = importlib.import_module(f'campaign.campaign_main.campaign_{chapter}_{stage}')
             class Config(module.Config, ManualConfig): pass
             config = Config()
@@ -53,7 +54,7 @@ def main():
             view.load(image)
             assert not any([view.left_edge, view.right_edge, view.lower_edge, view.upper_edge])
             gestures = []
-            for draw in [.25, .75]:
+            for draws in itertools.product([.25, .75], repeat=2):
                 camera = object.__new__(Camera)
                 camera.config, camera.view = config, view
                 camera.camera = (9, 9)
@@ -64,7 +65,8 @@ def main():
                     raise FirstGesture()
                 camera.device = SimpleNamespace(swipe_vector=swipe)
                 original = np.random.uniform
-                np.random.uniform = lambda: draw
+                direction = iter(draws)
+                np.random.uniform = lambda: next(direction)
                 try:
                     Camera.ensure_edge_insight(camera)
                     raise AssertionError('Native edge recovery never swiped')

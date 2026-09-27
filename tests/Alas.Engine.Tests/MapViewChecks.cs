@@ -517,8 +517,9 @@ internal static partial class MapViewChecks
         var source = new Source(i => view with { Frame = frame with { Sequence = i + 1 } }, clock);
         var method = sample["method"]!.GetValue<string>() switch { "minitouch" => MapControlMethod.Minitouch,
             "MaaTouch" => MapControlMethod.MaaTouch, _ => MapControlMethod.Adb };
-        var rules = new MapCameraRules { Predict = false }.WithChapter(B(sample["chapter"]!)
-            ? new Alas.Engine.Rules.Main.Campaign81().Configure(new()).SwipeMultipliers : null);
+        int chapter = I(sample["chapter"]!);
+        var rules = new MapCameraRules { Predict = false }.WithChapter(chapter > 0
+            ? RuleCatalog.Create($"campaign_main/campaign_{chapter}_1").Configure(new()).SwipeMultipliers : null);
         var camera = new MapCamera(map, position, view, source, input, recognition, new(new FixedEvidence(null)),
             rules, method, clock: clock);
         await camera.FocusAsync(new(6, 3), default);

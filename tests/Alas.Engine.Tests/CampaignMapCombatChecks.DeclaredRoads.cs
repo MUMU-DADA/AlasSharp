@@ -248,6 +248,11 @@ internal static partial class CampaignMapCombatChecks
             if (rule is Alas.Engine.Rules.Main.Campaign94)
                 Check(operations.AmmoPickups.Count == 1 && operations.AmmoPickups[0].ExpectedRecovered == 3,
                     "Compiled 9-4 omitted boss-fleet supply pickup");
+            if (rule is Alas.Engine.Rules.Main.Campaign112)
+                Check(host.RefocusPresets.SequenceEqual([(-3, -2)]), "Compiled 11-2 omitted boss camera preset");
+            if (rule is Alas.Engine.Rules.Main.Campaign124)
+                Check(operations.AmmoPickups.Count > 0 && operations.AmmoPickups[0].ExpectedRecovered == 3,
+                    "Compiled 12-4 omitted post-third-battle supply pickup");
             if (rule is Alas.Engine.Rules.Main.Campaign92)
                 Check(execution.Context.State.MysteryCount == 0 && execution.Context.State.Cells.Any(cell => cell.IsMystery),
                     "Compiled 9-2 added mystery collection absent from its native hooks");

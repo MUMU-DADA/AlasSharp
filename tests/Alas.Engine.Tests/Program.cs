@@ -233,6 +233,13 @@ try
         await CampaignMapCombatChecks.MainChapterChecksAsync(Path.GetFullPath(chapterPython), Path.GetFullPath(chapterUpstream), folder);
         return 0;
     }
+    if (args is ["--chapters-eleven-twelve", var laterPython, var laterUpstream, var laterArtifacts])
+    {
+        string folder = Path.GetFullPath(laterArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.ChaptersElevenTwelveAsync(Path.GetFullPath(laterPython), Path.GetFullPath(laterUpstream), folder);
+        return 0;
+    }
     if (args is ["--chapter-camera", var cameraPython, var cameraUpstream, var cameraArtifacts])
     {
         string folder = Path.GetFullPath(cameraArtifacts);
@@ -577,6 +584,21 @@ try
             foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
                 cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation, Fleet2: 2));
         }
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterElevenRule or Alas.Engine.Rules.Main.ChapterTwelveRule)
+        {
+            foreach (int count in new[] { 0, 2, 3, 5, 6, 7, 15, 16 })
+            foreach (int fleet2 in new[] { 0, 2 })
+            foreach (int bossFleet in new[] { 1, 2 })
+            foreach (bool accessible in new[] { false, true })
+            foreach (string cells in new[] { "empty", "boss", "boss_enemy" })
+            foreach (string? yes in new[] { null, "fleet_2_push_forward", "fleet_2_step_on", "clear_roadblocks", "clear_potential_roadblocks", "pick_up_ammo" })
+                cases.Add(new Scenario(id, BattleCount: count, Fleet2: fleet2, BossFleet: bossFleet, Cells: cells,
+                    Accessible: accessible, TrueOperation: yes, CombatReturn: false));
+            foreach (string operation in new[] { "fleet_2_push_forward", "fleet_2_step_on", "clear_roadblocks", "clear_potential_roadblocks", "pick_up_ammo", "clear_boss" })
+            foreach (int count in new[] { 0, 3, 6 })
+            foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
+                cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation, Fleet2: 2));
+        }
         if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.Campaign72)
             foreach (int count in new[] { 0, 4, 5, 6 })
             foreach (string secondLocation in new[] { "A3", "G3", "C3" })
@@ -624,21 +646,35 @@ try
     }
     var expected = new List<ProbeResult>();
     foreach (var sample in cases) expected.Add(await Execute(sample));
-    string input = Path.Combine(artifacts, "cases.json"), output = Path.Combine(artifacts, "native.json");
+    string input = Path.Combine(artifacts, "cases.json");
     await File.WriteAllTextAsync(input, JsonSerializer.Serialize(cases, json));
     await File.WriteAllTextAsync(Path.Combine(artifacts, "csharp.json"), JsonSerializer.Serialize(expected, json));
-    var oracle = await process.RunAsync(python,
-        // The full compiled-rule oracle exceeds 90 seconds locally; retain a bounded execution budget.
-        [Path.Combine(AppContext.BaseDirectory, "native_campaign_reference.py"), upstream, input, output], TimeSpan.FromMinutes(3));
-    if (oracle.ExitCode != 0) throw new InvalidOperationException($"Native reference failed: {oracle.Error}");
-    var native = JsonNode.Parse(await File.ReadAllTextAsync(output))!.AsArray();
-    Check(native.Count == cases.Count, "Native reference omitted scenarios");
     var failures = new List<object>();
-    for (int index = 0; index < cases.Count; index++)
+    int compared = 0, batchNumber = 0;
+    // Keep every scenario for a rule together and preserve catalog/scenario order.
+    // A fixed number of rules per process bounds memory/time as the catalog grows.
+    foreach (var rules in cases.GroupBy(sample => sample.Rule, StringComparer.Ordinal).Chunk(8))
     {
-        var actual = JsonSerializer.SerializeToNode(expected[index], json);
-        if (!JsonNode.DeepEquals(native[index], actual)) failures.Add(new { index, sample = cases[index], csharp = actual, native = native[index]!.DeepClone() });
+        var batch = rules.SelectMany(rule => rule).ToArray();
+        string batchInput = Path.Combine(artifacts, $"cases-{++batchNumber:D2}.json");
+        string output = Path.Combine(artifacts, $"native-{batchNumber:D2}.json");
+        await File.WriteAllTextAsync(batchInput, JsonSerializer.Serialize(batch, json));
+        var oracle = await process.RunAsync(python,
+            [Path.Combine(AppContext.BaseDirectory, "native_campaign_reference.py"), upstream, batchInput, output], TimeSpan.FromMinutes(3));
+        if (oracle.ExitCode != 0) throw new InvalidOperationException($"Native reference batch {batchNumber} failed: {oracle.Error}");
+        var native = JsonNode.Parse(await File.ReadAllTextAsync(output))!.AsArray();
+        Check(native.Count == batch.Length, "Native reference batch omitted scenarios");
+        for (int local = 0; local < batch.Length; local++)
+        {
+            int index = compared + local;
+            Check(batch[local] == cases[index], "Native batching changed scenario order");
+            var actual = JsonSerializer.SerializeToNode(expected[index], json);
+            if (!JsonNode.DeepEquals(native[local], actual)) failures.Add(new { index, sample = cases[index], csharp = actual, native = native[local]!.DeepClone() });
+        }
+        compared += batch.Length;
+        Console.WriteLine($"Native rule batch {batchNumber}: compared {compared}/{cases.Count}; differences so far: {failures.Count}.");
     }
+    Check(compared == cases.Count, "Native reference omitted a rule batch");
     await File.WriteAllTextAsync(Path.Combine(artifacts, "differences.json"), JsonSerializer.Serialize(failures, json));
     Check(failures.Count == 0, $"Native differences: {failures.Count}/{cases.Count}; inspect differences.json");
     Console.WriteLine($"Native compiled-rule comparisons passed: {cases.Count}; source hashes matched. Synthetic actions, no device or settlement validation.");

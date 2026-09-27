@@ -197,7 +197,7 @@ def main():
 
         # Full native swipe optimization from map/global flags and current view predictions.
         optimized=[]
-        for method, chapter in itertools.product(['adb','minitouch','MaaTouch'], [False, True]):
+        for method, chapter in itertools.product(['adb','minitouch','MaaTouch'], [0, 8, 12]):
             v=geometry(layout('optimized',columns=3,rows=3,screen=(262,227.5)))
             patches=[dict(cell=[0,0],state=dict(is_enemy=True)),dict(cell=[1,0],state=dict(is_siren=True)),
                      dict(cell=[2,0],state=dict(is_boss=True)),dict(cell=[0,1],state=dict(is_mystery=True)),
@@ -211,7 +211,8 @@ def main():
             c=object.__new__(Camera); c.camera=(4,3); c.view=v; c.map=mapping
             c.config=ManualConfig(); c.config.DEVICE_CONTROL_METHOD=method
             if chapter:
-                from campaign.campaign_main.campaign_8_1 import Config as ChapterConfig
+                import importlib
+                ChapterConfig = importlib.import_module(f'campaign.campaign_main.campaign_{chapter}_1').Config
                 for name in ['MAP_SWIPE_MULTIPLY', 'MAP_SWIPE_MULTIPLY_MINITOUCH', 'MAP_SWIPE_MULTIPLY_MAATOUCH']:
                     setattr(c.config, name, getattr(ChapterConfig, name))
             trace=[]

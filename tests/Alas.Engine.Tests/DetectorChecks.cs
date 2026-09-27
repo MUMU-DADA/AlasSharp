@@ -230,7 +230,7 @@ internal static class DetectorChecks
             Environment.SetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE", previousFixture);
             Environment.SetEnvironmentVariable("ALAS_TEST_MAP_SWIPE_FAIL", previousFailure);
         }
-        Console.WriteLine("Stored chapter camera: native 9-1/10-2 projected lattice, complete geometry and bottom-edge first ADB gesture passed through actual EngineSession/CV factory; offline only.");
+        Console.WriteLine("Stored chapter camera: native 9-1/10-2/11-2/11-3 projected lattices, complete geometry and first edge ADB gesture passed through actual EngineSession/CV factory; offline only.");
     }
 
     private sealed class ScriptedFeatures(JsonNode sample) : IGridFeatureVision
@@ -313,14 +313,15 @@ internal static class DetectorChecks
             var evidence = await session.SaveEvidenceAsync(Path.Combine(artifacts, "session"), false);
             Check(evidence.Image is not null && evidence.FrameSequence > 0 && evidence.ActionAttempts == 1,
                 "Map session lost screenshot or click-attempt evidence");
-            await ChapterCameraFactoryAsync(session);
+            foreach (CampaignRule rule in new CampaignRule[] { new Alas.Engine.Rules.Main.Campaign81(), new Alas.Engine.Rules.Main.Campaign121() })
+                await ChapterCameraFactoryAsync(session, rule);
         }
         finally { Environment.SetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE", previous); }
     }
-    private static async Task ChapterCameraFactoryAsync(EngineSession session)
+    private static async Task ChapterCameraFactoryAsync(EngineSession session, CampaignRule rule)
     {
         var map = new CampaignState(new MapDefinition("T20", string.Join('\n', Enumerable.Repeat(string.Join(' ', Enumerable.Repeat("--", 20)), 20)), ["J10"], [], []));
-        var config = new Alas.Engine.Rules.Main.Campaign81().Configure(new());
+        var config = rule.Configure(new());
         var camera = (MapCamera)await ((ICampaignInMapHost)session).CreateCameraAsync(map, config, default);
         var geometry = camera.View.Geometry;
         int dx = camera.Position.Column < 20 ? 1 : -1, dy = camera.Position.Row < 20 ? 1 : -1;
