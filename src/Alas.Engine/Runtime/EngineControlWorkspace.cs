@@ -312,9 +312,6 @@ public sealed class EngineControlWorkspace
         StartRun(request);
     }
 
-    public void StartScheduler(JsonObject body)
-        => throw new EngineCapabilityUnavailableException("上游周期调度器尚未迁移到 C# Engine");
-
     // These are deliberately typed Engine capability seams.  They do not
     // accept an operation name or arbitrary arguments, so an old Python host
     // cannot be smuggled back into the product through a generic RPC method.

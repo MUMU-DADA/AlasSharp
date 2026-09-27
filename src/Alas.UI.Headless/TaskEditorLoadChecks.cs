@@ -583,7 +583,6 @@ internal static class TaskEditorLoadChecks
         public Task<StartupRunResponse> SetStartupRunAsync(StartupRunRequest request, CancellationToken cancellationToken = default) => Unsupported<StartupRunResponse>(nameof(SetStartupRunAsync));
         public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default) => Task.FromException(new NotSupportedException("测量后端不实现 " + nameof(StartRunAsync)));
         public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default) => Task.FromException(new NotSupportedException("测量后端不实现 " + nameof(StartTaskAsync)));
-        public Task StartSchedulerAsync(InstanceSchedulerRunRequest request, CancellationToken cancellationToken = default) => Task.FromException(new NotSupportedException("测量后端不实现 " + nameof(StartSchedulerAsync)));
         public Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default) => Unsupported<JsonObject>(nameof(ReadStatisticsAsync));
         public Task<JsonObject> RefreshStatisticsLootAsync(string instanceName, CancellationToken cancellationToken = default) => Unsupported<JsonObject>(nameof(RefreshStatisticsLootAsync));
         public Task<JsonObject> ReadMeowfficerAsync(MeowfficerRequest request, CancellationToken cancellationToken = default) => Unsupported<JsonObject>(nameof(ReadMeowfficerAsync));

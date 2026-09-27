@@ -89,12 +89,6 @@ public sealed record InstanceTaskRunRequest
     public bool ConfirmActions { get; init; }
 }
 
-public sealed record InstanceSchedulerRunRequest
-{
-    public required string Instance { get; init; }
-    public bool ConfirmActions { get; init; }
-}
-
 public sealed record ControlAcknowledgement
 {
     public required bool Ok { get; init; }
@@ -234,7 +228,6 @@ public sealed record StartupRunResponse
 [JsonSerializable(typeof(ControlQueueRequest))]
 [JsonSerializable(typeof(ControlRunRequest))]
 [JsonSerializable(typeof(InstanceTaskRunRequest))]
-[JsonSerializable(typeof(InstanceSchedulerRunRequest))]
 [JsonSerializable(typeof(ControlAcknowledgement))]
 [JsonSerializable(typeof(ControlError))]
 [JsonSerializable(typeof(InstanceSummary))]

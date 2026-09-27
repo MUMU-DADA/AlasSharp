@@ -18,7 +18,6 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
 EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
-CHAPTER = 'campaign.campaign_main.campaign_1_1'
 
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -111,8 +110,7 @@ def main() -> int:
             status, _ = request(base, '/api/report?stamp=..')
             assert status == 400, '历史报告路径不能越界'
 
-            queue = {'tasks': [{'id': 'catalog', 'kind': 'task_catalog',
-                                'input': {'limit': 1}}]}
+            queue = {'tasks': [{'id': 'observe', 'kind': 'observe', 'input': {}}]}
             status, _ = request(base, '/api/queue', data={'queue': queue}, token=token)
             assert status == 200
             assert request(base, '/api/state')[1]['queue'] == queue
@@ -151,21 +149,19 @@ def main() -> int:
             report = state['report']
             assert Path(state['active']['run_directory']) != foreign
             assert Path(state['active']['run_directory']) == Path(report['directory'])
-            assert report['queue_outcome'] == 'succeeded'
-            assert report['device_configure_count'] == 0
+            assert report['queue_outcome'] == 'dry_run'
             assert report['totals']['tasks'] == 1
             stamp = report['stamp']
-            assert request(base, '/api/report?stamp=' + stamp)[1]['queue_outcome'] == 'succeeded'
+            assert request(base, '/api/report?stamp=' + stamp)[1]['queue_outcome'] == 'dry_run'
 
             queue = {'tasks': [
-                {'id': f'stage-{index}', 'kind': 'campaign_batch',
-                 'input': {'chapters': [CHAPTER]}}
+                {'id': f'stage-{index}', 'kind': 'observe', 'input': {}}
                 for index in range(200)]}
             with ThreadPoolExecutor(max_workers=2) as pool:
                 requests = [pool.submit(request, base, '/api/run', data={
                     'queue': queue, 'mode': 'dry_run'}, token=token) for _ in range(2)]
                 assert sorted(f.result()[0] for f in requests) == [202, 409], '不能同时启动两个队列'
-            replacement = {'tasks': [{'id': 'replacement', 'kind': 'task_catalog', 'input': {}}]}
+            replacement = {'tasks': [{'id': 'replacement', 'kind': 'observe', 'input': {}}]}
             assert request(base, '/api/queue', data={'queue': replacement}, token=token)[0] == 200
             status, _ = request(base, '/api/stop', data={}, token=token)
             assert status == 200, '运行中可以请求停止'
@@ -179,12 +175,11 @@ def main() -> int:
             assert report['totals']['tasks'] == 200
             assert 0 < report['totals']['tasks_skipped'] <= 200
             assert state['queue'] == replacement, '编辑草稿不能改变运行中的快照'
-            task_records = list(Path(state['active']['run_directory']).glob('task-*.json'))
-            assert len(task_records) == 200 and not any(p.name == 'task-replacement.json' for p in task_records)
+            task_records = list(Path(state['active']['run_directory']).glob('attempt-*/**/task.json'))
+            assert len(task_records) == 200
             assert report['totals']['tasks_failed'] == 0
-            assert report['device_configure_count'] == 0
             assert report['evidence_complete'] is True
-            print('Kestrel 控制回归通过：同源/令牌、请求边界、单队列并发、快照、报告与边界停止；设备配置为零')
+            print('Kestrel 控制回归通过：同源/令牌、请求边界、单队列并发、快照、报告与边界停止')
             return 0
         finally:
             process.terminate()

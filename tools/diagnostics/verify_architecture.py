@@ -163,6 +163,8 @@ def product_boundary() -> list[str]:
         problems.append("EngineControlWorkspace 未调用 Engine.TaskQueue")
     if re.search(r"\bReadHostJson\b|\bHostJson\b", "\n".join((workspace, server, desktop))):
         problems.append("产品控制面仍保留通用 HostJson/RPC 入口；能力必须在 Engine 内按类型定义")
+    if re.search(r"StartScheduler|scheduler/start|InstanceSchedulerRunRequest", "\n".join((workspace, server, desktop, read("src/Alas.Client/ControlClient.cs")))):
+        problems.append("产品仍保留旧周期调度入口；任务必须通过 Engine ControlRunRequest 队列提交")
     if "new CampaignRunTask()" not in queue or "new CampaignResumeTask()" not in queue:
         problems.append("Engine 队列缺少战役任务注册")
     if "SortieContract.Violations" not in campaign_resume:

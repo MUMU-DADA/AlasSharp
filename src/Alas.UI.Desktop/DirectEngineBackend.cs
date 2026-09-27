@@ -116,12 +116,6 @@ internal sealed partial class DirectEngineBackend : IAlasUiBackend
     public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().RequestStop(), cancellationToken);
 
-    public Task StartSchedulerAsync(InstanceSchedulerRunRequest request, CancellationToken cancellationToken = default)
-        => Task.Run(() => WorkspaceOrThrow().StartScheduler(new JsonObject
-        {
-            ["instance"] = request.Instance, ["confirm_actions"] = request.ConfirmActions,
-        }), cancellationToken);
-
     public Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().ReadStatistics(new EngineStatisticsRequest(request.Instance, request.Category,
             request.Days, request.Month, request.Period)), cancellationToken);

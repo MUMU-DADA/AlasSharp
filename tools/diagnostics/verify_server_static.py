@@ -109,9 +109,17 @@ def main() -> int:
                 assert status == 200 and json.loads(body)["token"]
                 if label == "lf":
                     token_headers = {"X-Alas-Token": json.loads(body)["token"], "Content-Type": "application/json"}
-                    for route in ("/api/tasks/run", "/api/scheduler/start", "/api/tasks/validate-script"):
-                        payload = {"instance": "fixture", "task": "Main", "script": "", "confirm_actions": True}
-                        assert get(base, route, method="POST", headers=token_headers, body=payload)[0] == 501
+                    task_payload = {"instance": "fixture", "task": "observe", "input": {}}
+                    # The task route is an Engine entry.  A missing Engine
+                    # config instance is reported as 404; it must not fall
+                    # back to the retired Core/Python scheduler.
+                    assert get(base, "/api/tasks/run", method="POST", headers=token_headers,
+                               body=task_payload)[0] == 404
+                    script_payload = {"script": ""}
+                    assert get(base, "/api/tasks/validate-script", method="POST", headers=token_headers,
+                               body=script_payload)[0] == 501
+                    assert get(base, "/api/scheduler/start", method="POST", headers=token_headers,
+                               body={"instance": "fixture", "confirm_actions": True})[0] == 404
                     payload = {"queue": {"tasks": [{"id": "observe", "kind": "observe", "required": True}]}}
                     assert get(base, "/api/run", method="POST", headers=token_headers, body=payload)[0] == 202
                     deadline = time.monotonic() + 10

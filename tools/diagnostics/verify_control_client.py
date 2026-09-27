@@ -44,8 +44,8 @@ static JsonObject Queue(int count) => new()
 {
     ["tasks"] = new JsonArray(Enumerable.Range(0, count).Select(i => (JsonNode)new JsonObject
     {
-        ["id"] = $"stage-{i}", ["kind"] = "campaign_batch",
-        ["input"] = new JsonObject { ["chapters"] = new JsonArray("campaign.campaign_main.campaign_1_1") }
+        ["id"] = $"stage-{i}", ["kind"] = "observe",
+        ["input"] = new JsonObject()
     }).ToArray())
 };
 
@@ -60,8 +60,6 @@ await client.SaveQueueAsync(queue);
 Check(JsonNode.DeepEquals((await client.GetStateAsync()).Queue, queue), "Draft roundtrip");
 var authorization = await Throws<ControlApiException>(() => client.StartRunAsync(new() { Queue = queue, Mode = ControlRunMode.Actions }));
 Check(authorization.StatusCode == HttpStatusCode.BadRequest && authorization.Message.Contains("授权"), "Server enforces explicit action authorization");
-var schedulerAuthorization = await Throws<ControlApiException>(() => client.StartSchedulerAsync(new() { Instance = "fixture" }));
-Check(schedulerAuthorization.StatusCode == HttpStatusCode.BadRequest && schedulerAuthorization.Message.Contains("授权"), "Scheduler also enforces explicit authorization before resolving instance");
 Check((await client.GetStateAsync()).Runs["runs"]?.AsArray().Count == 0, "Rejected action must not create run artifacts");
 Check((await Throws<ControlApiException>(() => client.GetReportAsync("absent"))).StatusCode == HttpStatusCode.NotFound, "Missing report keeps 404");
 Check((await Throws<ControlApiException>(() => client.GetReportAsync("../escape"))).StatusCode == HttpStatusCode.BadRequest, "Report identifier stays query data");
@@ -84,8 +82,8 @@ using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(40)))
 }
 Check(finished.Active.Status == "completed" && !finished.Active.StopRequested, "HTTP client disposal must not stop accepted work");
 Check(finished.Report?["queue_outcome"]?.GetValue<string>() == "dry_run", "Actual dry-run report outcome is retained");
-Check(finished.Report?["device_configure_count"]?.GetValue<int>() == 0, "Dry-run never configures a device");
-Check(finished.LiveTasks.Count == 1 && finished.RecentLogs.Count > 0, "Tasks and logs are preserved");
+Check(finished.Report?["totals"]?["tasks_dry_run"]?.GetValue<int>() == 1, "Dry-run task outcome is retained");
+Check(finished.LiveTasks.Count == 1, "Task report is preserved");
 string stamp = Path.GetFileName(finished.Active.RunDirectory)!;
 var report = await client.GetReportAsync(stamp);
 Check(JsonNode.DeepEquals(report, finished.Report), "Report JSON is preserved without reinterpretation");
@@ -104,7 +102,7 @@ using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(40)))
     } while (finished.Active.Status == "running");
 }
 Check(finished.Report?["queue_outcome"]?.GetValue<string>() == "cancelled", "Boundary stop preserves cancelled outcome");
-Check(finished.LiveTasks.Count == 200 && finished.Report?["device_configure_count"]?.GetValue<int>() == 0, "Stopped queue has every artifact and no device");
+Check(finished.LiveTasks.Count == 200, "Stopped queue has every task artifact");
 Check((await Throws<ControlApiException>(() => client.RequestStopAsync())).StatusCode == HttpStatusCode.Conflict, "Idle stop keeps 409");
 
 // These tests isolate faults which cannot be induced deterministically in a

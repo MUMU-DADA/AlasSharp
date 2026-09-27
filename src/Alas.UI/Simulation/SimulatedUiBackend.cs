@@ -194,8 +194,6 @@ public sealed class SimulatedUiBackend : IAlasUiBackend
         => Write(() => { _queue = (JsonObject)request.Queue.DeepClone(); Start(_samples.Keys.First(), "模拟队列"); }, cancellationToken);
     public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default)
         => Write(() => Start(request.Instance, request.Task), cancellationToken);
-    public Task StartSchedulerAsync(InstanceSchedulerRunRequest request, CancellationToken cancellationToken = default)
-        => Write(() => Start(request.Instance, "Reward"), cancellationToken);
     private void Start(string instance, string task)
     { Get(instance); _running = instance; _task = task; AppendLogsCore(instance, 1); }
     public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)

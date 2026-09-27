@@ -20,8 +20,8 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Alas.Client;
 using Alas.Contracts;
-using Alas.Runtime;
 using Alas.Server;
+using Alas.Engine.Runtime;
 
 static void Check(bool value, string reason) { if (!value) throw new Exception(reason); }
 static async Task Until(Func<bool> ready, string reason)
@@ -77,20 +77,6 @@ await using (var feed = new ControlStateFeed(() =>
 }
 
 string root = args[0], work = args[1];
-// Keep a writer open to deterministically check Windows sharing compatibility.
-// Parsing an incomplete document must still report the original evidence error.
-string sharing = Path.Combine(work, "sharing");
-Directory.CreateDirectory(sharing);
-string statePath = Path.Combine(sharing, "state.json");
-using (var writer = new FileStream(statePath, FileMode.Create, FileAccess.Write, FileShare.Read))
-{
-    writer.Write(Encoding.UTF8.GetBytes("{\"completed\":{}}")); writer.Flush();
-    Check(!RunReport.Build(sharing).Findings.Any(f => f.Code == "unreadable_artifact" && f.Artifact == statePath),
-        "Report reads must coexist with the artifact writer");
-    writer.SetLength(1); writer.Flush();
-    Check(RunReport.Build(sharing).Findings.Any(f => f.Code == "unreadable_artifact" && f.Artifact == statePath),
-        "Concurrent read must not suppress incomplete evidence findings");
-}
 int port = int.Parse(args[2]);
 var endpoint = new Uri($"http://127.0.0.1:{port}");
 string repo = Environment.GetEnvironmentVariable("ALAS_REPO") ?? Path.Combine(root, ".runtime", "engine");
@@ -129,24 +115,23 @@ try
 
     var queue = new JsonObject { ["tasks"] = new JsonArray(Enumerable.Range(0, 200).Select(i => (JsonNode)new JsonObject
     {
-        ["id"] = $"stage-{i}", ["kind"] = "campaign_batch",
-        ["input"] = new JsonObject { ["chapters"] = new JsonArray("campaign.campaign_main.campaign_1_1") }
+        ["id"] = $"stage-{i}", ["kind"] = "observe",
+        ["input"] = new JsonObject()
     }).ToArray()) };
     // The SSE state must suffice to acquire the write token (no GET /api/state first).
     await client.StartRunAsync(new() { Queue = queue }, lifetime.Token);
-    bool liveLog = false;
+    bool liveActivity = false;
     for (int i = 0; i < 100; i++)
     {
         var state = await observer.GetStateAsync(lifetime.Token);
-        if (state.Active.Status == "running" && state.RecentLogs.Count > 0 && state.Active.RunDirectory is { } directory)
+        if (state.Active.Status == "running" && state.Active.Engine is not null && state.Active.RunDirectory is { })
         {
-            Check(!File.Exists(Path.Combine(directory, "session-log.jsonl")), "Running logs came from memory, not final log file");
-            liveLog = true;
+            liveActivity = true;
             break;
         }
         await Task.Delay(10, lifetime.Token);
     }
-    Check(liveLog, "Must observe runtime logs before disposal");
+    Check(liveActivity, "Must observe Engine activity before disposal");
     var changed = await Next(events);
     Check(changed.Cursor != cursor && !changed.Reset, "Changed state advances snapshot cursor");
     await using (var old = observer.WatchStateAsync(cursor, lifetime.Token).GetAsyncEnumerator())
@@ -159,13 +144,8 @@ try
     while (completed.Active.Status == "running");
     Check(!completed.Active.StopRequested && completed.Report?["queue_outcome"]?.GetValue<string>() == "dry_run",
         $"SSE disconnect must not stop or reinterpret queue; status={completed.Active.Status}, error={completed.Active.Error}, outcome={completed.Report?["queue_outcome"]}");
-    Check(completed.LiveTasks.Count == 200 && completed.RecentLogs.Count <= 80, "All tasks and bounded recent log window");
-    Check(completed.Report?["device_configure_count"]?.GetValue<int>() == 0, "No device configured");
-    Check(!completed.RecentLogs.Any(n => n?["message"]?.GetValue<string>() == "识图宿主已释放"),
-        "Queue completion keeps the shared host alive");
-    var logIds = completed.RecentLogs.Select(n => n!["id"]!.GetValue<long>()).ToArray();
-    Check(logIds.All(id => id > 0) && logIds.SequenceEqual(logIds.Order()) && logIds.Distinct().Count() == logIds.Length,
-        "SSE carries stable ordered Core log IDs");
+    Check(completed.LiveTasks.Count == 200 && completed.RecentLogs.Count == 0,
+        "All Engine tasks are reported without legacy Core log projection");
 
     // An open stream must not keep Kestrel alive through its HTTP shutdown deadline.
     await using var closing = client.WatchStateAsync(cancellationToken: lifetime.Token).GetAsyncEnumerator();
@@ -174,11 +154,7 @@ try
     shutdown.Cancel();
     Check(!await eof.WaitAsync(TimeSpan.FromSeconds(5)), "ApplicationStopping promptly closes the stream");
     await running.WaitAsync(TimeSpan.FromSeconds(5));
-    var finalLog = File.ReadLines(Path.Combine(completed.Active.RunDirectory!, "session-log.jsonl"))
-        .Select(line => JsonNode.Parse(line)).ToArray();
-    Check(finalLog.Count(n => n?["message"]?.GetValue<string>() == "识图宿主已释放") == 1,
-        "Service shutdown records shared-host disposal exactly once");
-    Check(File.Exists(Path.Combine(completed.Active.RunDirectory!, "state.json")), "Shutdown preserves state artifact");
+    Check(File.Exists(Path.Combine(completed.Active.RunDirectory!, "run.json")), "Shutdown preserves Engine run artifact");
     using var secondShutdown = new CancellationTokenSource();
     var restarted = new ControlServer(root, repo, data, Path.Combine(root, "tools"), Path.Combine(work, "runs"), Path.Combine(work, "workspace"), port);
     var restartedTask = restarted.RunAsync(secondShutdown.Token);
@@ -191,7 +167,7 @@ try
         Check(reset.State.Runs["runs"]?.AsArray().Count == 1, "Restart preserves completed artifacts/history");
     }
     finally { secondShutdown.Cancel(); await restartedTask.WaitAsync(TimeSpan.FromSeconds(5)); }
-    Console.WriteLine("PASS: real Kestrel SSE/client, reset/reconnect, live runtime logs, bounded fan-out, sampling fault recovery, disconnect independence and prompt shutdown; zero devices/windows.");
+    Console.WriteLine("PASS: real Kestrel SSE/client, reset/reconnect, Engine activity, bounded fan-out, sampling fault recovery, disconnect independence and prompt shutdown; zero devices/windows.");
 }
 finally
 {

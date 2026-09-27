@@ -58,8 +58,6 @@ internal static class UiOnlyChecks
         Check(await editor.ConfirmRunAsync(), "confirmed task exercises UI state without automation");
         Check((await backend.ReadStateAsync())["active"]!["kind"]!.GetValue<string>() == "simulation", "run is explicitly synthetic");
         Check(await backend.RequestStopAsync(), "simulated task can stop");
-        await backend.StartSchedulerAsync(new() { Instance = "demo-main", ConfirmActions = true });
-        Check(await backend.RequestStopAsync(), "scheduler operation stays in sample state");
         await backend.SaveQueueAsync(new JsonObject { ["tasks"] = new JsonArray() });
         await backend.StartRunAsync(new() { Queue = new JsonObject { ["tasks"] = new JsonArray() } });
         Check(await backend.RequestStopAsync(), "queue intent remains in memory");

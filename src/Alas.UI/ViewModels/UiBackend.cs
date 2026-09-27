@@ -27,7 +27,6 @@ public interface IAlasControlBackend
     Task SaveQueueAsync(JsonObject queue, CancellationToken cancellationToken = default);
     Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default);
     Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default);
-    Task StartSchedulerAsync(InstanceSchedulerRunRequest request, CancellationToken cancellationToken = default);
     Task<bool> RequestStopAsync(CancellationToken cancellationToken = default);
     Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default);
     Task<JsonObject> RefreshStatisticsLootAsync(string instance, CancellationToken cancellationToken = default);

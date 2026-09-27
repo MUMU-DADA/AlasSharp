@@ -87,7 +87,6 @@ internal static class ControlWorkspaceChecks
 
         Reject<ArgumentException>(() => workspace.StartRun(Request(new TaskRequest("../escape", "observe"))));
         Reject<ArgumentException>(() => workspace.StartTask(new()));
-        Reject<EngineCapabilityUnavailableException>(() => workspace.StartScheduler(new()));
         Reject<EngineCapabilityUnavailableException>(() => workspace.ReadStatistics(new EngineStatisticsRequest("sample", "resources")));
         var mixed = Request(new TaskRequest("a", "observe", Instance: "second"));
         mixed["instance"] = "first";

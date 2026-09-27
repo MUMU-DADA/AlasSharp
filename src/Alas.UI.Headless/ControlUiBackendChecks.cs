@@ -102,8 +102,10 @@ internal static class ControlUiBackendChecks
         overview.ApplyState(backend.State);
         Check(overview.IsSchedulerControlEnabled, "idle scheduler can start");
         await overview.ToggleSchedulerAsync();
-        Check(backend.SchedulerStarted is { Instance: "fixture", ConfirmActions: true }
-              && overview.IsSchedulerRunning, "start reaches Core capability and updates state");
+        Check(backend.StartedRun is { Instance: "fixture", Mode: ControlRunMode.ReadOnly }
+              && backend.StartedRun.Queue["tasks"] is JsonArray tasks &&
+              tasks[0]?["kind"]?.GetValue<string>() == "observe" && overview.IsSchedulerRunning,
+            "start reaches the Engine queue and updates state");
         backend.State["active"]!["scheduler"] = new JsonObject { ["phase"] = "waiting" };
         overview.ApplyState(backend.State);
         Check(overview.SchedulerStatusText == "等待中", "native waiting status is shown");
@@ -237,7 +239,7 @@ internal static class ControlUiBackendChecks
         public Func<string, Task<JsonObject>>? InstanceRead;
         public string? Cleared;
         public InstanceTaskRunRequest? Started;
-        public InstanceSchedulerRunRequest? SchedulerStarted;
+        public ControlRunRequest? StartedRun;
         public int StopRequests;
         public IReadOnlyList<InstanceSummary> Listed = [];
         public InstanceCreateRequest? Created;
@@ -264,10 +266,10 @@ internal static class ControlUiBackendChecks
             => Task.FromResult((JsonObject)Validation.DeepClone());
         public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default)
         { Started = request; return Task.CompletedTask; }
-        public Task StartSchedulerAsync(InstanceSchedulerRunRequest request, CancellationToken cancellationToken = default)
+        public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default)
         {
-            SchedulerStarted = request;
-            State["active"] = new JsonObject { ["status"] = "running", ["kind"] = "scheduler_run", ["instance"] = request.Instance };
+            StartedRun = request;
+            State["active"] = new JsonObject { ["status"] = "running", ["kind"] = "queue", ["instance"] = request.Instance };
             return Task.CompletedTask;
         }
         public Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default) => Task.FromResult((JsonObject)State.DeepClone());
@@ -292,7 +294,6 @@ internal static class ControlUiBackendChecks
             Task.FromResult(new InstanceImportListResponse { Sources = Imported is null ? [] :
                 [new InstanceImportSource { Name = Imported.Name, ModifiedAt = DateTimeOffset.UnixEpoch }] });
         public Task SaveQueueAsync(JsonObject queue, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)
         { StopRequests++; State["active"]!["stop_requested"] = true; return Task.FromResult(true); }
         public Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();

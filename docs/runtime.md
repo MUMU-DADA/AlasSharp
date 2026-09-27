@@ -49,7 +49,7 @@ API 仅监听回环，校验 Host/Origin，写操作需要本次服务的 X-Alas
 
 `Alas.Contracts` 定义信封，`Alas.Client` 提供 HTTP 客户端；共享 UI 不引用引擎、设备或服务端实现。桌面使用 DirectEngineBackend 直连，浏览器使用 HTTP 适配器。配置实例、schema、PATCH、导入/创建/删除和部署设置仍由 C# 文件事务提供；保存启动列表不会执行任务。
 
-单任务接口只接受已注册的 Engine `ITaskRunner.Kind`，并复用 `TaskQueue` 的输入校验、工件和结果合同；旧上游任务名不会自动映射。连续调度、统计、指挥喵报告/清理和策略校验还未迁移，明确抛 `EngineCapabilityUnavailableException`（HTTP 501）。这些能力仍须在 Engine 内实现，不能接回 Core 或 Python 服务。
+单任务接口只接受已注册的 Engine `ITaskRunner.Kind`，并复用 `TaskQueue` 的输入校验、工件和结果合同；旧上游任务名不会自动映射。旧周期调度请求模型和 `/api/scheduler/start` 已删除，界面上的观察按钮提交同一 Engine 队列的只读 `observe` 任务。连续调度、统计、指挥喵报告/清理和策略校验还未迁移，明确抛 `EngineCapabilityUnavailableException`（HTTP 501）。这些能力仍须在 Engine 内实现，不能接回 Core 或 Python 服务。
 
 SSE 保留 control-state/1 完整快照与游标合同，慢订阅仅保留待发最新状态，不承诺事件重放。静态托管不等于远程认证或 HTTPS；发布不自动打包素材、Python 或 ADB。
 

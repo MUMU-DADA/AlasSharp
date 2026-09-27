@@ -970,8 +970,23 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
                     throw new InvalidOperationException("当前没有可停止的运行任务");
             }
             else
-                await _backend.StartSchedulerAsync(new InstanceSchedulerRunRequest
-                    { Instance = instance, ConfirmActions = true });
+                await _backend.StartRunAsync(new ControlRunRequest
+                {
+                    Instance = instance,
+                    Mode = ControlRunMode.ReadOnly,
+                    MaxSeconds = 120,
+                    Queue = new JsonObject
+                    {
+                        ["tasks"] = new JsonArray(new JsonObject
+                        {
+                            ["id"] = "engine-observe",
+                            ["kind"] = "observe",
+                            ["required"] = true,
+                            ["instance"] = instance,
+                            ["timeoutSeconds"] = 120
+                        })
+                    }
+                });
             var state = await _backend.ReadInstanceStateAsync(instance);
             if (_instanceGeneration == generation) ApplyState(state);
         }
