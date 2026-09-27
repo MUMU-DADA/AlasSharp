@@ -123,26 +123,20 @@ internal sealed partial class DirectEngineBackend : IAlasUiBackend
         }), cancellationToken);
 
     public Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default)
-        => ReadHostAsync("statistics_report", new JsonObject
-        {
-            ["instance"] = request.Instance,
-            ["category"] = request.Category,
-            ["days"] = request.Days,
-            ["month"] = request.Month,
-            ["period"] = request.Period,
-        }, cancellationToken);
+        => Task.Run(() => WorkspaceOrThrow().ReadStatistics(new EngineStatisticsRequest(request.Instance, request.Category,
+            request.Days, request.Month, request.Period)), cancellationToken);
 
     public Task<JsonObject> RefreshStatisticsLootAsync(string instance, CancellationToken cancellationToken = default)
-        => ReadHostAsync("statistics_refresh_loot", new JsonObject { ["instance"] = instance }, cancellationToken);
+        => Task.Run(() => WorkspaceOrThrow().RefreshStatisticsLoot(instance), cancellationToken);
 
     public Task<JsonObject> ReadMeowfficerAsync(MeowfficerRequest request, CancellationToken cancellationToken = default)
-        => ReadHostAsync("meowfficer_report", new JsonObject { ["instance"] = request.Instance, ["limit"] = request.Limit }, cancellationToken);
+        => Task.Run(() => WorkspaceOrThrow().ReadMeowfficer(new EngineMeowfficerRequest(request.Instance, request.Limit)), cancellationToken);
 
     public Task<JsonObject> ClearMeowfficerAsync(string instance, CancellationToken cancellationToken = default)
-        => ReadHostAsync("meowfficer_clear", new JsonObject { ["instance"] = instance }, cancellationToken);
+        => Task.Run(() => WorkspaceOrThrow().ClearMeowfficer(instance), cancellationToken);
 
     public Task<JsonObject> ValidateShopStrategyAsync(string script, CancellationToken cancellationToken = default)
-        => ReadHostAsync("shop_strategy_validate", new JsonObject { ["script"] = script }, cancellationToken);
+        => Task.Run(() => WorkspaceOrThrow().ValidateShopStrategy(script), cancellationToken);
 
     public Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default)
         => Task.Run(() =>
@@ -197,9 +191,6 @@ internal sealed partial class DirectEngineBackend : IAlasUiBackend
 
     private ConfigWorkspace ConfigsOrThrow() => _configs ?? throw new InvalidOperationException("Alas.Engine 配置工作区不可用");
     private EngineControlWorkspace WorkspaceOrThrow() => _workspace ?? throw new InvalidOperationException("Alas.Engine 控制工作区不可用");
-
-    private Task<JsonObject> ReadHostAsync(string operation, JsonObject arguments, CancellationToken cancellationToken)
-        => Task.Run(() => WorkspaceOrThrow().ReadHostJson(operation, arguments), cancellationToken);
 
     private static ConfigResponse ToResponse(ConfigSnapshot snapshot) => new()
     {

@@ -172,11 +172,8 @@ public sealed class ControlServer
                 int days = ParseQueryInt(request, "days", 7, 1, 365);
                 string month = request.Query["month"].ToString();
                 string period = string.IsNullOrWhiteSpace(request.Query["period"]) ? "month" : request.Query["period"].ToString();
-                var result = _workspace.ReadHostJson("statistics_report", new JsonObject
-                {
-                    ["instance"] = instance, ["category"] = category, ["days"] = days,
-                    ["month"] = string.IsNullOrWhiteSpace(month) ? null : month, ["period"] = period,
-                });
+                var result = _workspace.ReadStatistics(new EngineStatisticsRequest(instance, category, days,
+                    string.IsNullOrWhiteSpace(month) ? null : month, period));
                 await Reply(context, 200, result);
                 return;
             }
@@ -195,8 +192,7 @@ public sealed class ControlServer
             {
                 RequireToken(request);
                 var body = await ReadBody(request);
-                await Reply(context, 200, _workspace.ReadHostJson("statistics_refresh_loot",
-                    new JsonObject { ["instance"] = RequiredString(body, "instance") }));
+                await Reply(context, 200, _workspace.RefreshStatisticsLoot(RequiredString(body, "instance")));
                 return;
             }
             if (HttpMethods.IsGet(request.Method) && path == "/api/instances/importable")
@@ -221,25 +217,22 @@ public sealed class ControlServer
             {
                 string instance = RequiredQuery(request, "instance");
                 int limit = ParseQueryInt(request, "limit", 100, 1, 500);
-                await Reply(context, 200, _workspace.ReadHostJson("meowfficer_report",
-                    new JsonObject { ["instance"] = instance, ["limit"] = limit }));
+                await Reply(context, 200, _workspace.ReadMeowfficer(new EngineMeowfficerRequest(instance, limit)));
                 return;
             }
             if (HttpMethods.IsPost(request.Method) && path == "/api/meowfficer/clear")
             {
                 RequireToken(request);
                 var body = await ReadBody(request);
-                await Reply(context, 200, _workspace.ReadHostJson("meowfficer_clear",
-                    new JsonObject { ["instance"] = RequiredString(body, "instance") }));
+                await Reply(context, 200, _workspace.ClearMeowfficer(RequiredString(body, "instance")));
                 return;
             }
             if (HttpMethods.IsPost(request.Method) && path == "/api/tasks/validate-script")
             {
                 RequireToken(request);
                 var body = await ReadBody(request);
-                await Reply(context, 200, _workspace.ReadHostJson("shop_strategy_validate",
-                    new JsonObject { ["script"] = body["script"]?.GetValue<string>()
-                        ?? throw new ArgumentException("缺少 script 字符串") }));
+                await Reply(context, 200, _workspace.ValidateShopStrategy(body["script"]?.GetValue<string>()
+                    ?? throw new ArgumentException("缺少 script 字符串")));
                 return;
             }
             if (HttpMethods.IsPost(request.Method) && path == "/api/tasks/run")

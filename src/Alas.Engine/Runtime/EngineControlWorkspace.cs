@@ -271,8 +271,23 @@ public sealed class EngineControlWorkspace
     public void StartScheduler(JsonObject body)
         => throw new EngineCapabilityUnavailableException("上游周期调度器尚未迁移到 C# Engine");
 
-    public JsonObject ReadHostJson(string operation, JsonObject arguments)
-        => throw new EngineCapabilityUnavailableException($"操作 {operation} 尚未迁移到 C# Engine");
+    // These are deliberately typed Engine capability seams.  They do not
+    // accept an operation name or arbitrary arguments, so an old Python host
+    // cannot be smuggled back into the product through a generic RPC method.
+    public JsonObject ReadStatistics(EngineStatisticsRequest request)
+        => throw new EngineCapabilityUnavailableException("Engine 统计域尚未实现");
+
+    public JsonObject RefreshStatisticsLoot(string instance)
+        => throw new EngineCapabilityUnavailableException("Engine 统计刷新域尚未实现");
+
+    public JsonObject ReadMeowfficer(EngineMeowfficerRequest request)
+        => throw new EngineCapabilityUnavailableException("Engine 指挥喵报告域尚未实现");
+
+    public JsonObject ClearMeowfficer(string instance)
+        => throw new EngineCapabilityUnavailableException("Engine 指挥喵清理域尚未实现");
+
+    public JsonObject ValidateShopStrategy(string script)
+        => throw new EngineCapabilityUnavailableException("Engine 商店策略校验域尚未实现");
 
     public bool RequestStop()
     {
@@ -300,3 +315,6 @@ public sealed class EngineControlWorkspace
 
 public sealed class EngineControlWorkspaceUnavailableException(string message) : Exception(message);
 public sealed class EngineCapabilityUnavailableException(string message) : Exception(message);
+public sealed record EngineStatisticsRequest(string Instance, string Category, int Days = 7,
+    string? Month = null, string Period = "month");
+public sealed record EngineMeowfficerRequest(string Instance, int Limit = 100);
