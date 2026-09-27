@@ -55,7 +55,10 @@ public sealed record MapDetectionRules
         return this with { InternalPeaks = Peaks(overrides.InternalPeaks), EdgePeaks = Peaks(overrides.EdgePeaks),
             Canny = new(overrides.Canny.Low, overrides.Canny.High), EdgeColor = new(overrides.EdgeColor.Low, overrides.EdgeColor.High),
             InternalLinesThreshold = overrides.InternalHough, EdgeLinesThreshold = overrides.EdgeHough,
-            EdgeHoughThreshold = overrides.HomographyEdgeHough };
+            EdgeHoughThreshold = overrides.HomographyEdgeHough,
+            CoincidentEncourage = overrides.CoincidentEncourage ?? CoincidentEncourage,
+            MidHorizontal = overrides.MidHorizontal ?? MidHorizontal,
+            MidVertical = overrides.MidVertical ?? MidVertical };
     }
 
     public void Validate()

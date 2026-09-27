@@ -243,15 +243,17 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
                 FleetRoles.Reversed(configuration) ? 3 - state.FleetIndex : state.FleetIndex,
                 () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No battle loading frame"),
                 configuration.IsDoubleBook) : null;
-        return CreateCombatFlow(entrances, preparation, emotion);
+        return CreateCombatFlow(entrances, preparation, emotion,
+            state.Rule is { } rule ? token => rule.AllowExperienceAsync(Driver, token) : null);
     }
     public CombatFlow CreateCombatFlow(StageEntranceKind entrances = StageEntranceKind.Normal,
-        CombatHealthPreparation? healthPreparation = null, ICombatEmotion? emotion = null)
+        CombatHealthPreparation? healthPreparation = null, ICombatEmotion? emotion = null,
+        Func<CancellationToken, ValueTask<bool>>? allowExperience = null)
     {
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
         var observations = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No combat screenshot"),
             _vision, _assets, Driver.Server, entrances);
-        return new(Driver, recovery, recovery, observations, healthPreparation, _automationSet, _interruptions, emotion);
+        return new(Driver, recovery, recovery, observations, healthPreparation, _automationSet, _interruptions, emotion, allowExperience);
     }
     public async ValueTask<MapVisualObservation> ObserveMapAsync(CampaignRule rule, CancellationToken token)
     {

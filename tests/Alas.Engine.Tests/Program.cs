@@ -212,6 +212,13 @@ try
         await MapViewChecks.BossRefocusChecksAsync(Path.GetFullPath(refocusPython), Path.GetFullPath(refocusUpstream), folder);
         return 0;
     }
+    if (args is ["--declared-roads", var declaredRoadPython, var declaredRoadUpstream, var declaredRoadArtifacts])
+    {
+        string folder = Path.GetFullPath(declaredRoadArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.DeclaredRoadChecksAsync(Path.GetFullPath(declaredRoadPython), Path.GetFullPath(declaredRoadUpstream), folder);
+        return 0;
+    }
     if (args is ["--ambush", var ambushPython, var ambushUpstream, var ambushArtifacts])
     {
         string folder = Path.GetFullPath(ambushArtifacts);
@@ -447,6 +454,11 @@ try
             cases.Add(new Scenario(id, BattleCount: count, Poor: poor, ClearAll: clear, Movable: movable,
                 Cells: cells, TrueOperation: yes, CombatReturn: returned));
         cases.Add(new Scenario(id, "refocus"));
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterTwoRule)
+            foreach (int count in new[] { 0, 1, 2, 3, 4, 12, 13 })
+            foreach (bool accessible in new[] { false, true })
+            foreach (string? yes in new[] { null, "clear_roadblocks", "clear_potential_roadblocks" })
+                cases.Add(new Scenario(id, BattleCount: count, Accessible: accessible, TrueOperation: yes));
         foreach (bool handle in new[] { false, true })
         {
             foreach (string? signal in new[] { null, "moved", "moved_after_battle", "ended", "error" })

@@ -2,6 +2,8 @@
 
 产品任务位于 `Alas.Engine/Tasks`。新域实现 ITaskRunner 的 Kind、RequiresActions、Validate、Preconditions 和 RunAsync，由 TaskQueue 注册；Server、CLI 和 UI 不解释域内输入，也不复制状态机。旧 Core 队列已退役，旧任务名与 Python runner 仅留[历史对照](archive/history/core-tasks.md)。
 
+当前可执行战役规则为第一、二章八关（1-1 至 2-4），使用各自编译的 Config、MAP 和钩子。第二章显式使用逻辑 BOSS 一队，并保留原生道路清理及经验页覆写。其余 MAP 即使已有类型化声明，也不能越过 RuleCatalog 作为已迁移战役执行；上述八关的规则/组合离线验证不等于新 Engine 实机通关。
+
 ## 请求与结果
 
 campaign_run 与 campaign_resume 支持 ambushEvade（布尔，默认 true；null 和其他类型拒绝），false 表示按上游主动迎击。伏击处理使用本次有效配置，与章节差异无关。正常战役返回中的 ambushEncounters 记录途中伏击的逻辑舰队、目的格、帧号、点击数、回避信息、独立战果及是否读取舰队状态；失败结果也保留已观察的伏击，但列表不代表目的格已到达。异常退出目前仍只沿用异常/动作工件。伏击不增加地图战斗数或消耗地图弹药，单独伏击后返回章节页不算通关；成功任务仍要求真实目标战斗的完整结算链。

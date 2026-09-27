@@ -6,7 +6,12 @@ public sealed record PeakParameters(double HeightMin, double HeightMax, double? 
 /// <summary>Explicit chapter overrides, not a claim that all upstream CV defaults are ported.</summary>
 public sealed record MapVisionOverrides(PeakParameters InternalPeaks, PeakParameters EdgePeaks,
     (int Low, int High) Canny, (int Low, int High) EdgeColor,
-    int InternalHough, int EdgeHough, int HomographyEdgeHough);
+    int InternalHough, int EdgeHough, int HomographyEdgeHough)
+{
+    public double? CoincidentEncourage { get; init; }
+    public NumberRange? MidHorizontal { get; init; }
+    public NumberRange? MidVertical { get; init; }
+}
 
 public enum EnemyScalePriority { Default, StrongestFirst, WeakestFirst }
 public enum CampaignEmotionMode { Calculate, Ignore, CalculateIgnore, Nothing }
@@ -56,6 +61,7 @@ public sealed record CampaignConfiguration
     public bool HandleError { get; init; }
     public EnemyScalePriority EnemyPriority { get; init; }
     public int Fleet2 { get; init; }
+    public int? BossFleet { get; init; }
     public FleetOrder FleetOrder { get; init; } = FleetOrder.Fleet1MobFleet2Boss;
     public bool WaitForFleetSwitchInfoBar { get; init; }
     public int Submarine { get; init; }

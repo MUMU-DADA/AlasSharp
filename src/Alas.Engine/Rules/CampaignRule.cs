@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Alas.Engine.Navigation;
 using Alas.Engine.Runtime;
 
 namespace Alas.Engine.Rules;
@@ -13,6 +14,8 @@ public abstract class CampaignRule
     public abstract ImmutableArray<SourceFile> Sources { get; }
     protected abstract IReadOnlyDictionary<int, BattleHook> Hooks { get; }
     public virtual CampaignConfiguration Configure(CampaignConfiguration input) => input;
+    public virtual ValueTask<bool> AllowExperienceAsync(IUiDriver ui, CancellationToken token)
+        => ValueTask.FromResult(true);
     public virtual ValueTask RefocusBossAsync(CampaignContext context) => context.Operations.RefocusBossAsync(null);
     public virtual ValueTask<bool> BattleDefaultAsync(CampaignContext context) => context.Operations.ClearEnemyAsync();
     public virtual ValueTask<bool> BattleBossAsync(CampaignContext context) => context.Operations.BruteClearBossAsync();

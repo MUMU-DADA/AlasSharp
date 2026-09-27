@@ -13,6 +13,11 @@ public static class FleetRoles
     public static int BossIndex(CampaignConfiguration configuration)
     {
         _ = Reversed(configuration);
+        if (configuration.BossFleet is { } selected)
+        {
+            if (selected is not (1 or 2)) throw new ArgumentException("Invalid boss fleet override");
+            return selected == 2 && configuration.Fleet2 != 0 ? 2 : 1;
+        }
         return configuration.Fleet2 != 0 && configuration.FleetOrder is
             FleetOrder.Fleet1MobFleet2Boss or FleetOrder.Fleet1BossFleet2Mob ? 2 : 1;
     }

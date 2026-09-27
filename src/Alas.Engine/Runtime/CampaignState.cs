@@ -6,6 +6,7 @@ namespace Alas.Engine.Runtime;
 public sealed partial class CampaignState
 {
     public MapDefinition Map { get; }
+    public CampaignRule? Rule { get; }
     public IReadOnlyList<CellState> Cells { get; }
     public MapPathfinder Paths { get; }
     public MapRounds Rounds { get; }
@@ -32,8 +33,10 @@ public sealed partial class CampaignState
     private readonly List<AmbushEncounterEvidence> _ambushEncounters = [];
     public IReadOnlyList<AmbushEncounterEvidence> AmbushEncounters => _ambushEncounters.AsReadOnly();
     internal void RecordAmbushEncounter(AmbushEncounterEvidence evidence) => _ambushEncounters.Add(evidence);
-    public CampaignState(MapDefinition map)
+    public CampaignState(MapDefinition map, CampaignRule? rule = null)
     {
+        if (rule is not null && !ReferenceEquals(map, rule.Map)) throw new ArgumentException("Rule and map must belong to the same campaign");
+        Rule = rule;
         Map = map;
         Mechanisms = map.Mechanisms;
         ActiveWaves = map.Waves;
@@ -111,6 +114,10 @@ public sealed record CampaignContext(CampaignState State, CampaignConfiguration 
 /// <summary>Typed domain operations for the new C# action implementation. No method-name RPC.</summary>
 public interface ICampaignOperations
 {
+    bool CheckAccessibility(Cell cell, int? fleet = null) => throw new NotSupportedException("Fleet accessibility is unavailable");
+    ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, bool potential = false)
+        => throw new NotSupportedException("Declared roadblocks are unavailable");
+    ValueTask<bool> ClearBossForFleetAsync(int fleet) => throw new NotSupportedException("Selected-fleet boss combat is unavailable");
     ValueTask<bool> ClearEnemyAsync();
     ValueTask<bool> ClearBossAsync();
     ValueTask<bool> BruteClearBossAsync();

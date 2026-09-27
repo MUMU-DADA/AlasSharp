@@ -2,6 +2,8 @@
 
 最终目标是 C# 执行全部非视觉逻辑，Python 只保留确有必要的 CV/OCR 桥接。当前产品入口已整体切换到 Alas.Engine，旧 Core/Python 游戏执行路径已退役；完整业务域和规则仍未迁完，不能称为重写完成。迁移已是明确目标，不再以“是否值得替换”的评估作为终点；现有正确性与真实路径门槛用于验证替换，不用于永久维持 Python 业务。当前阶段和缺口以[迁移路线](architecture-roadmap.md)为准。
 
+第一、二章八份可执行规则现直接编译为 C# 类。第二章保留 Config 继承、显式 BOSS 舰队、道路组、战斗分派、镜头钩子和章节页经验背景排除；公共道路选择、双舰队可达性及指定舰队 BOSS 操作在同一 Engine 状态和战斗链执行。规则可执行内容不经过 JSON 计划，也不调用 Python 业务。新增 Python oracle 只在测试中执行上游方法对照；37,424 项规则对拍及道路、配置、组合/失败验证见路线，没有新 Engine 实机通关证据。1,370 份 MAP 声明仍不等于全部 Campaign 已可运行。
+
 心情恢复与消耗现由 Engine 的 EmotionRules / CampaignEmotion 执行，ConfigWorkspace 直接绑定并写回实例字段，EngineSession 连接入口门控、地图等待与战斗加载扣减；Python 仅在离线 oracle 中执行原生心情代码以核对语义。规则源码与配置绑定源码记录来源哈希，不引入导出计划或解释器。计算模式不再被强制替换为 ignore；持久化、零动作延后与失败工件的行为见[任务文档](tasks.md)，已验证范围及长期重启/周期调度缺口见[路线](architecture-roadmap.md)。
 
 地图准备、周回与双倍书现由 CampaignMapPreparation 和 CampaignPreparationRules 管理，复用既有纯 CV 测量及通用 Switch，不新增 Python 业务或 JSON 解释。章节 Config 与本次出击观测分离，周回覆盖在配置之后应用，控制 loop 地图/出生及机制；已确认双倍书连接心情等待和扣减，未知状态不能假定单倍。图内 resume 缺少先前倍率观察，计算模式拒绝，完整 campaign_run 通过准备页取得证据。完整成就/剧情覆盖、自动寻敌调度和全部章节尚未迁完；原生轨迹、四服 CV 与模拟 ADB 验证范围见路线，无新增真机通关结论。

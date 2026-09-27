@@ -14,6 +14,37 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
     private readonly List<AmmoPickupEvidence> _ammoPickups = [];
     public IReadOnlyList<AmmoPickupEvidence> AmmoPickups => _ammoPickups.AsReadOnly();
 
+    public bool CheckAccessibility(Cell location, int? fleet = null)
+    {
+        if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before checking accessibility");
+        int selected = fleet ?? state.FleetIndex;
+        if (selected is not (1 or 2)) throw new ArgumentOutOfRangeException(nameof(fleet));
+        var cell = state[location];
+        // Both authoritative cost fields are computed together; querying another
+        // fleet must not switch the device or mutate active costs/predecessors.
+        return selected == state.FleetIndex ? cell.IsAccessible : selected == 1
+            ? state.Fleet1Location is not null && cell.IsAccessible1 : state.Fleet2Location is not null && cell.IsAccessible2;
+    }
+
+    public ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, bool potential = false, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before selecting a roadblock");
+        var candidates = roads.SelectMany(road => road.Select(state, potential)).Distinct().Where(grid => grid.IsAccessible).ToArray();
+        bool strongest = configuration.EnemyPriority == EnemyScalePriority.StrongestFirst ||
+            configuration.EnemyPriority == EnemyScalePriority.Default && configuration.ClearAllThisTime;
+        if (strongest) candidates = FirstPresentScale(candidates, [3, 2, 1, 0]);
+        else if (configuration.EnemyPriority == EnemyScalePriority.WeakestFirst) candidates = FirstPresentScale(candidates, [1, 2, 3, 0]);
+        return candidates.Length == 0 ? ValueTask.FromResult(false) : FightAsync(Order(candidates)[0], token, MapCombatExpectation.Enemy);
+    }
+
+    public async ValueTask<bool> ClearBossForFleetAsync(int fleet, CancellationToken token = default)
+    {
+        if (fleet is not (1 or 2) || fleet == 2 && configuration.Fleet2 == 0) throw new ArgumentOutOfRangeException(nameof(fleet));
+        await SwitchFleetAsync(fleet, token);
+        return await ClearBossAsync(token);
+    }
+
     public async ValueTask<bool> ClearMechanismAsync(IReadOnlyList<Cell>? grids = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();

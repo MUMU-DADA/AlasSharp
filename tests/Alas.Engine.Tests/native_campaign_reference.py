@@ -53,6 +53,25 @@ def main():
                     return operation == scenario["trueOperation"] or (combat and scenario["combatReturn"])
 
                 def clear_enemy(self): return self.record("clear_enemy")
+                def check_accessibility(self, grid, fleet=None):
+                    from module.base.utils import location2node
+                    if fleet == 'boss': fleet = self.config.FLEET_BOSS
+                    self.record(f'check_access:{location2node(grid.location)}:{fleet}')
+                    return scenario['accessible']
+                @property
+                def fleet_boss(self):
+                    self.record(f'fleet_boss:{self.config.FLEET_BOSS}')
+                    return self
+                def roads_record(self, roads):
+                    from module.base.utils import location2node
+                    self.record('roads:' + '|'.join('/'.join(','.join(location2node(g.location) for g in group)
+                        for group in road.grids) for road in roads))
+                def clear_roadblocks(self, roads):
+                    self.roads_record(roads)
+                    return self.record('clear_roadblocks')
+                def clear_potential_roadblocks(self, roads):
+                    self.roads_record(roads)
+                    return self.record('clear_potential_roadblocks')
                 def clear_boss(self): return self.record("clear_boss")
                 def brute_clear_boss(self): return self.record("brute_clear_boss")
                 def fleet_2_break_siren_caught(self): return self.record("fleet_2_break_siren_caught")
@@ -82,7 +101,7 @@ def main():
             probe.calls, probe.signals = [], 0
             probe.config = SimpleNamespace(POOR_MAP_DATA=scenario["poor"],
                 MAP_CLEAR_ALL_THIS_TIME=scenario["clearAll"], MAP_HAS_MOVABLE_NORMAL_ENEMY=scenario["movable"],
-                Error_HandleError=scenario["handleError"], Campaign_Mode="normal")
+                Error_HandleError=scenario["handleError"], Campaign_Mode="normal", FLEET_BOSS=getattr(source.Config, 'FLEET_BOSS', 1))
             probe.battle_count = scenario["battleCount"]
             probe.map = copy.deepcopy(source.MAP)
             grid = next(iter(probe.map))

@@ -16,7 +16,8 @@ public sealed record CombatFlowOptions(TimeSpan PreparationTimeout, TimeSpan Exe
 /// <summary>Independent C# automatic combat phases. The caller still owns map state and sortie adjudication.</summary>
 public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler popups, IMapUiObservations mapUi,
     CombatHealthPreparation? healthPreparation = null, IntervalTimer? automationSetTimer = null,
-    ICampaignInterruptions? interruptions = null, ICombatEmotion? emotion = null)
+    ICampaignInterruptions? interruptions = null, ICombatEmotion? emotion = null,
+    Func<CancellationToken, ValueTask<bool>>? allowExperience = null)
 {
     public static readonly SourceFile Source = MapEncounterProbe.CombatSource;
     private static readonly (AssetRule Asset, TemplatePreprocessing Processing)[] PauseVariants =
@@ -244,7 +245,7 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
             {
                 if (await rank.ObserveBattleStatusAsync(token) is { } battle)
                 { await ui.ClickAsync(CombatRankProbe.AssetFor(battle), token); continue; }
-                if (await rank.ObserveExperienceAsync(token) is { } experience)
+                if ((allowExperience is null || await allowExperience(token)) && await rank.ObserveExperienceAsync(token) is { } experience)
                 { await ui.ClickAsync(CombatRankProbe.AssetFor(experience), token); continue; }
             }
             // Native no_searching handles interruptions before accepting a stable map.

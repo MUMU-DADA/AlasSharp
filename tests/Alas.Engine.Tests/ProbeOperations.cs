@@ -7,7 +7,7 @@ internal sealed record Scenario(string Rule, string Operation = "dispatch", int 
     bool Poor = false, bool ClearAll = false, bool Movable = false, string Cells = "empty",
     string? TrueOperation = null, bool CombatReturn = true, bool HandleError = false,
     bool AutoSearch = false, string? Signal = null, int SignalCount = 1, string SignalOperation = "clear_enemy",
-    bool Advance = false);
+    bool Advance = false, bool Accessible = true);
 internal sealed record ProbeResult(string[] Calls, object? Value, string? Exception, int BattleCount);
 
 /// <summary>Synthetic terminal actions only; the compiled rule and native oracle each own their control flow.</summary>
@@ -33,6 +33,15 @@ internal sealed class ProbeOperations(Scenario scenario) : ICampaignOperations
     private ValueTask<bool> Result(string operation) => ValueTask.FromResult(Call(operation));
     private ValueTask Void(string operation) { Call(operation); return ValueTask.CompletedTask; }
     public ValueTask<bool> ClearEnemyAsync() => Result("clear_enemy");
+    public bool CheckAccessibility(Cell cell, int? fleet = null)
+    { Call($"check_access:{cell}:{fleet}"); return scenario.Accessible; }
+    public async ValueTask<bool> ClearBossForFleetAsync(int fleet)
+    { await Void("fleet_boss:" + fleet); return await ClearBossAsync(); }
+    public ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, bool potential = false)
+    {
+        Call("roads:" + string.Join('|', roads.Select(road => string.Join('/', road.Groups.Select(group => string.Join(',', group))))));
+        return Result(potential ? "clear_potential_roadblocks" : "clear_roadblocks");
+    }
     public ValueTask<bool> ClearBossAsync() => Result("clear_boss");
     public ValueTask<bool> BruteClearBossAsync() => Result("brute_clear_boss");
     public ValueTask<bool> BreakSirenCaughtAsync() => Result("fleet_2_break_siren_caught");

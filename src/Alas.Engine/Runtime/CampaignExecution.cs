@@ -14,7 +14,7 @@ public sealed class CampaignExecution
     public CampaignExecution(CampaignRule rule, CampaignConfiguration configuration, ICampaignOperations operations)
     {
         _rule = rule;
-        var state = new CampaignState(rule.Map);
+        var state = new CampaignState(rule.Map, rule);
         Context = new CampaignContext(state, Configure(rule, configuration, state), operations);
     }
 
@@ -23,7 +23,7 @@ public sealed class CampaignExecution
     {
         ArgumentNullException.ThrowIfNull(createOperations);
         _rule = rule;
-        var state = new CampaignState(rule.Map);
+        var state = new CampaignState(rule.Map, rule);
         var effective = Configure(rule, configuration, state);
         Context = new CampaignContext(state, effective, createOperations(state, effective));
     }

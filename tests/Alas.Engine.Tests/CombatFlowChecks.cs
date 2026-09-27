@@ -116,7 +116,28 @@ internal static class CombatFlowChecks
         cancelled.Cancel();
         await Rejects<OperationCanceledException>(() => Flow(new Ui()).RunAutoAsync(Options, cancelled.Token).AsTask());
         await EmotionChecksAsync();
+        await ChapterTwoExperienceAsync();
         Console.WriteLine("Independent combat flow: preparation, result, stage/map return, conflict, timeout and cancellation passed; synthetic frames only.");
+    }
+
+    public static async Task ChapterTwoExperienceAsync()
+    {
+        foreach (var id in new[] { "campaign_main/campaign_2_1", "campaign_main/campaign_2_2", "campaign_main/campaign_2_3", "campaign_main/campaign_2_4" })
+        {
+            var rule = RuleCatalog.Create(id);
+            var ui = new Ui(UiAssets.Combat.BATTLE_PREPARATION);
+            ui.Enqueue(UiAssets.CombatUi.PAUSE);
+            ui.Enqueue(UiAssets.Combat.BATTLE_STATUS_S);
+            ui.Enqueue(UiAssets.Combat.EXP_INFO_S);
+            for (int i = 0; i < 5; i++) ui.Enqueue(UiAssets.Ui.CAMPAIGN_CHECK, UiAssets.Combat.EXP_INFO_B);
+            var result = await new CombatFlow(ui, new NoStory(), new NoPopup(), new Stage(ui),
+                allowExperience: token => rule.AllowExperienceAsync(ui, token)).RunAutoAsync(Options);
+            Check(result is { Return: CombatReturn.InStage, Rank.Rank: CombatRank.S } &&
+                ui.Clicks.Contains("EXP_INFO_S") && !ui.Clicks.Contains("EXP_INFO_B"),
+                "Compiled second-chapter override lost a real experience screen or accepted background EXP_INFO_B: " + id);
+            var gate = new Ui(UiAssets.Ui.CAMPAIGN_CHECK, UiAssets.Combat.EXP_INFO_B) { StageEntranceVisible = false };
+            Check(!await rule.AllowExperienceAsync(gate, default), "Chapter override incorrectly depended on OCR stage entrances");
+        }
     }
 
     private static async Task EmotionChecksAsync()
