@@ -103,7 +103,7 @@ MAP 初始化不能仅复制最后的字段值：上游 `shape` setter 还会生
 
 桌面 UI → Alas.Engine，浏览器 UI → Alas.Server → Alas.Engine。Engine 自己承载规则、状态、设备、导航与业务，不下接上游业务引擎；仅纯 CV/OCR 可调用独立 Python worker。
 
-Server 与桌面使用 EngineControlWorkspace；配置、部署、队列与新工件报告已接线。按旧任务名执行、连续调度、统计、指挥喵服务和策略校验尚未迁入，明确返回不可用。Core、IVisionEngine 和旧 ALAS_ENGINE_LOOP 开关不参与产品运行；不能恢复回退以弥补未实现能力。
+Server 与桌面使用 EngineControlWorkspace；配置、部署、队列与新工件报告已接线。单任务入口只接受已注册的 Engine `ITaskRunner.Kind` 并复用同一队列；按旧任务名执行、连续调度、统计、指挥喵服务和策略校验尚未迁入，明确返回不可用。Core、IVisionEngine 和旧 ALAS_ENGINE_LOOP 开关不参与产品运行；不能恢复回退以弥补未实现能力。
 
 完整规则、业务域、发布布局及新路径真机通关仍未验收。入口切换不等于完成重写；旧成功结算不计入新 Engine。具体事实见[路线](architecture-roadmap.md)。
 

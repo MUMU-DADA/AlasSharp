@@ -221,8 +221,52 @@ public sealed class EngineControlWorkspace
             config is null ? null : _repo, config?.Instance);
     }
 
+    /// <summary>
+    /// Start exactly one task through the same Engine queue used by the
+    /// explicit <c>/api/run</c> endpoint.  The old Core accepted an upstream
+    /// task name and then dispatched it to a Python host; that boundary is
+    /// intentionally gone.  A task name here is therefore a registered
+    /// <see cref="ITaskRunner.Kind"/> and the optional input is passed to that
+    /// runner unchanged.
+    /// </summary>
     public void StartTask(JsonObject body)
-        => throw new EngineCapabilityUnavailableException("按上游任务名调度尚未迁移到 C# Engine；请提交 Engine 任务队列");
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        string instance = body["instance"]?.GetValue<string>()
+            ?? throw new ArgumentException("单任务启动需要 instance");
+        string kind = body["task"]?.GetValue<string>()
+            ?? throw new ArgumentException("单任务启动需要 task");
+        if (string.IsNullOrWhiteSpace(instance) || string.IsNullOrWhiteSpace(kind))
+            throw new ArgumentException("instance 和 task 不能为空");
+        if (!System.Text.RegularExpressions.Regex.IsMatch(kind, @"\A[a-zA-Z0-9_-]{1,64}\z"))
+            throw new ArgumentException("task 必须是 Engine 任务标识");
+        if (body["input"] is not null and not JsonObject)
+            throw new ArgumentException("input 必须是 JSON 对象");
+        double timeout = body["timeout_seconds"]?.GetValue<double>() ?? 1500;
+        if (!double.IsFinite(timeout) || timeout <= 0 || timeout > int.MaxValue / 1000.0)
+            throw new ArgumentException("timeout_seconds 必须是正数");
+        bool confirm = body["confirm_actions"]?.GetValue<bool>() ?? false;
+        var request = new JsonObject
+        {
+            ["instance"] = instance,
+            ["mode"] = confirm ? "actions" : "read_only",
+            ["confirm_actions"] = confirm,
+            ["max_seconds"] = timeout,
+            ["queue"] = new JsonObject
+            {
+                ["tasks"] = new JsonArray(new JsonObject
+                {
+                    ["id"] = kind,
+                    ["kind"] = kind,
+                    ["input"] = body["input"]?.DeepClone(),
+                    ["required"] = true,
+                    ["timeoutSeconds"] = timeout,
+                    ["instance"] = instance,
+                })
+            }
+        };
+        StartRun(request);
+    }
 
     public void StartScheduler(JsonObject body)
         => throw new EngineCapabilityUnavailableException("上游周期调度器尚未迁移到 C# Engine");

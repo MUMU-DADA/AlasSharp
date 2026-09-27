@@ -109,6 +109,7 @@ internal sealed partial class DirectEngineBackend : IAlasUiBackend
         => Task.Run(() => WorkspaceOrThrow().StartTask(new JsonObject
         {
             ["instance"] = request.Instance, ["task"] = request.Task,
+            ["input"] = request.Input?.DeepClone(), ["timeout_seconds"] = request.TimeoutSeconds,
             ["confirm_actions"] = request.ConfirmActions,
         }), cancellationToken);
 

@@ -80,6 +80,9 @@ public sealed record InstanceTaskRunRequest
 {
     public required string Instance { get; init; }
     public required string Task { get; init; }
+    /// <summary>Engine task input; the server does not interpret this object.</summary>
+    public JsonObject? Input { get; init; }
+    public double TimeoutSeconds { get; init; } = 1500;
     public bool ConfirmActions { get; init; }
 }
 

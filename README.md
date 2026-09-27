@@ -7,7 +7,7 @@
 ## 当前状态
 
 - Engine 已有 C# 规则、设备、导航、地图状态、战役执行与任务队列；完整业务覆盖及新引擎真机通关仍未验收。
-- Server 与桌面共用 Engine 的配置、部署设置、队列和报告能力。旧按任务名运行、连续调度、统计及策略服务尚未迁移，明确返回不可用。
+- Server 与桌面共用 Engine 的配置、部署设置、队列和报告能力。单任务接口只接受已注册的 Engine `ITaskRunner.Kind` 并进入同一队列；旧上游任务名、连续调度、统计及策略服务仍明确返回不可用。
 - `Alas.Server` 提供控制 API 与 Web UI 托管；`Alas.Engine.Cli` 提供新引擎命令。旧 `Server verify/campaign/queue` 命令转发已取消。
 
 禁止逐地图、逐界面独立适配。上游规则须忠实迁移，导出 JSON 仅用于离线展示、溯源和校验。通关结论只能使用 [`sortie-result/1`](docs/result-contract.md)。旧 Core 的真机记录不能算作 Engine 验收。完整规则见 [AGENTS.md](AGENTS.md)。

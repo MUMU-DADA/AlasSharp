@@ -75,7 +75,7 @@ internal static class ControlWorkspaceChecks
         Check(!RunReport.Build(refused.Directory).ToJson()["evidence_complete"]!.GetValue<bool>(), "Broken snapshot accepted");
 
         Reject<ArgumentException>(() => workspace.StartRun(Request(new TaskRequest("../escape", "observe"))));
-        Reject<EngineCapabilityUnavailableException>(() => workspace.StartTask(new()));
+        Reject<ArgumentException>(() => workspace.StartTask(new()));
         Reject<EngineCapabilityUnavailableException>(() => workspace.StartScheduler(new()));
         Reject<EngineCapabilityUnavailableException>(() => workspace.ReadHostJson("statistics_report", new()));
         var mixed = Request(new TaskRequest("a", "observe", Instance: "second"));
@@ -88,6 +88,16 @@ internal static class ControlWorkspaceChecks
         mismatched["instance"] = "sample"; mismatched["serial"] = "different-device";
         Reject<ArgumentException>(() => workspace.StartRun(mismatched));
         var before = await File.ReadAllBytesAsync(Path.Combine(root, "config", "sample.json"));
+        workspace.StartTask(new JsonObject
+        {
+            ["instance"] = "sample",
+            ["task"] = "engine_task_that_is_not_registered",
+            ["confirm_actions"] = false,
+        });
+        await Finished(workspace);
+        var directTaskReport = workspace.State()["report"]!.AsObject();
+        Check(directTaskReport["items"]![0]! ["reason"]!.GetValue<string>() == "unsupported_task_kind",
+            "Single-task API bypassed the Engine task queue");
         var validInstance = Request(new TaskRequest("a", "observe", Instance: "sample"));
         workspace.StartRun(validInstance);
         await Finished(workspace);
