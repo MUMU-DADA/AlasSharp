@@ -21,6 +21,7 @@ public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe
         "c6ead02b8c3e54a82ff45f350fe3ab7116a41418bd4fdc7645cd33397123c6c5");
     private double? _airRaidRed;
     private double? _ambushRed;
+    public bool AmbushFromOverlay { get; private set; }
 
     public async ValueTask InitializeAsync(long frameSequence, CancellationToken token)
     {
@@ -32,6 +33,7 @@ public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe
 
     public async ValueTask<MapEncounterKind> InspectAsync(long frameSequence, CancellationToken token)
     {
+        AmbushFromOverlay = false;
         if (await ui.AppearsAsync(UiAssets.Combat.BATTLE_PREPARATION, ButtonOffset.Expand(30, 20), token: token) ||
             await ui.AppearsAsync(UiAssets.Combat.BATTLE_PREPARATION_WITH_OVERLAY, threshold: 30, token: token))
             return MapEncounterKind.Combat;
@@ -41,8 +43,9 @@ public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe
                 throw new InvalidOperationException("Initialize the map encounter probe before clicking a grid");
             if (Overlay(_airRaidRed.Value, await RedAsync(UiAssets.Handler.MAP_AIR_RAID, frameSequence, token)) > 0.35)
                 return MapEncounterKind.AirRaid;
-            if (Overlay(_ambushRed.Value, await RedAsync(UiAssets.Handler.MAP_AMBUSH, frameSequence, token)) > 0.40 ||
-                await ui.AppearsAsync(UiAssets.Handler.MAP_AMBUSH_EVADE, ButtonOffset.Expand(30, 30), token: token))
+            if (Overlay(_ambushRed.Value, await RedAsync(UiAssets.Handler.MAP_AMBUSH, frameSequence, token)) > 0.40)
+            { AmbushFromOverlay = true; return MapEncounterKind.Ambush; }
+            if (await ui.AppearsAsync(UiAssets.Handler.MAP_AMBUSH_EVADE, ButtonOffset.Expand(30, 30), token: token))
                 return MapEncounterKind.Ambush;
         }
         if (await ui.AppearsAsync(UiAssets.Combat.GET_ITEMS_1, ButtonOffset.Vertical(5), token: token))

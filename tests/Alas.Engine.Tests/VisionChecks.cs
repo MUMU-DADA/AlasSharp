@@ -42,6 +42,15 @@ internal static class VisionChecks
             Check(binary.Matched && binary.Location == new PixelPoint(14, 9), "Binary match differs on identical input");
             var padded = await vision.MatchAsync(frame, request with { SearchArea = new PixelArea(-2, -3, 34, 27) });
             Check(padded.Matched && padded.Location == new PixelPoint(14, 9), "Black-padded crop lost global coordinates");
+            var transformed = await vision.MatchAsync(frame, request with { Transform = new(64, .75) });
+            Check(transformed.Matched && transformed.Location == new PixelPoint(14, 9), "Numeric transform lost identical pixels or global location");
+            foreach (var transform in new PixelTransform[] { new(double.NaN, 1), new(0, 0), new(0, double.PositiveInfinity), new(256, 1), new(0, .0001) })
+            {
+                bool rejected = false;
+                try { await vision.MatchAsync(frame, request with { Transform = transform }); }
+                catch (ArgumentException) { rejected = true; }
+                Check(rejected, "Invalid pixel transform reached the worker");
+            }
             var fullAsset = await vision.MatchAsync(frame, request with
             {
                 TemplatePng = frame.Png, TemplateArea = new PixelArea(14, 9, 5, 4)
@@ -157,6 +166,13 @@ internal static class VisionChecks
                 else:
                     raise AssertionError(operation)
             assert not any(name == 'module' or name.startswith('module.') for name in sys.modules)
+            for transform in ([True, 1], [0, 0], [0, float('nan')], [0, float('inf')], [256, 1], [0, .0001], [0], 'ambush'):
+                try:
+                    module.pixel_transform(module.np.zeros((2, 2, 3), dtype='uint8'), transform)
+                except ValueError as error:
+                    assert str(error) == 'pixel_transform'
+                else:
+                    raise AssertionError('invalid numeric transform accepted')
             print('business calls rejected; no upstream modules loaded')
             """);
         var rejection = await new ProcessRunner().RunAsync(python, ["-I", probe, worker], TimeSpan.FromSeconds(30));

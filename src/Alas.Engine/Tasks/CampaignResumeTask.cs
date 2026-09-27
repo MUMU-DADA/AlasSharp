@@ -12,7 +12,7 @@ public sealed class CampaignResumeTask : ITaskRunner
     public bool RequiresActions => true;
     public void Validate(JsonObject? input)
     {
-        TaskInput.Fields(input, "campaign", "hpControl", "reachLevel", "retirement", "emotionMode", "configTask");
+        TaskInput.Fields(input, "campaign", "hpControl", "reachLevel", "retirement", "emotionMode", "configTask", "ambushEvade");
         string id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign resume requires a compiled rule");
         _ = RuleCatalog.Create(id);
@@ -22,6 +22,7 @@ public sealed class CampaignResumeTask : ITaskRunner
         if (EmotionInput.Mode(input!, CampaignEmotionMode.Ignore).Calculates())
             throw new NotSupportedException("Calculated emotion requires campaign_run to observe double-book state before entry");
         _ = EmotionInput.ConfigTask(input!);
+        _ = CampaignRunTask.Option(input!, "ambushEvade", true);
     }
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
         => FleetLevelInput.Read(request.Input!).Enabled && !capabilities.HasOcrModels ? ["ocr_models"] : [];
@@ -33,7 +34,8 @@ public sealed class CampaignResumeTask : ITaskRunner
         var configuration = rule.Configure(new CampaignConfiguration
         {
             EmotionMode = EmotionInput.Mode(request.Input, CampaignEmotionMode.Ignore), ConfigTask = EmotionInput.ConfigTask(request.Input),
-            Health = FleetHealthInput.Read(request.Input), Levels = FleetLevelInput.Read(request.Input), Retirement = RetirementInput.Read(request.Input)
+            Health = FleetHealthInput.Read(request.Input), Levels = FleetLevelInput.Read(request.Input), Retirement = RetirementInput.Read(request.Input),
+            AmbushEvade = CampaignRunTask.Option(request.Input, "ambushEvade", true)
         });
         var result = await service.ResumeInMapAsync(rule, configuration, token);
         return Describe(request.Id, Kind, rule, result, false);
@@ -59,7 +61,8 @@ public sealed class CampaignResumeTask : ITaskRunner
                 CapturedFrames: > 0 } ]
         } arrival && terminalCombat?.Rank is { } winningRank && CombatRankProbe.IsRecognized(winningRank) &&
             arrival.HandledEncounters.Count(encounter => encounter == MapEncounterKind.Combat) == 1 &&
-            arrival.HandledEncounters.All(encounter => encounter is MapEncounterKind.Combat or MapEncounterKind.AirRaid);
+            arrival.AmbushesConfirmed &&
+            arrival.HandledEncounters.All(encounter => encounter is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush);
         string outcome = cleared ? "cleared" : withdrawn ? "withdrawn" : ended ? "ended_unknown" : "incomplete";
         var evidence = JsonSerializer.SerializeToNode(new
         {
@@ -74,6 +77,7 @@ public sealed class CampaignResumeTask : ITaskRunner
             result.MovableScans,
             result.MazeWaits,
             result.DecoyArrivals,
+            result.AmbushEncounters,
             stageReturn = result.StageReturn, settlementVerified = cleared, cleared,
             sortie = new
             {

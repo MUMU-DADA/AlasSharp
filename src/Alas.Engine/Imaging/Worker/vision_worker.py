@@ -148,6 +148,16 @@ def preprocess(image, mode):
     raise ValueError("preprocessing")
 
 
+def pixel_transform(image, values):
+    if values is None:
+        return image
+    if (not isinstance(values, list) or len(values) != 2 or
+            any(type(v) not in (int, float) or not np.isfinite(v) for v in values) or
+            not -255 <= values[0] <= 255 or not .001 <= values[1] <= 1000):
+        raise ValueError('pixel_transform')
+    return np.clip((image.astype(float) - values[0]) / values[1], 0, 255).astype('uint8')
+
+
 def crop(image, x, y, width, height):
     # Same black-padding behavior as upstream module.base.utils.crop.
     out = np.zeros((height, width, 3), dtype=image.dtype)
@@ -463,7 +473,7 @@ def match(request):
         raise ValueError("unsupported_operation")
     fields = {"protocol", "id", "operation", "frame", "image", "area"}
     if request["operation"] == "template_match":
-        fields |= {"template", "preprocessing", "template_area"}
+        fields |= {"template", "preprocessing", "template_area", "pixel_transform"}
     elif request["operation"] == "color_bands":
         fields |= {"color", "closing_size", "row_threshold", "peak_height", "peak_width", "peak_distance", "relative_height"}
     elif request["operation"] == "ocr_infer":
@@ -516,14 +526,14 @@ def match(request):
         if (not isinstance(template_area, list) or len(template_area) != 4 or any(type(v) is not int for v in template_area)
                 or template_area[2] <= 0 or template_area[3] <= 0 or template_area[2] * template_area[3] > 16 * 1024 * 1024):
             raise ValueError("template_area")
-    image = preprocess(crop(image, x, y, width, height), request["preprocessing"])
+    image = preprocess(pixel_transform(crop(image, x, y, width, height), request['pixel_transform']), request["preprocessing"])
     candidates = []
     for template in templates(request["template"]):
         if template_area is not None:
             template = crop(template, *template_area)
         if template.shape[0] > height or template.shape[1] > width:
             raise ValueError("template_bounds")
-        template = preprocess(template, request["preprocessing"])
+        template = preprocess(pixel_transform(template, request['pixel_transform']), request["preprocessing"])
         scores = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
         _, similarity, _, position = cv2.minMaxLoc(scores)
         candidates.append({"similarity": similarity, "location": [position[0] + x, position[1] + y]})

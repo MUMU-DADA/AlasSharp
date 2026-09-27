@@ -15,7 +15,7 @@ public sealed class CampaignRunTask : ITaskRunner
     {
         TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
             "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement", "configTask",
-            "clearMode", "doubleBook", "mapAchievement", "stageIncrease");
+            "clearMode", "doubleBook", "mapAchievement", "stageIncrease", "ambushEvade");
         var id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign run requires a compiled campaign rule");
         if (RuleCatalog.Create(id).StageName is null)
@@ -36,6 +36,7 @@ public sealed class CampaignRunTask : ITaskRunner
         _ = Option(input, "doubleBook", false);
         _ = Achievement(input);
         _ = Option(input, "stageIncrease", false);
+        _ = Option(input, "ambushEvade", true);
     }
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
@@ -69,6 +70,7 @@ public sealed class CampaignRunTask : ITaskRunner
             UseDoubleBook = Option(request.Input, "doubleBook", false),
             MapAchievement = Achievement(request.Input),
             StageIncrease = Option(request.Input, "stageIncrease", false),
+            AmbushEvade = Option(request.Input, "ambushEvade", true),
             UseFleetLock = request.Input["fleetLock"]?.GetValue<bool>() ?? true
         };
         // Config inheritance is authoritative. Apply it before touching the
@@ -98,6 +100,7 @@ public sealed class CampaignRunTask : ITaskRunner
         evidence["fleetOrder"] = FleetRoles.Name(configuration.FleetOrder);
         evidence["mapAchievement"] = configuration.MapAchievement.Name();
         evidence["stageIncrease"] = configuration.StageIncrease;
+        evidence["ambushEvade"] = configuration.AmbushEvade;
         string phase = "achievement_binding";
         try
         {
@@ -168,7 +171,7 @@ public sealed class CampaignRunTask : ITaskRunner
         => CampaignStrategy.ParseFormation(input.TryGetPropertyValue(name, out var value)
             ? value?.GetValue<string>() ?? throw new ArgumentException(name + " cannot be null") : "double_line");
 
-    private static bool Option(JsonObject input, string name, bool fallback) => input.TryGetPropertyValue(name, out var value)
+    internal static bool Option(JsonObject input, string name, bool fallback) => input.TryGetPropertyValue(name, out var value)
         ? value?.GetValue<bool>() ?? throw new ArgumentException(name + " cannot be null") : fallback;
     private static MapAchievement Achievement(JsonObject input) => CampaignObjectives.Parse(input.TryGetPropertyValue("mapAchievement", out var value)
         ? value?.GetValue<string>() ?? throw new ArgumentException("mapAchievement cannot be null") : "non_stop");

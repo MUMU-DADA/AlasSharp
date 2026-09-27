@@ -240,13 +240,15 @@ internal static partial class CampaignStageSelectorChecks
                     UiAssets.Combat.BATTLE_STATUS_S.Id), false, false, 3)]
         };
         runInput["retirement"] = new JsonObject { ["mode"] = "disabled" };
+        runInput["ambushEvade"] = false;
         interruptions = new Interruptions();
         result = await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = runInput },
             new TaskContext(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
-                Campaign: new CampaignService { StageReturn = terminal, Retirement = RetirementMode.Disabled }, Stages: new Stages(driver),
+                Campaign: new CampaignService { StageReturn = terminal, Retirement = RetirementMode.Disabled, AmbushEvade = false }, Stages: new Stages(driver),
                 Fleets: new FleetService(), Entry: new EntryService(driver),
                 MapPreparation: new PreparationService(), Interruptions: interruptions), default);
         Check(interruptions.Options?.Mode == RetirementMode.Disabled, "Campaign run enabled disabled retirement during entry");
+        Check(result.Evidence?["ambushEvade"]?.GetValue<bool>() == false, "Campaign run lost explicit ambush attack choice");
         Check(result.Outcome == TaskOutcome.Succeeded &&
             result.Evidence?["cleared"]?.GetValue<bool>() == true &&
             result.Evidence["sortie"]?["outcome"]?.GetValue<string>() == "cleared" &&
@@ -254,6 +256,7 @@ internal static partial class CampaignStageSelectorChecks
             "Integrated campaign evidence merge discarded a verified settlement");
         driver = new Driver { Chapter = 1 };
         runInput.Remove("retirement");
+        runInput.Remove("ambushEvade");
         try
         {
             await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = runInput },
@@ -403,6 +406,7 @@ internal static partial class CampaignStageSelectorChecks
     }
     private sealed class CampaignService : ICampaignExecutionService
     {
+        public bool AmbushEvade { get; init; } = true;
         public RetirementMode Retirement { get; init; } = RetirementMode.OneClick;
         public bool ClearMode { get; init; }
         public bool DoubleBook { get; init; }
@@ -415,6 +419,7 @@ internal static partial class CampaignStageSelectorChecks
             Check(configuration.IsClearMode == ClearMode && configuration.IsDoubleBook == DoubleBook,
                 "Campaign execution lost confirmed map/book state");
             Check(configuration.Retirement.Mode == Retirement, "Campaign execution lost the requested retirement mode");
+            Check(configuration.AmbushEvade == AmbushEvade, "Campaign execution lost requested ambush mode");
             Check(configuration is { EmotionMode: CampaignEmotionMode.Ignore, UseFleetLock: true,
                 Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead,
                 FleetOrder: FleetOrder.Fleet1BossFleet2Mob, Vision: not null },

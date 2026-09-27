@@ -4,8 +4,10 @@ public readonly record struct PixelPoint(int X, int Y);
 public readonly record struct PixelArea(int X, int Y, int Width, int Height);
 public sealed record ScreenFrame(long Sequence, DateTimeOffset CapturedAt, ReadOnlyMemory<byte> Png);
 public enum TemplatePreprocessing { Color, Luma, Binary }
+public sealed record PixelTransform(double Subtract, double Divisor);
 public sealed record TemplateRequest(ReadOnlyMemory<byte> TemplatePng, PixelArea SearchArea, double Similarity,
-    TemplatePreprocessing Preprocessing = TemplatePreprocessing.Color, PixelArea? TemplateArea = null);
+    TemplatePreprocessing Preprocessing = TemplatePreprocessing.Color, PixelArea? TemplateArea = null,
+    PixelTransform? Transform = null);
 public sealed record TemplateObservation(long FrameSequence, bool Matched, double Similarity, PixelPoint? Location);
 public sealed record MeanColorObservation(long FrameSequence, double R, double G, double B);
 public sealed record ColorBandRequest(PixelArea Area, int R, int G, int B, int ClosingSize,

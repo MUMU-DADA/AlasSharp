@@ -4,6 +4,8 @@
 
 ## 请求与结果
 
+campaign_run 与 campaign_resume 支持 ambushEvade（布尔，默认 true；null 和其他类型拒绝），false 表示按上游主动迎击。伏击处理使用本次有效配置，与章节差异无关。正常战役返回中的 ambushEncounters 记录途中伏击的逻辑舰队、目的格、帧号、点击数、回避信息、独立战果及是否读取舰队状态；失败结果也保留已观察的伏击，但列表不代表目的格已到达。异常退出目前仍只沿用异常/动作工件。伏击不增加地图战斗数或消耗地图弹药，单独伏击后返回章节页不算通关；成功任务仍要求真实目标战斗的完整结算链。
+
 心情控制由 Engine 的 C# 规则、会话和配置事务执行。campaign_run 缺省 calculate；campaign_resume 与 campaign 命令保留 ignore 缺省值。campaign_run 支持 calculate、calculate_ignore、ignore、nothing；前两者估算并写回两队心情，包含 ignore 的模式确认低心情提示。campaign_resume 没有进图前的双倍书观测，仅支持 ignore / nothing；计算模式在设备动作前拒绝，不能把未知消耗倍率当作单倍。值是原生算法估算，不是 OCR 实测。
 
 计算模式要求会话绑定配置数据根目录与实例：CLI run/campaign 使用 --config-root 和 --instance；Server/桌面直接传入选定实例。campaign 使用 --emotion-mode 与 --config-task，队列输入使用 emotionMode 与 configTask（缺省 Main）。恢复策略、誓约、控制阈值、当前值和记录时间读取实例配置，不在任务 JSON 复制初值。每次读写核对实例串号、游戏包与素材服务器；不同实例的队列请求、配置冲突和非法字段均拒绝。配置目录只提供数据，不加载 Python 业务。

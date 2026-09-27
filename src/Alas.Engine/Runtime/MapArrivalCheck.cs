@@ -25,6 +25,10 @@ public sealed record MapArrivalResult(MapArrivalOutcome Outcome, long FrameSeque
     public ImmutableArray<MapEncounterKind> HandledEncounters { get; init; } = [];
     public ImmutableArray<CombatFlowResult> Combats { get; init; } = [];
     public ImmutableArray<long> AmmoNotificationFrames { get; init; } = [];
+    public ImmutableArray<MapAmbushResult> Ambushes { get; init; } = [];
+    public int RetryTaps { get; init; }
+    public bool AmbushesConfirmed => Ambushes.Length == HandledEncounters.Count(kind => kind == MapEncounterKind.Ambush) &&
+        Ambushes.All(ambush => ambush.CanContinue);
     public bool SupplyClickCompleted { get; init; }
 }
 public sealed record MapArrivalOptions(TimeSpan ConfirmDelay, TimeSpan WalkTimeout, bool AllowCurrentMarker = false)
@@ -35,7 +39,8 @@ public sealed record MapArrivalOptions(TimeSpan ConfirmDelay, TimeSpan WalkTimeo
 }
 
 public enum MapEncounterContinuation { Unhandled, InMap, InStage }
-public sealed record MapEncounterHandling(MapEncounterContinuation Continuation, CombatFlowResult? Combat = null);
+public sealed record MapEncounterHandling(MapEncounterContinuation Continuation, CombatFlowResult? Combat = null,
+    MapAmbushResult? Ambush = null);
 
 public interface IMapEncounterHandler
 {
@@ -72,6 +77,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
         var walk = new IntervalTimer(_clock, options.WalkTimeout.TotalSeconds);
         var confirm = new IntervalTimer(_clock, options.ConfirmDelay.TotalSeconds, count: 2);
         var unexpected = new IntervalTimer(_clock, options.ConfirmDelay.TotalSeconds + 1, count: 6);
+        var ambushedRetry = new IntervalTimer(_clock, options.ConfirmDelay.TotalSeconds, count: 2);
         long sequence = camera.FrameSequence;
         int frames = 0;
         bool confirmed = false;
@@ -79,10 +85,13 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
         var handled = ImmutableArray.CreateBuilder<MapEncounterKind>();
         var combats = ImmutableArray.CreateBuilder<CombatFlowResult>();
         var ammoFrames = ImmutableArray.CreateBuilder<long>();
+        var ambushes = ImmutableArray.CreateBuilder<MapAmbushResult>();
+        int retryTaps = 0;
         MapArrivalResult Result(MapArrivalOutcome outcome, MapEncounterKind encounter = MapEncounterKind.None)
             => new(outcome, sequence, frames, encounter)
             { HandledEncounters = handled.ToImmutable(), Combats = combats.ToImmutable(),
-                AmmoNotificationFrames = ammoFrames.ToImmutable(), SupplyClickCompleted = supplyClickCompleted };
+                AmmoNotificationFrames = ammoFrames.ToImmutable(), SupplyClickCompleted = supplyClickCompleted,
+                Ambushes = ambushes.ToImmutable(), RetryTaps = retryTaps };
         try
         {
             await camera.PrepareTapAsync(destination, token);
@@ -93,6 +102,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
             while (true)
             {
                 MapEncounterKind encounter = MapEncounterKind.None;
+                bool retryTap = false;
                 walk.Reset();
                 confirm.Clear();
                 unexpected.Clear();
@@ -142,12 +152,27 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                                     return Result(MapArrivalOutcome.MarkerConfirmed);
                                 }
                             }
-                            else if (confirm.Started) { confirm.Clear(); unexpected.Clear(); }
+                            else
+                            {
+                                if (confirm.Started) { confirm.Clear(); unexpected.Clear(); }
+                                if (ambushedRetry.Started && ambushedRetry.Reached()) { retryTap = true; break; }
+                            }
                             if (walk.Reached()) return Result(MapArrivalOutcome.Unconfirmed);
                         }
                     }
                     catch (OperationCanceledException) when (!token.IsCancellationRequested && deadline.IsCancellationRequested)
                     { return Result(MapArrivalOutcome.Unconfirmed); }
+                }
+                if (retryTap)
+                {
+                    await camera.PrepareTapAsync(destination, token);
+                    sequence = camera.FrameSequence;
+                    if (probe is not null) await probe.InitializeAsync(sequence, token);
+                    await camera.TapCellAsync(destination, token);
+                    sequence = camera.FrameSequence;
+                    retryTaps++;
+                    ambushedRetry.Clear();
+                    continue;
                 }
                 if (handler is null) return Result(MapArrivalOutcome.MapInterrupted, encounter);
                 camera.Suspend();
@@ -158,7 +183,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                     return Result(MapArrivalOutcome.MapInterrupted, encounter);
                 if (encounter == MapEncounterKind.Combat)
                 {
-                    if (resolution.Combat is not { } combat ||
+                    if (resolution.Ambush is not null || resolution.Combat is not { } combat ||
                         combat.Return != (resolution.Continuation == MapEncounterContinuation.InStage
                             ? CombatReturn.InStage : CombatReturn.InMap))
                         throw new InvalidDataException("Combat encounter has no matching C# battle result");
@@ -166,11 +191,20 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                     if (options.AfterCombatConfirmDelay is { } delay)
                         confirm = new IntervalTimer(_clock, delay.TotalSeconds, count: 2);
                 }
-                else if (resolution.Combat is not null || resolution.Continuation == MapEncounterContinuation.InStage)
+                else if (encounter == MapEncounterKind.Ambush)
+                {
+                    if (resolution.Combat is not null || resolution.Ambush is not { IsConsistent: true } ambush ||
+                        (ambush.Combat?.Return == CombatReturn.InStage) != (resolution.Continuation == MapEncounterContinuation.InStage))
+                        throw new InvalidDataException("Ambush handler returned inconsistent encounter evidence");
+                    ambushes.Add(ambush);
+                    state.RecordAmbushEncounter(new(state.FleetIndex, destination, ambush));
+                }
+                else if (resolution.Ambush is not null || resolution.Combat is not null || resolution.Continuation == MapEncounterContinuation.InStage)
                     throw new InvalidDataException("Noncombat interaction returned battle or stage evidence");
                 handled.Add(encounter);
                 if (resolution.Continuation == MapEncounterContinuation.InStage)
                     return Result(MapArrivalOutcome.StageReturned, encounter);
+                if (resolution.Ambush is { CanContinue: false }) return Result(MapArrivalOutcome.MapInterrupted, encounter);
                 if (resolution.Combat is { Return: CombatReturn.InMap, Rank.IsWinningRank: true } && recoverAfterCombat is not null)
                     await recoverAfterCombat(token);
                 else await camera.RelocalizeAsync(token);
@@ -178,6 +212,11 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                     throw new InvalidDataException("Interaction recovery reused a stale map frame");
                 sequence = camera.FrameSequence;
                 if (probe is not null) await probe.InitializeAsync(sequence, token);
+                if (resolution.Ambush is { FleetStatusRefreshed: true })
+                {
+                    var marker = portal ? await camera.ReadCenterMarkerAsync(token) : await camera.ReadFleetMarkerAsync(destination, token);
+                    if (!(marker.Fleet && marker.Current)) ambushedRetry.Reset();
+                }
             }
         }
         finally { if (!confirmed) camera.Invalidate(); }

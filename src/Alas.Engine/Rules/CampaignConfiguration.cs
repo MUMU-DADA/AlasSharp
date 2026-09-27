@@ -52,6 +52,7 @@ public sealed record CampaignConfiguration
     public int Fleet2Step { get; init; } = 2;
     public bool HasDecoyEnemy { get; init; }
     public bool HasAmbush { get; init; } = true;
+    public bool AmbushEvade { get; init; } = true;
     public bool HandleError { get; init; }
     public EnemyScalePriority EnemyPriority { get; init; }
     public int Fleet2 { get; init; }

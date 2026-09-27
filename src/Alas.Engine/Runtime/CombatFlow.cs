@@ -9,6 +9,7 @@ public sealed record CombatFlowResult(CombatReturn Return, CombatRankEvidence? R
     bool NewShipObserved, bool EnemySearchingObserved, int CapturedFrames, CombatHealthEvidence? HealthPreparation = null);
 public sealed record CombatFlowOptions(TimeSpan PreparationTimeout, TimeSpan ExecutionTimeout, TimeSpan StatusTimeout)
 {
+    public bool WaitForEnemySearch { get; init; } = true;
     public static CombatFlowOptions Default { get; } = new(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(6), TimeSpan.FromMinutes(2));
 }
 
@@ -61,7 +62,7 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
         await PhaseAsync("preparation", options.PreparationTimeout, PrepareAsync, token);
         await PhaseAsync("execution", options.ExecutionTimeout, (time, ct) => ExecuteAsync(rank, time, ct), token);
         var (returned, newShip, searching) = await PhaseAsync("status", options.StatusTimeout,
-            (time, ct) => StatusAsync(rank, time, ct), token);
+            (time, ct) => StatusAsync(rank, time, options.WaitForEnemySearch, ct), token);
         var health = healthPreparation?.Evidence;
         return new(returned, rank.Evidence, newShip, searching, _frames + (health?.CapturedFrames ?? 0), health);
     }
@@ -191,11 +192,11 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
     }
 
     private async ValueTask<(CombatReturn Return, bool NewShip, bool Searching)> StatusAsync(
-        CombatRankProbe rank, TimeSpan timeout, CancellationToken token)
+        CombatRankProbe rank, TimeSpan timeout, bool waitForEnemySearch, CancellationToken token)
     {
         var limit = new IntervalTimer(ui.Clock, timeout.TotalSeconds);
         var stage = new IntervalTimer(ui.Clock, .5, count: 2);
-        var map = new IntervalTimer(ui.Clock, 5);
+        var map = new IntervalTimer(ui.Clock, waitForEnemySearch ? 5 : 1, count: waitForEnemySearch ? 0 : 2);
         limit.Reset(); stage.Clear(); map.Clear();
         bool newShip = false, searching = false;
         while (true)
@@ -215,23 +216,30 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
             else stage.Clear();
 
             bool inMap = await ui.AppearsAsync(UiAssets.Handler.IN_MAP, token: token);
+            bool mapWaitStarted = map.Started;
             if (inMap)
             {
-                bool overlay = await ui.AppearsAsync(UiAssets.Handler.MAP_ENEMY_SEARCHING,
+                bool overlay = waitForEnemySearch && await ui.AppearsAsync(UiAssets.Handler.MAP_ENEMY_SEARCHING,
                     ButtonOffset.Expand(5, 5), preprocessing: TemplatePreprocessing.Luma, token: token);
                 if (overlay) { searching = true; map.Clear(); }
                 else if (!map.Started) map.Reset();
-                else if (map.Reached()) return (CombatReturn.InMap, newShip, searching);
+                else if (waitForEnemySearch && map.Reached()) return (CombatReturn.InMap, newShip, searching);
             }
             else map.Clear();
-            if (await story.StorySkipAsync(token)) continue;
+            if (await story.StorySkipAsync(token))
+            {
+                if (!waitForEnemySearch) { await story.EnsureNoStoryAsync(true, token); map.Reset(); }
+                else continue;
+            }
             if (await ui.AppearsAsync(UiAssets.Combat.GET_SHIP, interval: 1, token: token))
             {
                 newShip |= await ui.AppearsAsync(UiAssets.Combat.NEW_SHIP, token: token);
-                await ui.ClickAsync(UiAssets.Combat.GET_SHIP, token); continue;
+                await ui.ClickAsync(UiAssets.Combat.GET_SHIP, token);
+                if (!waitForEnemySearch) map.Reset();
+                continue;
             }
-            if (await ClickItemsAsync(token)) continue;
-            if (await popups.ConfirmAsync(token)) continue;
+            if (await ClickItemsAsync(token)) { if (!waitForEnemySearch) map.Reset(); continue; }
+            if (await popups.ConfirmAsync(token)) { if (!waitForEnemySearch) map.Reset(); continue; }
             if (!await IsExecutingAsync(token))
             {
                 if (await rank.ObserveBattleStatusAsync(token) is { } battle)
@@ -239,6 +247,8 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
                 if (await rank.ObserveExperienceAsync(token) is { } experience)
                 { await ui.ClickAsync(CombatRankProbe.AssetFor(experience), token); continue; }
             }
+            // Native no_searching handles interruptions before accepting a stable map.
+            if (!waitForEnemySearch && inMap && mapWaitStarted && map.Reached()) return (CombatReturn.InMap, newShip, searching);
         }
     }
 }

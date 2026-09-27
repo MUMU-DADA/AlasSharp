@@ -29,6 +29,9 @@ public sealed partial class CampaignState
     private readonly List<DecoyArrivalEvidence> _decoyArrivals = [];
     public IReadOnlyList<DecoyArrivalEvidence> DecoyArrivals => _decoyArrivals.AsReadOnly();
     internal void RecordDecoyArrival(DecoyArrivalEvidence evidence) => _decoyArrivals.Add(evidence);
+    private readonly List<AmbushEncounterEvidence> _ambushEncounters = [];
+    public IReadOnlyList<AmbushEncounterEvidence> AmbushEncounters => _ambushEncounters.AsReadOnly();
+    internal void RecordAmbushEncounter(AmbushEncounterEvidence evidence) => _ambushEncounters.Add(evidence);
     public CampaignState(MapDefinition map)
     {
         Map = map;

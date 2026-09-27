@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Alas.Engine.Imaging;
 using Alas.Engine.Navigation;
 using Alas.Engine.Rules;
@@ -7,6 +8,35 @@ namespace Alas.Engine.Tests;
 
 internal static class CombatFlowChecks
 {
+    public static async Task AmbushReturnsAsync(JsonArray cases)
+    {
+        foreach (var sample in cases)
+        {
+            double seconds = sample!["seconds"]!.GetValue<double>();
+            string? interruption = sample["interruption"]?.GetValue<string>();
+            var ui = new Ui(UiAssets.Combat.BATTLE_PREPARATION) { CaptureSeconds = seconds };
+            ui.Enqueue(UiAssets.CombatUi.PAUSE);
+            ui.Enqueue(UiAssets.Combat.BATTLE_STATUS_S);
+            for (int i = 0; i < 18; i++) ui.Enqueue(UiAssets.Handler.IN_MAP, UiAssets.Handler.MAP_ENEMY_SEARCHING);
+            var story = new ReturnStory(ui, interruption == "story");
+            var popup = new ReturnPopup(ui, interruption is "vote" or "guild" or "urgent");
+            var result = await new CombatFlow(ui, story, popup, new Stage(ui)).RunAutoAsync(Options with { WaitForEnemySearch = false });
+            // Entry into the native handler uses the first map frame; its loop
+            // captures the remaining frames. Two earlier captures enter combat.
+            Check(ui.Captures == 3 + sample["frames"]!.GetValue<int>() && result is
+                { Return: CombatReturn.InMap, EnemySearchingObserved: false, Rank.IsWinningRank: true } && ui.SearchingChecks == 0,
+                $"No-searching map timer differs from native: {sample}, captures={ui.Captures}");
+            Check(story.Ensures == (interruption == "story" ? 1 : 0), "No-searching story completion was skipped");
+        }
+    }
+    private sealed class ReturnStory(Ui ui, bool enabled) : IStoryHandler
+    {
+        public int Ensures { get; private set; }
+        public ValueTask<bool> StorySkipAsync(CancellationToken token = default) => ValueTask.FromResult(enabled && ui.Captures == 6);
+        public ValueTask EnsureNoStoryAsync(bool skipFirstScreenshot, CancellationToken token) { Ensures++; return ValueTask.CompletedTask; }
+    }
+    private sealed class ReturnPopup(Ui ui, bool enabled) : IPopupHandler
+    { public ValueTask<bool> ConfirmAsync(CancellationToken token) => ValueTask.FromResult(enabled && ui.Captures == 6); }
     public static async Task RunAsync()
     {
         var ui = new Ui(UiAssets.Combat.BATTLE_PREPARATION, UiAssets.Combat.AUTOMATION_OFF);
@@ -173,6 +203,9 @@ internal static class CombatFlowChecks
         public HashSet<string> Visible { get; private set; }
         public bool StageEntranceVisible { get; set; } = true;
         public bool FailClick { get; set; }
+        public double CaptureSeconds { get; init; } = 1;
+        public int Captures { get; private set; }
+        public int SearchingChecks { get; private set; }
         public List<string> Clicks { get; } = [];
         public void Enqueue(params AssetRule[] assets)
             => _frames.Enqueue(assets.Select(a => a.Id).ToHashSet(StringComparer.Ordinal));
@@ -180,13 +213,15 @@ internal static class CombatFlowChecks
         {
             token.ThrowIfCancellationRequested();
             if (_frames.Count > 0) Visible = _frames.Dequeue();
-            _clock.Advance(TimeSpan.FromSeconds(1));
+            Captures++;
+            _clock.Advance(TimeSpan.FromSeconds(CaptureSeconds));
             return ValueTask.CompletedTask;
         }
         public ValueTask<bool> AppearsAsync(AssetRule asset, ButtonOffset offset = default, double interval = 0,
             double similarity = 0.85, int threshold = 10, TemplatePreprocessing preprocessing = TemplatePreprocessing.Color,
             CancellationToken token = default)
-        { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(Visible.Contains(asset.Id)); }
+        { token.ThrowIfCancellationRequested(); if (asset == UiAssets.Handler.MAP_ENEMY_SEARCHING) SearchingChecks++;
+            return ValueTask.FromResult(Visible.Contains(asset.Id)); }
         public ValueTask ClickAsync(AssetRule asset, CancellationToken token)
         { token.ThrowIfCancellationRequested(); if (FailClick) throw new IOException("Synthetic combat start failure"); Clicks.Add(asset.Name); return ValueTask.CompletedTask; }
         public ValueTask ClickAreaAsync(Rectangle area, CancellationToken token) => throw new NotSupportedException();

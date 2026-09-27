@@ -207,34 +207,34 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         if (result.Outcome == MapArrivalOutcome.Unconfirmed) return new(MapMoveOutcome.Unconfirmed, result);
         if (result.Outcome == MapArrivalOutcome.MapInterrupted) return new(MapMoveOutcome.Interrupted, result);
         if (result.Outcome == MapArrivalOutcome.StageReturned)
-            return new((fight || probeBoss || probeBouncing) &&
+            return new((fight || probeBoss || probeBouncing) && result.AmbushesConfirmed &&
                 result.Combats is [ { Return: CombatReturn.InStage, Rank.IsWinningRank: true } ] &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
-                result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid)
+                result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush)
                 ? MapMoveOutcome.StageReturned :
                 MapMoveOutcome.UnsupportedEncounter, result);
         bool combatConfirmed = result.Combats.Length == 1 &&
             result.Combats[0] is { Return: CombatReturn.InMap, Rank.IsWinningRank: true };
         bool decoyConfirmed = decoyCandidate && result.Combats.IsEmpty && result.AmmoNotificationFrames.IsEmpty &&
-            result.HandledEncounters.All(kind => kind == MapEncounterKind.AirRaid);
+            result.HandledEncounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush);
         bool interactionsConfirmed = action switch
         {
-            MapAction.Move or MapAction.Ammo => result.HandledEncounters.All(kind => kind == MapEncounterKind.AirRaid) &&
+            MapAction.Move or MapAction.Ammo => result.HandledEncounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush) &&
                 result.Combats.IsEmpty,
             MapAction.Fight => decoyConfirmed || combatConfirmed &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
-                result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid),
+                result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush),
             MapAction.Mystery => result.Combats.IsEmpty &&
                 (result.HandledEncounters.Contains(MapEncounterKind.ItemPopup) || !result.AmmoNotificationFrames.IsEmpty) &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) <= 1 &&
-                result.HandledEncounters.All(kind => kind is MapEncounterKind.ItemPopup or MapEncounterKind.AirRaid),
+                result.HandledEncounters.All(kind => kind is MapEncounterKind.ItemPopup or MapEncounterKind.AirRaid or MapEncounterKind.Ambush),
             MapAction.ProbeBoss or MapAction.ProbeBouncing => (result.Combats.IsEmpty &&
-                    result.HandledEncounters.All(kind => kind == MapEncounterKind.AirRaid) ||
+                    result.HandledEncounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush) ||
                 combatConfirmed && result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
-                    result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid)),
+                    result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush)),
             _ => false
         };
-        if (!interactionsConfirmed || landingGrid.MayAmmo && !result.SupplyClickCompleted)
+        if (!interactionsConfirmed || !result.AmbushesConfirmed || landingGrid.MayAmmo && !result.SupplyClickCompleted)
         {
             state.MovementInvalidated = true;
             camera.Invalidate();

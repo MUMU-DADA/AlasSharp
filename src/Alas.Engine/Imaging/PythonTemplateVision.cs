@@ -58,7 +58,8 @@ public sealed partial class PythonTemplateVision : IVision
             protocol = "alas-cv/1", id, operation = "template_match", frame = frame.Sequence,
             image = Convert.ToBase64String(frame.Png.Span), template = Convert.ToBase64String(request.TemplatePng.Span),
             area = AreaValues(request.SearchArea), template_area = request.TemplateArea is { } crop ? AreaValues(crop) : null,
-            preprocessing = request.Preprocessing.ToString().ToLowerInvariant()
+            preprocessing = request.Preprocessing.ToString().ToLowerInvariant(),
+            pixel_transform = request.Transform is { } transform ? new[] { transform.Subtract, transform.Divisor } : null
         }, response =>
         {
             var candidates = response.GetProperty("candidates");
@@ -256,6 +257,9 @@ public sealed partial class PythonTemplateVision : IVision
         ValidateFrame(frame);
         ValidateArea(request.SearchArea);
         if (request.TemplateArea is { } templateArea) ValidateArea(templateArea);
+        if (request.Transform is { } transform && (!double.IsFinite(transform.Subtract) ||
+            !double.IsFinite(transform.Divisor) || transform.Subtract is < -255 or > 255 || transform.Divisor is < .001 or > 1000))
+            throw new ArgumentException("Invalid pixel transform");
         if (request.TemplatePng.IsEmpty || request.TemplatePng.Length > 16 * 1024 * 1024 ||
             !double.IsFinite(request.Similarity) || request.Similarity is < -1 or > 1 || !Enum.IsDefined(request.Preprocessing))
             throw new ArgumentException("Invalid template match parameters");

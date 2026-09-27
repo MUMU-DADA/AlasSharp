@@ -28,11 +28,11 @@ internal static class MapEncounterProbeChecks
         Check(await probe.InspectAsync(2, default) == MapEncounterKind.AirRaid,
             "Air raid red overlay was not classified before ambush");
         ui.Sequence = 3; ui.AirRed = 100; ui.AmbushRed = 170;
-        Check(await probe.InspectAsync(3, default) == MapEncounterKind.Ambush,
+        Check(await probe.InspectAsync(3, default) == MapEncounterKind.Ambush && probe.AmbushFromOverlay,
             "Ambush red overlay was not classified");
         ui.Sequence = 4; ui.AmbushRed = 100;
         ui.Appearing.Add(UiAssets.Handler.MAP_AMBUSH_EVADE.Id);
-        Check(await probe.InspectAsync(4, default) == MapEncounterKind.Ambush,
+        Check(await probe.InspectAsync(4, default) == MapEncounterKind.Ambush && !probe.AmbushFromOverlay,
             "Ambush evade button was not classified after its overlay vanished");
 
         ui.Appearing.Clear();

@@ -212,6 +212,13 @@ try
         await MapViewChecks.BossRefocusChecksAsync(Path.GetFullPath(refocusPython), Path.GetFullPath(refocusUpstream), folder);
         return 0;
     }
+    if (args is ["--ambush", var ambushPython, var ambushUpstream, var ambushArtifacts])
+    {
+        string folder = Path.GetFullPath(ambushArtifacts);
+        Directory.CreateDirectory(folder);
+        await AmbushChecks.RunAsync(Path.GetFullPath(ambushPython), Path.GetFullPath(ambushUpstream), folder);
+        return 0;
+    }
     if (args is ["--decoy", var decoyPython, var decoyUpstream, var decoyArtifacts])
     {
         string folder = Path.GetFullPath(decoyArtifacts);
