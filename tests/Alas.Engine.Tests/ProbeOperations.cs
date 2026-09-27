@@ -8,7 +8,8 @@ internal sealed record Scenario(string Rule, string Operation = "dispatch", int 
     string? TrueOperation = null, bool CombatReturn = true, bool HandleError = false,
     bool AutoSearch = false, string? Signal = null, int SignalCount = 1, string SignalOperation = "clear_enemy",
     bool Advance = false, bool Accessible = true, string? BossCells = null,
-    int Fleet2 = 0, int? BossFleet = null, string? FirstFleet = null, string? SecondFleet = null, int FirstScale = 0, string? Mysteries = null);
+    int Fleet2 = 0, int? BossFleet = null, string? FirstFleet = null, string? SecondFleet = null, int FirstScale = 0, string? Mysteries = null,
+    int MysteryCount = 0, int CollectedMysteries = 0);
 internal sealed record ProbeResult(string[] Calls, object? Value, string? Exception, int BattleCount);
 
 /// <summary>Synthetic terminal actions only; the compiled rule and native oracle each own their control flow.</summary>
@@ -61,9 +62,16 @@ internal sealed class ProbeOperations(Scenario scenario) : ICampaignOperations
     public ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, EnemySelection selection, bool potential = false)
     { Roads(roads); Selection(selection); return Result(potential ? "clear_potential_roadblocks" : "clear_roadblocks"); }
     public ValueTask<bool> ClearBossAsync() => Result("clear_boss");
+    public ValueTask<bool> ClearFirstRoadblocksAsync(IReadOnlyList<RoadDefinition> roads)
+    { Roads(roads); return Result("clear_first_roadblocks"); }
     public ValueTask<bool> BruteClearBossAsync() => Result("brute_clear_boss");
     public ValueTask<bool> BreakSirenCaughtAsync() => Result("fleet_2_break_siren_caught");
-    public ValueTask<bool> ClearMysteriesAsync() => Result("clear_all_mystery");
+    public ValueTask<bool> ClearMysteriesAsync()
+    {
+        bool result = Call("clear_all_mystery");
+        State.MysteryCount += scenario.CollectedMysteries;
+        return ValueTask.FromResult(result);
+    }
     public ValueTask<bool> ClearMysteriesAsync(IReadOnlyList<Cell>? ignore, bool nearby = false)
     { Call($"mystery_selection:{(nearby ? 1 : 0)}:{(ignore is null ? "null" : string.Join(',', ignore))}"); return ClearMysteriesAsync(); }
     public ValueTask ClearMysteryAsync(Cell destination)

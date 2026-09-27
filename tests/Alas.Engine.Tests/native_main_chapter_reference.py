@@ -69,8 +69,29 @@ def main():
                     probe._handle_air_raid()
                     cases.append(dict(**fixture, air=air, ambush=ambush, waitFrames=frames,
                         encounter='AirRaid' if air else 'Ambush' if ambush else 'None'))
-                chapters.append(dict(id=f'campaign_main/campaign_{chapter}_{stage}', config={name: getattr(Config(), name, None) for name in names + (['SUBMARINE'] if chapter == 7 else [])},
-                    attributes={name: getattr(module.Campaign, name) for name in attribute_names}, cases=cases))
+                chapter_names = names + (['SUBMARINE'] if chapter >= 7 else [])
+                if chapter >= 8:
+                    chapter_names += ['MAP_SWIPE_MULTIPLY', 'MAP_SWIPE_MULTIPLY_MINITOUCH', 'MAP_SWIPE_MULTIPLY_MAATOUCH']
+                entry = dict(id=f'campaign_main/campaign_{chapter}_{stage}', config={name: getattr(Config(), name, None) for name in chapter_names},
+                    attributes={name: getattr(module.Campaign, name) for name in attribute_names}, cases=cases)
+                if chapter == 8 and stage == 1:
+                    from module.base.utils import node2location as loc, location2node as node
+                    class BossRoad(module.Campaign):
+                        def clear_chosen_enemy(self, grid):
+                            entry['bossRoad'] = dict(target=node(grid.location), fleet=self.fleet_current_index)
+                    road = object.__new__(BossRoad)
+                    road.config = Config()
+                    road.config.FLEET_2, road.config.FLEET_BOSS, road.config.MAP_HAS_AMBUSH = 2, 2, False
+                    road.map = module.MAP
+                    road.map.reset()
+                    road.map.load_map_data()
+                    road.map.grid_connection_initial()
+                    road.fleet_1_location, road.fleet_2_location, road.fleet_current_index = loc('F2'), loc('A2'), 1
+                    for cell in ['G1', 'G2', 'G3']: road.map[loc(cell)].is_enemy = True
+                    road.map[loc('H1')].is_boss = True
+                    road.find_path_initial()
+                    assert road.battle_4()
+                chapters.append(entry)
         sources = {p: hashlib.sha256((root / p).read_bytes()).hexdigest()
             for p in ['module/handler/ambush.py', 'module/handler/enemy_searching.py', 'module/config/config_manual.py']}
     output.write_text(json.dumps(dict(baseline=initial, chapters=chapters, sources=sources)), encoding='utf-8')

@@ -228,7 +228,10 @@ internal static class DetectorChecks
             await Console.OpenStandardOutput().WriteAsync(await File.ReadAllBytesAsync(fixture)); return 0;
         }
         if (args is ["shell", "input", "swipe", ..])
-        { await File.AppendAllTextAsync(fixture + ".actions", JsonSerializer.Serialize(args) + "\n"); return 0; }
+        {
+            await File.AppendAllTextAsync(fixture + ".actions", JsonSerializer.Serialize(args) + "\n");
+            return Environment.GetEnvironmentVariable("ALAS_TEST_MAP_SWIPE_FAIL") == "1" ? 29 : 0;
+        }
         if (args is ["shell", "input", "tap", ..])
         { await File.AppendAllTextAsync(fixture + ".actions", JsonSerializer.Serialize(args) + "\n"); return 0; }
         Console.Error.Write("Unexpected map replay command"); return 2;
@@ -260,8 +263,37 @@ internal static class DetectorChecks
             var evidence = await session.SaveEvidenceAsync(Path.Combine(artifacts, "session"), false);
             Check(evidence.Image is not null && evidence.FrameSequence > 0 && evidence.ActionAttempts == 1,
                 "Map session lost screenshot or click-attempt evidence");
+            await ChapterCameraFactoryAsync(session);
         }
         finally { Environment.SetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE", previous); }
+    }
+    private static async Task ChapterCameraFactoryAsync(EngineSession session)
+    {
+        var map = new CampaignState(new MapDefinition("T20", string.Join('\n', Enumerable.Repeat(string.Join(' ', Enumerable.Repeat("--", 20)), 20)), ["J10"], [], []));
+        var config = new Alas.Engine.Rules.Main.Campaign81().Configure(new());
+        var camera = (MapCamera)await ((ICampaignInMapHost)session).CreateCameraAsync(map, config, default);
+        var geometry = camera.View.Geometry;
+        int dx = camera.Position.Column < 20 ? 1 : -1, dy = camera.Position.Row < 20 ? 1 : -1;
+        var multiplier = config.SwipeMultipliers!.Adb;
+        int expectedX = (int)Math.Round(-geometry.SwipeBase.X * multiplier.X * (.5 - geometry.CenterOffset.X + dx));
+        int expectedY = (int)Math.Round(-geometry.SwipeBase.Y * multiplier.Y * (.5 - geometry.CenterOffset.Y + dy));
+        string fixture = Environment.GetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE")!;
+        int before = File.ReadAllLines(fixture + ".actions").Length;
+        string? previous = Environment.GetEnvironmentVariable("ALAS_TEST_MAP_SWIPE_FAIL");
+        Environment.SetEnvironmentVariable("ALAS_TEST_MAP_SWIPE_FAIL", "1");
+        try
+        {
+            bool failed = false;
+            try { await camera.FocusAsync(new(camera.Position.Column + dx, camera.Position.Row + dy), default); }
+            catch (IOException) { failed = true; }
+            var lines = File.ReadAllLines(fixture + ".actions");
+            Check(failed && lines.Length == before + 1, "Factory swipe did not stop on synthetic transport failure");
+            var action = JsonNode.Parse(lines[^1])!.AsArray().Select(item => item!.GetValue<string>()).ToArray();
+            Check(action[2] == "swipe" && int.Parse(action[5]) - int.Parse(action[3]) == expectedX &&
+                int.Parse(action[6]) - int.Parse(action[4]) == expectedY,
+                "Campaign camera factory did not apply declared chapter multipliers to the actual ADB gesture");
+        }
+        finally { Environment.SetEnvironmentVariable("ALAS_TEST_MAP_SWIPE_FAIL", previous); }
     }
     private static async Task InputChecksAsync()
     {
@@ -310,7 +342,7 @@ internal static class DetectorChecks
             }
             Check(success.Tasks[1].Evidence!["frame"]!.GetValue<long>() > success.Tasks[0].Evidence!["frame"]!.GetValue<long>(), "Map tasks did not share one session");
             Check(!File.Exists(fixture + ".actions"), "Read-only observation attempted a gesture");
-            var invalid = await queue.RunAsync([new("missing", "map_observe", new JsonObject { ["campaign"] = "campaign_main/campaign_8_1" })],
+            var invalid = await queue.RunAsync([new("missing", "map_observe", new JsonObject { ["campaign"] = "campaign_main/campaign_9_1" })],
                 options with { Python = "missing", Adb = "missing" }, new(artifacts));
             Check(invalid.Failed && invalid.Tasks[0] is { Outcome: TaskOutcome.Refused, Reason: "NotSupportedException" }, "Unported campaign was executed");
             Environment.SetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE", Path.Combine(artifacts, "frame-1.png"));

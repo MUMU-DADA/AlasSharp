@@ -23,7 +23,7 @@ internal static partial class CampaignMapCombatChecks
             samples.Add(new(i % 2 + 1, enemies, random.Next(512) & 254 & ~enemies, random.Next(512),
                 Enumerable.Range(0, 9).Select(_ => random.Next(4)).ToArray(),
                 Enumerable.Range(1, 9).OrderBy(_ => random.Next()).Select(w => w * 10).ToArray(),
-                i % 7 == 0 ? [[[], ["B1", "B1"], ["C2"]], [["B2"], ["B1", "C2"]]] :
+                i % 7 == 0 ? [[[], ["B1", "B1"], ["C2"], ["A1", "B1"], ["C3", "B2"]], [["B2"], ["B1", "C2"]]] :
                     [[["B1", "B2"], ["B2", "C1"], ["C2"]], [["B3"], ["A2", "B2"]]],
                 new int[][] { [], [3], [1, 2], [0], [2, 3] }[i % 5], i % 4 < 2, i % 4 % 2 == 1, i % 3 == 0,
                 new[] { "default", "S3_enemy_first", "S1_enemy_first" }[i / 4 % 3], i % 3 == 0 ? ["B1", "A3"] : [], i % 2 == 0));
@@ -60,10 +60,11 @@ internal static partial class CampaignMapCombatChecks
             Check(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(combined.Groups.Select(group => group.Select(cell => cell.ToString()).Order(StringComparer.Ordinal))),
                 expected["groups"]), "Native combined-road union differs: " + i);
             var selection = new EnemySelection(sample.Filter.ToImmutableArray(), sample.Strongest, sample.Weakest);
-            for (int action = 0; action < 3; action++)
+            for (int action = 0; action < 5; action++)
             {
                 var state = Initial(); var camera = new Camera(state); var combat = Create(state, config, camera);
-                bool value = action == 0 ? await combat.ClearEnemyAsync(selection) :
+                bool value = action == 0 ? await combat.ClearEnemyAsync(selection) : action >= 3 ?
+                    await combat.ClearFirstRoadblocksAsync([combined], action == 3 ? selection : null) :
                     await combat.ClearRoadblocksAsync([combined], selection, potential: action == 2);
                 var choice = expected["choices"]![action]!;
                 Check(value == choice["value"]!.GetValue<bool>() && camera.Destination?.ToString() == choice["target"]?.GetValue<string>() &&
@@ -80,7 +81,8 @@ internal static partial class CampaignMapCombatChecks
         }
         await ChosenMysteryFailuresAsync();
         await ChapterSevenChecksAsync(python, upstream, artifacts);
-        Console.WriteLine($"Target selection: {samples.Count} combined-road declarations, {samples.Count * 3} native filtered choices ({battles} synthetic battles), {mysteries} mystery pickups, chosen-fleet failures and chapter-seven Config/compositions passed offline; no live acceptance.");
+        await ChapterEightChecksAsync(python, upstream, artifacts);
+        Console.WriteLine($"Target selection: {samples.Count} combined-road declarations, {samples.Count * 5} native filtered choices ({battles} synthetic battles), {mysteries} mystery pickups, chosen-fleet failures and chapter-seven/eight Config/compositions passed offline; no live acceptance.");
     }
 
     private static async Task ChosenMysteryFailuresAsync()

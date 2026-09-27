@@ -512,8 +512,10 @@ internal static partial class MapViewChecks
         var source = new Source(i => view with { Frame = frame with { Sequence = i + 1 } }, clock);
         var method = sample["method"]!.GetValue<string>() switch { "minitouch" => MapControlMethod.Minitouch,
             "MaaTouch" => MapControlMethod.MaaTouch, _ => MapControlMethod.Adb };
+        var rules = new MapCameraRules { Predict = false }.WithChapter(B(sample["chapter"]!)
+            ? new Alas.Engine.Rules.Main.Campaign81().Configure(new()).SwipeMultipliers : null);
         var camera = new MapCamera(map, position, view, source, input, recognition, new(new FixedEvidence(null)),
-            new() { Predict = false }, method, clock: clock);
+            rules, method, clock: clock);
         await camera.FocusAsync(new(6, 3), default);
         Check(input.Gestures.Count == 1 && input.Gestures[0].PreferredEnds is not null && input.Gestures[0].ForbiddenAreas is not null,
             "Default camera omitted swipe avoidance");

@@ -100,6 +100,8 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public bool CheckAccessibility(Cell cell, int? fleet = null) => Combat.CheckAccessibility(cell, fleet);
     public ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, bool potential = false)
         => Combat.ClearRoadblocksAsync(roads, potential, token);
+    public ValueTask<bool> ClearFirstRoadblocksAsync(IReadOnlyList<RoadDefinition> roads)
+        => Combat.ClearFirstRoadblocksAsync(roads, token: token);
     public ValueTask<bool> ClearBossForFleetAsync(int fleet) => Combat.ClearBossForFleetAsync(fleet, token);
     public ValueTask<bool> ClearBossAsync() => Combat.ClearBossAsync(token);
     public ValueTask<bool> BruteClearBossAsync() => Combat.BruteClearBossAsync(token);

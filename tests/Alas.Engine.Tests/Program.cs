@@ -516,6 +516,20 @@ try
             foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
                 cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation, Fleet2: 2));
         }
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterEightRule)
+        {
+            foreach (int count in new[] { 0, 3, 4, 5, 14, 15 })
+            foreach (int mysteries in new[] { 0, 1, 2 })
+            foreach (int collected in new[] { 0, 1 })
+            foreach (int bossFleet in new[] { 1, 2 })
+            foreach (string? yes in new[] { null, "fleet_2_step_on", "clear_roadblocks", "clear_potential_roadblocks", "clear_first_roadblocks" })
+                cases.Add(new Scenario(id, BattleCount: count, Fleet2: 2, BossFleet: bossFleet, TrueOperation: yes,
+                    CombatReturn: false, MysteryCount: mysteries, CollectedMysteries: collected));
+            foreach (string operation in new[] { "fleet_2_step_on", "clear_roadblocks", "clear_all_mystery", "clear_potential_roadblocks", "clear_first_roadblocks", "brute_clear_boss" })
+            foreach (int count in new[] { 0, 4 })
+            foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
+                cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation));
+        }
         if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.Campaign72)
             foreach (int count in new[] { 0, 4, 5, 6 })
             foreach (string secondLocation in new[] { "A3", "G3", "C3" })
@@ -567,7 +581,7 @@ try
     await File.WriteAllTextAsync(input, JsonSerializer.Serialize(cases, json));
     await File.WriteAllTextAsync(Path.Combine(artifacts, "csharp.json"), JsonSerializer.Serialize(expected, json));
     var oracle = await process.RunAsync(python,
-        // The 28-rule oracle takes about 100 seconds locally; retain a bounded execution budget.
+        // The full compiled-rule oracle exceeds 90 seconds locally; retain a bounded execution budget.
         [Path.Combine(AppContext.BaseDirectory, "native_campaign_reference.py"), upstream, input, output], TimeSpan.FromMinutes(3));
     if (oracle.ExitCode != 0) throw new InvalidOperationException($"Native reference failed: {oracle.Error}");
     var native = JsonNode.Parse(await File.ReadAllTextAsync(output))!.AsArray();
@@ -600,6 +614,7 @@ static async Task<ProbeResult> Execute(Scenario scenario)
     }, operations);
     var state = operations.State = execution.Context.State;
     state.BattleCount = scenario.BattleCount;
+    state.MysteryCount = scenario.MysteryCount;
     state.Fleet1Location = scenario.FirstFleet is null ? null : Cell.Parse(scenario.FirstFleet);
     state.Fleet2Location = scenario.SecondFleet is null ? null : Cell.Parse(scenario.SecondFleet);
     state.Cells[0].EnemyScale = scenario.FirstScale;

@@ -56,7 +56,9 @@ def main():
             options = dict(scale=tuple(sample['filter']), strongest=sample['strongest'], weakest=sample['weakest'])
             choices = []
             for call in [lambda: replay.clear_enemy(**options), lambda: replay.clear_roadblocks([combined], **options),
-                         lambda: replay.clear_potential_roadblocks([combined], **options)]:
+                         lambda: replay.clear_potential_roadblocks([combined], **options),
+                         lambda: replay.clear_first_roadblocks([combined], **options),
+                         lambda: replay.clear_first_roadblocks([combined])]:
                 replay.selected = None
                 value = call()
                 choices.append(dict(value=value, target=replay.selected))

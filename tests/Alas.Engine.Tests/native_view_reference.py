@@ -191,7 +191,7 @@ def main():
 
         # Full native swipe optimization from map/global flags and current view predictions.
         optimized=[]
-        for method in ['adb','minitouch','MaaTouch']:
+        for method, chapter in itertools.product(['adb','minitouch','MaaTouch'], [False, True]):
             v=geometry(layout('optimized',columns=3,rows=3,screen=(262,227.5)))
             patches=[dict(cell=[0,0],state=dict(is_enemy=True)),dict(cell=[1,0],state=dict(is_siren=True)),
                      dict(cell=[2,0],state=dict(is_boss=True)),dict(cell=[0,1],state=dict(is_mystery=True)),
@@ -204,11 +204,15 @@ def main():
                 for k,value in patch['state'].items(): setattr(mapping[patch['cell']],k,value)
             c=object.__new__(Camera); c.camera=(4,3); c.view=v; c.map=mapping
             c.config=ManualConfig(); c.config.DEVICE_CONTROL_METHOD=method
+            if chapter:
+                from campaign.campaign_main.campaign_8_1 import Config as ChapterConfig
+                for name in ['MAP_SWIPE_MULTIPLY', 'MAP_SWIPE_MULTIPLY_MINITOUCH', 'MAP_SWIPE_MULTIPLY_MAATOUCH']:
+                    setattr(c.config, name, getattr(ChapterConfig, name))
             trace=[]
             c.device=SimpleNamespace(swipe_vector=lambda vector,**kwargs: trace.append(dict(pixels=vector,preferred=kwargs['whitelist_area'],forbidden=kwargs['blacklist_area'])))
             c.update=lambda **kwargs: None
             Camera.map_swipe(c,(1,-1))
-            optimized.append(dict(sample=dict(method=method,patches=patches,globals=globals_),expected=trace[0]))
+            optimized.append(dict(sample=dict(method=method,chapter=chapter,patches=patches,globals=globals_),expected=trace[0]))
 
         settling=[]
         import module.base.timer as timer_module

@@ -96,6 +96,10 @@ def main():
                     self.selection_record(kwargs)
                     return self.record('clear_potential_roadblocks')
                 def clear_boss(self): return self.record("clear_boss")
+                def clear_first_roadblocks(self, roads, **kwargs):
+                    self.roads_record(roads)
+                    self.selection_record(kwargs)
+                    return self.record('clear_first_roadblocks')
                 def brute_clear_boss(self): return self.record("brute_clear_boss")
                 def fleet_2_break_siren_caught(self): return self.record("fleet_2_break_siren_caught")
                 def clear_all_mystery(self, **kwargs):
@@ -104,7 +108,9 @@ def main():
                         ignore = kwargs.get('ignore')
                         ignored = 'null' if ignore is None else ','.join(location2node(g.location) for g in ignore)
                         self.record(f"mystery_selection:{int(kwargs.get('nearby', False))}:{ignored}")
-                    return self.record("clear_all_mystery")
+                    result = self.record("clear_all_mystery")
+                    self.mystery_count += scenario['collectedMysteries']
+                    return result
                 def clear_chosen_mystery(self, grid):
                     from module.base.utils import location2node
                     self.record('chosen_mystery:' + location2node(grid.location))
@@ -139,6 +145,7 @@ def main():
                 FLEET_2=getattr(source.Config, 'FLEET_2', scenario.get('fleet2', 0)),
                 FLEET_BOSS=getattr(source.Config, 'FLEET_BOSS', scenario.get('bossFleet') or (2 if scenario.get('fleet2') else 1)))
             probe.battle_count = scenario["battleCount"]
+            probe.mystery_count = scenario['mysteryCount']
             from module.base.utils import node2location
             probe.fleet_1_location = node2location(scenario['firstFleet']) if scenario.get('firstFleet') else ()
             probe.fleet_2_location = node2location(scenario['secondFleet']) if scenario.get('secondFleet') else ()

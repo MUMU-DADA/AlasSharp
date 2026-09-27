@@ -128,6 +128,8 @@ public interface ICampaignOperations
     bool CheckAccessibility(Cell cell, int? fleet = null) => throw new NotSupportedException("Fleet accessibility is unavailable");
     ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, bool potential = false)
         => throw new NotSupportedException("Declared roadblocks are unavailable");
+    ValueTask<bool> ClearFirstRoadblocksAsync(IReadOnlyList<RoadDefinition> roads)
+        => throw new NotSupportedException("First roadblock selection is unavailable");
     ValueTask<bool> ClearBossForFleetAsync(int fleet) => throw new NotSupportedException("Selected-fleet boss combat is unavailable");
     ValueTask<bool> ClearEnemyAsync();
     ValueTask<bool> ClearEnemyAsync(EnemySelection selection) => throw new NotSupportedException("Filtered enemy selection is unavailable");

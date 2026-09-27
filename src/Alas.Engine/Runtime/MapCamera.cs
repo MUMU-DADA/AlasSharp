@@ -39,6 +39,9 @@ public sealed record MapCameraRules
     public bool PredictSeaGrids { get; init; }
     public bool Optimize { get; init; } = true;
     public string EdgeCorner { get; init; } = "";
+    public MapCameraRules WithChapter(MapSwipeMultipliers? multipliers)
+        => multipliers is null ? this : this with
+        { Multiply = multipliers.Adb, MultiplyMinitouch = multipliers.Minitouch, MultiplyMaaTouch = multipliers.MaaTouch };
     public void Validate()
     {
         if (!double.IsFinite(CenterTolerance) || CenterTolerance is < 0 or > 0.5 ||

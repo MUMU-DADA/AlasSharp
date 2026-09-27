@@ -46,6 +46,17 @@ public sealed partial class CampaignMapCombat(CampaignState state, CampaignConfi
         return await ClearBossAsync(token);
     }
 
+    public ValueTask<bool> ClearFirstRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, EnemySelection? selection = null,
+        CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before selecting a roadblock");
+        var candidates = roads.SelectMany(road => road.Select(state, RoadBlockKind.First)).Distinct().Where(grid => grid.IsAccessible).ToArray();
+        // Native clear_first_roadblocks does not inject EnemyPriority or full-clear preferences.
+        candidates = SelectEnemyScales(candidates, selection ?? new(), applyConfiguration: false);
+        return candidates.Length == 0 ? ValueTask.FromResult(false) : FightAsync(Order(candidates)[0], token, MapCombatExpectation.Enemy);
+    }
+
     public async ValueTask<bool> ClearMechanismAsync(IReadOnlyList<Cell>? grids = null, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
@@ -151,7 +162,7 @@ public sealed partial class CampaignMapCombat(CampaignState state, CampaignConfi
         return candidates.Length == 0 ? ValueTask.FromResult(false) : FightAsync(Order(candidates)[0], token, MapCombatExpectation.Enemy);
     }
 
-    private CellState[] SelectEnemyScales(CellState[] candidates, EnemySelection selection)
+    private CellState[] SelectEnemyScales(CellState[] candidates, EnemySelection selection, bool applyConfiguration = true)
     {
         ArgumentNullException.ThrowIfNull(selection);
         if (!selection.Scales.IsDefaultOrEmpty)
@@ -161,10 +172,10 @@ public sealed partial class CampaignMapCombat(CampaignState state, CampaignConfi
         }
         // Config sets one flag without clearing a flag explicitly supplied by the rule.
         // If both are true, native applies strongest first, then weakest to that subset.
-        bool strongest = selection.Strongest || configuration.EnemyPriority == EnemyScalePriority.StrongestFirst ||
-            configuration.EnemyPriority == EnemyScalePriority.Default && configuration.ClearAllThisTime;
+        bool strongest = selection.Strongest || applyConfiguration && (configuration.EnemyPriority == EnemyScalePriority.StrongestFirst ||
+            configuration.EnemyPriority == EnemyScalePriority.Default && configuration.ClearAllThisTime);
         if (strongest) candidates = FirstPresentScale(candidates, [3, 2, 1, 0]);
-        if (selection.Weakest || configuration.EnemyPriority == EnemyScalePriority.WeakestFirst)
+        if (selection.Weakest || applyConfiguration && configuration.EnemyPriority == EnemyScalePriority.WeakestFirst)
             candidates = FirstPresentScale(candidates, [1, 2, 3, 0]);
         return candidates;
     }

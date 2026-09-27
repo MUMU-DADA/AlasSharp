@@ -223,7 +223,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         if (state.Map.Cameras.IsEmpty) throw new InvalidDataException("Campaign map has no initial camera declaration");
         return await CreateMapCameraAsync(state, state.Map.Cameras[0],
             new MapDetectionRules().WithChapter(configuration.Vision),
-            new GridRecognitionRules { HasSiren = configuration.HasSiren }, new MapCameraRules(),
+            new GridRecognitionRules { HasSiren = configuration.HasSiren }, new MapCameraRules().WithChapter(configuration.SwipeMultipliers),
             TimeSpan.FromSeconds(30), token);
     }
     CampaignMapCombat ICampaignInMapHost.CreateCombat(IMapScanCamera camera,

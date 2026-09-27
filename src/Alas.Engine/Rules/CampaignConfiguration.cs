@@ -3,6 +3,9 @@ namespace Alas.Engine.Rules;
 public sealed record PeakParameters(double HeightMin, double HeightMax, double? WidthMin,
     double? WidthMax, double Prominence, double Distance, int? WindowLength = null);
 
+public sealed record MapSwipeMultipliers(Alas.Engine.Runtime.ScreenPoint Adb,
+    Alas.Engine.Runtime.ScreenPoint Minitouch, Alas.Engine.Runtime.ScreenPoint MaaTouch);
+
 /// <summary>Explicit chapter overrides, not a claim that all upstream CV defaults are ported.</summary>
 public sealed record MapVisionOverrides(PeakParameters InternalPeaks, PeakParameters EdgePeaks,
     (int Low, int High) Canny, (int Low, int High) EdgeColor,
@@ -78,6 +81,7 @@ public sealed record CampaignConfiguration
     public CampaignEmotionMode EmotionMode { get; init; } = CampaignEmotionMode.Calculate;
     public string ConfigTask { get; init; } = "Main";
     public MapVisionOverrides? Vision { get; init; }
+    public MapSwipeMultipliers? SwipeMultipliers { get; init; }
 }
 
 /// <summary>Port of campaign_main/campaign_1_1.py Config, also imported by 1-2/1-3/1-4.</summary>
