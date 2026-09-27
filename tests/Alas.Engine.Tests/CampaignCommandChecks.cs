@@ -19,6 +19,11 @@ internal static class CampaignCommandChecks
             Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead,
             FleetOrder: FleetOrder.Fleet1BossFleet2Mob);
         var requests = CampaignCommand.BuildRequests(options);
+        Check(requests.All(request => request.Input!["clearMode"]!.GetValue<bool>() &&
+            !request.Input["doubleBook"]!.GetValue<bool>()), "Command lost native preparation defaults");
+        Check(CampaignCommand.BuildRequests(options with { ClearMode = false, DoubleBook = true })
+            .All(request => !request.Input!["clearMode"]!.GetValue<bool>() && request.Input["doubleBook"]!.GetValue<bool>()),
+            "Command lost requested preparation settings");
         var calculated = CampaignCommand.BuildRequests(options with { EmotionMode = CampaignEmotionMode.CalculateIgnore, ConfigTask = "EventA" });
         Check(calculated.All(request => request.Input!["emotionMode"]!.GetValue<string>() == "calculate_ignore" &&
             request.Input["configTask"]!.GetValue<string>() == "EventA"), "Command lost persistent emotion options");

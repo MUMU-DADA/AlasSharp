@@ -14,7 +14,8 @@ public sealed class CampaignExecution
     public CampaignExecution(CampaignRule rule, CampaignConfiguration configuration, ICampaignOperations operations)
     {
         _rule = rule;
-        Context = new CampaignContext(new CampaignState(rule.Map), rule.Configure(configuration), operations);
+        var state = new CampaignState(rule.Map);
+        Context = new CampaignContext(state, Configure(rule, configuration, state), operations);
     }
 
     public CampaignExecution(CampaignRule rule, CampaignConfiguration configuration,
@@ -23,9 +24,17 @@ public sealed class CampaignExecution
         ArgumentNullException.ThrowIfNull(createOperations);
         _rule = rule;
         var state = new CampaignState(rule.Map);
-        var effective = rule.Configure(configuration);
+        var effective = Configure(rule, configuration, state);
         Context = new CampaignContext(state, effective, createOperations(state, effective));
     }
+
+    private static CampaignConfiguration Configure(CampaignRule rule, CampaignConfiguration input, CampaignState state)
+        => CampaignPreparationRules.Apply(rule.Configure(input) with
+        {
+            // These are sortie observations, never chapter defaults.
+            IsClearMode = input.IsClearMode,
+            IsDoubleBook = input.IsDoubleBook
+        }, state);
 
     public async ValueTask<bool> ExecuteBattleAsync()
     {

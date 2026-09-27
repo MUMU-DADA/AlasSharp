@@ -23,7 +23,7 @@ public sealed record EngineSessionOptions(string Adb, string Serial, GameServer 
 /// <summary>One device and one pure-vision process for the entire new execution graph.</summary>
 public sealed partial class EngineSession : IAsyncDisposable, IMapObservationService, ICampaignInMapHost,
     ICampaignExecutionService, ICampaignStageObservationService, ICampaignFleetPreparationService,
-    ICampaignEntryService, ICampaignAutoSearchService, ICampaignEmotionService
+    ICampaignEntryService, ICampaignMapPreparationService, ICampaignEmotionService
 {
     private readonly PythonTemplateVision _vision;
     private readonly JournalDevice _device;
@@ -35,6 +35,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     private readonly List<CombatHealthPreparation> _combatHealth = [];
     private readonly RetirementHandler _retirement;
     private readonly CampaignInterruptions _interruptions;
+    private CampaignMapPreparation? _mapPreparation;
     public UiDriver Driver { get; }
     public PageGraph Pages { get; } = UpstreamPages.Create();
     public TaskCapabilities Capabilities { get; }
@@ -162,7 +163,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances),
             new MapScanner(camera.State, camera, Driver.Clock),
-            waitEmotion: (fleet, token) => RequireEmotion(configuration).WaitAsync(fleet, token));
+            waitEmotion: (fleet, token) => RequireEmotion(configuration).WaitAsync(fleet, token, configuration.IsDoubleBook));
     public CampaignExecution CreateInMapCampaignExecution(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token = default)
         => new(rule, configuration, (state, effective) => new InMapCampaignOperations(this, state, effective, token));
@@ -228,7 +229,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         var emotion = configuration.EmotionMode.Calculates()
             ? RequireEmotion(configuration).ForBattle(
                 FleetRoles.Reversed(configuration) ? 3 - state.FleetIndex : state.FleetIndex,
-                () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No battle loading frame")) : null;
+                () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No battle loading frame"),
+                configuration.IsDoubleBook) : null;
         return CreateCombatFlow(entrances, preparation, emotion);
     }
     public CombatFlow CreateCombatFlow(StageEntranceKind entrances = StageEntranceKind.Normal,
@@ -265,18 +267,41 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             .ApplyAsync(plan, token);
     public ValueTask<CampaignEntryObservation> EnterFromFleetAsync(CancellationToken token)
         => new CampaignEntry(Driver,
-            () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No map entry screenshot"), _interruptions)
+            () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No map entry screenshot"), _interruptions,
+            new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions()))
             .EnterAsync(token);
-    public ValueTask<AutoSearchObservation> EnsureManualAsync(CancellationToken token)
-        => new CampaignAutoSearch(Driver, _vision,
-            () => Driver.Frame ?? throw new InvalidOperationException("No map preparation screenshot"))
-            .EnsureManualAsync(token);
+    public ValueTask<CampaignMapPreparationResult> PrepareMapAsync(CampaignConfiguration configuration,
+        TimeSpan timeout, CancellationToken token)
+    {
+        var observations = new MapUiObservations(
+            () => Driver.Frame ?? throw new InvalidOperationException("No map preparation screenshot"), _vision, _assets, Driver.Server);
+        _mapPreparation = new(Driver, _vision, _vision,
+            () => Driver.Frame ?? throw new InvalidOperationException("No map preparation screenshot"), observations.InfoBarCountAsync);
+        return _mapPreparation.PrepareMapAsync(configuration, timeout, token);
+    }
+    public async ValueTask<DoubleBookObservation> PrepareDoubleBookAsync(CampaignConfiguration configuration,
+        TimeSpan timeout, CancellationToken token)
+    {
+        if (timeout <= TimeSpan.Zero || timeout.TotalMilliseconds > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(timeout));
+        using var deadline = new CancellationTokenSource(timeout);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
+        try
+        {
+            var observed = await (_mapPreparation ?? throw new InvalidOperationException("Map preparation state is missing"))
+                .PrepareDoubleBookAsync(configuration, timeout, linked.Token);
+            if (configuration.IsClearMode) await EnsureNoMapInfoBarAsync(linked.Token);
+            return observed;
+        }
+        catch (OperationCanceledException error) when (!token.IsCancellationRequested && deadline.IsCancellationRequested)
+        { throw new TimeoutException("Double-book preparation or information bar did not finish", error); }
+    }
     public TaskContext BeginTask(TimeSpan timeout)
     {
         _device.Actions.Clear();
         _combatHealth.Clear();
         _emotion = null;
         _emotionConfiguration = null;
+        _mapPreparation = null;
         _retirement.ResetEvidence();
         _interruptions.Configure(new() { Mode = RetirementMode.Disabled }, CampaignEmotionMode.Calculate);
         Driver.ResetTask();
@@ -307,6 +332,12 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             emotionFile = "emotion.json";
             await File.WriteAllTextAsync(Path.Combine(directory, emotionFile), JsonSerializer.Serialize(_emotion.Evidence, json));
         }
+        string? preparationFile = null;
+        if (_mapPreparation is not null)
+        {
+            preparationFile = "map-preparation.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, preparationFile), JsonSerializer.Serialize(_mapPreparation.Evidence, json));
+        }
         string? image = null, hash = null;
         long? sequence = null;
         if (Driver.Frame is { } frame)
@@ -316,11 +347,11 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             hash = Convert.ToHexStringLower(SHA256.HashData(frame.Png.Span));
             sequence = frame.Sequence;
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile);
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
-        string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null);
+        string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null, string? MapPreparationFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

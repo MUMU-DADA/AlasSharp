@@ -263,6 +263,13 @@ try
         return 0;
     }
 
+    if (args is ["--preparation", var preparationPython, var preparationUpstream, var preparationArtifacts])
+    {
+        string folder = Path.GetFullPath(preparationArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignPreparationChecks.RunAsync(Path.GetFullPath(preparationPython), Path.GetFullPath(preparationUpstream), folder);
+        return 0;
+    }
     if (args is ["--emotion", var emotionPython, var emotionUpstream, var emotionArtifacts])
     {
         string folder = Path.GetFullPath(emotionArtifacts);

@@ -13,8 +13,11 @@ public sealed class UiSwitch
     private readonly UiSwitchState[] _states;
     private readonly ButtonOffset _offset;
     private readonly bool _selector;
+    private readonly Func<CancellationToken, ValueTask<string?>>? _read;
+    private readonly Func<long>? _frameSequence;
 
-    public UiSwitch(IUiDriver ui, IEnumerable<UiSwitchState> states, ButtonOffset offset, bool selector = false)
+    public UiSwitch(IUiDriver ui, IEnumerable<UiSwitchState> states, ButtonOffset offset, bool selector = false,
+        Func<CancellationToken, ValueTask<string?>>? read = null, Func<long>? frameSequence = null)
     {
         _ui = ui;
         _states = states.ToArray();
@@ -23,10 +26,18 @@ public sealed class UiSwitch
             throw new ArgumentException("Switch states must have unique, known names", nameof(states));
         _offset = offset;
         _selector = selector;
+        _read = read;
+        _frameSequence = frameSequence;
     }
 
     public async ValueTask<string?> ReadAsync(CancellationToken token = default)
     {
+        if (_read is not null)
+        {
+            var value = await _read(token);
+            if (value is not null) _ = State(value);
+            return value;
+        }
         foreach (var state in _states)
             if (await _ui.AppearsAsync(state.Check, _offset, token: token)) return state.Id;
         return null;
@@ -51,7 +62,13 @@ public sealed class UiSwitch
             {
                 linked.Token.ThrowIfCancellationRequested();
                 if (limit.Reached()) throw new TimeoutException("Switch did not reach " + expected);
-                if (!first) await _ui.ScreenshotAsync(linked.Token);
+                if (!first)
+                {
+                    long? previous = _ui.HasFrame ? _frameSequence?.Invoke() : null;
+                    await _ui.ScreenshotAsync(linked.Token);
+                    if (previous is { } sequence && _frameSequence!() <= sequence)
+                        throw new InvalidDataException("Switch reused a stale screenshot");
+                }
                 first = false;
                 string? current = await ReadAsync(linked.Token);
                 if (current == expected) return changed;

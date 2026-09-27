@@ -11,7 +11,8 @@ public interface ICampaignEntryService
 }
 
 /// <summary>Advances an observed fleet preparation page into a fresh in-map observation.</summary>
-public sealed class CampaignEntry(IUiDriver ui, Func<long> frameSequence, ICampaignInterruptions? interruptions = null)
+public sealed class CampaignEntry(IUiDriver ui, Func<long> frameSequence, ICampaignInterruptions? interruptions = null,
+    IPopupHandler? popups = null)
 {
     public static readonly SourceFile Source = MapUiRecovery.PreparationSource;
     private static ButtonOffset FleetOffset => ButtonOffset.Expand(20, 50);
@@ -42,6 +43,8 @@ public sealed class CampaignEntry(IUiDriver ui, Func<long> frameSequence, ICampa
                     if (await interruptions.RetirementAsync(token)) continue;
                     if (await interruptions.LowEmotionAsync(token)) continue;
                 }
+                if (popups is not null && await ui.AppearsAsync(UiAssets.Handler.BOOK_POPUP_CHECK, MapOffset, token: token) &&
+                    await popups.ConfirmAsync(token)) continue;
                 if (await ui.AppearsAsync(UiAssets.Map.MAP_PREPARATION, MapOffset, token: token) ||
                     await ui.AppearsAsync(UiAssets.Map.MAP_PREPARATION_HARD, MapOffset, token: token))
                     throw new InvalidDataException("Fleet preparation returned to the map preparation page");

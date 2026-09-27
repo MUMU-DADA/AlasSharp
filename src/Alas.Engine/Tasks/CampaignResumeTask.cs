@@ -19,12 +19,12 @@ public sealed class CampaignResumeTask : ITaskRunner
         _ = FleetHealthInput.Read(input!);
         _ = FleetLevelInput.Read(input!);
         _ = RetirementInput.Read(input!);
-        _ = EmotionInput.Mode(input!, CampaignEmotionMode.Ignore);
+        if (EmotionInput.Mode(input!, CampaignEmotionMode.Ignore).Calculates())
+            throw new NotSupportedException("Calculated emotion requires campaign_run to observe double-book state before entry");
         _ = EmotionInput.ConfigTask(input!);
     }
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
-        => [.. FleetLevelInput.Read(request.Input!).Enabled && !capabilities.HasOcrModels ? new[] { "ocr_models" } : [],
-            .. EmotionInput.Mode(request.Input!, CampaignEmotionMode.Ignore).Calculates() && !capabilities.HasEmotionStore ? new[] { "emotion_config" } : []];
+        => FleetLevelInput.Read(request.Input!).Enabled && !capabilities.HasOcrModels ? ["ocr_models"] : [];
     public async ValueTask<TaskResult> RunAsync(TaskRequest request, TaskContext context, CancellationToken token)
     {
         Validate(request.Input);
@@ -35,9 +35,6 @@ public sealed class CampaignResumeTask : ITaskRunner
             EmotionMode = EmotionInput.Mode(request.Input, CampaignEmotionMode.Ignore), ConfigTask = EmotionInput.ConfigTask(request.Input),
             Health = FleetHealthInput.Read(request.Input), Levels = FleetLevelInput.Read(request.Input), Retirement = RetirementInput.Read(request.Input)
         });
-        if (configuration.EmotionMode.Calculates())
-            await (context.Emotion ?? throw new NotSupportedException("Emotion persistence is unavailable"))
-                .PrepareAsync(configuration, rule.Map.ExpectedBattles, true, token);
         var result = await service.ResumeInMapAsync(rule, configuration, token);
         return Describe(request.Id, Kind, rule, result, false);
     }

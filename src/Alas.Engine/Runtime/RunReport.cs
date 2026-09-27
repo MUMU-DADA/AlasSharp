@@ -122,6 +122,20 @@ public sealed class RunReport
         }
         if (boundary.ActionAttempts != actionAttempts)
             throw new InvalidDataException("任务边界动作次数与动作工件不同");
+        if (boundary.MapPreparationFile is { } preparationFile)
+        {
+            if (preparationFile != "map-preparation.json") throw new InvalidDataException("地图准备工件必须位于当前任务目录");
+            string preparationPath = Path.Combine(taskRoot, preparationFile);
+            if ((File.GetAttributes(preparationPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("地图准备工件必须是普通文件");
+            var preparation = JsonSerializer.Deserialize<CampaignPreparationEvidence>(ArtifactReader.ReadAllText(preparationPath), TaskQueue.Json)
+                ?? throw new InvalidDataException("缺少地图准备记录");
+            if (preparation.Info is { } info && (info.FrameSequence <= 0 || !double.IsFinite(info.ClearPercentage) ||
+                    info.ClearPercentage is < 0 or >= 1.4) ||
+                preparation.DoubleBook is { } book && (book.FrameSequence <= 0 || book.Clicks is < 0 or > 4 ||
+                    !book.Available && (book.Enabled != false || book.Clicks != 0)))
+                throw new InvalidDataException("地图准备记录无效");
+        }
         if (boundary.EmotionFile is { } emotionFile)
         {
             if (emotionFile != "emotion.json") throw new InvalidDataException("心情工件必须位于当前任务目录");

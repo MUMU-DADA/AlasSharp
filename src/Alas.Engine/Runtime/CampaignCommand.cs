@@ -31,7 +31,9 @@ public sealed record CampaignCommandOptions(
     CampaignEmotionMode EmotionMode = CampaignEmotionMode.Ignore,
     string ConfigTask = "Main",
     string? ConfigRoot = null,
-    string? ConfigInstance = null);
+    string? ConfigInstance = null,
+    bool ClearMode = true,
+    bool DoubleBook = false);
 
 /// <summary>Translates CLI chapter arguments into typed C# task requests.</summary>
 public static class CampaignCommand
@@ -58,6 +60,8 @@ public static class CampaignCommand
                 ["emotionMode"] = options.EmotionMode.Name(),
                 ["configTask"] = options.ConfigTask,
                 ["fleetLock"] = options.FleetLock,
+                ["clearMode"] = options.ClearMode,
+                ["doubleBook"] = options.DoubleBook,
                 ["fleet1Formation"] = CampaignStrategy.FormationName(options.Fleet1Formation),
                 ["fleet2Formation"] = CampaignStrategy.FormationName(options.Fleet2Formation),
                 ["fleetOrder"] = FleetRoles.Name(options.FleetOrder)

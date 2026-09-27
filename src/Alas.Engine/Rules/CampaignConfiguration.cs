@@ -28,6 +28,14 @@ public sealed record CampaignConfiguration
     public bool HasBouncingEnemy { get; init; }
     public bool HasSiren { get; init; }
     public bool IsClearMode { get; init; }
+    public bool UseClearMode { get; init; } = true;
+    public bool UseDoubleBook { get; init; }
+    public bool IsDoubleBook { get; init; }
+    public bool HasClearPercentage { get; init; } = true;
+    public bool ClearPercentageShort { get; init; }
+    public bool IsOneTimeStage { get; init; }
+    public bool HasFleetStep { get; init; }
+    public bool HasDecoyEnemy { get; init; }
     public bool HasAmbush { get; init; } = true;
     public bool HandleError { get; init; }
     public EnemyScalePriority EnemyPriority { get; init; }

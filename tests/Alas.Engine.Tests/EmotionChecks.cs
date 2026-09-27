@@ -105,6 +105,12 @@ internal static partial class EmotionChecks
         var battle = emotion.ForBattle(2, () => 4);
         await battle.ReduceAsync(default);
         await Rejects<InvalidOperationException>(() => battle.ReduceAsync(default).AsTask());
+        int beforeDouble = store.State.Fleets[1].Value;
+        var doubleBattle = emotion.ForBattle(2, () => 5, mapDoubleBook: true);
+        await doubleBattle.WaitAsync(default);
+        await doubleBattle.ReduceAsync(default);
+        Check(store.State.Fleets[1].Value == beforeDouble - 4, "Battle wrapper lost the confirmed double-book multiplier");
+        await Rejects<InvalidOperationException>(() => doubleBattle.ReduceAsync(default).AsTask());
         using var cancel = new CancellationTokenSource();
         emotion = new(store, clock, (_, token) => { cancel.Cancel(); token.ThrowIfCancellationRequested(); return ValueTask.CompletedTask; });
         await Rejects<OperationCanceledException>(() => emotion.WaitAsync(1, cancel.Token).AsTask());

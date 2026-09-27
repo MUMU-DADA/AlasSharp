@@ -4,13 +4,17 @@
 
 ## 请求与结果
 
-心情控制由 Engine 的 C# 规则、会话和配置事务执行。campaign_run 缺省 calculate；campaign_resume 与 campaign 命令保留 ignore 缺省值。支持 calculate、calculate_ignore、ignore、nothing；前两者估算并写回两队心情，包含 ignore 的模式确认低心情提示。值是原生算法估算，不是 OCR 实测。
+心情控制由 Engine 的 C# 规则、会话和配置事务执行。campaign_run 缺省 calculate；campaign_resume 与 campaign 命令保留 ignore 缺省值。campaign_run 支持 calculate、calculate_ignore、ignore、nothing；前两者估算并写回两队心情，包含 ignore 的模式确认低心情提示。campaign_resume 没有进图前的双倍书观测，仅支持 ignore / nothing；计算模式在设备动作前拒绝，不能把未知消耗倍率当作单倍。值是原生算法估算，不是 OCR 实测。
 
 计算模式要求会话绑定配置数据根目录与实例：CLI run/campaign 使用 --config-root 和 --instance；Server/桌面直接传入选定实例。campaign 使用 --emotion-mode 与 --config-task，队列输入使用 emotionMode 与 configTask（缺省 Main）。恢复策略、誓约、控制阈值、当前值和记录时间读取实例配置，不在任务 JSON 复制初值。每次读写核对实例串号、游戏包与素材服务器；不同实例的队列请求、配置冲突和非法字段均拒绝。配置目录只提供数据，不加载 Python 业务。
 
 进图前按两队预期战斗次数计算恢复时间，不足则保存两队记录及该配置任务的 Scheduler.NextRun，返回 Skipped / emotion_recovery_required；没有设备动作，也不计完成。required 任务仍按队列合同使本次批次失败，默认停止后续任务。当前不会自动重调度；再次运行或断点续跑会重做该任务。已入图的 resume 不重复执行入图延后判断。战前按六十秒轮询恢复，确认战斗已加载后扣减并原子写回；后续战果异常、取消或失败不撤销已经发生的扣减。
 
-emotion.json 保存入图、等待、扣减的时间、两队估算值、舰队、战斗帧及写回状态，写入失败也保留尝试；缺失或无效工件使报告不完整。非法“船坞恢复 + 保持快乐经验”组合提前拒绝，不沿用原生先写记录再报错的副作用；两队记录与 NextRun 在同一事务提交，避免半更新。长期客户端心情 bug 的随机阈值/重启任务、双倍书选择和观测、完整周期调度仍未迁移；算法对拍含双倍消耗不表示产品已支持双倍书。
+emotion.json 保存入图、等待、扣减的时间、两队估算值、舰队、战斗帧及写回状态，写入失败也保留尝试；缺失或无效工件使报告不完整。非法“船坞恢复 + 保持快乐经验”组合提前拒绝，不沿用原生先写记录再报错的副作用；两队记录与 NextRun 在同一事务提交，避免半更新。长期客户端心情 bug 的随机阈值/重启任务和完整周期调度仍未迁移；campaign_run 的双倍书观测现已连接实际战前等待及加载后的扣减。
+
+campaign_run 新增布尔输入 clearMode（默认 true）和 doubleBook（默认 false）；campaign 命令对应 --clear-mode / --double-book，值为 true 或 false。选关后先按原生进度条动画与信息条遮挡规则等待，读取百分比、三星和安全状态，再设置周回并确认自动寻敌关闭；周回的地图/出生波次及机制覆盖在章节 Config 之后应用。星级和安全状态目前用于观测，不等于外层成就停止、剧情覆盖或完整调度已经迁移。
+
+舰队页使用原生素材偏移、颜色判据和三秒点击间隔设置双倍书；未出现选项时按原生确认等待判为不可用，点击后无法确认则失败，最多四次点击。map-preparation.json 保存地图观察、已确认开关及双倍书部分尝试；Enabled=null 表示动作后尚未确认，不能按关闭处理。只有已确认倍率传入战前等待与每战扣减（2 或 4）；入图预估按原生同时考虑请求双倍书。此选项仅支持完整 campaign_run 入口，图内 resume 无法重建先前周回/双倍书状态，也不生成通关结论。所有状态仍需实际成功结算合同，星级、进度条和开关成功不能证明本次通关。
 
 CLI `Alas.Engine.Cli run --queue <文件>` 读取任务数组；控制 API 的 queue.tasks 使用同一数组：
 

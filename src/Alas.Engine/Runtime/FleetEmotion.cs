@@ -94,16 +94,17 @@ public sealed class CampaignEmotion(IEmotionStore store, TimeProvider clock,
         await RecordAsync("reduce", snapshot, values.ToImmutable(), now, fleet, null, null, battleSequence, CancellationToken.None);
         TotalReduced += amount;
     }
-    public ICombatEmotion ForBattle(int fleet, Func<long> sequence) => new Battle(this, fleet, sequence);
-    private sealed class Battle(CampaignEmotion owner, int fleet, Func<long> sequence) : ICombatEmotion
+    public ICombatEmotion ForBattle(int fleet, Func<long> sequence, bool mapDoubleBook = false)
+        => new Battle(this, fleet, sequence, mapDoubleBook);
+    private sealed class Battle(CampaignEmotion owner, int fleet, Func<long> sequence, bool mapDoubleBook) : ICombatEmotion
     {
         private bool _reduced;
-        public ValueTask WaitAsync(CancellationToken token) => owner.WaitAsync(fleet, token);
+        public ValueTask WaitAsync(CancellationToken token) => owner.WaitAsync(fleet, token, mapDoubleBook);
         public async ValueTask ReduceAsync(CancellationToken token)
         {
             if (_reduced) throw new InvalidOperationException("Emotion cost already recorded for this battle");
             _reduced = true;
-            await owner.ReduceAsync(fleet, sequence(), token);
+            await owner.ReduceAsync(fleet, sequence(), token, mapDoubleBook);
         }
     }
 }

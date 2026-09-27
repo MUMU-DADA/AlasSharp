@@ -14,7 +14,8 @@ public sealed class CampaignRunTask : ITaskRunner
     public void Validate(JsonObject? input)
     {
         TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
-            "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement", "configTask");
+            "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement", "configTask",
+            "clearMode", "doubleBook");
         var id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign run requires a compiled campaign rule");
         if (RuleCatalog.Create(id).StageName is null)
@@ -31,6 +32,8 @@ public sealed class CampaignRunTask : ITaskRunner
         _ = FleetHealthInput.Read(input);
         _ = FleetLevelInput.Read(input);
         _ = RetirementInput.Read(input);
+        _ = Option(input, "clearMode", true);
+        _ = Option(input, "doubleBook", false);
     }
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
@@ -43,7 +46,7 @@ public sealed class CampaignRunTask : ITaskRunner
         var stages = context.Stages ?? throw new NotSupportedException("C# stage observation service is unavailable");
         var fleets = context.Fleets ?? throw new NotSupportedException("C# fleet preparation service is unavailable");
         var entry = context.Entry ?? throw new NotSupportedException("C# campaign entry service is unavailable");
-        var autoSearch = context.AutoSearch ?? throw new NotSupportedException("C# auto-search preparation is unavailable");
+        var mapPreparation = context.MapPreparation ?? throw new NotSupportedException("C# map preparation is unavailable");
         var campaign = context.Campaign ?? throw new NotSupportedException("C# campaign execution service is unavailable");
         var rule = RuleCatalog.Create(request.Input!["campaign"]!.GetValue<string>());
         var requestedPlan = Plan(request.Input);
@@ -59,6 +62,8 @@ public sealed class CampaignRunTask : ITaskRunner
             Health = FleetHealthInput.Read(request.Input),
             Levels = FleetLevelInput.Read(request.Input),
             Retirement = RetirementInput.Read(request.Input),
+            UseClearMode = Option(request.Input, "clearMode", true),
+            UseDoubleBook = Option(request.Input, "doubleBook", false),
             UseFleetLock = request.Input["fleetLock"]?.GetValue<bool>() ?? true
         };
         // Config inheritance is authoritative. Apply it before touching the
@@ -79,7 +84,9 @@ public sealed class CampaignRunTask : ITaskRunner
             ["requestedFleetPlan"] = JsonSerializer.SerializeToNode(requestedPlan, TaskQueue.Json),
             ["fleetPlan"] = JsonSerializer.SerializeToNode(plan, TaskQueue.Json),
             ["emotionMode"] = configuration.EmotionMode.Name(),
-            ["fleetLockRequested"] = configuration.UseFleetLock
+            ["fleetLockRequested"] = configuration.UseFleetLock,
+            ["clearModeRequested"] = configuration.UseClearMode,
+            ["doubleBookRequested"] = configuration.UseDoubleBook
         };
         evidence["fleet1Formation"] = CampaignStrategy.FormationName(configuration.Fleet1Formation);
         evidence["fleet2Formation"] = CampaignStrategy.FormationName(configuration.Fleet2Formation);
@@ -101,11 +108,20 @@ public sealed class CampaignRunTask : ITaskRunner
             phase = "stage_selection";
             var selection = await new CampaignStageSelector(context.Driver, stages).SelectAsync(rule.StageName!, token);
             evidence["selection"] = JsonSerializer.SerializeToNode(selection, TaskQueue.Json);
-            phase = "auto_search";
-            var manual = await autoSearch.EnsureManualAsync(token);
-            evidence["autoSearch"] = JsonSerializer.SerializeToNode(manual, TaskQueue.Json);
+            phase = "map_state";
+            var prepared = await mapPreparation.PrepareMapAsync(configuration, context.Timeout, token);
+            evidence["mapPreparation"] = JsonSerializer.SerializeToNode(prepared, TaskQueue.Json);
+            evidence["autoSearch"] = JsonSerializer.SerializeToNode(prepared.AutoSearch, TaskQueue.Json);
+            configuration = configuration with { IsClearMode = prepared.ClearMode };
             phase = "map_preparation";
             await new CampaignPreparation(context.Driver, context.Interruptions).OpenFleetAsync(selection.Preparation, token);
+            phase = "double_book";
+            var book = await mapPreparation.PrepareDoubleBookAsync(configuration, context.Timeout, token);
+            evidence["doubleBook"] = JsonSerializer.SerializeToNode(book, TaskQueue.Json);
+            configuration = configuration with
+            {
+                IsDoubleBook = book.Enabled ?? throw new InvalidDataException("Double-book state was not confirmed")
+            };
             phase = "fleet_setup";
             var setup = await fleets.ConfigureFleetAsync(plan, context.Popups, token);
             evidence["fleetSetup"] = JsonSerializer.SerializeToNode(setup, TaskQueue.Json);
@@ -131,6 +147,9 @@ public sealed class CampaignRunTask : ITaskRunner
     private static FleetFormation Formation(JsonObject input, string name)
         => CampaignStrategy.ParseFormation(input.TryGetPropertyValue(name, out var value)
             ? value?.GetValue<string>() ?? throw new ArgumentException(name + " cannot be null") : "double_line");
+
+    private static bool Option(JsonObject input, string name, bool fallback) => input.TryGetPropertyValue(name, out var value)
+        ? value?.GetValue<bool>() ?? throw new ArgumentException(name + " cannot be null") : fallback;
 
     private static FleetOrder Order(JsonObject input) => FleetRoles.Parse(input.TryGetPropertyValue("fleetOrder", out var value)
         ? value?.GetValue<string>() ?? throw new ArgumentException("fleetOrder cannot be null") : "fleet1_mob_fleet2_boss");

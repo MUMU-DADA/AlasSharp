@@ -23,7 +23,8 @@ public sealed partial class EngineSession
         }
         var emotion = RequireEmotion(configuration);
         // Resume starts inside a map; it must not apply the pre-entry task delay a second time.
-        if (!alreadyInMap) return await emotion.CheckEntryAsync(battles, configuration.FleetOrder, token);
+        if (!alreadyInMap) return await emotion.CheckEntryAsync(battles, configuration.FleetOrder, token,
+            configuration.IsDoubleBook, configuration.UseDoubleBook);
         await emotion.ValidateAsync(token);
         return null;
     }

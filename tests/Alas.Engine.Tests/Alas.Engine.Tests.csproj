@@ -17,6 +17,7 @@
     <None Include="native_combat_health_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_retirement_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_emotion_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_preparation_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_level_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_recovery_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_ocr_reference.py" CopyToOutputDirectory="PreserveNewest" />

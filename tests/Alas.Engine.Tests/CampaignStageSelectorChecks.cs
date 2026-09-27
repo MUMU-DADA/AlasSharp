@@ -220,7 +220,7 @@ internal static class CampaignStageSelectorChecks
         result = await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = runInput },
             new TaskContext(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
                 Campaign: new CampaignService(), Stages: new Stages(driver), Fleets: runFleet,
-                Entry: new EntryService(driver), AutoSearch: new AutoSearchService(), Interruptions: interruptions), default);
+                Entry: new EntryService(driver), MapPreparation: new PreparationService(), Interruptions: interruptions), default);
         Check(interruptions.Options is { Mode: RetirementMode.OneClick, KeepLimitBreak: true },
             "Campaign run did not configure native retirement defaults before entry");
         Check(result.Outcome == TaskOutcome.Failed && runFleet.Plan == new FleetPlan(1, 0, 0) &&
@@ -245,7 +245,7 @@ internal static class CampaignStageSelectorChecks
             new TaskContext(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
                 Campaign: new CampaignService { StageReturn = terminal, Retirement = RetirementMode.Disabled }, Stages: new Stages(driver),
                 Fleets: new FleetService(), Entry: new EntryService(driver),
-                AutoSearch: new AutoSearchService(), Interruptions: interruptions), default);
+                MapPreparation: new PreparationService(), Interruptions: interruptions), default);
         Check(interruptions.Options?.Mode == RetirementMode.Disabled, "Campaign run enabled disabled retirement during entry");
         Check(result.Outcome == TaskOutcome.Succeeded &&
             result.Evidence?["cleared"]?.GetValue<bool>() == true &&
@@ -260,7 +260,7 @@ internal static class CampaignStageSelectorChecks
                 new TaskContext(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
                     Campaign: new CampaignService { Fail = true }, Stages: new Stages(driver),
                     Fleets: new FleetService(), Entry: new EntryService(driver),
-                    AutoSearch: new AutoSearchService()), default);
+                    MapPreparation: new PreparationService()), default);
             throw new InvalidOperationException("Map execution failure was swallowed");
         }
         catch (TaskEvidenceException error)
@@ -270,6 +270,43 @@ internal static class CampaignStageSelectorChecks
                 error.Evidence["entry"] is not null && error.Evidence["cleared"]?.GetValue<bool>() == false,
                 "Completed campaign phases were lost on execution failure");
         }
+        foreach (bool clear in new[] { false, true })
+        foreach (bool book in new[] { false, true })
+        {
+            driver = new Driver { Chapter = 1 };
+            var input = runInput.DeepClone().AsObject();
+            input["clearMode"] = clear; input["doubleBook"] = book;
+            var preparation = new PreparationService { ClearMode = clear, DoubleBook = clear && book };
+            result = await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = input },
+                new(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
+                    Campaign: new CampaignService { ClearMode = clear, DoubleBook = clear && book },
+                    Stages: new Stages(driver), Fleets: new FleetService(), Entry: new EntryService(driver),
+                    MapPreparation: preparation), default);
+            Check(preparation.BookConfiguration is { } observed && observed.IsClearMode == clear &&
+                observed.UseDoubleBook == book && result.Evidence!["doubleBook"]!["enabled"]!.GetValue<bool>() == (clear && book),
+                "Task lost requested versus observed preparation/book state");
+        }
+        driver = new Driver { Chapter = 1 };
+        try
+        {
+            await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = runInput },
+                new(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
+                    Campaign: new CampaignService(), Stages: new Stages(driver), Fleets: new FleetService(),
+                    Entry: new EntryService(driver), MapPreparation: new PreparationService { FailBook = true }), default);
+            throw new InvalidOperationException("Unknown book state entered the map");
+        }
+        catch (TaskEvidenceException error)
+        {
+            Check(error.Phase == "double_book" && error.Evidence["mapPreparation"] is not null &&
+                !driver.ClickedAssets.Contains("FLEET_PREPARATION"), "Book failure lost preparation evidence or started sortie");
+        }
+        driver = new Driver { Chapter = 1, RequireBookPopup = true };
+        await driver.ClickAreaAsync(new(200, 250, 230, 280), default);
+        await new CampaignPreparation(driver).OpenFleetAsync("normal");
+        var popup = new BookPopup(driver);
+        var bookEntry = await new CampaignEntry(driver, () => driver.FrameSequence, popups: popup).EnterAsync();
+        Check(popup.Confirmed && bookEntry.FleetClicks == 1 && driver.EnterMap,
+            "Book confirmation did not return to the existing entry observation loop");
         Console.WriteLine("Campaign entry: mode, chapter, fleet preparation and map-entry transitions passed offline; no real sortie or settlement verified.");
     }
 
@@ -323,10 +360,33 @@ internal static class CampaignStageSelectorChecks
         public ValueTask<CampaignEntryObservation> EnterFromFleetAsync(CancellationToken token)
             => new CampaignEntry(driver, () => driver.FrameSequence).EnterAsync(token);
     }
-    private sealed class AutoSearchService : ICampaignAutoSearchService
+    private sealed class BookPopup(Driver driver) : IPopupHandler
     {
-        public ValueTask<AutoSearchObservation> EnsureManualAsync(CancellationToken token)
-        { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(new AutoSearchObservation(false, false, false)); }
+        public bool Confirmed { get; private set; }
+        public ValueTask<bool> ConfirmAsync(CancellationToken token)
+        {
+            Check(driver.BookPopupVisible, "Confirmation was not gated by the native book popup");
+            Confirmed = true; driver.BookPopupVisible = false; driver.EnterMap = true;
+            return ValueTask.FromResult(true);
+        }
+    }
+    private sealed class PreparationService : ICampaignMapPreparationService
+    {
+        public bool ClearMode { get; init; }
+        public bool DoubleBook { get; init; }
+        public bool FailBook { get; init; }
+        public CampaignConfiguration? BookConfiguration { get; private set; }
+        public ValueTask<CampaignMapPreparationResult> PrepareMapAsync(CampaignConfiguration configuration,
+            TimeSpan timeout, CancellationToken token)
+        { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(new CampaignMapPreparationResult(
+            new(1, .99, true, false, false, false, true), ClearMode, false, new(false, false, false))); }
+        public ValueTask<DoubleBookObservation> PrepareDoubleBookAsync(CampaignConfiguration configuration,
+            TimeSpan timeout, CancellationToken token)
+        {
+            BookConfiguration = configuration;
+            if (FailBook) throw new TimeoutException("Synthetic book failure");
+            return ValueTask.FromResult(new DoubleBookObservation(ClearMode, DoubleBook, 0, 2));
+        }
     }
     private sealed class SwitchVision(Driver driver) : IImagePatchVision
     {
@@ -343,12 +403,16 @@ internal static class CampaignStageSelectorChecks
     private sealed class CampaignService : ICampaignExecutionService
     {
         public RetirementMode Retirement { get; init; } = RetirementMode.OneClick;
+        public bool ClearMode { get; init; }
+        public bool DoubleBook { get; init; }
         public bool Fail { get; init; }
         public MapArrivalResult? StageReturn { get; init; }
         public ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
             CampaignConfiguration configuration, CancellationToken token)
         {
             if (Fail) throw new IOException("Injected map execution failure");
+            Check(configuration.IsClearMode == ClearMode && configuration.IsDoubleBook == DoubleBook,
+                "Campaign execution lost confirmed map/book state");
             Check(configuration.Retirement.Mode == Retirement, "Campaign execution lost the requested retirement mode");
             Check(configuration is { EmotionMode: CampaignEmotionMode.Ignore, UseFleetLock: true,
                 Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead,
@@ -387,6 +451,8 @@ internal static class CampaignStageSelectorChecks
         public bool DockFullVisible { get; private set; }
         public bool AutoSearchAvailable { get; set; }
         public bool AutoSearchEnabled { get; set; }
+        public bool RequireBookPopup { get; init; }
+        public bool BookPopupVisible { get; set; }
         public bool FleetLockAvailable { get; set; }
         public bool FleetLockEnabled { get; set; }
         public int FleetLockTransitionFrames { get; private set; }
@@ -412,6 +478,7 @@ internal static class CampaignStageSelectorChecks
                 asset == UiAssets.Map.FLEET_PREPARATION ? FleetPreparationOpen :
                 asset == UiAssets.Retire.RETIRE_APPEAR_1 || asset == UiAssets.Retire.RETIRE_APPEAR_3 ? DockFullVisible :
                 asset == UiAssets.Handler.AUTO_SEARCH_TITLE ? AutoSearchAvailable :
+                asset == UiAssets.Handler.BOOK_POPUP_CHECK ? BookPopupVisible :
                 asset == UiAssets.Handler.FLEET_LOCKED ? FleetLockAvailable && FleetLockTransitionFrames == 0 && FleetLockEnabled :
                 asset == UiAssets.Handler.FLEET_UNLOCKED ? FleetLockAvailable && FleetLockTransitionFrames == 0 && !FleetLockEnabled :
                 asset == UiAssets.Handler.IN_MAP ? Selected && EnterMap : false;
@@ -428,6 +495,8 @@ internal static class CampaignStageSelectorChecks
             else if (asset == UiAssets.Map.MAP_PREPARATION && EnterMapOnPreparationClick) EnterMap = true;
             else if (asset == UiAssets.Map.MAP_PREPARATION && DockFullOnPreparationClick) DockFullVisible = true;
             else if (asset == UiAssets.Map.MAP_PREPARATION && OpenFleetOnClick) FleetPreparationOpen = true;
+            else if (asset == UiAssets.Map.FLEET_PREPARATION && RequireBookPopup)
+            { FleetPreparationOpen = false; BookPopupVisible = true; }
             else if (asset == UiAssets.Map.FLEET_PREPARATION && EnterMapOnFleetClick)
             { FleetPreparationOpen = false; EnterMap = true; }
             else if (asset == UiAssets.Map.FLEET_PREPARATION && ReturnToMapOnFleetClick)
