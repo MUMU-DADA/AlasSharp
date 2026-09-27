@@ -9,6 +9,32 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
     public static readonly SourceFile Source = new("module/map/map.py",
         "187a5ee7d8fbde3c944681216fd2ac75f68036716b17db5a8bb43fdd42de5365");
     public MapArrivalResult? StageReturn { get; private set; }
+    private readonly List<AmmoPickupEvidence> _ammoPickups = [];
+    public IReadOnlyList<AmmoPickupEvidence> AmmoPickups => _ammoPickups.AsReadOnly();
+
+    public async ValueTask<bool> PickUpAmmoAsync(CancellationToken token = default)
+    {
+        if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before picking up ammo");
+        token.ThrowIfCancellationRequested();
+        var target = state.Cells.FirstOrDefault(grid => grid.MayAmmo);
+        if (target is null || state.AmmoCount <= 0 || !target.IsAccessible) return false;
+        var route = state.Paths.FindRoute(target.Location, turningOptimize: configuration.HasAmbush);
+        if (!route.IsReachable || route.Waypoints.Count == 0)
+            throw new InvalidOperationException("Selected supply has no confirmed fleet route");
+        for (int index = 0; index < route.Waypoints.Count; index++)
+        {
+            var cell = route.Waypoints[index];
+            bool final = index == route.Waypoints.Count - 1;
+            var result = final ? await movement.CollectAmmoAsync(cell, token: token) :
+                await movement.MoveAsync(cell, token: token);
+            if (result.Outcome != MapMoveOutcome.Committed)
+                throw new CampaignScriptException($"Supply route to {cell} ended as {result.Outcome}");
+            if (final)
+                _ammoPickups.Add(result.AmmoPickup ?? throw new InvalidDataException("Supply move returned no accounting evidence"));
+        }
+        // Upstream returns None after pickup: this is not a battle action.
+        return false;
+    }
 
     public async ValueTask<bool> ClearMysteriesAsync(CancellationToken token = default)
     {

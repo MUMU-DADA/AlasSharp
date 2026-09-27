@@ -14,7 +14,7 @@ public interface ICampaignInMapHost
 }
 
 public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount, MapArrivalResult? StageReturn,
-    FleetSelection? InitialFleet = null);
+    FleetSelection? InitialFleet = null, IReadOnlyList<AmmoPickupEvidence>? AmmoPickups = null);
 public interface ICampaignExecutionService
 {
     ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
@@ -29,6 +29,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     private bool _entered;
     public MapArrivalResult? StageReturn => _combat?.StageReturn;
     public FleetSelection? InitialFleet { get; private set; }
+    public IReadOnlyList<AmmoPickupEvidence> AmmoPickups => _combat?.AmmoPickups ?? [];
 
     public ValueTask CheckEmotionAsync(int battles)
     {
@@ -69,14 +70,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask<bool> BreakSirenCaughtAsync() => state.Cells.Any(grid => grid.IsCaughtBySiren)
         ? throw Missing("fleet siren rescue") : ValueTask.FromResult(false);
     public ValueTask<bool> ClearMysteriesAsync() => Combat.ClearMysteriesAsync(token);
-    public ValueTask<bool> PickUpAmmoAsync()
-    {
-        // Map.pick_up_ammo selects the first declared supply tile even when its
-        // icon is obscured. Do not silently skip an unported interaction.
-        var supply = state.Cells.FirstOrDefault(grid => grid.MayAmmo);
-        return state.AmmoCount > 0 && supply?.IsAccessible == true
-            ? throw Missing("ammo pickup") : ValueTask.FromResult(false);
-    }
+    public ValueTask<bool> PickUpAmmoAsync() => Combat.PickUpAmmoAsync(token);
     public ValueTask<bool> ClearSirenAsync() => state.Cells.Any(grid => grid.IsSiren || grid.IsFortress)
         ? throw Missing("siren and fortress targeting") : ValueTask.FromResult(false);
     public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync() => throw Missing("movable enemy second-fleet targeting");

@@ -260,6 +260,7 @@ try
         Directory.CreateDirectory(folder);
         await MapArrivalChecks.RunAsync(Path.GetFullPath(ammoUpstream));
         await MapArrivalChecks.AmmoChecksAsync(Path.GetFullPath(ammoPython), Path.GetFullPath(ammoUpstream), folder);
+        await AmmoPickupChecks.RunAsync(Path.GetFullPath(ammoPython), Path.GetFullPath(ammoUpstream), folder);
         await CampaignMapCombatChecks.RunAsync(Path.GetFullPath(ammoPython), Path.GetFullPath(ammoUpstream));
         return 0;
     }

@@ -187,21 +187,16 @@ internal static class MapArrivalChecks
             var supply = state[new(4, 1)];
             Check(!supply.IsAmmo && supply.MayAmmo && supply.IsAccessible,
                 "Ammo fixture must have an accessible declared supply without a visible icon");
-            var operations = new InMapCampaignOperations(null!, state, new(), default);
-            bool required = false;
-            try { await operations.PickUpAmmoAsync(); }
-            catch (NotSupportedException) { required = true; }
-            Check(required == scenario["supply_required"]!.GetValue<bool>() && required,
-                "Supply stock was exhausted by combat, or a hidden icon suppressed the missing pickup operation");
+            Check(scenario["supply_required"]!.GetValue<bool>(), "Native supply fixture did not require pickup");
+            await AmmoPickupChecks.VerifyDeclaredSupplyAsync(state);
         }
         var ordering = new CampaignState(new MapDefinition("C1", "SP MA MA", [], [], []));
         ordering.InitializeMapData(new());
         ordering[new(2, 1)].Cost = MapPathfinder.Unreachable;
         ordering[new(3, 1)].Cost = 1;
-        Check(!await new InMapCampaignOperations(null!, ordering, new(), default).PickUpAmmoAsync(),
-            "Supply selection skipped the first declaration for a later accessible tile");
+        await AmmoPickupChecks.VerifyUnreachableFirstAsync(ordering);
         Check(ordering is { AmmoCount: 3, FleetAmmo: 5 }, "Fresh sortie inherited another sortie's ammo");
-        Console.WriteLine($"Ammo bookkeeping: {compared} actual native move snapshots and declared-supply gating passed; combat I/O is synthetic, pickup execution remains unported.");
+        Console.WriteLine($"Ammo bookkeeping: {compared} actual native move snapshots and declared-supply gating passed; combat I/O is synthetic.");
     }
 
     private static async Task MovementChecksAsync(Cell destination, MapArrivalOptions options)
@@ -318,6 +313,17 @@ internal static class MapArrivalChecks
             state.Fleet1Location == destination &&
             moved.Arrival.HandledEncounters.SequenceEqual([MapEncounterKind.ItemPopup]),
             "Confirmed item mystery did not commit one pickup and fleet movement");
+
+        clock = new TestClock(); state = State();
+        state[destination].IsMystery = true;
+        camera = new Camera(clock, [new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock,
+            new Probe(MapEncounterKind.AmmoNotification), new Handler(camera, clock));
+        moved = await new MapMovement(state, new(), camera, () => arrival).CollectMysteryAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.Committed && moved.Arrival.HandledEncounters.IsEmpty &&
+            moved.Arrival.AmmoNotificationFrames is [2] && camera.Relocalizations == 0 &&
+            state is { BattleCount: 0, MysteryCount: 1, AmmoCount: 3, FleetAmmo: 5 },
+            "Ammo mystery was lost, treated as an interruption or promoted to measured supply");
 
         clock = new TestClock(); state = State();
         state[destination].IsMystery = true;
@@ -464,6 +470,15 @@ internal static class MapArrivalChecks
             "Portal arrival did not verify the center marker and commit the linked exit");
 
         clock = new TestClock(); state = State(portal: true);
+        state[exit].MayAmmo = true;
+        camera = new Camera(clock, [new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        moved = await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.Committed && moved.Arrival.SupplyClickCompleted &&
+            camera.Taps == 2 && camera.LastTapped == exit && state is { AmmoCount: 3, FleetAmmo: 5 },
+            "Portal supply acknowledgement used the entrance or fabricated a supply quantity during ordinary movement");
+
+        clock = new TestClock(); state = State(portal: true);
         camera = new Camera(clock, [new(true, default)]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
         moved = await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination,
@@ -510,6 +525,7 @@ internal static class MapArrivalChecks
         private int _index = -1;
         public long FrameSequence { get; private set; } = 1;
         public int Taps { get; private set; }
+        public Cell? LastTapped { get; private set; }
         public int Prepared { get; private set; }
         public int MarkerReads { get; private set; }
         public int CenterReads { get; private set; }
@@ -548,6 +564,7 @@ internal static class MapArrivalChecks
             token.ThrowIfCancellationRequested();
             if (Invalidated || Suspended) throw new InvalidOperationException("Camera is not localized");
             Taps++;
+            LastTapped = destination;
             return ValueTask.CompletedTask;
         }
         public ValueTask RefreshImageAsync(CancellationToken token = default)

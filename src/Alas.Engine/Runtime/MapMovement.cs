@@ -3,12 +3,18 @@ using Alas.Engine.Rules;
 namespace Alas.Engine.Runtime;
 
 public enum MapMoveOutcome { Committed, Unconfirmed, Interrupted, UnsupportedEncounter, StageReturned }
-public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arrival);
-internal enum MapAction { Move, Fight, Mystery, ProbeBoss }
+public sealed record AmmoPickupEvidence(Cell Location, int ExpectedRecovered, int StockBefore, int StockAfter,
+    int FleetBefore, int FleetAfter, long ArrivalSequence, long SettledSequence);
+public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arrival)
+{
+    public AmmoPickupEvidence? AmmoPickup { get; init; }
+}
+internal enum MapAction { Move, Fight, Mystery, ProbeBoss, Ammo }
 
 /// <summary>Commits a fleet move only after fresh visual arrival and complete interaction accounting.</summary>
 public sealed class MapMovement(CampaignState state, CampaignConfiguration configuration,
-    IMapArrivalCamera camera, Func<MapArrivalCheck> createArrival)
+    IMapArrivalCamera camera, Func<MapArrivalCheck> createArrival,
+    Func<CancellationToken, ValueTask>? waitForInfoBar = null)
 {
     public ValueTask<MapMoveResult> MoveAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
@@ -26,6 +32,10 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         CancellationToken token = default)
         => MoveCoreAsync(destination, MapAction.ProbeBoss, options, token);
 
+    public ValueTask<MapMoveResult> CollectAmmoAsync(Cell destination, MapArrivalOptions? options = null,
+        CancellationToken token = default)
+        => MoveCoreAsync(destination, MapAction.Ammo, options, token);
+
     private async ValueTask<MapMoveResult> MoveCoreAsync(Cell destination, MapAction action,
         MapArrivalOptions? options, CancellationToken token)
     {
@@ -38,7 +48,10 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         Cell origin = (state.FleetIndex == 1 ? state.Fleet1Location : state.Fleet2Location)
             ?? throw new InvalidOperationException("Current fleet location is unknown");
         if (!state[origin].IsFleet) throw new InvalidOperationException("Current fleet marker is absent from map state");
-        if (destination == origin) throw new ArgumentException("Destination is the current fleet location", nameof(destination));
+        bool ammo = action == MapAction.Ammo;
+        if (ammo && (waitForInfoBar is null || state.AmmoCount <= 0))
+            throw new InvalidOperationException("Ammo pickup requires supply stock and an information-bar wait");
+        if (destination == origin && !ammo) throw new ArgumentException("Destination is the current fleet location", nameof(destination));
         var target = state[destination];
         if (target.IsLand) throw new ArgumentException("Destination is land", nameof(destination));
         bool fight = action == MapAction.Fight;
@@ -51,9 +64,12 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             throw new ArgumentException("Mystery destination must have an observed mystery", nameof(destination));
         if (probeBoss && (!target.MayBoss || target.IsPortal))
             throw new ArgumentException("Potential boss destination must be a declared boss spawn", nameof(destination));
+        if (ammo && (!target.MayAmmo || enemy || target.IsPortal))
+            throw new ArgumentException("Supply destination must be a declared ammo tile without an enemy", nameof(destination));
         if (target.IsMaze || target.IsMechanismTrigger || target.IsMechanismBlock ||
             (action is MapAction.Move or MapAction.Mystery && enemy) ||
-            (target.IsMystery && !mystery) || target.IsAmmo || target.IsCarrier || target.IsFleet)
+            (target.IsMystery && !mystery) || (target.IsAmmo && !ammo) || target.IsCarrier ||
+            (target.IsFleet && !(ammo && destination == origin)))
             throw new NotSupportedException("Destination requires a map interaction that is not committed by ordinary movement");
         Cell landing = target.IsPortal
             ? target.PortalLink ?? throw new InvalidDataException("Portal has no linked exit") : destination;
@@ -77,13 +93,14 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             result.Combats[0] is { Return: CombatReturn.InMap, Rank.IsWinningRank: true };
         bool interactionsConfirmed = action switch
         {
-            MapAction.Move => result.HandledEncounters.All(kind => kind == MapEncounterKind.AirRaid) &&
+            MapAction.Move or MapAction.Ammo => result.HandledEncounters.All(kind => kind == MapEncounterKind.AirRaid) &&
                 result.Combats.IsEmpty,
             MapAction.Fight => combatConfirmed &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
                 result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid),
             MapAction.Mystery => result.Combats.IsEmpty &&
-                result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) == 1 &&
+                (result.HandledEncounters.Contains(MapEncounterKind.ItemPopup) || !result.AmmoNotificationFrames.IsEmpty) &&
+                result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) <= 1 &&
                 result.HandledEncounters.All(kind => kind is MapEncounterKind.ItemPopup or MapEncounterKind.AirRaid),
             MapAction.ProbeBoss => (result.Combats.IsEmpty &&
                     result.HandledEncounters.All(kind => kind == MapEncounterKind.AirRaid) ||
@@ -91,7 +108,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
                     result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid)),
             _ => false
         };
-        if (!interactionsConfirmed)
+        if (!interactionsConfirmed || landingGrid.MayAmmo && !result.SupplyClickCompleted)
         {
             camera.Invalidate();
             return new(MapMoveOutcome.UnsupportedEncounter, result);
@@ -99,10 +116,17 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
 
         try
         {
+            if (result.SupplyClickCompleted)
+            {
+                await camera.RefreshImageAsync(token);
+                if (camera.FrameSequence <= result.FrameSequence)
+                    throw new InvalidDataException("Supply acknowledgement reused the arrival frame");
+            }
             bool battled = fight || probeBoss && combatConfirmed;
             bool siren = battled && target.IsSiren;
             bool cleared = battled && target.MayEnemy;
-            int mysteryCount = mystery ? checked(state.MysteryCount + 1) : state.MysteryCount;
+            int mysteryCount = checked(state.MysteryCount + result.AmmoNotificationFrames.Length +
+                (mystery ? result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) : 0));
             if (battled) state.CommitBattle(siren);
             state[origin].IsFleet = false;
             state.ResetCurrentFleet();
@@ -114,7 +138,20 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             else state.Fleet2Location = landing;
             state.Paths.ComputeFleetCosts(
                 [new(1, state.Fleet1Location), new(2, state.Fleet2Location)], landing, configuration.HasAmbush);
-            return new(MapMoveOutcome.Committed, result);
+            AmmoPickupEvidence? pickup = null;
+            if (ammo)
+            {
+                long beforeWait = camera.FrameSequence;
+                await waitForInfoBar!(token);
+                await camera.RefreshImageAsync(token);
+                if (camera.FrameSequence <= beforeWait)
+                    throw new InvalidDataException("Supply settling did not produce a fresh map image");
+                int stockBefore = state.AmmoCount, fleetBefore = state.FleetAmmo;
+                int expectedRecovered = state.CommitAmmoPickup();
+                pickup = new(destination, expectedRecovered, stockBefore, state.AmmoCount,
+                    fleetBefore, state.FleetAmmo, result.FrameSequence, camera.FrameSequence);
+            }
+            return new(MapMoveOutcome.Committed, result) { AmmoPickup = pickup };
         }
         catch
         {

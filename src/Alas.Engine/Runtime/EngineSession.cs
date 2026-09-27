@@ -20,6 +20,7 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     private readonly JournalDevice _device;
     private readonly IApplicationHealth _application;
     private readonly AssetFiles _assets;
+    private readonly MapAmmoProbe _ammoProbe;
     public UiDriver Driver { get; }
     public PageGraph Pages { get; } = UpstreamPages.Create();
     public TaskCapabilities Capabilities { get; }
@@ -36,6 +37,9 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         _vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"), modelDirectory: options.ModelDirectory);
         _assets = new AssetFiles(options.Assets);
         Driver = new UiDriver(options.Server, _device, _vision, _assets);
+        _ammoProbe = new(Driver, new MapUiObservations(
+            () => Driver.Frame ?? throw new InvalidOperationException("No ammo screenshot"), _vision, _assets, Driver.Server),
+            () => Driver.Frame?.Sequence ?? 0);
     }
     public async ValueTask<MapCamera> CreateMapCameraAsync(CampaignState state, Cell initialPosition,
         MapDetectionRules detection, GridRecognitionRules recognition, MapCameraRules cameraRules,
@@ -69,18 +73,26 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     public MapArrivalCheck CreateMapArrivalCheck(MapCamera camera, CampaignConfiguration configuration,
         IMapEncounterHandler? handler = null)
     {
-        var probe = new MapEncounterProbe(Driver, configuration.HasAmbush);
+        var probe = new MapEncounterProbe(Driver, configuration.HasAmbush, _ammoProbe);
         return new(camera, camera.State, token => Driver.AppearsAsync(UiAssets.Handler.IN_MAP, token: token), Driver.Clock,
             probe, new MapAirRaidHandler(Driver, probe,
                 () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No air raid screenshot"), handler));
     }
     public MapMovement CreateMapMovement(MapCamera camera, CampaignConfiguration configuration)
-        => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration));
+        => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration), EnsureNoMapInfoBarAsync);
     public MapMovement CreateMapCombatMovement(MapCamera camera, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration,
             new MapCombatHandler(token => CreateCombatFlow(entrances).RunAutoAsync(token: token),
-                new MapMysteryItemHandler(Driver))));
+                new MapMysteryItemHandler(Driver))), EnsureNoMapInfoBarAsync);
+    private ValueTask EnsureNoMapInfoBarAsync(CancellationToken token)
+    {
+        var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
+        var observations = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No supply screenshot"),
+            _vision, _assets, Driver.Server);
+        return new MapUiRecovery(Driver, observations, _application, recovery, recovery)
+            .EnsureNoInfoBarAsync(TimeSpan.FromSeconds(.6), token);
+    }
     public CampaignMapCombat CreateCampaignMapCombat(MapCamera camera, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances),
@@ -94,7 +106,7 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         var execution = CreateInMapCampaignExecution(rule, configuration, token);
         var exit = await execution.RunAsync();
         var operations = (InMapCampaignOperations)execution.Context.Operations;
-        return new(exit, execution.Context.State.BattleCount, operations.StageReturn, operations.InitialFleet);
+        return new(exit, execution.Context.State.BattleCount, operations.StageReturn, operations.InitialFleet, operations.AmmoPickups);
     }
     async ValueTask<bool> ICampaignInMapHost.VerifyInMapAsync(CancellationToken token)
     {

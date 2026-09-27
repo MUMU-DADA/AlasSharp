@@ -24,6 +24,8 @@ public sealed record MapArrivalResult(MapArrivalOutcome Outcome, long FrameSeque
 {
     public ImmutableArray<MapEncounterKind> HandledEncounters { get; init; } = [];
     public ImmutableArray<CombatFlowResult> Combats { get; init; } = [];
+    public ImmutableArray<long> AmmoNotificationFrames { get; init; } = [];
+    public bool SupplyClickCompleted { get; init; }
 }
 public sealed record MapArrivalOptions(TimeSpan ConfirmDelay, TimeSpan WalkTimeout, bool AllowCurrentMarker = false)
 {
@@ -66,11 +68,14 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
         long sequence = camera.FrameSequence;
         int frames = 0;
         bool confirmed = false;
+        bool supplyClickCompleted = false;
         var handled = ImmutableArray.CreateBuilder<MapEncounterKind>();
         var combats = ImmutableArray.CreateBuilder<CombatFlowResult>();
+        var ammoFrames = ImmutableArray.CreateBuilder<long>();
         MapArrivalResult Result(MapArrivalOutcome outcome, MapEncounterKind encounter = MapEncounterKind.None)
             => new(outcome, sequence, frames, encounter)
-            { HandledEncounters = handled.ToImmutable(), Combats = combats.ToImmutable() };
+            { HandledEncounters = handled.ToImmutable(), Combats = combats.ToImmutable(),
+                AmmoNotificationFrames = ammoFrames.ToImmutable(), SupplyClickCompleted = supplyClickCompleted };
         try
         {
             await camera.PrepareTapAsync(destination, token);
@@ -98,6 +103,14 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                             sequence = camera.FrameSequence;
                             frames++;
                             encounter = probe is null ? MapEncounterKind.None : await probe.InspectAsync(sequence, linked.Token);
+                            // Native ammo messages do not interrupt movement or
+                            // require re-localization. Retain each throttled
+                            // observation for the caller's mystery accounting.
+                            if (encounter == MapEncounterKind.AmmoNotification)
+                            {
+                                ammoFrames.Add(sequence);
+                                encounter = MapEncounterKind.None;
+                            }
                             if (encounter == MapEncounterKind.None && !await isInMap(linked.Token))
                                 encounter = MapEncounterKind.UnknownPage;
                             if (encounter != MapEncounterKind.None) break;
@@ -111,6 +124,12 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                                 if (confirm.Reached())
                                 {
                                     if (portal) await camera.AnchorAtAsync(portalExit!.Value, linked.Token);
+                                    var arrivedCell = portalExit ?? destination;
+                                    if (state[arrivedCell].MayAmmo)
+                                    {
+                                        await camera.TapCellAsync(arrivedCell, linked.Token);
+                                        supplyClickCompleted = true;
+                                    }
                                     confirmed = true;
                                     return Result(MapArrivalOutcome.MarkerConfirmed);
                                 }

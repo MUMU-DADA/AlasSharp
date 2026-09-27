@@ -52,6 +52,18 @@ public sealed partial class CampaignState
         FleetAmmo = ammo;
         SirenCount = sirens;
     }
+    internal int CommitAmmoPickup()
+    {
+        if (AmmoCount <= 0) throw new InvalidOperationException("Map supply stock is exhausted");
+        // Map.pick_up_ammo caps each visit at three, not at remaining stock.
+        // These are native accounting values, not an OCR measurement of ammo.
+        int recovered = Math.Min(checked(5 - FleetAmmo), 3);
+        int stock = checked(AmmoCount - recovered);
+        int fleet = checked(FleetAmmo + recovered);
+        AmmoCount = stock;
+        FleetAmmo = fleet;
+        return recovered;
+    }
     // Upstream names this is_map_data_poor, although True means declarations exist.
     public bool HasCompleteSpawnDeclarations => Cells.Any(g => g.MayEnemy) && Cells.Any(g => g.MayBoss) &&
         Cells.Any(g => g.IsSpawnPoint) && !ActiveWaves.IsEmpty;
