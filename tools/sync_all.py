@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-"""一键同步：把"更新的上游规则/素材"拉齐到本仓库，并复检。
+"""一键同步：把上游规则/素材的离线来源拉齐到本仓库，并复检。
 
 上游更新分三类，本脚本只负责其中**需要动作**的两类：
 
-  A. **运行时自动生效，无需同步**（所以不在这里）
-     上游 Python 代码：页面规则（module/ui/page.py）、UI 素材（module/*/assets.py）、
-     视觉模块（module/map_detection/*）、OCR —— 宿主 `tools/alas_vision.py` 直接
-     import fork 目录并 chdir 过去，上游一改、下次调用就是新规则；
-     页面图/控件清单也是运行时向宿主要（`ui_page_graph`），不读导出文件。
+  A. **Engine 运行时不直接加载上游业务 Python**。
+     上游 Python 只作为构建期来源、离线 oracle 和漂移检查输入；产品运行时由
+     `Alas.Engine` 的 C# 规则与状态机执行，Python 发布物只提供纯 CV/OCR worker。
 
   B. **需要重导**：关卡 IR（`data/campaign/**`）+ assets/schema/manifest
      → `tools/export_upstream_data.py`（有 `--check`，无差异返回 0、有差异返回 1）
@@ -41,15 +39,16 @@ MAPS = os.path.join(HERE, 'migration', 'compile_campaign_maps.py')
 MAPS_OUTPUT = os.path.join(ROOT, 'src', 'Alas.Engine', 'Rules', 'Generated', 'CampaignMaps.g.cs')
 DIAG = os.path.join(HERE, 'diagnostics')
 
-# 免设备的验收（不需要真机）：识图协议 + 产品路径 + 偏移对齐 + 文档汇总
+# 免设备的验收（不需要真机）：离线导出契约、Engine 架构和结果合同
 VERIFY_STEPS = [
     (os.path.join(DIAG, 'verify_architecture.py'), []),
-    (os.path.join(HERE, 'verify_export.py'), []),
     (os.path.join(DIAG, 'verify_map_export.py'), []),
     (os.path.join(DIAG, 'verify_campaign_export.py'), []),
-    (os.path.join(DIAG, 'verify_map_detection.py'), []),
-    (os.path.join(DIAG, 'verify_product_map.py'), []),
-    (os.path.join(DIAG, 'verify_map_alignment.py'), []),
+    (os.path.join(DIAG, 'verify_config_export.py'), []),
+    (os.path.join(DIAG, 'verify_pages_export.py'), []),
+    (os.path.join(DIAG, 'verify_plan_export.py'), []),
+    (os.path.join(DIAG, 'verify_result_contract.py'), []),
+    (os.path.join(DIAG, 'verify_export_integrity.py'), []),
     (os.path.join(DIAG, 'verify_all.py'), ['--docs-only']),
 ]
 

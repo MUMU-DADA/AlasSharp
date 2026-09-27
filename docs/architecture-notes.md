@@ -13,7 +13,7 @@
 
 `Alas.Engine` 是唯一业务执行核心。它不引用 `Alas.Core`、旧任务 runner、计划解释器或上游业务宿主。`Alas.Server` 只负责 HTTP、认证、配置事务和静态网页托管；桌面 UI 通过 `DirectEngineBackend` 在进程内调用 Engine；浏览器 UI 通过 `Alas.Client` 调用 Server。`Alas.Contracts` 只承载传输合同，不能包含业务编排。
 
-`src/Alas.Core/` 仍可能作为历史源码快照存在，但没有产品解决方案引用、项目引用、发布输入或运行时加载。`verify_architecture.py` 会检查这些边界，发布检查还要确认输出目录没有 `Alas.Core.dll`。
+`src/Alas.Core/` 已从仓库删除；没有 Core 项目、源码、解决方案项、发布输入或运行时加载。`verify_architecture.py` 会把 Core 目录或项目重新出现直接判为失败，发布检查还要确认输出目录没有 `Alas.Core.dll`。
 
 ## Engine 内部职责
 
@@ -53,4 +53,4 @@ dotnet build Alas.Engine.slnx --no-restore
 dotnet run --project tests/Alas.Engine.Tests -- --control-workspace .runtime/checks/control-workspace
 ```
 
-真机成功必须由新 Engine 产生成功结算、返回章节页和完整工件；旧 Core 或上游原生路径的成功记录只作对照，不能替代产品验收。
+真机成功必须由新 Engine 产生成功结算、返回章节页和完整工件；历史上游 oracle 的成功记录只作对照，不能替代产品验收。

@@ -5,7 +5,7 @@
 用户最新要求：**最终运行时除确有必要的 CV/OCR 识图桥接外，全部逻辑由 C# 实现。**
 这优先于下文将原生 Python 调用描述为长期不可变边界的旧措辞。
 
-用户进一步要求整体舍弃旧流程，不把新模块逐个嵌回原有结构。新执行架构在独立 `Alas.Engine` 中建设，不引用旧 `Alas.Core`、计划解释器或混合 Python 宿主；产品入口现为桌面 UI → Alas.Engine、浏览器 UI → Alas.Server → Alas.Engine；Engine 是完整业务后端，不再下接旧 Core 或上游业务引擎。旧代码仅作历史和离线对照，不作为新引擎的兼容实现、业务代理或失败回退。此要求优先于此前的逐消费者/逐域替换路线。
+用户进一步要求整体舍弃旧流程，不把新模块逐个嵌回原有结构。新执行架构在独立 `Alas.Engine` 中建设，不引用旧 `Alas.Core`、计划解释器或混合 Python 宿主；产品入口现为桌面 UI → Alas.Engine、浏览器 UI → Alas.Server → Alas.Engine；Engine 是完整业务后端，不再下接旧 Core 或上游业务引擎。旧 Core 源码已删除，遗留脚本和 oracle 仅作历史/离线对照，不作为新引擎的兼容实现、业务代理或失败回退。此要求优先于此前的逐消费者/逐域替换路线。
 
 - 战役加载、配置合并、继承与钩子、地图状态、寻路、战斗调度、导航、控件/弹窗、周期任务、大世界、统计及设备控制均是 C# 迁移范围；不能以“复用上游”为理由永久留在 Python。
 - 保留上游语义和完整规则，不等于保留上游执行语言。规则中的可执行逻辑与引擎一起迁成普通 C# 类和方法，由编译器处理控制流与调用；不再以扩张可执行 JSON 计划和 Python 子集解释器作为目标架构。静态配置、地图、页面关系及素材参数使用 C# 类型化定义或纯数据资源。
@@ -89,7 +89,7 @@
 
 ## 结果判定：只能走 sortie-result/1 合同
 
-Frozen：结论口径写在 `docs/result-contract.md`，旧 Python/Core 对照实现在 `tools/sortie_contract.py` 和
+Frozen：结论口径写在 `docs/result-contract.md`，离线 Python oracle 对照实现在 `tools/sortie_contract.py` 和
 `src/Alas.Engine/Contracts/SortieContract.cs`；产品裁决在 `Alas.Engine/Tasks/CampaignResumeTask.cs`，必须同时保持合同语义。
 改动结果判定时必须遵守：
 

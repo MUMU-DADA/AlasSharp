@@ -169,8 +169,8 @@ internal static class UiOnlyChecks
     }
 
     private static void AssertNoAutomationAssemblies()
-        => Check(!AppDomain.CurrentDomain.GetAssemblies().Any(assembly => assembly.GetName().Name is "Alas.Core" or "Alas.Engine" or "Alas.Client"),
-            "UI-only tests do not load Engine, retired Core or network adapters");
+        => Check(!AppDomain.CurrentDomain.GetAssemblies().Any(assembly => assembly.GetName().Name is "Alas.Engine" or "Alas.Client"),
+            "UI-only tests do not load Engine or network adapters");
     private static void Click(Window window, Control target)
     {
         var origin = target.TranslatePoint(default, window) ?? throw new Exception("Detached click target");

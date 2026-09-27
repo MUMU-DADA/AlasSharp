@@ -1,6 +1,6 @@
 # AlasSharp
 
-基于 .NET 10 的碧蓝航线自动化重写工程。产品业务后端为 `Alas.Engine`：桌面 UI 在进程内调用 Engine，浏览器 UI 经 Server 调用 Engine。`Alas.Core` 已退出产品依赖图。
+基于 .NET 10 的碧蓝航线自动化重写工程。产品业务后端为 `Alas.Engine`：桌面 UI 在进程内调用 Engine，浏览器 UI 经 Server 调用 Engine。`Alas.Core` 已删除。
 
 目标是 **C# 执行全部非视觉逻辑，Python 仅保留必要的 CV/OCR 桥接**。规则文件与引擎一起迁为 C#，产品不运行导出的 JSON 计划或 Python 业务。产品入口已切换，完整规则和业务域仍在迁移，不能称为引擎重写完成。详见[路线](docs/architecture-roadmap.md)和[重写边界](docs/upstream-engine-rewrite.md)。
 
@@ -58,7 +58,7 @@ dotnet run --project tests/Alas.Engine.Tests -c Release -- --campaign-command .r
 dotnet run --project tests/Alas.Engine.Tests -c Release -- --control-workspace .runtime/checks/control-workspace
 ```
 
-测试项目是可执行验收程序，须用 `dotnet run`；`dotnet test` 不会执行这些检查。旧 `verify_all.py` / `sync_all.py` 检查链含已取消的 Core 命令，尚未迁移为 Engine 验收入口，旧通过记录不能证明新产品通过。
+测试项目是可执行验收程序，须用 `dotnet run`；`dotnet test` 不会执行这些检查。`tools/diagnostics/verify_all.py` 和 `tools/sync_all.py --verify` 只登记 Engine、导出合同、结果合同、架构和隐私检查；退役 Core/S3/R5 脚本不在默认执行链，旧通过记录不能证明新产品通过。
 
 ## 目录
 
@@ -68,7 +68,6 @@ dotnet run --project tests/Alas.Engine.Tests -c Release -- --control-workspace .
 | `src/Alas.Engine.Cli/` | Engine 命令入口 |
 | `src/Alas.Server/` | 控制 API 与静态网页托管；业务编排在 Engine |
 | `src/Alas.UI*` | 共享界面、桌面/WASM 入口及 Headless 验收 |
-| `src/Alas.Core/` | 已退役旧源码，历史/离线对照，不参与产品构建 |
 | `tools/` | 离线迁移、导出、对照与诊断工具；旧混合宿主已退役 |
 | `vendor/upstream/` | 静态素材镜像与来源清单 |
 | `docs/` | [核心文档](docs/README.md)；历史和报告在 `docs/archive/` |

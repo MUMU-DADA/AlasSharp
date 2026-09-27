@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """静态验证唯一产品执行核心的边界。
 
-Alas.Core 是退役源码快照，不能出现在产品解决方案、项目引用、发布输出或执行入口。
-Engine 自己拥有规则、状态、设备、任务和结果合同；Python 仅允许作为独立 CV/OCR worker。
+Alas.Engine 是唯一产品执行核心。Alas.Core 已删除，不能以源码、项目、发布文件
+或执行入口的形式重新出现。Python 仅允许作为独立 CV/OCR worker。
 """
 from __future__ import annotations
 
@@ -51,6 +51,15 @@ def contract_consistency() -> list[str]:
 
 def product_boundary() -> list[str]:
     problems: list[str] = []
+    retired_core = ROOT / "src/Alas.Core"
+    if retired_core.exists():
+        tracked = list(retired_core.rglob("*"))
+        if any(path.is_file() for path in tracked):
+            problems.append("退役 Alas.Core 源码仍存在；Engine 必须是唯一产品执行核心")
+        else:
+            problems.append("退役 Alas.Core 目录仍存在；删除空目录后再验收")
+    if (ROOT / "src/Alas.Core/Alas.Core.csproj").is_file():
+        problems.append("退役 Alas.Core.csproj 仍存在")
     expected = {
         "Alas.Contracts": [],
         "Alas.Client": ["Alas.Contracts"],
@@ -64,8 +73,6 @@ def product_boundary() -> list[str]:
     }
     for project in (ROOT / "src").glob("*/*.csproj"):
         name = project.parent.name
-        if name == "Alas.Core":
-            continue
         if name not in expected:
             problems.append(f"未登记产品项目: {project.relative_to(ROOT)}")
             continue
@@ -187,7 +194,7 @@ def main() -> int:
     problems.extend(runtime_contract())
     problems.extend(publish_boundary())
     roadmap = read("docs/architecture-roadmap.md")
-    for marker in ("桌面 UI → Alas.Engine", "浏览器 UI → Alas.Server → Alas.Engine", "Core 不在产品依赖图", "长期不能变动的规则"):
+    for marker in ("桌面 UI → Alas.Engine", "浏览器 UI → Alas.Server → Alas.Engine", "旧 Core 已从仓库删除", "长期不能变动的规则"):
         if marker not in roadmap:
             problems.append(f"迁移路线缺少边界: {marker}")
     if problems:
