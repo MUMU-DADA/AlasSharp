@@ -41,7 +41,7 @@ internal sealed class ProbeOperations(Scenario scenario) : ICampaignOperations
     public ValueTask<bool> ClearSirenAsync() => Result("clear_siren");
     public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync() => Result("clear_any_enemy:cost_2");
     public ValueTask<bool> ClearBouncingEnemyAsync() => Result("clear_bouncing_enemy");
-    public ValueTask<bool> ClearMechanismAsync() => Result("clear_mechanism");
+    public ValueTask<bool> ClearMechanismAsync(IReadOnlyList<Cell>? grids = null) => Result("clear_mechanism");
     public ValueTask RefocusBossAsync((int X, int Y)? preset) => Void(preset is { } p ? $"refocus:{p.X},{p.Y}" : "refocus:null");
     public ValueTask CheckEmotionAsync(int battles) => Void($"check_emotion:{battles}");
     public ValueTask EnterMapAsync() { State.AutoSearch = scenario.AutoSearch; return Void("enter_map:normal"); }

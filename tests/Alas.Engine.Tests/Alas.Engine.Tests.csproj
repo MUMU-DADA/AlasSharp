@@ -19,6 +19,7 @@
     <None Include="native_emotion_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_preparation_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_objectives_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_mechanism_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_level_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_recovery_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_ocr_reference.py" CopyToOutputDirectory="PreserveNewest" />

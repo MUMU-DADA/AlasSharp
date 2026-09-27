@@ -13,6 +13,38 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
     private readonly List<AmmoPickupEvidence> _ammoPickups = [];
     public IReadOnlyList<AmmoPickupEvidence> AmmoPickups => _ammoPickups.AsReadOnly();
 
+    public async ValueTask<bool> ClearMechanismAsync(IReadOnlyList<Cell>? grids = null, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!configuration.HasLandBased) return false;
+        if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before selecting a mechanism");
+        // Native treats an empty supplied set like no set and chooses all triggers.
+        var candidates = grids is { Count: > 0 } ? grids.Select(cell => state[cell]) : state.Cells;
+        var target = Order(candidates.Where(grid => grid.IsMechanismTrigger && !grid.IsMechanismBlock && grid.IsAccessible)).FirstOrDefault();
+        if (target is null) return false;
+        var route = state.Paths.FindRoute(target.Location, turningOptimize: configuration.HasAmbush);
+        if (!route.IsReachable || route.Waypoints.Count == 0)
+            throw new InvalidOperationException("Selected mechanism has no confirmed fleet route");
+        foreach (var cell in route.Waypoints)
+        {
+            var grid = state[cell];
+            // Native goto also handles an enemy or mystery occupying the trigger.
+            var result = grid.IsEnemy || grid.IsSiren || grid.IsBoss || grid.IsFortress
+                ? await movement.FightAsync(cell, token: token) : grid.IsMystery
+                ? await movement.CollectMysteryAsync(cell, token: token) : await movement.MoveAsync(cell, token: token);
+            if (result.Outcome == MapMoveOutcome.StageReturned)
+            {
+                StageReturn = result.Arrival;
+                throw new CampaignEndedException("Winning encounter on mechanism route returned to stage");
+            }
+            if (result.Outcome != MapMoveOutcome.Committed)
+                throw new CampaignScriptException($"Mechanism route to {cell} ended as {result.Outcome}");
+        }
+        // This is a topology change, not a completed battle. The campaign loop
+        // retries selection against refreshed costs without counting a battle.
+        throw new MapEnemyMovedException();
+    }
+
     public async ValueTask<bool> PickUpAmmoAsync(CancellationToken token = default)
     {
         if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before picking up ammo");

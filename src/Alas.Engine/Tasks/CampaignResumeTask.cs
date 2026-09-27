@@ -70,6 +70,7 @@ public sealed class CampaignResumeTask : ITaskRunner
             result.Health,
             result.Withdrawal,
             result.Levels,
+            result.MechanismReleases,
             stageReturn = result.StageReturn, settlementVerified = cleared, cleared,
             sortie = new
             {

@@ -21,7 +21,7 @@ public interface ICampaignInMapHost
 public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount, MapArrivalResult? StageReturn,
     FleetSelection? InitialFleet = null, IReadOnlyList<AmmoPickupEvidence>? AmmoPickups = null,
     IReadOnlyList<FleetHealthSnapshot>? Health = null, CampaignWithdrawalEvidence? Withdrawal = null,
-    FleetLevelEvidence? Levels = null);
+    FleetLevelEvidence? Levels = null, IReadOnlyList<MechanismReleaseEvidence>? MechanismReleases = null);
 public interface ICampaignExecutionService
 {
     ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
@@ -84,8 +84,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync() => Combat.ClearAnyEnemyBySecondFleetCostAsync(token);
     public ValueTask<bool> ClearBouncingEnemyAsync() => state.Cells.Any(grid => grid.MayBouncingEnemy)
         ? throw Missing("bouncing enemy movement") : ValueTask.FromResult(false);
-    public ValueTask<bool> ClearMechanismAsync() => state.Cells.Any(grid => grid.IsMechanismTrigger)
-        ? throw Missing("land mechanism interaction") : ValueTask.FromResult(false);
+    public ValueTask<bool> ClearMechanismAsync(IReadOnlyList<Cell>? grids = null) => Combat.ClearMechanismAsync(grids, token);
     public ValueTask RefocusBossAsync((int X, int Y)? preset) => throw Missing("boss camera refocus");
     public ValueTask ResetLevelsAsync() => throw Missing("auto-search level reset");
     public ValueTask ReadLevelsAsync() => throw Missing("auto-search level read");

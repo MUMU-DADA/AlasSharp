@@ -176,7 +176,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         var operations = (InMapCampaignOperations)execution.Context.Operations;
         return new(exit, execution.Context.State.BattleCount, operations.StageReturn, operations.InitialFleet, operations.AmmoPickups,
             execution.Context.State.Health.Observations, execution.Context.State.Withdrawal,
-            execution.Context.State.Levels.Evidence(execution.Context.Config.Levels));
+            execution.Context.State.Levels.Evidence(execution.Context.Config.Levels), execution.Context.State.MechanismReleases);
     }
     async ValueTask<bool> ICampaignInMapHost.VerifyInMapAsync(CancellationToken token)
     {

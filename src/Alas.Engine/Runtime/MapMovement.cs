@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Alas.Engine.Rules;
 
 namespace Alas.Engine.Runtime;
@@ -5,9 +6,12 @@ namespace Alas.Engine.Runtime;
 public enum MapMoveOutcome { Committed, Unconfirmed, Interrupted, UnsupportedEncounter, StageReturned }
 public sealed record AmmoPickupEvidence(Cell Location, int ExpectedRecovered, int StockBefore, int StockAfter,
     int FleetBefore, int FleetAfter, long ArrivalSequence, long SettledSequence);
+public sealed record MechanismReleaseEvidence(Cell Location, ImmutableArray<Cell> Triggers, ImmutableArray<Cell> Blocks,
+    double ConfirmSeconds, long ArrivalSequence);
 public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arrival)
 {
     public AmmoPickupEvidence? AmmoPickup { get; init; }
+    public MechanismReleaseEvidence? MechanismRelease { get; init; }
 }
 internal enum MapAction { Move, Fight, Mystery, ProbeBoss, Ammo }
 
@@ -52,8 +56,10 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         bool ammo = action == MapAction.Ammo;
         if (ammo && (waitForInfoBar is null || state.AmmoCount <= 0))
             throw new InvalidOperationException("Ammo pickup requires supply stock and an information-bar wait");
-        if (destination == origin && !ammo) throw new ArgumentException("Destination is the current fleet location", nameof(destination));
         var target = state[destination];
+        bool mechanism = target.IsMechanismTrigger;
+        if (destination == origin && !ammo && !(mechanism && action == MapAction.Move))
+            throw new ArgumentException("Destination is the current fleet location", nameof(destination));
         if (target.IsLand) throw new ArgumentException("Destination is land", nameof(destination));
         bool fight = action == MapAction.Fight;
         bool mystery = action == MapAction.Mystery;
@@ -67,18 +73,40 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             throw new ArgumentException("Potential boss destination must be a declared boss spawn", nameof(destination));
         if (ammo && (!target.MayAmmo || enemy || target.IsPortal))
             throw new ArgumentException("Supply destination must be a declared ammo tile without an enemy", nameof(destination));
-        if (target.IsMaze || target.IsMechanismTrigger || target.IsMechanismBlock ||
+        if (target.IsMaze || target.IsMechanismBlock ||
             (action is MapAction.Move or MapAction.Mystery && enemy) ||
-            (target.IsMystery && !mystery) || (target.IsAmmo && !ammo) || target.IsCarrier ||
-            (target.IsFleet && !(ammo && destination == origin)))
+            (target.IsMystery && !mystery) || (target.IsAmmo && !ammo && !mechanism) || target.IsCarrier ||
+            (target.IsFleet && !((ammo || mechanism && action == MapAction.Move) && destination == origin)))
             throw new NotSupportedException("Destination requires a map interaction that is not committed by ordinary movement");
         Cell landing = target.IsPortal
             ? target.PortalLink ?? throw new InvalidDataException("Portal has no linked exit") : destination;
         var landingGrid = state[landing];
         if (target.IsPortal &&
             (landingGrid.IsLand || landingGrid.IsFleet || landingGrid.IsEnemy || landingGrid.IsSiren ||
-             landingGrid.IsBoss || landingGrid.IsFortress || landingGrid.IsMystery || landingGrid.IsAmmo))
+             landingGrid.IsBoss || landingGrid.IsFortress || landingGrid.IsMystery || landingGrid.IsAmmo ||
+             landingGrid.IsMechanismTrigger || landingGrid.IsMechanismBlock))
             throw new NotSupportedException("Portal exit requires an interaction that is not committed by ordinary movement");
+
+        // Native _goto waits for the trigger animation before wipe_out releases
+        // the whole linked group. Apply this to every landing, including combat
+        // or a route's intermediate stop, not only explicit clear_mechanism calls.
+        MechanismReleaseEvidence? release = null;
+        if (mechanism)
+        {
+            if (target.IsPortal || target.MechanismTrigger is not { Count: > 0 } triggers || target.MechanismBlock is not { } blocks ||
+                !triggers.Any(cell => ReferenceEquals(cell, target)) ||
+                triggers.Concat(blocks).Any(cell => !state.Contains(cell.Location) || !ReferenceEquals(state[cell.Location], cell)))
+                throw new InvalidDataException("Mechanism links must belong to this map and include the landing trigger");
+            options ??= MapArrivalOptions.Default;
+            double wait = configuration.HasLandBased ? target.MechanismWait : 0;
+            double delay = options.ConfirmDelay.TotalSeconds + wait;
+            if (options.ConfirmDelay < TimeSpan.Zero || !double.IsFinite(wait) || wait < 0 ||
+                !double.IsFinite(delay) || delay >= options.WalkTimeout.TotalSeconds)
+                throw new InvalidDataException("Mechanism confirmation delay must fit the movement deadline");
+            options = options with { ConfirmDelay = TimeSpan.FromSeconds(delay) };
+            release = new(destination, triggers.Select(cell => cell.Location).ToImmutableArray(),
+                blocks.Select(cell => cell.Location).ToImmutableArray(), delay, 0);
+        }
 
         token.ThrowIfCancellationRequested();
         if (state.Health.RetreatTriggered(state.FleetIndex, configuration.Health))
@@ -146,6 +174,11 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             if (state.FleetIndex == 1) state.Fleet1Location = landing;
             else state.Fleet2Location = landing;
             state.RefreshFleetPaths(configuration);
+            if (release is not null)
+            {
+                release = release with { ArrivalSequence = result.FrameSequence };
+                state.RecordMechanismRelease(release);
+            }
             AmmoPickupEvidence? pickup = null;
             if (ammo)
             {
@@ -159,7 +192,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
                 pickup = new(destination, expectedRecovered, stockBefore, state.AmmoCount,
                     fleetBefore, state.FleetAmmo, result.FrameSequence, camera.FrameSequence);
             }
-            return new(MapMoveOutcome.Committed, result) { AmmoPickup = pickup };
+            return new(MapMoveOutcome.Committed, result) { AmmoPickup = pickup, MechanismRelease = release };
         }
         catch
         {

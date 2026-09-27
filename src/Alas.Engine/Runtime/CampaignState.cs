@@ -15,6 +15,9 @@ public sealed partial class CampaignState
     public FleetHealthState Health { get; } = new();
     public FleetLevelState Levels { get; } = new();
     public CampaignWithdrawalEvidence? Withdrawal { get; internal set; }
+    private readonly List<MechanismReleaseEvidence> _mechanismReleases = [];
+    public IReadOnlyList<MechanismReleaseEvidence> MechanismReleases => _mechanismReleases.AsReadOnly();
+    internal void RecordMechanismRelease(MechanismReleaseEvidence evidence) => _mechanismReleases.Add(evidence);
     public CampaignState(MapDefinition map)
     {
         Map = map;
@@ -102,7 +105,7 @@ public interface ICampaignOperations
     ValueTask<bool> ClearSirenAsync();
     ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync();
     ValueTask<bool> ClearBouncingEnemyAsync();
-    ValueTask<bool> ClearMechanismAsync();
+    ValueTask<bool> ClearMechanismAsync(IReadOnlyList<Cell>? grids = null);
     ValueTask RefocusBossAsync((int X, int Y)? preset);
     ValueTask CheckEmotionAsync(int battles);
     ValueTask EnterMapAsync();

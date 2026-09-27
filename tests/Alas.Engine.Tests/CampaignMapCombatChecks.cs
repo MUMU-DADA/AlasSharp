@@ -10,7 +10,7 @@ using Alas.Engine.Tasks;
 
 namespace Alas.Engine.Tests;
 
-internal static class CampaignMapCombatChecks
+internal static partial class CampaignMapCombatChecks
 {
     private static void Check(bool value, string message)
     { if (!value) throw new InvalidOperationException(message); }
@@ -414,6 +414,7 @@ internal static class CampaignMapCombatChecks
         public ValueTask<CampaignWithdrawalEvidence> WithdrawAsync(string reason, CancellationToken token) => throw new InvalidOperationException();
         public bool InMap { get; init; } = true;
         public bool HasMystery { get; init; }
+        public Func<int, Cell, MapScanMode, MapObservation>? ObservationFactory { get; init; }
         public int FleetLockCalls { get; private set; }
         public int StrategyCalls { get; private set; }
         public Camera? Camera { get; private set; }
@@ -435,7 +436,7 @@ internal static class CampaignMapCombatChecks
             Camera = new Camera(state)
             {
                 StageForBoss = true,
-                ObservationFactory = (scan, position, mode) => new MapObservation(scan == 1
+                ObservationFactory = ObservationFactory ?? ((scan, position, mode) => new MapObservation(scan == 1
                     ? HasMystery
                         ? [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true)),
                            new(new(1, 0), new(IsMystery: true)),
@@ -446,7 +447,7 @@ internal static class CampaignMapCombatChecks
                         ? [new(new(2, 0), new(IsFleet: true, IsCurrentFleet: true)),
                            new(new(3, 0), new(IsBoss: true))]
                         : [new(new(1, 0), new(IsFleet: true, IsCurrentFleet: true)),
-                           new(new(2, 0), new(IsBoss: true))], position, new(1, 0), mode)
+                            new(new(2, 0), new(IsBoss: true))], position, new(1, 0), mode))
             };
             return ValueTask.FromResult<IMapScanCamera>(Camera);
         }

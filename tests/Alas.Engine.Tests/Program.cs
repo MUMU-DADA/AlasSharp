@@ -205,6 +205,13 @@ try
         await CampaignFleetSwitcherChecks.RunAsync();
         return 0;
     }
+    if (args is ["--mechanisms", var mechanismPython, var mechanismUpstream, var mechanismArtifacts])
+    {
+        string folder = Path.GetFullPath(mechanismArtifacts);
+        Directory.CreateDirectory(folder);
+        await MapMechanismChecks.RunAsync(Path.GetFullPath(mechanismPython), Path.GetFullPath(mechanismUpstream), folder);
+        return 0;
+    }
     if (args is ["--objectives", var goalPython, var goalUpstream, var goalArtifacts])
     {
         string folder = Path.GetFullPath(goalArtifacts);
