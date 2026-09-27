@@ -7,8 +7,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Offline reference only. No Core assembly or product entry point is loaded. -->
-    <Compile Include="../../../src/Alas.Core/Campaign/SortieResult.cs" Link="Reference/SortieResult.cs" />
-    <Compile Include="../../../src/Alas.Core/Diagnostics/ContractCheck.cs" Link="Reference/ContractCheck.cs" />
+    <!-- Offline oracle only. The contract source belongs to the Engine; this helper does not load a product host. -->
+    <Compile Include="../../../src/Alas.Engine/Contracts/SortieContract.cs" Link="Reference/SortieContract.cs" />
+    <Compile Include="../../../src/Alas.Engine/Contracts/ContractCheck.cs" Link="Reference/ContractCheck.cs" />
   </ItemGroup>
 </Project>

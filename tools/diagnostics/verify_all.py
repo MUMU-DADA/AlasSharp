@@ -50,7 +50,7 @@ STEPS = [
     ('verify_plan_export.py', '计划 AST 保真（分支/终止/参数类型/丢步拒绝）', False, 120),
     ('verify_pages_export.py', '页面导出完整性（源重算/规则破坏/动态结构拒绝）', False, 120),
     ('verify_campaign_export.py', 'Campaign 类声明导出（引用/别名/类型/未知语义）', False, 300),
-    ('verify_export_integrity.py', '导出完整性破坏用例：Python/C# 同时拒绝', False, 300),
+    ('verify_export_integrity.py', '导出完整性破坏用例：离线导出契约拒绝', False, 300),
     ('verify_validation_contracts.py', '同步验收与地图失败分类反例（离线）', False, 120),
     ('verify_map_alignment.py', 'S2 偏移对齐（窗口 vs 地图，含活动图 9x8）', False, 600),
     ('analyze_specificity.py', '识别特异性矩阵', False, 300),

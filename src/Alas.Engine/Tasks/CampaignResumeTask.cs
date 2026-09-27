@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Alas.Engine.Contracts;
 using Alas.Engine.Rules;
 using Alas.Engine.Runtime;
 
@@ -64,6 +65,27 @@ public sealed class CampaignResumeTask : ITaskRunner
             arrival.AmbushesConfirmed && arrival.CarriersConfirmed &&
             arrival.HandledEncounters.All(encounter => encounter is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn);
         string outcome = cleared ? "cleared" : withdrawn ? "withdrawn" : ended ? "ended_unknown" : "incomplete";
+        var contractResult = new SortieResult
+        {
+            Contract = SortieContract.Version,
+            Outcome = outcome,
+            Cleared = cleared,
+            CampaignEnd = ended,
+            StopReason = withdrawn ? "withdraw_" + result.Withdrawal!.Reason : ended ? null : "round_limit",
+            Steps = cleared ? [new Dictionary<string, JsonElement> { ["step"] = JsonSerializer.SerializeToElement("execute_a_battle") }] : null,
+            EndEvidence = terminalCombat is null && !withdrawn ? null : new SortieEndEvidence
+            {
+                BattleRank = terminalCombat?.Rank?.Rank.ToString(),
+                RankSource = terminalCombat?.Rank?.Source == CombatRankSource.BattleStatus ? "BATTLE_STATUS_" : terminalCombat?.Rank is null ? null : "EXP_INFO_",
+                CombatStatus = terminalCombat?.Rank?.Source == CombatRankSource.BattleStatus,
+                StageObserved = withdrawn || terminalCombat?.Return == CombatReturn.InStage,
+                Withdrawn = withdrawn,
+                ExpectedEnd = "in_stage"
+            },
+            Reason = cleared ? "sortie_cleared" : withdrawn ? "sortie_withdrawn" : ended ? "sortie_settlement_unverified" : "campaign_loop_exhausted"
+        };
+        var contractViolations = SortieContract.Violations(contractResult);
+        if (contractViolations.Count > 0) cleared = false;
         var evidence = JsonSerializer.SerializeToNode(new
         {
             campaign = rule.Id, campaignIdentityVerified = identityVerified,
@@ -86,6 +108,7 @@ public sealed class CampaignResumeTask : ITaskRunner
                 contract = "sortie-result/1",
                 outcome,
                 cleared,
+                contractViolations,
                 campaign_end = ended,
                 stop_reason = withdrawn ? "withdraw_" + result.Withdrawal!.Reason : ended ? null : "round_limit",
                 steps = cleared ? new[] { new { step = "execute_a_battle" } } : null,

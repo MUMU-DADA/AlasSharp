@@ -2,10 +2,10 @@
 
 一次出击的结论只有一份定义，就是这份合同。新产品由 **Alas.Engine** 产生结果，
 `CampaignResumeTask` 在完整结算证据成立时才判通关；已确认撤退为 `withdrawn`，不算任务成功。
-旧 Python 宿主和 `Alas.Campaign.SortieContract` 保留为离线合同参考，
+Python 规则脚本只作离线 oracle，产品裁决由 `Alas.Engine.Contracts.SortieContract` 承担，
 由 `tools/diagnostics/verify_result_contract.py` **逐例对拍**，不一致就算失败。
-脚本构建 `tools/diagnostics/result_contract_reference`，仅链接旧合同及其检查器源码，
-不加载 Core 程序集或调用产品 Server。缺少裁决文件或参考程序构建失败均不能通过。
+脚本构建 `tools/diagnostics/result_contract_reference`，仅链接 Engine 合同源码，
+不加载 Server 或设备宿主。缺少裁决文件或参考程序构建失败均不能通过。
 
 > 为什么值得单独做一层合同：`CampaignEnd` 只表示"本次出击结束"——上游**撤退也抛它**。
 > 早期只要有人写 `cleared = campaign_end`，撤退就会被记成通关，而且事后从日志里看不出来。
@@ -89,14 +89,14 @@
 
 1. **生产方自报**：`finalize_sortie_result` 末尾 `stamp()`，把 `cleared` 从 `outcome` 推出，
    有违例就写进 `contract_violations`（不吞掉、不抛异常，结果本身要留给调用方）。
-2. **消费方裁决**：`Alas.Server campaign` 每关跑 `SortieContract.Violations`，
-   有违例就打印 `[合同]` 并让退出码非 0；`--artifacts <目录>` 同时落盘整份结果文档。
+2. **消费方裁决**：`Alas.Engine` 的战役任务使用 `SortieContract.Violations`，
+   有违例就让任务失败；工件保存整份结果文档。
 3. **跨语言对拍**：`python tools/diagnostics/verify_result_contract.py`
    —— 四类结果由替身真跑产出、20 条反例必须被拒绝、两侧裁决逐例相同。
 4. **静态守卫**：`python tools/diagnostics/verify_architecture.py`
    —— 生产代码出现 `cleared = ... campaign_end` 直接失败；两侧词表/违例码漂移也直接失败；
-   并要求 `docs/result-contract.md`、`tools/sortie_contract.py`、`SortieResult.cs` 都在。
-5. **离线单命令**：`Alas.Server contract --fixture <用例.json> [--artifacts <目录>] [--json <裁决.json>]`。
+   并要求 `docs/result-contract.md`、`tools/sortie_contract.py`、Engine 合同源文件都在。
+5. **离线单命令**：`dotnet run --project tools/diagnostics/result_contract_reference -- <用例.json> <工件目录> <裁决.json>`。
 
 ## 六、实机证据
 

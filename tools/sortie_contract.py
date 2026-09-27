@@ -6,7 +6,7 @@
 本模块把这些口径**显式化**成一张可执行的不变量表：
 
   * 生产方：`tools/s3_campaign_outcome.py`（`finalize_sortie_result` 末尾 stamp 一次）
-  * 消费方：`src/Alas.Core/Campaign/SortieResult.cs`（同一套规则，逐条对齐）
+  * 消费方：`src/Alas.Engine/Contracts/SortieContract.cs`（同一套规则，逐条对齐）
   * 对拍方：`tools/diagnostics/verify_result_contract.py`（两侧裁决必须逐例一致）
 
 四条硬规则（对应 R0 阶段门槛）：

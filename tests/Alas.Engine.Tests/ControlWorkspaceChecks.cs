@@ -102,7 +102,7 @@ internal static class ControlWorkspaceChecks
         Reject<EngineControlWorkspaceUnavailableException>(() => workspace.StartRun(request));
         Reject<EngineControlWorkspaceUnavailableException>(() => workspace.SaveQueueRequest(request));
         Check(!workspace.RequestStop(), "Idle shutdown accepted a stop");
-        Check(AppDomain.CurrentDomain.GetAssemblies().All(a => a.GetName().Name != "Alas.Core"), "Control path loaded Core");
+        Check(AppDomain.CurrentDomain.GetAssemblies().All(a => a.GetName().Name != "Alas.Core"), "Engine control path kept retired Core unloaded");
     }
 
     private static async Task LiveSnapshotChecksAsync(string artifacts)

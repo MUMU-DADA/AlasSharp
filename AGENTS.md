@@ -90,7 +90,7 @@
 ## 结果判定：只能走 sortie-result/1 合同
 
 Frozen：结论口径写在 `docs/result-contract.md`，旧 Python/Core 对照实现在 `tools/sortie_contract.py` 和
-`src/Alas.Core/Campaign/SortieResult.cs`；产品裁决在 `Alas.Engine/Tasks/CampaignResumeTask.cs`，必须同时保持合同语义。
+`src/Alas.Engine/Contracts/SortieContract.cs`；产品裁决在 `Alas.Engine/Tasks/CampaignResumeTask.cs`，必须同时保持合同语义。
 改动结果判定时必须遵守：
 
 - 不得在任何调用点用单个字段拼通关结论；`CampaignEnd` 只表示"出击结束"（撤退也抛它），不能单独证明通关。

@@ -184,9 +184,9 @@ Engine 的地图准备此前未读取周回状态，导致运行配置可能与�
 ## 使用与验收
 
 ```powershell
-Alas.Server campaign campaign.campaign_main.campaign_1_4
-Alas.Server campaign campaign.campaign_main.campaign_1_4 --run --allow-actions
-Alas.Server campaign campaign.campaign_main.campaign_2_1 --run --allow-actions --clear-all
+Alas.Engine.Cli campaign --chapter campaign_main/campaign_1_4 --adb adb --serial <device> --server cn --assets <assets> --python python --artifacts <artifacts> --models <models>
+Alas.Engine.Cli campaign --chapter campaign_main/campaign_1_4 --adb adb --serial <device> --server cn --assets <assets> --python python --artifacts <artifacts> --models <models> --run --allow-actions --package <package>
+Alas.Engine.Cli campaign --chapter campaign_main/campaign_2_1 --adb adb --serial <device> --server cn --assets <assets> --python python --artifacts <artifacts> --models <models> --run --allow-actions --package <package>
 ```
 
 第一条只读取规则；真跑默认最多 20 场、1500 秒，在上游操作边界检查限制。
