@@ -15,9 +15,12 @@ internal static class CampaignCommandChecks
         var options = new CampaignCommandOptions(
             ["campaign.campaign_main.campaign_1_1", "campaign/campaign_main/campaign_1_2.py", "campaign_main/campaign_9_1"],
             "missing-adb", "offline", GameServer.Cn, "missing-assets", "missing-python", artifacts,
-            ModelDirectory: "missing-models", DryRun: true, ContinueOnFailure: true);
+            ModelDirectory: "missing-models", DryRun: true, ContinueOnFailure: true,
+            Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead);
         var requests = CampaignCommand.BuildRequests(options);
         Check(requests.Count == 3 && requests[0].Input!["campaign"]!.GetValue<string>() == "campaign_main/campaign_1_1");
+        Check(requests.All(request => request.Input!["fleet1Formation"]!.GetValue<string>() == "diamond" &&
+            request.Input["fleet2Formation"]!.GetValue<string>() == "line_ahead"), "Command lost formation options");
         var result = await CampaignCommand.RunAsync(options);
         Check(result.Failed && result.Tasks.Count == 3 &&
               result.Tasks[0].Outcome == TaskOutcome.DryRun &&

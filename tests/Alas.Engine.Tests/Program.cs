@@ -254,6 +254,14 @@ try
         return 0;
     }
 
+    if (args is ["--strategy", var strategyPython, var strategyUpstream, var strategyArtifacts])
+    {
+        string folder = Path.GetFullPath(strategyArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignStrategyChecks.RunAsync(Path.GetFullPath(strategyPython), Path.GetFullPath(strategyUpstream), folder);
+        return 0;
+    }
+
     if (args is ["--control-workspace", var controlArtifacts])
     {
         string folder = Path.GetFullPath(controlArtifacts);

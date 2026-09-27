@@ -11,7 +11,7 @@ if (args.Length == 0 || args is ["--help"])
     Console.WriteLine("observe: capture and identify one frame, with device actions disabled.");
     Console.WriteLine("navigate: additionally requires --package <Android package> --page <destination>; --timeout <seconds> defaults to 120. Performs game clicks and recovery.");
     Console.WriteLine("run: --queue <JSON task array> [--models <ONNX directory>] [--allow-actions --package <Android package>] [--dry-run] [--continue-on-failure] [--resume <run directory>]. Task kinds: observe, navigate, data_key, map_observe, campaign_stages (read-only OCR; optional entrances array), campaign_select (input: campaign; stops at map preparation), campaign_fleet_prepare (input: campaign; stops at fleet preparation), campaign_run (input: campaign, fleet1, fleet2, submarine, emotionMode=ignore; performs the independent entry and map graph), campaign_resume (input: campaign; requires a freshly entered map and never records cleared).");
-    Console.WriteLine("campaign: --chapter <rule[,rule...]> --models <OCR model directory>; defaults to dry-run. Add --run --allow-actions --package <Android package> to execute; optional --fleet1/--fleet2/--submarine/--timeout/--continue-on-failure/--resume.");
+    Console.WriteLine("campaign: --chapter <rule[,rule...]> --models <OCR model directory>; defaults to dry-run. Add --run --allow-actions --package <Android package> to execute; optional --fleet1/--fleet2/--submarine/--timeout/--continue-on-failure/--resume. --fleet1-formation/--fleet2-formation accept line_ahead, double_line (default), diamond.");
     return 0;
 }
 try
@@ -23,7 +23,7 @@ try
     string[] required = ["--adb", "--serial", "--server", "--assets", "--python", "--artifacts",
         .. navigate ? new[] { "--package", "--page" } : run ? new[] { "--queue" } : campaign ? new[] { "--chapter", "--models" } : []];
     var allowed = required.Concat(navigate ? ["--timeout"] : run ? ["--models", "--package", "--resume"] : campaign
-        ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--timeout"]
+        ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--timeout", "--fleet1-formation", "--fleet2-formation"]
         : Array.Empty<string>()).ToHashSet(StringComparer.Ordinal);
     var switches = (run ? new[] { "--allow-actions", "--dry-run", "--continue-on-failure" } : campaign
         ? new[] { "--run", "--allow-actions", "--continue-on-failure" } : []).ToHashSet(StringComparer.Ordinal);
@@ -71,7 +71,9 @@ try
                 DryRun: !flags.Contains("--run"), AllowActions: flags.Contains("--allow-actions"),
                 ContinueOnFailure: flags.Contains("--continue-on-failure"), ResumeDirectory: values.GetValueOrDefault("--resume"),
                 Fleet1: ParseFleet("--fleet1", 1), Fleet2: ParseFleet("--fleet2", 0),
-                Submarine: ParseFleet("--submarine", 0), TimeoutSeconds: timeout.TotalSeconds);
+                Submarine: ParseFleet("--submarine", 0), TimeoutSeconds: timeout.TotalSeconds,
+                Fleet1Formation: CampaignStrategy.ParseFormation(values.GetValueOrDefault("--fleet1-formation", "double_line")),
+                Fleet2Formation: CampaignStrategy.ParseFormation(values.GetValueOrDefault("--fleet2-formation", "double_line")));
             var campaignResult = await CampaignCommand.RunAsync(options, cancellation.Token);
             Console.WriteLine(CampaignCommand.Serialize(campaignResult));
             return campaignResult.Failed || cancellation.IsCancellationRequested ? 1 : 0;

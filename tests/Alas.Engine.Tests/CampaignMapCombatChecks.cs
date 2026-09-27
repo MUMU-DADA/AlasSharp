@@ -144,7 +144,7 @@ internal static class CampaignMapCombatChecks
         var execution = new CampaignExecution(new TwoBattleRule(map), new() { EmotionMode = CampaignEmotionMode.Ignore },
             (state, config) => new InMapCampaignOperations(host, state, config, default));
         Check(await execution.RunAsync() == CampaignLoopExit.Ended && host.Camera is { Taps: 2, Scans: 2 } &&
-            execution.Context.State.BattleCount == 1 && host.FleetLockCalls == 1 &&
+            execution.Context.State.BattleCount == 1 && host.FleetLockCalls == 1 && host.StrategyCalls == 1 &&
             execution.Context.Operations is InMapCampaignOperations
             { StageReturn: { Combats: [ { Return: CombatReturn.InStage, Rank.IsWinningRank: true } ] } },
             "Compiled campaign loop did not execute the in-map C# scan, combat and stage-return sequence");
@@ -299,11 +299,19 @@ internal static class CampaignMapCombatChecks
         public bool InMap { get; init; } = true;
         public bool HasMystery { get; init; }
         public int FleetLockCalls { get; private set; }
+        public int StrategyCalls { get; private set; }
         public Camera? Camera { get; private set; }
         public ValueTask<bool> VerifyInMapAsync(CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(InMap); }
         public ValueTask EnsureFleetLockAsync(bool enabled, CancellationToken token)
         { token.ThrowIfCancellationRequested(); FleetLockCalls++; return ValueTask.CompletedTask; }
+        public ValueTask EnsureInitialStrategyAsync(CampaignConfiguration configuration, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            Check(FleetLockCalls == 1 && Camera is null, "Strategy did not run between fleet lock and map scanning");
+            StrategyCalls++;
+            return ValueTask.CompletedTask;
+        }
         public ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state,
             CampaignConfiguration configuration, CancellationToken token)
         {

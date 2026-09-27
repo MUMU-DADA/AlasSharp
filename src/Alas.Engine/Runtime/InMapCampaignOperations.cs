@@ -7,6 +7,7 @@ public interface ICampaignInMapHost
 {
     ValueTask<bool> VerifyInMapAsync(CancellationToken token);
     ValueTask EnsureFleetLockAsync(bool enabled, CancellationToken token);
+    ValueTask EnsureInitialStrategyAsync(CampaignConfiguration configuration, CancellationToken token);
     ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state,
         CampaignConfiguration configuration, CancellationToken token);
     CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration);
@@ -52,6 +53,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     {
         if (!_entered || !ReferenceEquals(state.Map, definition))
             throw new InvalidOperationException("Map initialization requires the verified campaign declaration");
+        await host.EnsureInitialStrategyAsync(configuration, token);
         var ready = await CampaignMapInitializer.InitializeAsync(state, configuration,
             (map, ct) => host.CreateCameraAsync(map, configuration, ct), TimeSpan.FromMinutes(2), token);
         _combat = host.CreateCombat(ready.Camera, configuration);

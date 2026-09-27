@@ -10,6 +10,8 @@ public sealed record MapVisionOverrides(PeakParameters InternalPeaks, PeakParame
 
 public enum EnemyScalePriority { Default, StrongestFirst, WeakestFirst }
 public enum CampaignEmotionMode { Calculate, Ignore }
+public enum FleetFormation { LineAhead, DoubleLine, Diamond }
+public enum SubmarineMode { DoNotUse, HuntOnly, BossOnly, HuntAndBoss, EveryCombat }
 
 public sealed record CampaignConfiguration
 {
@@ -30,6 +32,9 @@ public sealed record CampaignConfiguration
     public EnemyScalePriority EnemyPriority { get; init; }
     public int Fleet2 { get; init; }
     public int Submarine { get; init; }
+    public FleetFormation Fleet1Formation { get; init; } = FleetFormation.DoubleLine;
+    public FleetFormation Fleet2Formation { get; init; } = FleetFormation.DoubleLine;
+    public SubmarineMode SubmarineMode { get; init; } = SubmarineMode.DoNotUse;
     public bool UseFleetLock { get; init; } = true;
     public CampaignEmotionMode EmotionMode { get; init; } = CampaignEmotionMode.Calculate;
     public MapVisionOverrides? Vision { get; init; }

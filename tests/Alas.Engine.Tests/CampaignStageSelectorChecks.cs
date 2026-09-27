@@ -198,6 +198,17 @@ internal static class CampaignStageSelectorChecks
         }, "Campaign run accepted missing fleet plan");
         var runInput = (JsonObject)configured.Input!.DeepClone();
         runInput["emotionMode"] = "ignore";
+        runInput["fleet1Formation"] = "diamond";
+        runInput["fleet2Formation"] = "line_ahead";
+        foreach (var value in new JsonNode?[] { null, JsonValue.Create("unknown"), JsonValue.Create(1) })
+        {
+            var malformed = runInput.DeepClone().AsObject();
+            malformed["fleet1Formation"] = value?.DeepClone();
+            bool rejected = false;
+            try { runTask.Validate(malformed); }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException) { rejected = true; }
+            Check(rejected, "Campaign accepted an invalid formation before device entry");
+        }
         await Throws<NotSupportedException>(() =>
         {
             runTask.Validate(configured.Input);
@@ -330,8 +341,9 @@ internal static class CampaignStageSelectorChecks
             CampaignConfiguration configuration, CancellationToken token)
         {
             if (Fail) throw new IOException("Injected map execution failure");
-            Check(configuration is { EmotionMode: CampaignEmotionMode.Ignore, UseFleetLock: true },
-                "Integrated campaign did not preserve explicit emotion and fleet-lock settings");
+            Check(configuration is { EmotionMode: CampaignEmotionMode.Ignore, UseFleetLock: true,
+                Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead, Vision: not null },
+                "Integrated campaign did not preserve explicit emotion, fleet-lock and formation settings");
             return ValueTask.FromResult(new CampaignResumeResult(CampaignLoopExit.Ended, 1, StageReturn));
         }
     }

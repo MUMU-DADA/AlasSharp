@@ -103,6 +103,15 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     }
     async ValueTask ICampaignInMapHost.EnsureFleetLockAsync(bool enabled, CancellationToken token)
         => _ = await new CampaignFleetLock(Driver).EnsureAsync(enabled, token);
+    async ValueTask ICampaignInMapHost.EnsureInitialStrategyAsync(CampaignConfiguration configuration, CancellationToken token)
+    {
+        var buff = new MapFormationProbe(_vision, _assets, Driver.Server,
+            () => Driver.Frame ?? throw new InvalidOperationException("No strategy screenshot"));
+        // Each sortie owns its formation flags. Fleet switching/reversal is a
+        // separate migration; the current entry initializes the first fleet.
+        _ = await new CampaignStrategy(Driver, buff.ObserveAsync)
+            .EnsureAsync(1, configuration, TimeSpan.FromSeconds(45), token);
+    }
     async ValueTask<IMapScanCamera> ICampaignInMapHost.CreateCameraAsync(CampaignState state,
         CampaignConfiguration configuration, CancellationToken token)
     {

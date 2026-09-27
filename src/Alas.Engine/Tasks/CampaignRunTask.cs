@@ -13,7 +13,8 @@ public sealed class CampaignRunTask : ITaskRunner
 
     public void Validate(JsonObject? input)
     {
-        TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock");
+        TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
+            "fleet1Formation", "fleet2Formation");
         var id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign run requires a compiled campaign rule");
         if (RuleCatalog.Create(id).StageName is null)
@@ -24,6 +25,8 @@ public sealed class CampaignRunTask : ITaskRunner
         if (input.ContainsKey("fleetLock") && input["fleetLock"] is null)
             throw new ArgumentException("Fleet lock setting cannot be null");
         if (input["fleetLock"] is not null) _ = input["fleetLock"]!.GetValue<bool>();
+        _ = Formation(input, "fleet1Formation");
+        _ = Formation(input, "fleet2Formation");
     }
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
@@ -44,6 +47,8 @@ public sealed class CampaignRunTask : ITaskRunner
             EmotionMode = CampaignEmotionMode.Ignore,
             Fleet2 = requestedPlan.Second,
             Submarine = requestedPlan.Submarine,
+            Fleet1Formation = Formation(request.Input, "fleet1Formation"),
+            Fleet2Formation = Formation(request.Input, "fleet2Formation"),
             UseFleetLock = request.Input["fleetLock"]?.GetValue<bool>() ?? true
         };
         // Config inheritance is authoritative. Apply it before touching the
@@ -55,13 +60,7 @@ public sealed class CampaignRunTask : ITaskRunner
             Submarine = effectiveConfiguration.Submarine
         };
         plan.Validate();
-        var configuration = new CampaignConfiguration
-        {
-            EmotionMode = CampaignEmotionMode.Ignore,
-            Fleet2 = plan.Second,
-            Submarine = plan.Submarine,
-            UseFleetLock = effectiveConfiguration.UseFleetLock
-        };
+        var configuration = effectiveConfiguration;
 
         var evidence = new JsonObject
         {
@@ -71,6 +70,8 @@ public sealed class CampaignRunTask : ITaskRunner
             ["emotionMode"] = "ignore",
             ["fleetLockRequested"] = configuration.UseFleetLock
         };
+        evidence["fleet1Formation"] = CampaignStrategy.FormationName(configuration.Fleet1Formation);
+        evidence["fleet2Formation"] = CampaignStrategy.FormationName(configuration.Fleet2Formation);
         string phase = "navigation";
         try
         {
@@ -104,6 +105,10 @@ public sealed class CampaignRunTask : ITaskRunner
             throw new TaskEvidenceException(phase, evidence, error);
         }
     }
+
+    private static FleetFormation Formation(JsonObject input, string name)
+        => CampaignStrategy.ParseFormation(input.TryGetPropertyValue(name, out var value)
+            ? value?.GetValue<string>() ?? throw new ArgumentException(name + " cannot be null") : "double_line");
 
     private static FleetPlan Plan(JsonObject? input)
     {
