@@ -263,6 +263,14 @@ try
         return 0;
     }
 
+    if (args is ["--combat-health", var combatHealthPython, var combatHealthUpstream, var combatHealthArtifacts])
+    {
+        string folder = Path.GetFullPath(combatHealthArtifacts);
+        Directory.CreateDirectory(folder);
+        await CombatHealthChecks.RunAsync(Path.GetFullPath(combatHealthPython), Path.GetFullPath(combatHealthUpstream), folder);
+        await CombatFlowChecks.RunAsync();
+        return 0;
+    }
     if (args is ["--health", var healthPython, var healthUpstream, var healthArtifacts])
     {
         string folder = Path.GetFullPath(healthArtifacts);

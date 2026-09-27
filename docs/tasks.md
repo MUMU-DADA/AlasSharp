@@ -41,7 +41,9 @@ required 的前置条件缺失计为队列失败；正常边界停止不计业�
 
 具体输入由各 runner.Validate 定义。已编译地图声明不代表对应章节钩子和配置已迁完；可执行 RuleCatalog 仍只有已迁移的规则。战役 fleet1/fleet2/submarine 必须明确；情绪计算未迁完，当前须明确 emotionMode=ignore。campaign_run 的可选 fleet1Formation/fleet2Formation 为 line_ahead、double_line（默认）或 diamond，非法值在操作设备前拒绝；章节配置覆盖保留并传入地图执行。fleetOrder 接收 fleet1_mob_fleet2_boss（默认）、fleet1_boss_fleet2_mob、fleet1_all_fleet2_standby、fleet1_standby_fleet2_all。初始舰队选择/反转和对应阵型已接入，章节覆盖禁用二队时不反转；战中双舰队调度与潜艇实战仍有缺口。禁止按地图/页面补特例来绕过缺失语义。
 
-`campaign_run` / `campaign_resume` 的队列输入可设置 `hpControl: { "lowHpRetreat": true, "threshold": 0.3, "balanceWeight": "1000, 1000, 1000" }`。缺省遵循原生配置：关闭低血量撤退、阈值 0.3、等权重。权重支持中文逗号和单个整数的广播；拒绝负权重、全零、错误数量及非整数。阈值在 0–1 之间；这是加权血量，首次确认的有船槽位不会因战损归零而变为空槽。进图和战后返回地图时均读取六槽血量；工件的 `health` 保存原始值、加权值、首次槽位掩码和帧号。低血量触发撤退后须有退出动作和新帧的章节页确认，才输出 `withdrawal` 与 `sortie.outcome=withdrawn`，任务仍非成功。此输入不启用前排拖动换位或维修。
+`campaign_run` / `campaign_resume` 的队列输入可设置 `hpControl: { "lowHpRetreat": true, "threshold": 0.3, "balanceWeight": "1000, 1000, 1000" }`。缺省遵循原生配置：关闭低血量撤退、阈值 0.3、等权重。权重支持中文逗号和单个整数的广播；拒绝负权重、全零、错误数量及非整数。阈值在 0–1 之间；这是加权血量，首次确认的有船槽位不会因战损归零而变为空槽。进图和战后返回地图时均读取六槽血量；工件的 `health` 保存原始值、加权值、首次槽位掩码和帧号。低血量触发撤退后须有退出动作和新帧的章节页确认，才输出 `withdrawal` 与 `sortie.outcome=withdrawn`，任务仍非成功。换位和维修须分别通过下述开关启用。
+
+`hpControl` 另支持 `balance`（默认 false）、`balanceThreshold`（0.2）、`emergencyRepair`（false）、`repairSingleThreshold`（0.3）和 `repairMultiThreshold`（0.6）；所有阈值要求 0–1 的有限值。按照上游，维修需要同时开启 `balance` 和 `emergencyRepair`；舰队锁不禁维修，但会禁止前排换位。`campaign_run` 须另设 `fleetLock=false` 才能执行换位，`campaign_resume` 仍沿用默认舰队锁。换位按加权前排 HP 决定；维修忽略 ≤0.001 的空槽，要求前后排都有有效 HP，任一有效槽低于单槽阈值或任一排最高 HP 低于整排阈值才使用。当前 ADB 操作是原生滑动加目标补点组合，尚未真机验证换位结果。`combat-health.json` 保存每场准备的换位输入完成状态、维修点击及依据血量帧、稳定等待是否成功；失败动作另见 `actions.json`。动作完成不代表换位、维修到账或通关，权威 HP 只由之后的地图读数更新。
 
 两个战役任务还支持 `reachLevel` 非负整数，默认 0 关闭等级观测；开启后要求配置 OCR 模型目录。`levels` 工件保存同帧六槽读数、战前基线及 `reachLevelTriggered`，遵循原生 `after >= limit > before > 0`，且只接受升一级或新等级低于 35 的跨阈值变化。初始读数不会触发停止，后续读数不会清除已触发标记；读取失败或六槽帧号不一致不发布部分状态。当前任务只执行一次出击，`reachLevel` 不会中途撤退，也不影响之后显式排列的独立任务。完整 CampaignRun 连续出击及其到级禁用调度仍待迁移，不能把标记输出当成该调度已完成。等级读数、等级达到和 LV32 标记都不能证明通关。
 

@@ -6,14 +6,15 @@ namespace Alas.Engine.Runtime;
 
 public enum CombatReturn { InMap, InStage }
 public sealed record CombatFlowResult(CombatReturn Return, CombatRankEvidence? Rank,
-    bool NewShipObserved, bool EnemySearchingObserved, int CapturedFrames);
+    bool NewShipObserved, bool EnemySearchingObserved, int CapturedFrames, CombatHealthEvidence? HealthPreparation = null);
 public sealed record CombatFlowOptions(TimeSpan PreparationTimeout, TimeSpan ExecutionTimeout, TimeSpan StatusTimeout)
 {
     public static CombatFlowOptions Default { get; } = new(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(6), TimeSpan.FromMinutes(2));
 }
 
 /// <summary>Independent C# automatic combat phases. The caller still owns map state and sortie adjudication.</summary>
-public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler popups, IMapUiObservations mapUi)
+public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler popups, IMapUiObservations mapUi,
+    CombatHealthPreparation? healthPreparation = null, IntervalTimer? automationSetTimer = null)
 {
     public static readonly SourceFile Source = MapEncounterProbe.CombatSource;
     private static readonly (AssetRule Asset, TemplatePreprocessing Processing)[] PauseVariants =
@@ -43,6 +44,7 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
     ];
     private int _started;
     private int _frames;
+    private readonly IntervalTimer _automationSet = automationSetTimer ?? new(ui.Clock, 1);
 
     public async ValueTask<CombatFlowResult> RunAutoAsync(CombatFlowOptions? options = null, CancellationToken token = default)
     {
@@ -57,7 +59,8 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
         await PhaseAsync("execution", options.ExecutionTimeout, (time, ct) => ExecuteAsync(rank, time, ct), token);
         var (returned, newShip, searching) = await PhaseAsync("status", options.StatusTimeout,
             (time, ct) => StatusAsync(rank, time, ct), token);
-        return new(returned, rank.Evidence, newShip, searching, _frames);
+        var health = healthPreparation?.Evidence;
+        return new(returned, rank.Evidence, newShip, searching, _frames + (health?.CapturedFrames ?? 0), health);
     }
 
     private async ValueTask<T> PhaseAsync<T>(string phase, TimeSpan timeout,
@@ -100,10 +103,26 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
         return false;
     }
 
+    internal async ValueTask<bool> SetAutomationAsync(CancellationToken token)
+    {
+        if (!_automationSet.Reached()) return false;
+        _ = await ui.AppearsAsync(UiAssets.Combat.AUTOMATION_ON, token: token);
+        if (await ui.AppearsAsync(UiAssets.Combat.AUTOMATION_OFF, token: token))
+        {
+            await ui.ClickAsync(UiAssets.Combat.AUTOMATION_SWITCH, token);
+            await ui.DelayAsync(TimeSpan.FromSeconds(1), token);
+            _automationSet.Reset();
+            return true;
+        }
+        if (await AutomationConfirmAsync(token)) { _automationSet.Reset(); return true; }
+        return false;
+    }
+
     private async ValueTask<bool> PrepareAsync(TimeSpan timeout, CancellationToken token)
     {
         var limit = new IntervalTimer(ui.Clock, timeout.TotalSeconds);
         limit.Reset();
+        if (healthPreparation is not null) await healthPreparation.BalanceAsync(token);
         bool first = ui.HasFrame;
         while (true)
         {
@@ -111,21 +130,14 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
             if (limit.Reached()) throw new TimeoutException("Combat preparation did not reach a running battle");
             if (!first) await CaptureAsync(token);
             first = false;
-            if (await ui.AppearsAsync(UiAssets.Combat.BATTLE_PREPARATION, ButtonOffset.Expand(20, 20), token: token))
-            {
-                if (await ui.AppearsAsync(UiAssets.Combat.AUTOMATION_OFF, token: token))
-                {
-                    await ui.ClickAsync(UiAssets.Combat.AUTOMATION_SWITCH, token);
-                    await ui.DelayAsync(TimeSpan.FromSeconds(1), token);
-                    continue;
-                }
-                if (await AutomationConfirmAsync(token)) continue;
-            }
-            if (await story.StorySkipAsync(token)) continue;
+            if (await ui.AppearsAsync(UiAssets.Combat.BATTLE_PREPARATION, ButtonOffset.Expand(20, 20), token: token) &&
+                await SetAutomationAsync(token)) continue;
+            if (healthPreparation is not null && await healthPreparation.HandleRepairAsync(token)) continue;
             if (await ui.AppearsAsync(UiAssets.Combat.BATTLE_PREPARATION, ButtonOffset.Expand(20, 20),
                     interval: 2, threshold: 30, token: token))
             { await ui.ClickAsync(UiAssets.Combat.BATTLE_PREPARATION, token); continue; }
             if (await AutomationConfirmAsync(token)) continue;
+            if (await story.StorySkipAsync(token)) continue;
             if (await IsExecutingAsync(token)) return true;
         }
     }

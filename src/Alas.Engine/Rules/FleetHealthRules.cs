@@ -10,11 +10,18 @@ public sealed record FleetHealthOptions
     public bool UseLowHpRetreat { get; init; }
     public double LowHpRetreatThreshold { get; init; } = .3;
     public string BalanceWeight { get; init; } = "1000, 1000, 1000";
+    public bool UseHpBalance { get; init; }
+    public double HpBalanceThreshold { get; init; } = .2;
+    public bool UseEmergencyRepair { get; init; }
+    public double RepairUseSingleThreshold { get; init; } = .3;
+    public double RepairUseMultiThreshold { get; init; } = .6;
 
     public ImmutableArray<double> Weights()
     {
-        if (!double.IsFinite(LowHpRetreatThreshold) || LowHpRetreatThreshold is < 0 or > 1)
-            throw new ArgumentException("Low HP retreat threshold must be between zero and one");
+        foreach (double threshold in new[] { LowHpRetreatThreshold, HpBalanceThreshold,
+                     RepairUseSingleThreshold, RepairUseMultiThreshold })
+            if (!double.IsFinite(threshold) || threshold is < 0 or > 1)
+                throw new ArgumentException("HP control thresholds must be between zero and one");
         var parts = BalanceWeight?.Replace('，', ',').Split(',') ?? [];
         if (parts.Length == 1) parts = [parts[0], parts[0], parts[0]]; // Native numpy broadcasts a single weight.
         var weights = parts.Select(part => int.TryParse(part.Trim(), NumberStyles.Integer,

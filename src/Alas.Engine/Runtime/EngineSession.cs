@@ -21,6 +21,9 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     private readonly IApplicationHealth _application;
     private readonly AssetFiles _assets;
     private readonly MapAmmoProbe _ammoProbe;
+    private readonly ImageStability _imageStability;
+    private readonly IntervalTimer _automationSet;
+    private readonly List<CombatHealthPreparation> _combatHealth = [];
     public UiDriver Driver { get; }
     public PageGraph Pages { get; } = UpstreamPages.Create();
     public TaskCapabilities Capabilities { get; }
@@ -37,6 +40,8 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         _vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"), modelDirectory: options.ModelDirectory);
         _assets = new AssetFiles(options.Assets);
         Driver = new UiDriver(options.Server, _device, _vision, _assets);
+        _imageStability = new(Driver, _vision, () => Driver.Frame ?? throw new InvalidOperationException("No stability screenshot"));
+        _automationSet = new(Driver.Clock, 1);
         _ammoProbe = new(Driver, new MapUiObservations(
             () => Driver.Frame ?? throw new InvalidOperationException("No ammo screenshot"), _vision, _assets, Driver.Server),
             () => Driver.Frame?.Sequence ?? 0);
@@ -84,7 +89,7 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     public MapMovement CreateMapCombatMovement(MapCamera camera, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration,
-            new MapCombatHandler(token => CreateCombatFlow(entrances).RunAutoAsync(token: token),
+            new MapCombatHandler(token => CreateCampaignCombatFlow(camera.State, configuration, entrances).RunAutoAsync(token: token),
                 new MapMysteryItemHandler(Driver), token => ReadFleetStatusAfterCombatAsync(camera.State,
                     camera.State.FleetIndex, configuration, token))), EnsureNoMapInfoBarAsync,
             token => WithdrawCampaignAsync("low_hp", token));
@@ -192,12 +197,23 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         => camera is MapCamera mapCamera ? CreateCampaignMapCombat(mapCamera, configuration) :
             throw new ArgumentException("Campaign camera does not belong to this session", nameof(camera));
     public CombatRankProbe CreateCombatRankProbe() => new(Driver);
-    public CombatFlow CreateCombatFlow(StageEntranceKind entrances = StageEntranceKind.Normal)
+    internal CombatFlow CreateCampaignCombatFlow(CampaignState state, CampaignConfiguration configuration,
+        StageEntranceKind entrances = StageEntranceKind.Normal)
+    {
+        var preparation = new CombatHealthPreparation(Driver,
+            () => Driver.Frame ?? throw new InvalidOperationException("No combat preparation screenshot"),
+            _imageStability, () => state.Health.Get(state.FleetIndex), configuration.Health, configuration.UseFleetLock,
+            new AdbFleetDrag(_device, Driver).DragAsync);
+        _combatHealth.Add(preparation);
+        return CreateCombatFlow(entrances, preparation);
+    }
+    public CombatFlow CreateCombatFlow(StageEntranceKind entrances = StageEntranceKind.Normal,
+        CombatHealthPreparation? healthPreparation = null)
     {
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
         var observations = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No combat screenshot"),
             _vision, _assets, Driver.Server, entrances);
-        return new(Driver, recovery, recovery, observations);
+        return new(Driver, recovery, recovery, observations, healthPreparation, _automationSet);
     }
     public async ValueTask<MapVisualObservation> ObserveMapAsync(CampaignRule rule, CancellationToken token)
     {
@@ -234,6 +250,7 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     public TaskContext BeginTask(TimeSpan timeout)
     {
         _device.Actions.Clear();
+        _combatHealth.Clear();
         Driver.ResetTask();
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
         return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this, this, this, this);
@@ -243,6 +260,13 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         Directory.CreateDirectory(directory);
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };
         await File.WriteAllTextAsync(Path.Combine(directory, "actions.json"), JsonSerializer.Serialize(_device.Actions, json));
+        string? healthFile = null;
+        if (_combatHealth.Count > 0)
+        {
+            healthFile = "combat-health.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, healthFile),
+                JsonSerializer.Serialize(_combatHealth.Select(preparation => preparation.Evidence), json));
+        }
         string? image = null, hash = null;
         long? sequence = null;
         if (Driver.Frame is { } frame)
@@ -252,10 +276,11 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
             hash = Convert.ToHexStringLower(SHA256.HashData(frame.Png.Span));
             sequence = frame.Sequence;
         }
-        return new(image, hash, sequence, _device.Actions.Count);
+        return new(image, hash, sequence, _device.Actions.Count, healthFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
-    public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts);
+    public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
+        string? CombatHealthFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

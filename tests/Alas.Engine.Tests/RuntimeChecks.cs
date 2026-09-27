@@ -27,6 +27,11 @@ internal static class RuntimeChecks
             if (data["advance"]!.GetValue<bool>()) await File.WriteAllTextAsync(stateFile, "1");
             return 0;
         }
+        if (arguments is ["shell", "input", "swipe", _, _, _, _, _] && data["allowSwipe"]?.GetValue<bool>() == true)
+        {
+            await File.AppendAllTextAsync(Path.Combine(folder, "attempts.jsonl"), JsonSerializer.Serialize(arguments) + "\n");
+            return 0;
+        }
         if (arguments.SequenceEqual(new[] { "shell", "dumpsys", "window", "windows" })) { Console.Write("mCurrentFocus=Window{abcd u0 org.example.game/.Main}"); return 0; }
         if (arguments.SequenceEqual(new[] { "shell", "dumpsys", "display" })) { Console.Write("DisplayViewport{valid=true, orientation=1, deviceWidth=1280, deviceHeight=720}"); return 0; }
         Console.Error.Write("Unexpected offline device command");
