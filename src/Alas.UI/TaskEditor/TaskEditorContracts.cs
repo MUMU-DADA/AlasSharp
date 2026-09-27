@@ -5,11 +5,23 @@ namespace Alas.UI.TaskEditor;
 /// <summary>The host supplies transport; this UI never runs device or task logic itself.</summary>
 public interface ITaskEditorBackend
 {
+    /// <summary>Persist one Engine queue entry; the Engine owns input validation.</summary>
+    Task<JsonObject> SaveQueueAsync(string instance, string kind, JsonObject input,
+        CancellationToken cancellationToken)
+        => Task.FromException<JsonObject>(new NotSupportedException("此编辑器后端未接入 Engine 队列保存"));
+    /// <summary>Submit the same queue entry for action execution.</summary>
+    Task RunQueueAsync(string instance, string kind, JsonObject input,
+        CancellationToken cancellationToken)
+        => RunAsync(instance, kind, cancellationToken);
+
+    // Kept for the independent configuration editor checks.  The production
+    // Engine task page never calls these upstream-config methods.
     Task<JsonObject> SaveAsync(string instance, string revision,
         IReadOnlyList<TaskFieldChange> changes, CancellationToken cancellationToken);
     Task RunAsync(string instance, string task, CancellationToken cancellationToken);
     Task<ScriptValidation> ValidateScriptAsync(string instance, string task, string script,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken)
+        => Task.FromException<ScriptValidation>(new NotSupportedException("Engine 任务不支持脚本字段"));
 }
 
 public sealed record TaskFieldChange(string Path, JsonNode? Value);

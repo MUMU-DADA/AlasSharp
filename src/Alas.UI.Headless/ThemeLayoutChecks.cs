@@ -58,7 +58,7 @@ internal static class ThemeLayoutChecks
                         view.FindControl<Panel>("LegacyNavigationHost")), "legacy navigation is in its own content row");
                     double railRight = rail.TranslatePoint(new Point(rail.Bounds.Width, 0), window)!.Value.X;
                     double cardsLeft = resources.TranslatePoint(default, window)!.Value.X;
-                    Check(cardsLeft >= railRight + 13, "legacy scheduler column does not overlap resource cards");
+                    Check(cardsLeft >= railRight + 13, "legacy Engine queue column does not overlap resource cards");
                 }
                 using (var frame = window.CaptureRenderedFrame())
                     frame!.Save(Path.Combine(output, $"integrated-{UiThemes.ToId(theme)}-1280.png"), PngBitmapEncoderOptions.Default);
@@ -79,9 +79,9 @@ internal static class ThemeLayoutChecks
             Click(window, sidebar.FindControl<Button>("TaskSearchButton")!);
             var search = sidebar.FindControl<TextBox>("TaskSearchBox")!;
             Click(window, search);
-            window.KeyTextInput("指挥喵"); Pump();
+            window.KeyTextInput("战役"); Pump();
             Check(view.Model.TaskGroups.SelectMany(item => item.Tasks).Any()
-                && view.Model.TaskGroups.SelectMany(item => item.Tasks).All(item => item.Matches("指挥喵")), "real Chinese input filters task navigation");
+                && view.Model.TaskGroups.SelectMany(item => item.Tasks).All(item => item.Matches("战役")), "real Chinese input filters Engine task navigation");
             Click(window, sidebar.FindControl<Button>("TaskSearchButton")!);
             Check(view.Model.TaskSearchText.Length == 0 && view.Model.TaskGroups.Count > 1, "closing search restores task navigation");
             view.Model.SelectNavCommand.Execute("home"); Pump();

@@ -22,7 +22,7 @@ public sealed class SimulatedUiBackend : IAlasUiBackend
     private IReadOnlyList<InstanceCardViewModel> _cards = [];
     private JsonObject _queue = new();
     private string? _running;
-    private string _task = "Reward";
+    private string _task = "observe";
     private bool _disposed;
     public bool IsConnected => !_disposed;
     public bool IsSimulation => true;
@@ -44,7 +44,7 @@ public sealed class SimulatedUiBackend : IAlasUiBackend
     {
         Check();
         _samples.Clear(); _imports.Clear(); _startup.Clear(); _deploy.Clear();
-        _queue = new(); _running = null; _task = "Reward";
+        _queue = new(); _running = null; _task = "observe";
         foreach (string name in new[] { "demo-main", "demo-event" })
         {
             _samples.Add(name, new Sample(DefaultValues()));
@@ -192,8 +192,6 @@ public sealed class SimulatedUiBackend : IAlasUiBackend
         => Write(() => _queue = (JsonObject)queue.DeepClone(), cancellationToken);
     public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default)
         => Write(() => { _queue = (JsonObject)request.Queue.DeepClone(); Start(_samples.Keys.First(), "模拟队列"); }, cancellationToken);
-    public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default)
-        => Write(() => Start(request.Instance, request.Task), cancellationToken);
     private void Start(string instance, string task)
     { Get(instance); _running = instance; _task = task; AppendLogsCore(instance, 1); }
     public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)
@@ -216,7 +214,7 @@ public sealed class SimulatedUiBackend : IAlasUiBackend
                     ["record"] = Epoch.ToString("O") }).ToArray()) };
         return new JsonObject { ["simulation"] = true, ["queue"] = _queue.DeepClone(),
             ["active"] = new JsonObject { ["instance"] = _running ?? instance, ["status"] = _running is null ? "idle" : "running",
-                ["kind"] = "simulation", ["started_at"] = "ui-only-session", ["scheduler"] = observation.DeepClone() },
+                ["kind"] = "simulation", ["started_at"] = "ui-only-session", ["engine"] = observation.DeepClone() },
             ["overview"] = observation,
             ["recent_logs"] = instance is not null ? Get(instance).Logs.DeepClone() : new JsonArray() };
     }
@@ -268,33 +266,23 @@ public sealed class SimulatedUiBackend : IAlasUiBackend
             ["generatedAt"] = Epoch.ToString("O"), ["count"] = 0, ["cats"] = new JsonArray() }; }, cancellationToken);
     public Task<JsonObject> ClearMeowfficerAsync(string instance, CancellationToken cancellationToken = default)
         => Read(() => { Get(instance); return new JsonObject { ["cleared"] = true, ["simulation"] = true }; }, cancellationToken);
-    public Task<JsonObject> ValidateShopStrategyAsync(string script, CancellationToken cancellationToken = default)
-        => Read(() => new JsonObject { ["valid"] = false, ["diagnostics"] = new JsonArray(new JsonObject
-            { ["code"] = "ui_only", ["message"] = "UI 隔离模式不执行后端脚本校验。" }) }, cancellationToken);
-
     private static SchemaResponse BuildSchema()
     {
         var args = new JsonObject(); var menu = new JsonObject(); var translations = new JsonObject();
-        foreach (var (group, label, _, tasks, labels) in TaskCatalog.Groups)
+        foreach (var (group, label, _, tasks, labels) in EngineTaskCatalog.Groups)
         {
-            menu[group] = new JsonObject { ["page"] = group == "Tool" ? "tool" : "setting",
+            menu[group] = new JsonObject { ["page"] = "tool",
                 ["tasks"] = new JsonArray(tasks.Select(task => (JsonNode?)JsonValue.Create(task)).ToArray()) };
             for (int i = 0; i < tasks.Length; i++)
             {
                 args[tasks[i]] = JsonNode.Parse("""
-                    {"Scheduler":{"Enable":{"type":"checkbox","value":true},"Command":{"type":"input","value":"","display":"hide"}},
-                     "Sample":{"Count":{"type":"input","value":3,"validate":[1,100]},
-                               "Mode":{"type":"select","value":"normal","option":["normal","fast"]},
-                               "Note":{"type":"textarea","value":"UI 隔离样本；此处不是实际游戏配置。"}}}
+                    {"Engine":{"Input":{"type":"json","value":{}}}}
                     """);
-                args[tasks[i]]!["Scheduler"]!["Command"]!["value"] = tasks[i];
                 translations[$"Task.{tasks[i]}.name"] = labels[i] + "（模拟）";
             }
         }
-        translations["Sample._info.name"] = "模拟字段";
-        translations["Sample.Count.name"] = "模拟数量";
-        translations["Sample.Mode.name"] = "模拟选项";
-        translations["Sample.Note.name"] = "模拟备注";
+        translations["Engine._info.name"] = "Engine 输入";
+        translations["Engine.Input.name"] = "任务输入";
         return new() { Menu = menu, Args = args, Translations = translations };
     }
 

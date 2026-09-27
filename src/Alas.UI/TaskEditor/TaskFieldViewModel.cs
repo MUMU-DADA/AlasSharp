@@ -72,7 +72,6 @@ public sealed class TaskFieldViewModel : EditorObservable
     public bool IsVisible => !HiddenBySchema && !(Kind == TaskFieldKind.Storage && _value is JsonObject { Count: 0 });
     public bool IsDirty => !JsonNode.DeepEquals(_value, _original) || Error.Length > 0;
     public bool IsMultiline => Kind is TaskFieldKind.Multiline or TaskFieldKind.Json or TaskFieldKind.Yaml or TaskFieldKind.Lua or TaskFieldKind.Storage;
-    public bool CanResetSchedule => Group == "Scheduler" && Argument == "NextRun" && !ReadOnly;
     // The upstream StorageField deliberately keeps its clear action enabled even when the
     // stored value itself is read-only: clearing is a supported server-side mutation.
     public bool CanClearStorage => Kind == TaskFieldKind.Storage;
@@ -149,7 +148,6 @@ public sealed class TaskFieldViewModel : EditorObservable
         if (!CanClearStorage) return;
         _value = new JsonObject(); _text = "{}"; Error = ""; Changed();
     }
-    public void ResetSchedule() { if (CanResetSchedule) SetText(""); }
     public void Restore()
     {
         _value = _original?.DeepClone(); _text = Display(_value); Error = "";

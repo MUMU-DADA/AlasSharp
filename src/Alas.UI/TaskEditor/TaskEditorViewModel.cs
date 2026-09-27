@@ -24,6 +24,7 @@ public sealed class TaskEditorViewModel : EditorObservable
     private bool _confirming;
     private CancellationTokenSource? _autoSaveCancellation;
     private bool _suppressAutoSave;
+    private bool _queueMode;
     private int _stateVersion;
     public ObservableCollection<TaskFieldGroup> Groups { get; } = [];
     public IEnumerable<TaskFieldViewModel> Fields => Groups.SelectMany(g => g.Fields);
@@ -109,6 +110,28 @@ public sealed class TaskEditorViewModel : EditorObservable
         Notify(nameof(Groups)); Refresh();
     }
 
+    /// <summary>
+    /// Load an Engine runner directly.  Runner input is one JSON document and is
+    /// deliberately not expanded from the retired upstream Config schema.
+    /// </summary>
+    public void LoadEngine(string instance, string kind, string title, JsonObject? input = null)
+    {
+        if (IsBusy || HasChanges) throw new InvalidOperationException("请先保存或放弃当前修改，再加载其他任务。");
+        _queueMode = true;
+        Instance = instance; TaskName = kind; Title = title; Revision = "";
+        IsTool = false; IsRunnable = true; _translations = [];
+        _values = new JsonObject { [kind] = new JsonObject { ["Input"] = input?.DeepClone() ?? new JsonObject() } };
+        Groups.Clear();
+        var group = new TaskFieldGroup("Engine", "Engine 输入", "任务输入由 Engine runner 校验并记录到队列工件。");
+        var definition = new JsonObject { ["type"] = "json", ["value"] = input?.DeepClone() ?? new JsonObject() };
+        group.Fields.Add(new TaskFieldViewModel(kind, "Engine", "Input", definition,
+            definition["value"], (key, fallback) => key == "Engine.Input.name" ? "任务输入" :
+                key == "Engine._info.name" ? "Engine 输入" : title, OnFieldChanged));
+        Groups.Add(group);
+        _search = ""; Error = ""; Message = ""; ConfirmRun = false; IsLoaded = true;
+        Notify(nameof(Groups)); Refresh();
+    }
+
     public void Discard()
     {
         if (IsBusy) return;
@@ -122,6 +145,23 @@ public sealed class TaskEditorViewModel : EditorObservable
     {
         if (!CanSave) return false;
         var backend = Backend!;
+        if (_queueMode)
+        {
+            var input = Fields.SingleOrDefault(field => field.Argument == "Input")?.Value?.AsObject()
+                ?? throw new InvalidDataException("Engine 输入必须是 JSON 对象");
+            IsBusy = true; Error = ""; Message = ""; Refresh();
+            try
+            {
+                var queue = await backend.SaveQueueAsync(Instance, TaskName, input, token);
+                foreach (var field in Fields) field.AcceptSaved(field.Value, field.Value);
+                Message = "Engine 队列已保存";
+                return queue["tasks"] is JsonArray;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            { Error = "队列保存请求已取消；请重新读取 Engine 状态确认。"; return false; }
+            catch (Exception error) { Error = error.Message; return false; }
+            finally { IsBusy = false; Refresh(); }
+        }
         var changes = Fields.Where(f => f.IsDirty && f.Kind != TaskFieldKind.Lua)
             .Select(f => new TaskFieldChange(f.Path, f.Value)).ToArray();
         var submitted = changes.ToDictionary(c => c.Path, c => c.Value);
@@ -227,7 +267,13 @@ public sealed class TaskEditorViewModel : EditorObservable
             if (HasChanges && !await SaveAsync(token)) return false;
             if (HasChanges || HasConflicts) { Error = "仍有未保存的修改，运行请求尚未发送。"; Refresh(); return false; }
             IsBusy = true; Error = ""; Message = ""; Refresh();
-            await Backend!.RunAsync(Instance, TaskName, token);
+            if (_queueMode)
+            {
+                var input = Fields.SingleOrDefault(field => field.Argument == "Input")?.Value?.AsObject()
+                    ?? throw new InvalidDataException("Engine 输入必须是 JSON 对象");
+                await Backend!.RunQueueAsync(Instance, TaskName, input, token);
+            }
+            else await Backend!.RunAsync(Instance, TaskName, token);
             Message = "已提交运行请求，请在任务日志中查看执行结果";
             ConfirmRun = false;
             return true;

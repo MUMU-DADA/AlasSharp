@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 namespace Alas.UI.ViewModels;
 
 /// <summary>Display Engine activity observations verbatim; this model never schedules tasks.</summary>
-public static class SchedulerObservation
+public static class EngineActivityObservation
 {
     public static IReadOnlyList<RailTaskViewModel> Tasks(JsonObject? snapshot, bool running)
     {
@@ -20,7 +20,13 @@ public static class SchedulerObservation
                 string? name = Text(item["kind"]);
                 string? state = Text(item["state"]);
                 if (name is null || name == current || state is null || state == "completed") continue;
-                result.Add(Task(name, Text(item["next_run"]), state == "failed" ? "failed" : "pending", engineActivity));
+                result.Add(Task(name, Text(item["next_run"]), state switch
+                {
+                    "failed" => "failed",
+                    "waiting" => "waiting",
+                    "running" => "running",
+                    _ => "pending",
+                }, engineActivity));
             }
         foreach (string state in new[] { "pending", "waiting" })
             if (snapshot?[state] is JsonArray tasks)
@@ -39,7 +45,7 @@ public static class SchedulerObservation
 
     private static string LegacyTaskLabel(string key)
     {
-        foreach (var (_, _, _, tasks, labels) in TaskCatalog.Groups)
+        foreach (var (_, _, _, tasks, labels) in EngineTaskCatalog.Groups)
         {
             int index = Array.IndexOf(tasks, key);
             if (index >= 0) return labels[index];

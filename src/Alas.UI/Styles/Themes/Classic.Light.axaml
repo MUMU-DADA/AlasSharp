@@ -91,7 +91,7 @@
   <BoxShadows x:Key="AlasFormShadow">0 1 2 0 #0A000000</BoxShadows>
   <BoxShadows x:Key="AlasNavPopoverShadow">0 18 48 0 #241D1D1F, 0 2 10 0 #0D1D1D1F, inset 0 1 0 0 #C7FFFFFF</BoxShadows>
   <BoxShadows x:Key="AlasToggleShadow">0 2 4 0 #33000000</BoxShadows>
-  <BoxShadows x:Key="AlasSchedulerShadow">inset 0 1 0 0 #75FFFFFF</BoxShadows>
+  <BoxShadows x:Key="AlasEngineQueueShadow">inset 0 1 0 0 #75FFFFFF</BoxShadows>
   <BoxShadows x:Key="AlasRailRunningShadow">0 8 24 0 #0A1D1D1F, inset 0 1 0 0 #B8FFFFFF</BoxShadows>
   <BoxShadows x:Key="AlasRailPendingShadow">inset 0 1 0 0 #70FFFFFF</BoxShadows>
   <BoxShadows x:Key="AlasRailWaitingShadow">inset 0 1 0 0 #3DFFFFFF</BoxShadows>
@@ -104,8 +104,8 @@
   <CornerRadius x:Key="AlasControlRadius">10</CornerRadius>
   <CornerRadius x:Key="AlasButtonRadius">20</CornerRadius>
   <CornerRadius x:Key="AlasInstanceTabRadius">999</CornerRadius>
-  <CornerRadius x:Key="AlasSchedulerRadius">12</CornerRadius>
-  <!-- 右栏队列分组圆角：上游 apple.css:60 的 18（此前与调度器共用同一个键） -->
+  <CornerRadius x:Key="AlasEngineQueueRadius">12</CornerRadius>
+  <!-- 右栏队列分组圆角：上游 apple.css:60 的 18 -->
   <CornerRadius x:Key="AlasRailGroupRadius">18</CornerRadius>
   <CornerRadius x:Key="AlasTaskItemRadius">13</CornerRadius>
   <CornerRadius x:Key="AlasNavItemRadius">12</CornerRadius>

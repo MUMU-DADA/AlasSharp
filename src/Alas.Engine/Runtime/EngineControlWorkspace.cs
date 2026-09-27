@@ -54,10 +54,9 @@ public sealed class EngineControlWorkspace
         {
             ["status"] = status,
             ["mode"] = mode, ["kind"] = kind, ["instance"] = instance,
-            // The control plane exposes the Engine queue as a typed activity.
-            // Keep the legacy scheduler slot empty so clients cannot mistake
-            // configuration task names for an upstream scheduler process.
-            ["engine"] = EngineActivity(queue, status, kind, activities), ["scheduler"] = null,
+            // The control plane exposes only the Engine queue activity. There is
+            // no compatibility projection for the retired upstream scheduler.
+            ["engine"] = EngineActivity(queue, status, kind, activities),
             ["started_at"] = started, ["finished_at"] = finished,
             ["stop_requested"] = stopRequested, ["error"] = error, ["run_directory"] = runDirectory,
         };
@@ -71,6 +70,9 @@ public sealed class EngineControlWorkspace
         {
             var config = _configs.Get(selectedInstance);
             var overview = InstanceOverview.FromConfig(config, DateTime.Now);
+            if (status != "running" && queue["tasks"] is JsonArray queued)
+                overview["pending"] = new JsonArray(queued.OfType<JsonObject>().Select(entry =>
+                    (JsonNode)new JsonObject { ["name"] = entry["kind"]?.DeepClone(), ["next_run"] = "" }).ToArray());
             overview["status"] = InstanceOverview.Status(config.Instance, active, report);
             state["overview"] = overview;
         }
@@ -265,53 +267,6 @@ public sealed class EngineControlWorkspace
             config is null ? null : _repo, config?.Instance);
     }
 
-    /// <summary>
-    /// Start exactly one task through the same Engine queue used by the
-    /// explicit <c>/api/run</c> endpoint.  The old Core accepted an upstream
-    /// task name and then dispatched it to a Python host; that boundary is
-    /// intentionally gone.  A task name here is therefore a registered
-    /// <see cref="ITaskRunner.Kind"/> and the optional input is passed to that
-    /// runner unchanged.
-    /// </summary>
-    public void StartTask(JsonObject body)
-    {
-        ArgumentNullException.ThrowIfNull(body);
-        string instance = body["instance"]?.GetValue<string>()
-            ?? throw new ArgumentException("单任务启动需要 instance");
-        string kind = body["task"]?.GetValue<string>()
-            ?? throw new ArgumentException("单任务启动需要 task");
-        if (string.IsNullOrWhiteSpace(instance) || string.IsNullOrWhiteSpace(kind))
-            throw new ArgumentException("instance 和 task 不能为空");
-        if (!System.Text.RegularExpressions.Regex.IsMatch(kind, @"\A[a-zA-Z0-9_-]{1,64}\z"))
-            throw new ArgumentException("task 必须是 Engine 任务标识");
-        if (body["input"] is not null and not JsonObject)
-            throw new ArgumentException("input 必须是 JSON 对象");
-        double timeout = body["timeout_seconds"]?.GetValue<double>() ?? 1500;
-        if (!double.IsFinite(timeout) || timeout <= 0 || timeout > int.MaxValue / 1000.0)
-            throw new ArgumentException("timeout_seconds 必须是正数");
-        bool confirm = body["confirm_actions"]?.GetValue<bool>() ?? false;
-        var request = new JsonObject
-        {
-            ["instance"] = instance,
-            ["mode"] = confirm ? "actions" : "read_only",
-            ["confirm_actions"] = confirm,
-            ["max_seconds"] = timeout,
-            ["queue"] = new JsonObject
-            {
-                ["tasks"] = new JsonArray(new JsonObject
-                {
-                    ["id"] = kind,
-                    ["kind"] = kind,
-                    ["input"] = body["input"]?.DeepClone(),
-                    ["required"] = true,
-                    ["timeoutSeconds"] = timeout,
-                    ["instance"] = instance,
-                })
-            }
-        };
-        StartRun(request);
-    }
-
     // These are deliberately typed Engine capability seams.  They do not
     // accept an operation name or arbitrary arguments, so an old Python host
     // cannot be smuggled back into the product through a generic RPC method.
@@ -326,9 +281,6 @@ public sealed class EngineControlWorkspace
 
     public JsonObject ClearMeowfficer(string instance)
         => throw new EngineCapabilityUnavailableException("Engine 指挥喵清理域尚未实现");
-
-    public JsonObject ValidateShopStrategy(string script)
-        => throw new EngineCapabilityUnavailableException("Engine 商店策略校验域尚未实现");
 
     public bool RequestStop()
     {

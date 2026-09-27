@@ -9,13 +9,11 @@
 | 内置中文字体 Noto Sans CJK SC 2.004 | `Assets/Fonts/NotoSansCJKsc-Regular.otf` | SIL Open Font License 1.1（Copyright © 2014–2021 Adobe） | `LICENSE-NotoSansCJK-OFL.txt` |
 | 品牌标识（`azurpilot.svg` 及其 64/128px 位图） | `Assets/Brand/` | GPL-3.0（上游项目） | 上游仓库 LICENSE |
 | 资源图标位图（oil/gold/diamond/cube.webp） | `Assets/Resources/` | GPL-3.0（上游项目） | 上游仓库 LICENSE |
-| 任务目录（分组与任务名） | `ViewModels/TaskCatalog.cs`（生成物） | GPL-3.0（上游 `module/config` 数据） | 上游仓库 LICENSE |
 
 ## 生成方式（生成脚本不随包分发，仅保留在源码树）
 
 ```powershell
 node src/Alas.UI/Assets/Icons/generate-icons.mjs <lucide-react 包目录> src/Alas.UI/Assets/Icons.axaml
-node src/Alas.UI/Assets/Catalog/generate-task-catalog.mjs <上游仓库根> src/Alas.UI/ViewModels/TaskCatalog.cs
 node src/Alas.UI/Assets/Brand/rasterize-logo.mjs src/Alas.UI/Assets/Brand/azurpilot.svg src/Alas.UI/Assets/Brand/azurpilot-64.png 64
 ```
 

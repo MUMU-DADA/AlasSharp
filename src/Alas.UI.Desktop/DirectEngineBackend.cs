@@ -105,14 +105,6 @@ internal sealed partial class DirectEngineBackend : IAlasUiBackend
     public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().StartRun(ToJson(request)), cancellationToken);
 
-    public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default)
-        => Task.Run(() => WorkspaceOrThrow().StartTask(new JsonObject
-        {
-            ["instance"] = request.Instance, ["task"] = request.Task,
-            ["input"] = request.Input?.DeepClone(), ["timeout_seconds"] = request.TimeoutSeconds,
-            ["confirm_actions"] = request.ConfirmActions,
-        }), cancellationToken);
-
     public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().RequestStop(), cancellationToken);
 
@@ -128,9 +120,6 @@ internal sealed partial class DirectEngineBackend : IAlasUiBackend
 
     public Task<JsonObject> ClearMeowfficerAsync(string instance, CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().ClearMeowfficer(instance), cancellationToken);
-
-    public Task<JsonObject> ValidateShopStrategyAsync(string script, CancellationToken cancellationToken = default)
-        => Task.Run(() => WorkspaceOrThrow().ValidateShopStrategy(script), cancellationToken);
 
     public Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default)
         => Task.Run(() =>

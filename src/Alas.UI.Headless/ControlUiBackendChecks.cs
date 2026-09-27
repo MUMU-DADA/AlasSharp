@@ -26,21 +26,20 @@ internal static class ControlUiBackendChecks
         await ExpectFailure(() => reports.LoadAsync("wrong-instance", CancellationToken.None));
 
         var editor = new EngineTaskEditorBackend(backend);
-        var validation = await editor.ValidateScriptAsync("fixture", "Shop", "bad", CancellationToken.None);
-        Check(!validation.Valid && validation.Diagnostics.Single() is
-            { Code: "forbidden_statement", Line: 2, Column: 3, Message: "fixture diagnostic" }, "Lua diagnostics preserve code and location");
-        backend.Validation = new JsonObject { ["ok"] = true };
-        await ExpectFailure(() => editor.ValidateScriptAsync("fixture", "Shop", "bad", CancellationToken.None));
-        backend.Validation = JsonNode.Parse("""{"valid":true,"diagnostics":[null]}""")!.AsObject();
-        await ExpectFailure(() => editor.ValidateScriptAsync("fixture", "Shop", "bad", CancellationToken.None));
-        await editor.RunAsync("fixture", "Reward", CancellationToken.None);
-        Check(backend.Started is { Instance: "fixture", Task: "Reward", ConfirmActions: true }, "task intent preserves selected instance");
-        await VerifyScheduler(backend);
+        var queue = await editor.SaveQueueAsync("fixture", "observe", new JsonObject(), CancellationToken.None);
+        Check(queue["tasks"] is JsonArray { Count: 1 } && queue["tasks"]![0]!["kind"]!.GetValue<string>() == "observe",
+            "Engine task input is saved as a queue");
+        await editor.RunQueueAsync("fixture", "campaign_run", new JsonObject { ["stage"] = "1-1" }, CancellationToken.None);
+        Check(backend.StartedRun is { Instance: "fixture", Mode: ControlRunMode.Actions, ConfirmActions: true }
+              && backend.StartedRun.Queue["tasks"]![0]!["kind"]!.GetValue<string>() == "campaign_run",
+            "Engine task intent preserves selected instance and runner kind");
+        backend.State["active"] = new JsonObject { ["status"] = "idle" };
+        await VerifyEngineQueue(backend);
         VerifyObservation();
         VerifyInstanceProjection();
         VerifyLateInstanceResponse();
         await VerifyConfigAdapter();
-        Console.WriteLine("PASS: shared Core adapters preserve upstream report fields and strict strategy diagnostics");
+        Console.WriteLine("PASS: shared Engine adapters preserve report fields and strict queue contracts");
     }
 
     private static void VerifyObservation()
@@ -50,18 +49,17 @@ internal static class ControlUiBackendChecks
         overview.SetInstance("fixture");
         var state = JsonNode.Parse("""
             {"active":{"instance":"fixture","status":"running","started_at":"run-one",
-              "scheduler":{"phase":"running","task":"Reward","next_run":"2026-01-01 00:00:00",
-                "pending":[{"name":"Reward","next_run":"2026-01-01 00:00:00"},{"name":"Commission","next_run":"2026-01-02 00:00:00"}],
-                "waiting":[{"name":"Research","next_run":"2030-01-01 00:00:00"}],
+              "engine":{"contract":"engine-activity/1","source":"engine-queue","phase":"running","task":"observe",
+                "tasks":[{"id":"observe","kind":"observe","state":"running"},{"id":"navigate","kind":"navigate","state":"pending"},{"id":"map","kind":"map_observe","state":"waiting"}],
                 "resources":[{"name":"Oil","value":1234,"limit":25000,"record":"2026-01-02 03:04:05"},
                              {"name":"Coin","value":9999,"record":"2020-01-01 00:00:00"}],
-                "logs":{"entries":[{"id":1,"level":"WARNING","message":"native","time":"2026-01-02T00:00:02Z"}]}}},
+                "logs":{"entries":[{"id":1,"level":"WARNING","message":"native","time":"2026-01-02T00:04:02Z"}]}}},
              "recent_logs":[{"id":1,"level":"INFO","message":"core","time":"2026-01-02T00:00:01Z"}]}
             """)!.AsObject();
         overview.ApplyState(state);
         Check(rail.RunningCount == "1" && rail.PendingCount == "1" && rail.WaitingCount == "1" && rail.PlanCountText == "3",
             "native current task is not counted twice in pending");
-        Check(rail.Groups[0].Tasks.Single().Name == "收获", "native command maps to upstream UI label");
+        Check(rail.Groups[0].Tasks.Single().Name == "读取页面状态", "Engine runner maps to its UI label");
         Check(overview.Resources[0].Value.Contains("234") && overview.Resources[0].HasLimit
               && overview.Resources[1].Value == "—", "recorded resource versus sentinel timestamp");
         Check(overview.VisibleLogs.Select(row => row.Message).SequenceEqual(["core", "native"]), "merge log sources chronologically");
@@ -70,12 +68,14 @@ internal static class ControlUiBackendChecks
         overview.ClearCommand.Execute(null);
         overview.ApplyState(state);
         Check(overview.CachedLogCount == 0, "clear retains cursor floor across refresh");
-        state["active"]!["scheduler"]!["logs"]!["entries"]!.AsArray().Add(new JsonObject
+        state["active"]!["engine"]!["logs"]!["entries"]!.AsArray().Add(new JsonObject
             { ["id"] = 2L, ["level"] = "ERROR", ["message"] = "new native", ["time"] = "2026-01-02T00:00:03Z" });
-        state["active"]!["scheduler"]!["phase"] = "waiting";
+        state["active"]!["engine"]!["phase"] = "waiting";
+        state["active"]!["engine"]!["tasks"]![0]!["state"] = "pending";
+        state["active"]!["engine"]!["tasks"]![2]!["state"] = "waiting";
         overview.ApplyState(state);
-        Check(overview.VisibleLogs.Single().Message == "new native" && rail.RunningCount == "0" && rail.PendingCount == "2",
-            "waiting scheduler is not a running task; only new logs appear");
+        if (overview.VisibleLogs.Single().Message != "new native" || rail.RunningCount != "0" || rail.PendingCount != "2")
+            throw new Exception($"Engine UI: waiting Engine queue is not a running task; only new logs appear (running={rail.RunningCount}, pending={rail.PendingCount}, waiting={rail.WaitingCount}, tasks={state["active"]!["engine"]!["tasks"]!.ToJsonString()})");
         state["active"]!["started_at"] = "run-two";
         overview.ApplyState(state);
         Check(overview.CachedLogCount == 3, "new run resets stream cursors");
@@ -88,39 +88,39 @@ internal static class ControlUiBackendChecks
             {"resources":[{"name":"ActionPoint","value":100,"total":160,"record":"2026-01-02 03:04:05"},
                           {"name":"CustomKey","label":"来自上游","value":42,"record":"2026-01-02 03:04:05"}]}
             """)!.AsObject();
-        var cards = SchedulerObservation.Resources(resourceSnapshot, ["CustomKey", "ActionPoint", "Chip"]);
+        var cards = EngineActivityObservation.Resources(resourceSnapshot, ["CustomKey", "ActionPoint", "Chip"]);
         Check(cards[0].Name == "来自上游" && cards[0].HasFallback && cards[1].Limit == "/ 总行动力 160"
               && cards[2].Value == "—", "upstream resource order, unknown keys and total action points");
-        Console.WriteLine("PASS: native scheduler observations, resource records, log cursors and instance isolation");
+        Console.WriteLine("PASS: Engine queue observations, resource records, log cursors and instance isolation");
     }
 
-    private static async Task VerifyScheduler(FixtureBackend backend)
+    private static async Task VerifyEngineQueue(FixtureBackend backend)
     {
         var overview = new OverviewViewModel(backend: backend);
         overview.SetInstance("fixture");
-        Check(!overview.IsSchedulerControlEnabled, "scheduler waits for an authoritative state");
+        Check(!overview.IsEngineControlEnabled, "Engine waits for an authoritative state");
         overview.ApplyState(backend.State);
-        Check(overview.IsSchedulerControlEnabled, "idle scheduler can start");
-        await overview.ToggleSchedulerAsync();
-        Check(backend.StartedRun is { Instance: "fixture", Mode: ControlRunMode.ReadOnly }
-              && backend.StartedRun.Queue["tasks"] is JsonArray tasks &&
-              tasks[0]?["kind"]?.GetValue<string>() == "observe" && overview.IsSchedulerRunning,
-            "start reaches the Engine queue and updates state");
-        backend.State["active"]!["scheduler"] = new JsonObject { ["phase"] = "waiting" };
+        Check(overview.IsEngineControlEnabled, "idle Engine queue can start");
+        await overview.ToggleEngineAsync();
+        if (backend.StartedRun is not { } started || started.Queue["tasks"] is not JsonArray tasks ||
+            tasks[0]?["kind"]?.GetValue<string>() != "observe" || !overview.IsEngineRunning ||
+            started.Instance != "fixture" || started.Mode != ControlRunMode.ReadOnly)
+            throw new Exception($"Engine UI: start reaches the Engine queue and updates state: instance={backend.StartedRun?.Instance}, mode={backend.StartedRun?.Mode}, queue={backend.StartedRun?.Queue.ToJsonString()}, running={overview.IsEngineRunning}");
+        backend.State["active"]!["engine"] = new JsonObject { ["phase"] = "waiting" };
         overview.ApplyState(backend.State);
-        Check(overview.SchedulerStatusText == "等待中", "native waiting status is shown");
-        await overview.ToggleSchedulerAsync();
-        Check(backend.StopRequests == 1 && !overview.IsSchedulerControlEnabled &&
-              overview.SchedulerButtonText == "正在停止…", "stop waits for native boundary acknowledgement");
+        Check(overview.EngineStatusText == "等待中", "native waiting status is shown");
+        await overview.ToggleEngineAsync();
+        Check(backend.StopRequests == 1 && !overview.IsEngineControlEnabled &&
+              overview.EngineButtonText == "正在停止…", "stop waits for native boundary acknowledgement");
         overview.SetInstance("another");
         overview.ApplyState(backend.State);
-        Check(!overview.IsSchedulerRunning && !overview.IsSchedulerControlEnabled,
+        Check(!overview.IsEngineRunning && !overview.IsEngineControlEnabled,
               "another instance cannot claim or stop this run");
         backend.State["active"]!["status"] = "completed";
         overview.ApplyState(backend.State);
-        Check(overview.IsSchedulerControlEnabled, "completed foreign run releases the single device slot");
+        Check(overview.IsEngineControlEnabled, "completed foreign run releases the single device slot");
         overview.ReportBackendError("fixture connection failure");
-        Check(!overview.IsSchedulerControlEnabled, "unknown state does not allow duplicate starts");
+        Check(!overview.IsEngineControlEnabled, "unknown state does not allow duplicate starts");
     }
 
     private static async Task ExpectFailure(Func<Task> action)
@@ -130,7 +130,7 @@ internal static class ControlUiBackendChecks
         throw new Exception("Malformed upstream response was accepted");
     }
     private static void Check(bool ok, string message)
-    { if (!ok) throw new Exception("Core UI: " + message); }
+    { if (!ok) throw new Exception("Engine UI: " + message); }
 
     private static void VerifyInstanceProjection()
     {
@@ -145,18 +145,18 @@ internal static class ControlUiBackendChecks
              "recent_logs":[{"id":1,"message":"another instance log"}]}
             """)!.AsObject();
         overview.ApplyState(state);
-        Check(!overview.IsSchedulerRunning && rail.PendingCount == "1" && rail.WaitingCount == "1" &&
+        Check(!overview.IsEngineRunning && rail.PendingCount == "1" && rail.WaitingCount == "1" &&
               overview.Resources[0].Value.Contains("234") && overview.CachedLogCount == 0,
             "idle instance uses its saved plan/resources even while another instance runs");
         state["active"] = JsonNode.Parse("""
-            {"instance":"fixture","status":"running","scheduler":{"phase":"running","task":"Commission",
-              "pending":[],"waiting":[],"resources":[],"logs":{"entries":[]}}}
+            {"instance":"fixture","status":"running","engine":{"source":"engine-queue","phase":"running","task":"observe",
+              "tasks":[{"id":"observe","kind":"observe","state":"running"}],"resources":[],"logs":{"entries":[]}}}
             """);
         state["recent_logs"] = new JsonArray();
         overview.ApplyState(state);
         Check(rail.RunningCount == "1" && rail.PendingCount == "0", "live native lists take precedence over config display");
         state["active"]!["status"] = "completed";
-        state["active"]!["scheduler"]!["logs"]!["entries"]!.AsArray().Add(new JsonObject
+        state["active"]!["engine"]!["logs"]!["entries"]!.AsArray().Add(new JsonObject
             { ["id"] = 1L, ["message"] = "final native log", ["level"] = "INFO" });
         state["recent_logs"] = new JsonArray();
         overview.ApplyState(state);
@@ -238,7 +238,6 @@ internal static class ControlUiBackendChecks
         public void Dispose() { }
         public Func<string, Task<JsonObject>>? InstanceRead;
         public string? Cleared;
-        public InstanceTaskRunRequest? Started;
         public ControlRunRequest? StartedRun;
         public int StopRequests;
         public IReadOnlyList<InstanceSummary> Listed = [];
@@ -246,10 +245,8 @@ internal static class ControlUiBackendChecks
         public InstanceDeleteRequest? Deleted;
         public InstanceImportRequest? Imported;
         public JsonObject ConfigValues = new() { ["Alas"] = new JsonObject() };
+        public JsonObject SavedQueue = new();
         public JsonObject State = new() { ["active"] = new JsonObject { ["status"] = "idle" } };
-        public JsonObject Validation = JsonNode.Parse("""
-            {"valid":false,"diagnostics":[{"code":"forbidden_statement","message":"fixture diagnostic","line":2,"column":3}]}
-            """)!.AsObject();
         public Task<JsonObject> ReadMeowfficerAsync(MeowfficerRequest request, CancellationToken cancellationToken = default)
             => Task.FromResult(JsonNode.Parse("""
             {"instance":"fixture","generatedAt":"2026-01-01","count":1,"cats":[{
@@ -262,10 +259,6 @@ internal static class ControlUiBackendChecks
             """)!.AsObject());
         public Task<JsonObject> ClearMeowfficerAsync(string instance, CancellationToken cancellationToken = default)
         { Cleared = instance; return Task.FromResult(new JsonObject { ["cleared"] = true }); }
-        public Task<JsonObject> ValidateShopStrategyAsync(string script, CancellationToken cancellationToken = default)
-            => Task.FromResult((JsonObject)Validation.DeepClone());
-        public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default)
-        { Started = request; return Task.CompletedTask; }
         public Task StartRunAsync(ControlRunRequest request, CancellationToken cancellationToken = default)
         {
             StartedRun = request;
@@ -293,7 +286,8 @@ internal static class ControlUiBackendChecks
         public Task<InstanceImportListResponse> ReadInstanceImportsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new InstanceImportListResponse { Sources = Imported is null ? [] :
                 [new InstanceImportSource { Name = Imported.Name, ModifiedAt = DateTimeOffset.UnixEpoch }] });
-        public Task SaveQueueAsync(JsonObject queue, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task SaveQueueAsync(JsonObject queue, CancellationToken cancellationToken = default)
+        { SavedQueue = (JsonObject)queue.DeepClone(); return Task.CompletedTask; }
         public Task<bool> RequestStopAsync(CancellationToken cancellationToken = default)
         { StopRequests++; State["active"]!["stop_requested"] = true; return Task.FromResult(true); }
         public Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();

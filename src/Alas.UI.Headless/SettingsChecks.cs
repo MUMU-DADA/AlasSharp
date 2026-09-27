@@ -17,7 +17,7 @@ namespace Alas.UI.Headless;
 
 /// <summary>
 /// 系统设置页（上游 /settings）的离屏检查，按上游 useDeploySettings 的状态对齐：
-/// ① 未接 Core → 停在加载态 + 显示真实原因，不渲染任何设置项；
+/// ① 未接 Engine → 停在加载态 + 显示真实原因，不渲染任何设置项；
 /// ② 读取错误 → 错误框显示真实消息（上游 error）；
 /// ③ 本地暂存错误 → 第二条错误框（上游 edits.storageError），与读取错误互不覆盖；
 /// ④ 有数据 → 渲染「除远程访问/WebUI 之外的全部」分组，按**分组键**归属；

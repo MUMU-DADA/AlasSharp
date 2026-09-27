@@ -150,12 +150,6 @@ public sealed partial class ControlClient : IDisposable
         => WriteReadJsonAsync("api/meowfficer/clear", new JsonObject { ["instance"] = instance },
             HttpMethod.Post, HttpStatusCode.OK, cancellationToken);
 
-    /// <summary>Validate a restricted upstream shop strategy without executing it.</summary>
-    public Task<JsonObject> ValidateShopStrategyAsync(string script,
-                                                      CancellationToken cancellationToken = default)
-        => WriteReadJsonAsync("api/tasks/validate-script", new JsonObject { ["script"] = script },
-            HttpMethod.Post, HttpStatusCode.OK, cancellationToken);
-
     public async Task<ConfigResponse> GetConfigAsync(string instance, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instance);
@@ -215,10 +209,6 @@ public sealed partial class ControlClient : IDisposable
     public Task RequestStopAsync(CancellationToken cancellationToken = default) =>
         WriteAsync("api/stop", new JsonObject(), ControlJsonContext.Default.JsonObject,
             HttpStatusCode.OK, cancellationToken);
-
-    public Task StartTaskAsync(InstanceTaskRunRequest request, CancellationToken cancellationToken = default)
-        => WriteAsync("api/tasks/run", request, ControlJsonContext.Default.InstanceTaskRunRequest,
-            HttpStatusCode.Accepted, cancellationToken);
 
     private async Task WriteAsync<T>(string path, T body, JsonTypeInfo<T> type,
                                     HttpStatusCode expected, CancellationToken cancellationToken)

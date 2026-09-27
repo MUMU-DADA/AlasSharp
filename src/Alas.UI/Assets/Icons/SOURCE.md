@@ -10,7 +10,6 @@
 | `LICENSE-lucide.txt` | `node_modules/lucide-react/LICENSE` 原样复制 | ISC License, Copyright (c) 2026 Lucide Icons and Contributors；其中源自 Feather 的图标为 MIT License, Copyright (c) 2013-present Cole Bemis |
 | `../Brand/azurpilot.svg`、`../Brand/azurpilot-64.png`、`../Brand/azurpilot-128.png` | `frontend/public/azurpilot.svg`（PNG 由 `../Brand/rasterize-logo.mjs` 栅格化） | GPL-3.0（上游项目） |
 | `../Resources/{oil,gold,diamond,cube}.webp` | `frontend/public/*.webp` | GPL-3.0（上游项目） |
-| `../Catalog/generate-task-catalog.mjs`、`../../ViewModels/TaskCatalog.cs` | `module/config/argument/menu.json`、`module/config/i18n/zh-CN.json` | GPL-3.0（上游项目数据，只搬运名称与顺序） |
 
 ## 图标许可（完整声明）
 
@@ -50,17 +49,13 @@ node src/Alas.UI/Assets/Icons/generate-icons.mjs <lucide-react 包目录> src/Al
 渲染端 `Alas.UI.Controls.Icon` 以 24×24 坐标系、`stroke-width: 2`、圆头圆角连接绘制，
 与上游 lucide 默认参数一致。
 
-## 任务目录生成方式
+## 任务目录
 
-```powershell
-node src/Alas.UI/Assets/Catalog/generate-task-catalog.mjs <上游仓库根> src/Alas.UI/ViewModels/TaskCatalog.cs
-```
-
-只搬运 `menu.json` 的分组与任务顺序、以及 `zh-CN.json` 里的 `Menu.<组>.name` / `Task.<任务>.name`，
-不改写名称、不重排顺序；生成物文件头写明来源提交。
+任务导航来自 `src/Alas.UI/ViewModels/EngineTaskCatalog.cs` 中注册的 Engine runner，
+不读取或生成上游任务目录。
 
 ## 边界
 
-- 上游目录从未被写入；生成所需的依赖副本放在本项目忽略目录 `.runtime/upstream-ui/`。
-- 生成物为纯文本资源字典与 C# 目录，可用 `git diff` 审阅。
+- 上游目录从未被写入；素材依赖副本放在本项目忽略目录 `.runtime/upstream-ui/`。
+- 图标生成物为纯文本资源字典，可用 `git diff` 审阅。
 - 没有复制任何账号、设备、日志或个人路径相关内容。

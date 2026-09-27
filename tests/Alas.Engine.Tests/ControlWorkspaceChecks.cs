@@ -86,7 +86,7 @@ internal static class ControlWorkspaceChecks
         Check(!RunReport.Build(refused.Directory).ToJson()["evidence_complete"]!.GetValue<bool>(), "Broken snapshot accepted");
 
         Reject<ArgumentException>(() => workspace.StartRun(Request(new TaskRequest("../escape", "observe"))));
-        Reject<ArgumentException>(() => workspace.StartTask(new()));
+        Reject<ArgumentException>(() => workspace.StartRun(new JsonObject()));
         Reject<EngineCapabilityUnavailableException>(() => workspace.ReadStatistics(new EngineStatisticsRequest("sample", "resources")));
         var mixed = Request(new TaskRequest("a", "observe", Instance: "second"));
         mixed["instance"] = "first";
@@ -98,12 +98,7 @@ internal static class ControlWorkspaceChecks
         mismatched["instance"] = "sample"; mismatched["serial"] = "different-device";
         Reject<ArgumentException>(() => workspace.StartRun(mismatched));
         var before = await File.ReadAllBytesAsync(Path.Combine(root, "config", "sample.json"));
-        workspace.StartTask(new JsonObject
-        {
-            ["instance"] = "sample",
-            ["task"] = "engine_task_that_is_not_registered",
-            ["confirm_actions"] = false,
-        });
+        workspace.StartRun(Request(new TaskRequest("direct", "engine_task_that_is_not_registered")));
         await Finished(workspace);
         var directTaskReport = workspace.State()["report"]!.AsObject();
         Check(directTaskReport["items"]![0]! ["reason"]!.GetValue<string>() == "unsupported_task_kind",

@@ -203,13 +203,6 @@ public sealed class TaskEditorView : UserControl, IDisposable
             };
             _refreshFields.Add(refreshFieldActions);
         }
-        if (field.CanResetSchedule)
-        {
-            var reset = Button("立即调度", "Reset_" + field.Path);
-            ToolTip.SetTip(reset, "恢复上游默认调度时间；保存后由调度器决定何时执行。");
-            reset.Click += (_, _) => field.ResetSchedule();
-            controls.Children.Add(reset);
-        }
         if (field.CanClearStorage)
         {
             var clear = Button("清除记录", "Clear_" + field.Path);

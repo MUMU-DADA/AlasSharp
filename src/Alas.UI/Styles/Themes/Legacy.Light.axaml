@@ -91,7 +91,7 @@
   <BoxShadows x:Key="AlasFormShadow">0 0 0 0 #00000000</BoxShadows>
   <BoxShadows x:Key="AlasNavPopoverShadow">0 1 2 0 #1A000000</BoxShadows>
   <BoxShadows x:Key="AlasToggleShadow">0 0 0 0 #00000000</BoxShadows>
-  <BoxShadows x:Key="AlasSchedulerShadow">0 0 0 0 #00000000</BoxShadows>
+  <BoxShadows x:Key="AlasEngineQueueShadow">0 0 0 0 #00000000</BoxShadows>
   <BoxShadows x:Key="AlasRailRunningShadow">0 0 0 0 #00000000</BoxShadows>
   <BoxShadows x:Key="AlasRailPendingShadow">0 0 0 0 #00000000</BoxShadows>
   <BoxShadows x:Key="AlasRailWaitingShadow">0 0 0 0 #00000000</BoxShadows>
@@ -104,7 +104,7 @@
   <CornerRadius x:Key="AlasControlRadius">8</CornerRadius>
   <CornerRadius x:Key="AlasButtonRadius">20</CornerRadius>
   <CornerRadius x:Key="AlasInstanceTabRadius">0</CornerRadius>
-  <CornerRadius x:Key="AlasSchedulerRadius">16</CornerRadius>
+  <CornerRadius x:Key="AlasEngineQueueRadius">16</CornerRadius>
   <CornerRadius x:Key="AlasRailGroupRadius">16</CornerRadius>
   <CornerRadius x:Key="AlasTaskItemRadius">4</CornerRadius>
   <CornerRadius x:Key="AlasNavItemRadius">22</CornerRadius>

@@ -30,7 +30,7 @@ internal static class AgentIntegrationChecks
         };
         var adapter = new EngineDeploySettingsBackend(backend);
         var snapshot = adapter.ReadAsync().GetAwaiter().GetResult()!;
-        Check(snapshot.Groups[0].Fields[0].Help == "分支说明", "Core help strips markup without changing the label");
+        Check(snapshot.Groups[0].Fields[0].Help == "分支说明", "Engine help strips markup without changing the label");
         adapter.SaveAsync(new SettingsChange("SSLVerify", "false")).GetAwaiter().GetResult();
         Check(backend.DeployPatch!.Values["SSLVerify"]!.GetValue<bool>() == false, "boolean changes retain JSON boolean type");
         adapter.SaveAsync(new SettingsChange("Branch", "123")).GetAwaiter().GetResult();
@@ -56,7 +56,7 @@ internal static class AgentIntegrationChecks
                 }
                 Check(ReferenceEquals(view.SettingsPage.Session, view.RemotePage.Session), "both pages share one draft queue");
                 Check(view.SettingsPage.Session.SystemGroups.Single().Key == "Git" &&
-                    view.SettingsPage.Session.RemoteGroups.Count == 2, "Core groups split without loss");
+                    view.SettingsPage.Session.RemoteGroups.Count == 2, "Engine groups split without loss");
                 Check(!view.RemotePage.Model.CanToggle && !view.RemotePage.Model.HasAddress,
                     "unimplemented remote service does not invent an address or enabled action");
                 view.Model.SelectNavCommand.Execute("login");
@@ -69,7 +69,7 @@ internal static class AgentIntegrationChecks
                 foreach (char c in "release") { window.KeyTextInput(c.ToString()); Pump(); }
                 var deadline = DateTime.UtcNow.AddSeconds(3);
                 while (backend.DeployPatch is null && DateTime.UtcNow < deadline) { Pump(); Thread.Sleep(5); }
-                Check(backend.DeployPatch?.Values["Branch"]?.GetValue<string>() == "release", "real settings input invokes the shared Core capability");
+                Check(backend.DeployPatch?.Values["Branch"]?.GetValue<string>() == "release", "real settings input invokes the shared Engine capability");
                 Check(input.IsFocused && input.Text == "release", "save notification preserves the active editor");
                 var skip = view.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SkipLink");
                 skip.Focus(); Pump();
@@ -88,7 +88,7 @@ internal static class AgentIntegrationChecks
             }
             finally { window.Close(); }
         }
-        Console.WriteLine("PASS: integrated agent routes, shared Core deployment settings and narrow-screen pointer input");
+        Console.WriteLine("PASS: integrated agent routes, shared Engine deployment settings and narrow-screen pointer input");
     }
 
     private static void Click(Window window, Control control)

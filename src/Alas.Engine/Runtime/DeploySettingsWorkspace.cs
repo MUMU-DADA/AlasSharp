@@ -224,7 +224,7 @@ public sealed class DeploySettingsWorkspace
         try
         {
             File.WriteAllText(temporary, serialized, new UTF8Encoding(false));
-            // Windows readers outside Core can briefly deny delete sharing.
+            // Windows readers outside the Engine process can briefly deny delete sharing.
             // Retry the same atomic replacement, never fall back to truncation.
             DateTime deadline = DateTime.UtcNow.AddSeconds(2);
             while (true)

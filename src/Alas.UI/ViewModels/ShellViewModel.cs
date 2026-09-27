@@ -34,7 +34,6 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public const double CompactBreakpoint = 480;
 
     private readonly Dictionary<(string Instance, string Task), TaskEditorViewModel> _editors = new();
-    private Task<SchemaResponse>? _taskSchema;
     private long _editorLoadVersion;
     private bool _stateRefreshInFlight;
     private long _instanceVersion;
@@ -451,8 +450,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         var expanded = TaskGroups.Where(group => group.IsExpanded).Select(group => group.Key).ToHashSet();
         TaskGroups.Clear();
         if (!HasInstance) return;
-        // 分组与任务来自上游静态目录 menu.json + zh-CN i18n，顺序原样保留。
-        foreach (var (group, groupLabel, icon, tasks, labels) in TaskCatalog.Groups)
+        // 分组与任务来自 Engine 已注册 runner；UI 不再复制上游 menu.json。
+        foreach (var (group, groupLabel, icon, tasks, labels) in EngineTaskCatalog.Groups)
         {
             var entries = new List<TaskEntry>();
             for (var index = 0; index < tasks.Length; index++)
@@ -536,67 +535,33 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         foreach (var entry in PrimaryNav) entry.IsActive = false;
         ActiveNavKey = $"task:{task.Key}";
         _activeTaskKey = task.Key;
-        if (string.Equals(task.Key, "MeowfficerScore", StringComparison.OrdinalIgnoreCase))
+        var key = (InstanceName, task.Key);
+        if (!_editors.TryGetValue(key, out var editor))
         {
-            ActivePage = "meowfficer";
-            Notify(nameof(InstanceName));
+            editor = new TaskEditorViewModel { Backend = new EngineTaskEditorBackend(_backend) };
+            editor.PropertyChanged += (_, _) => { if (ReferenceEquals(TaskEditor, editor)) Notify(nameof(BreadcrumbTail)); };
+            _editors.Add(key, editor);
         }
-        else
-        {
-            var key = (InstanceName, task.Key);
-            if (!_editors.TryGetValue(key, out var editor))
-            {
-                editor = new TaskEditorViewModel { Backend = new EngineTaskEditorBackend(_backend) };
-                editor.PropertyChanged += (_, _) => { if (ReferenceEquals(TaskEditor, editor)) Notify(nameof(BreadcrumbTail)); };
-                _editors.Add(key, editor);
-            }
-            TaskEditor = editor;
-            Notify(nameof(TaskEditor));
-            ActivePage = "task";
-            if (!editor.IsLoaded) _ = LoadTaskEditorAsync(InstanceName, task, editor, version);
-        }
+        TaskEditor = editor;
+        Notify(nameof(TaskEditor));
+        ActivePage = "task";
+        if (!editor.IsLoaded) _ = LoadEngineTaskAsync(InstanceName, task, editor, version);
         Notify(nameof(BreadcrumbTail));
         IsDrawerOpen = false;
     }
 
-    private async Task LoadTaskEditorAsync(string instance, TaskEntry task, TaskEditorViewModel editor, long version)
+    private Task LoadEngineTaskAsync(string instance, TaskEntry task, TaskEditorViewModel editor, long version)
     {
         try
         {
-            var schema = await ReadTaskSchemaAsync().ConfigureAwait(true);
-            var config = await _backend.ReadConfigAsync(instance).ConfigureAwait(true);
-            if (_editorLoadVersion != version || !IsTaskEditorActive || InstanceName != instance) return;
-            editor.Load(instance, task.Key, new JsonObject
-            {
-                ["args"] = schema.Args.DeepClone(),
-                ["menu"] = schema.Menu.DeepClone(),
-                ["translations"] = schema.Translations.DeepClone(),
-            }, new JsonObject
-            {
-                ["instance"] = config.Instance,
-                ["revision"] = config.Revision,
-                ["values"] = config.Values.DeepClone(),
-            });
+            if (_editorLoadVersion != version || !IsTaskEditorActive || InstanceName != instance) return Task.CompletedTask;
+            editor.LoadEngine(instance, task.Key, task.Label);
         }
         catch (Exception error)
         {
             if (_editorLoadVersion == version) editor.SetLoadError(error.Message);
         }
-    }
-
-    private async Task<SchemaResponse> ReadTaskSchemaAsync()
-    {
-        // All task forms in one backend session use the same upstream argument schema.
-        Task<SchemaResponse> task = _taskSchema ??= _backend.ReadSchemaAsync(cancellationToken: default);
-        try
-        {
-            return await task.ConfigureAwait(true);
-        }
-        catch
-        {
-            if (ReferenceEquals(_taskSchema, task)) _taskSchema = null;
-            throw;
-        }
+        return Task.CompletedTask;
     }
 
     private void SelectNav(string? key)
@@ -718,7 +683,7 @@ public sealed class TaskGroupEntry : INotifyPropertyChanged
     }
 }
 
-/// <summary>侧栏任务分组下的一个任务（名称来自上游 Task.<key>.name）。</summary>
+/// <summary>侧栏任务分组下的一个 Engine runner。</summary>
 public sealed record TaskEntry(string Key, string Label, string GroupTitle)
 {
     public bool Matches(string query) => string.IsNullOrWhiteSpace(query)
@@ -733,7 +698,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     private bool _isFilterOpen;
     private bool _isFollowing = true;
     private bool _isDescending;
-    private bool _isSchedulerRunning;
+    private bool _isEngineRunning;
     private bool _isWideLayout = true;
     private string _searchText = string.Empty;
     private string _logLevel = "ALL";
@@ -741,11 +706,11 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     private readonly List<LogLineViewModel> _allLogs = new();
     private readonly bool _previewData;
     private readonly IAlasControlBackend? _backend;
-    private bool _schedulerBusy;
+    private bool _engineBusy;
     private bool _stateKnown;
     private bool _otherInstanceRunning;
     private bool _stopRequested;
-    private string _schedulerPhase = "idle";
+    private string _enginePhase = "idle";
     private string? _logStream;
     private long _instanceGeneration;
     private long _nativeLogCursor;
@@ -765,7 +730,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         ClearCommand = new PreviewCommand(_ => ClearLogs());
         ShowLogsCommand = new PreviewCommand(_ => MonitorView = "logs");
         ShowPreviewCommand = new PreviewCommand(_ => MonitorView = "preview");
-        ToggleSchedulerCommand = new PreviewCommand(async _ => await ToggleSchedulerAsync());
+        ToggleEngineCommand = new PreviewCommand(async _ => await ToggleEngineAsync());
         Resources = previewData
             ? new ObservableCollection<ResourceCardViewModel>
             {
@@ -811,7 +776,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     public ICommand ClearCommand { get; }
     public ICommand ShowLogsCommand { get; }
     public ICommand ShowPreviewCommand { get; }
-    public ICommand ToggleSchedulerCommand { get; }
+    public ICommand ToggleEngineCommand { get; }
 
     public string MonitorView
     {
@@ -851,23 +816,23 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool IsSchedulerRunning
+    public bool IsEngineRunning
     {
-        get => _isSchedulerRunning;
+        get => _isEngineRunning;
         private set
         {
-            if (!SetField(ref _isSchedulerRunning, value)) return;
-            Notify(nameof(SchedulerButtonText));
-            Notify(nameof(SchedulerStatusText));
+            if (!SetField(ref _isEngineRunning, value)) return;
+            Notify(nameof(EngineButtonText));
+            Notify(nameof(EngineStatusText));
         }
     }
 
-    public string SchedulerButtonText => _stopRequested ? "正在停止…" : IsSchedulerRunning ? "停止运行" : "启动调度器";
-    public string SchedulerStatusText => _stopRequested ? "等待任务边界停止" :
-        IsSchedulerRunning ? _schedulerPhase == "waiting" ? "等待中" : "运行中" :
-        _schedulerPhase is "failed" or "error" ? "运行失败" : "已停止";
-    public bool IsSchedulerControlEnabled => _previewData ||
-        (_backend is not null && _stateKnown && !_schedulerBusy && !_otherInstanceRunning && !_stopRequested);
+    public string EngineButtonText => _stopRequested ? "正在停止…" : IsEngineRunning ? "停止运行" : "启动 Engine 队列";
+    public string EngineStatusText => _stopRequested ? "等待任务边界停止" :
+        IsEngineRunning ? _enginePhase == "waiting" ? "等待中" : "运行中" :
+        _enginePhase is "failed" or "error" ? "运行失败" : "已停止";
+    public bool IsEngineControlEnabled => _previewData ||
+        (_backend is not null && _stateKnown && !_engineBusy && !_otherInstanceRunning && !_stopRequested);
 
     /// <summary>本阶段未接后端的入口统一禁用，并用这条提示说明原因。</summary>
     public string PendingNotice => "第一阶段未接后端：该入口在后续切片实现，当前不可用。";
@@ -949,22 +914,22 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     }
 
     /// <summary>通过 Engine 请求启停；界面状态以运行时回报为准，停止须等任务边界确认。</summary>
-    public async Task ToggleSchedulerAsync()
+    public async Task ToggleEngineAsync()
     {
         if (_previewData)
         {
-            IsSchedulerRunning = !IsSchedulerRunning;
-            AppendLog(IsSchedulerRunning ? "模拟调度器已启动。" : "模拟调度器已停止。");
+            IsEngineRunning = !IsEngineRunning;
+            AppendLog(IsEngineRunning ? "模拟 Engine 队列已启动。" : "模拟 Engine 队列已停止。");
             return;
         }
-        if (!IsSchedulerControlEnabled || _backend is null) return;
-        _schedulerBusy = true;
+        if (!IsEngineControlEnabled || _backend is null) return;
+        _engineBusy = true;
         string instance = InstanceName;
         long generation = _instanceGeneration;
-        Notify(nameof(IsSchedulerControlEnabled));
+        Notify(nameof(IsEngineControlEnabled));
         try
         {
-            if (IsSchedulerRunning)
+            if (IsEngineRunning)
             {
                 if (!await _backend.RequestStopAsync())
                     throw new InvalidOperationException("当前没有可停止的运行任务");
@@ -996,8 +961,8 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         }
         finally
         {
-            _schedulerBusy = false;
-            Notify(nameof(IsSchedulerControlEnabled));
+            _engineBusy = false;
+            Notify(nameof(IsEngineControlEnabled));
         }
     }
 
@@ -1010,8 +975,8 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         _stateKnown = false;
         _otherInstanceRunning = false;
         _stopRequested = false;
-        _schedulerPhase = "idle";
-        IsSchedulerRunning = false;
+        _enginePhase = "idle";
+        IsEngineRunning = false;
         if (!_previewData)
         {
             _logStream = null;
@@ -1022,7 +987,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
             ObservationChanged?.Invoke(this, EventArgs.Empty);
         }
         Notify(nameof(InstanceName));
-        NotifyScheduler();
+        NotifyEngine();
     }
 
     public void ApplyState(JsonObject state)
@@ -1032,25 +997,21 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         bool selected = active["instance"]?.GetValue<string>() == InstanceName;
         _stateKnown = true;
         _otherInstanceRunning = status == "running" && !selected;
-        IsSchedulerRunning = status == "running" && selected;
-        _stopRequested = IsSchedulerRunning && active["stop_requested"]?.GetValue<bool>() == true;
-        var engine = selected ? active["engine"] as JsonObject : null;
-        // The scheduler field is accepted only as a transport compatibility
-        // fallback for older servers and UI fixtures.  Engine-produced state
-        // always takes the typed engine activity above.
-        var activity = engine ?? (selected ? active["scheduler"] as JsonObject : null);
-        _schedulerPhase = activity?["phase"]?.GetValue<string>() ?? (selected ? status : "idle");
+        IsEngineRunning = status == "running" && selected;
+        _stopRequested = IsEngineRunning && active["stop_requested"]?.GetValue<bool>() == true;
+        var activity = selected ? active["engine"] as JsonObject : null;
+        _enginePhase = activity?["phase"]?.GetValue<string>() ?? (selected ? status : "idle");
         var configured = state["overview"] as JsonObject;
         if (configured?["instance"]?.GetValue<string>() != InstanceName) configured = null;
-        _observation = IsSchedulerRunning && activity is not null ? activity : configured;
-        NativeTasks = SchedulerObservation.Tasks(_observation, IsSchedulerRunning);
+        _observation = IsEngineRunning && activity is not null ? activity : configured;
+        NativeTasks = EngineActivityObservation.Tasks(_observation, IsEngineRunning);
         if (!_previewData)
         {
             Selection.Observe(_observation);
         }
         if (selected) ApplyLogSnapshot(state, active);
         ObservationChanged?.Invoke(this, EventArgs.Empty);
-        NotifyScheduler();
+        NotifyEngine();
     }
 
     private void ApplyLogSnapshot(JsonObject state, JsonObject active)
@@ -1073,7 +1034,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
                 }
         }
         Collect(state["recent_logs"] as JsonArray, ref _engineLogCursor);
-        var activity = active["engine"] as JsonObject ?? active["scheduler"] as JsonObject;
+        var activity = active["engine"] as JsonObject;
         Collect(activity?["logs"]?["entries"] as JsonArray, ref _nativeLogCursor);
         foreach (var entry in additions.OrderBy(entry => DateTimeOffset.TryParse(entry["time"]?.GetValue<string>(),
                      CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var timestamp) ? timestamp : DateTimeOffset.MinValue))
@@ -1086,17 +1047,17 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         }
     }
 
-    private void NotifyScheduler()
+    private void NotifyEngine()
     {
-        Notify(nameof(SchedulerButtonText));
-        Notify(nameof(SchedulerStatusText));
-        Notify(nameof(IsSchedulerControlEnabled));
+        Notify(nameof(EngineButtonText));
+        Notify(nameof(EngineStatusText));
+        Notify(nameof(IsEngineControlEnabled));
     }
 
     public void ReportBackendError(string message)
     {
         _stateKnown = false;
-        NotifyScheduler();
+        NotifyEngine();
         AppendLog(message, "ERROR");
     }
 
@@ -1206,7 +1167,7 @@ public sealed class ResourceCardViewModel
 
 public sealed record LogLineViewModel(string Date, string Time, string Level, string Scope, string Message);
 
-/// <summary>右栏：调度器卡 + 任务计划三组（running/pending/waiting 固定顺序）。</summary>
+/// <summary>右栏：Engine 队列卡 + 任务计划三组（running/pending/waiting 固定顺序）。</summary>
 public sealed class RailViewModel : INotifyPropertyChanged
 {
     private readonly bool _previewData;
@@ -1216,7 +1177,7 @@ public sealed class RailViewModel : INotifyPropertyChanged
         Overview = overview;
         Overview.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName is not (nameof(OverviewViewModel.IsSchedulerRunning))) return;
+            if (args.PropertyName is not (nameof(OverviewViewModel.IsEngineRunning))) return;
             Notify(nameof(RunningCount));
             Notify(nameof(IsStopped));
         };
@@ -1262,11 +1223,11 @@ public sealed class RailViewModel : INotifyPropertyChanged
     public OverviewViewModel Overview { get; }
     public string InstanceName => _instanceName;
     public string PlanCountText => Groups.Sum(group => group.Tasks.Count).ToString(CultureInfo.InvariantCulture);
-    public string RunningCount => _previewData ? Overview.IsSchedulerRunning ? "1" : "0"
+    public string RunningCount => _previewData ? Overview.IsEngineRunning ? "1" : "0"
         : Groups.First(group => group.State == "running").Tasks.Count.ToString(CultureInfo.InvariantCulture);
     public string PendingCount => Groups.First(group => group.State == "pending").Tasks.Count.ToString(CultureInfo.InvariantCulture);
     public string WaitingCount => Groups.First(group => group.State == "waiting").Tasks.Count.ToString(CultureInfo.InvariantCulture);
-    public bool IsStopped => !Overview.IsSchedulerRunning;
+    public bool IsStopped => !Overview.IsEngineRunning;
     public ObservableCollection<RailGroupViewModel> Groups { get; }
 
     public event PropertyChangedEventHandler? PropertyChanged;

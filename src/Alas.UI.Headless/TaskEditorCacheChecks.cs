@@ -40,9 +40,9 @@ internal static class TaskEditorCacheChecks
             Select(shell, window, tasks[0]);
             var firstModel = shell.Model.TaskEditor;
             firstModel.AutoSave = false;
-            var draft = firstModel.Fields.Single(field => field.Argument == "Count");
-            draft.SetText("9");
-            firstModel.Search = "模拟数量";
+            var draft = firstModel.Fields.Single(field => field.Argument == "Input");
+            draft.SetText("{\"count\":9}");
+            firstModel.Search = "任务输入";
             Pump(window);
             Check(firstModel.HasChanges && firstModel.Fields.Count(firstModel.Matches) == 1,
                 "初始草稿和筛选未建立");
@@ -88,7 +88,7 @@ internal static class TaskEditorCacheChecks
 
             Select(shell, window, tasks[0]);
             Check(ReferenceEquals(firstModel, shell.Model.TaskEditor)
-                && firstModel.Search == "模拟数量" && draft.Text == "9" && draft.IsDirty,
+                && firstModel.Search == "任务输入" && draft.Text.Contains("count", StringComparison.Ordinal) && draft.IsDirty,
                 "重建后草稿或筛选状态丢失");
             var restored = ActivePage(shell);
             Check(restored.GetVisualDescendants().OfType<TextBox>()

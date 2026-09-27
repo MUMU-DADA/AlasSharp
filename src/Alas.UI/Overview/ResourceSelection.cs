@@ -109,12 +109,12 @@ public sealed class ResourceSelection(IResourceSelectionStore store) : INotifyPr
 
     private void Refresh()
     {
-        var cards = SchedulerObservation.Resources(_observation, _keys);
+        var cards = EngineActivityObservation.Resources(_observation, _keys);
         var selected = _keys.Select((key, index) => new ResourceChoice(key, cards[index].Name, cards[index])).ToArray();
         var availableKeys = (_observation?["resources"] as JsonArray)?.OfType<JsonObject>()
             .Select(item => item["name"] is JsonValue name && name.TryGetValue<string>(out var key) ? key : null)
             .OfType<string>().Distinct(StringComparer.Ordinal).Where(key => !_keys.Contains(key, StringComparer.Ordinal)).ToArray() ?? [];
-        var availableCards = SchedulerObservation.Resources(_observation, availableKeys);
+        var availableCards = EngineActivityObservation.Resources(_observation, availableKeys);
         var available = availableKeys.Select((key, index) => new ResourceChoice(key, availableCards[index].Name, availableCards[index])).ToArray();
         // Compare the projected display values, not mutable JSON identity or the whole observation.
         // Log-only snapshots must retain card/list identities so bound templates are not rebuilt.

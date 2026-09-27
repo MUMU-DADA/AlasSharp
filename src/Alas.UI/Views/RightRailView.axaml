@@ -9,52 +9,52 @@
       </StackPanel>
       <Button x:Name="RailCloseButton" Grid.Column="1" Theme="{StaticResource IconButtonTheme}" Classes="narrow-toggle"
               Classes.narrow="{Binding IsNarrow}" Command="{Binding CloseDrawerCommand}"
-              AutomationProperties.Name="关闭调度与任务">
+              AutomationProperties.Name="关闭 Engine 队列与任务">
         <controls:Icon Data="{StaticResource IconX}" Size="18" />
       </Button>
     </Grid>
 
-    <Border x:Name="SchedulerWidget" Grid.Row="1" Classes="scheduler">
+    <Border x:Name="EngineQueueWidget" Grid.Row="1" Classes="engine-queue">
       <StackPanel>
         <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,13">
           <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
             <controls:Icon Data="{StaticResource IconCalendarClock}" Size="17" VerticalAlignment="Center" />
-            <TextBlock Text="调度器" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Text="Engine 队列" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
           </StackPanel>
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
             <controls:Icon Data="{StaticResource IconSquare}" Size="12" VerticalAlignment="Center"
                            Foreground="{DynamicResource AlasMutedBrush}" />
-            <TextBlock Text="{Binding Overview.SchedulerStatusText}" FontSize="12"
+            <TextBlock Text="{Binding Overview.EngineStatusText}" FontSize="12"
                        Foreground="{DynamicResource AlasMutedBrush}" VerticalAlignment="Center" />
           </StackPanel>
         </Grid>
-        <Grid x:Name="SchedulerStats" ColumnDefinitions="*,*,*" ColumnSpacing="6" Margin="0,0,0,12">
-          <Border Classes="scheduler-stat">
+        <Grid x:Name="EngineQueueStats" ColumnDefinitions="*,*,*" ColumnSpacing="6" Margin="0,0,0,12">
+          <Border Classes="engine-queue-stat">
             <StackPanel>
-              <TextBlock Classes="scheduler-stat-label" Text="正在运行" />
-              <TextBlock Classes="scheduler-stat-value" Text="{Binding Rail.RunningCount}" />
+              <TextBlock Classes="engine-queue-stat-label" Text="正在运行" />
+              <TextBlock Classes="engine-queue-stat-value" Text="{Binding Rail.RunningCount}" />
             </StackPanel>
           </Border>
-          <Border Grid.Column="1" Classes="scheduler-stat">
+          <Border Grid.Column="1" Classes="engine-queue-stat">
             <StackPanel>
-              <TextBlock Classes="scheduler-stat-label" Text="待运行" />
-              <TextBlock Classes="scheduler-stat-value" Text="{Binding Rail.PendingCount}" />
+              <TextBlock Classes="engine-queue-stat-label" Text="待运行" />
+              <TextBlock Classes="engine-queue-stat-value" Text="{Binding Rail.PendingCount}" />
             </StackPanel>
           </Border>
-          <Border Grid.Column="2" Classes="scheduler-stat">
+          <Border Grid.Column="2" Classes="engine-queue-stat">
             <StackPanel>
-              <TextBlock Classes="scheduler-stat-label" Text="等待中" />
-              <TextBlock Classes="scheduler-stat-value" Text="{Binding Rail.WaitingCount}" />
+              <TextBlock Classes="engine-queue-stat-label" Text="等待中" />
+              <TextBlock Classes="engine-queue-stat-value" Text="{Binding Rail.WaitingCount}" />
             </StackPanel>
           </Border>
         </Grid>
-      <Button x:Name="SchedulerToggle" Theme="{StaticResource PrimaryButtonTheme}"
-              Command="{Binding Overview.ToggleSchedulerCommand}" IsEnabled="{Binding Overview.IsSchedulerControlEnabled}"
-              ToolTip.Tip="{Binding Overview.SchedulerStatusText}"
-                AutomationProperties.Name="{Binding Overview.SchedulerButtonText}">
+      <Button x:Name="EngineQueueToggle" Theme="{StaticResource PrimaryButtonTheme}"
+              Command="{Binding Overview.ToggleEngineCommand}" IsEnabled="{Binding Overview.IsEngineControlEnabled}"
+              ToolTip.Tip="{Binding Overview.EngineStatusText}"
+                AutomationProperties.Name="{Binding Overview.EngineButtonText}">
           <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
             <controls:Icon Data="{StaticResource IconPlay}" Size="14" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding Overview.SchedulerButtonText}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Overview.EngineButtonText}" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
       </StackPanel>
@@ -64,7 +64,7 @@
       <Grid Margin="4,14,4,8" ColumnDefinitions="Auto,*,Auto" Height="18">
         <controls:Icon Data="{StaticResource IconClock3}" Size="14" VerticalAlignment="Center"
                        Foreground="{DynamicResource AlasMutedBrush}" />
-        <TextBlock Grid.Column="1" Text="任务计划" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="8,0,0,0"
+        <TextBlock Grid.Column="1" Text="Engine 任务" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="8,0,0,0"
                    Foreground="{DynamicResource AlasMutedBrush}" />
         <Border Grid.Column="2" CornerRadius="10" Padding="7,3" VerticalAlignment="Center" Background="{DynamicResource AlasSurfaceMutedBrush}">
           <TextBlock Classes="rail-count-badge" Text="{Binding Rail.PlanCountText}" FontSize="11" Foreground="{DynamicResource AlasMutedBrush}" />

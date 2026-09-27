@@ -42,8 +42,6 @@ public sealed record ControlActivity
     public string? Instance { get; init; }
     /// <summary>Typed activity emitted by Alas.Engine's queue executor.</summary>
     public JsonObject? Engine { get; init; }
-    /// <summary>Compatibility projection for older control snapshots.</summary>
-    public JsonObject? Scheduler { get; init; }
     public string? StartedAt { get; init; }
     public string? FinishedAt { get; init; }
     public bool StopRequested { get; init; }
@@ -76,17 +74,6 @@ public sealed record ControlRunRequest
     public string? ResumeDirectory { get; init; }
     public string? Instance { get; init; }
     public bool ContinueOnError { get; init; }
-}
-
-/// <summary>Run one upstream task for an explicitly selected configuration instance.</summary>
-public sealed record InstanceTaskRunRequest
-{
-    public required string Instance { get; init; }
-    public required string Task { get; init; }
-    /// <summary>Engine task input; the server does not interpret this object.</summary>
-    public JsonObject? Input { get; init; }
-    public double TimeoutSeconds { get; init; } = 1500;
-    public bool ConfirmActions { get; init; }
 }
 
 public sealed record ControlAcknowledgement
@@ -227,7 +214,6 @@ public sealed record StartupRunResponse
 [JsonSerializable(typeof(ControlState))]
 [JsonSerializable(typeof(ControlQueueRequest))]
 [JsonSerializable(typeof(ControlRunRequest))]
-[JsonSerializable(typeof(InstanceTaskRunRequest))]
 [JsonSerializable(typeof(ControlAcknowledgement))]
 [JsonSerializable(typeof(ControlError))]
 [JsonSerializable(typeof(InstanceSummary))]

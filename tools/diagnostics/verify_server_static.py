@@ -110,14 +110,12 @@ def main() -> int:
                 if label == "lf":
                     token_headers = {"X-Alas-Token": json.loads(body)["token"], "Content-Type": "application/json"}
                     task_payload = {"instance": "fixture", "task": "observe", "input": {}}
-                    # The task route is an Engine entry.  A missing Engine
-                    # config instance is reported as 404; it must not fall
-                    # back to the retired Core/Python scheduler.
+                    # The retired single-task and script routes must stay gone;
+                    # all task execution is submitted as an Engine queue.
                     assert get(base, "/api/tasks/run", method="POST", headers=token_headers,
                                body=task_payload)[0] == 404
-                    script_payload = {"script": ""}
                     assert get(base, "/api/tasks/validate-script", method="POST", headers=token_headers,
-                               body=script_payload)[0] == 501
+                               body={"script": ""})[0] == 404
                     assert get(base, "/api/scheduler/start", method="POST", headers=token_headers,
                                body={"instance": "fixture", "confirm_actions": True})[0] == 404
                     payload = {"queue": {"tasks": [{"id": "observe", "kind": "observe", "required": True}]}}
@@ -146,7 +144,7 @@ def main() -> int:
                     process.kill()
                     process.wait(timeout=5)
         assert len(set(policies)) == 1
-    print("PASS: standalone Server static/loopback guards, Engine dry-run/report and HTTP 501 for unported capabilities")
+    print("PASS: standalone Server static/loopback guards, Engine queue dry-run/report and retired-route removal")
     return 0
 
 

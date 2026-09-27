@@ -182,7 +182,7 @@ internal static class ConfigManagerChecks
         finally { window6.Close(); }
     }
 
-    // ① 未接入 Core：真实错误态、无实例行、新建/导入不可用（不伪造列表）
+    // ① 未接入 Engine：真实错误态、无实例行、新建/导入不可用（不伪造列表）
     private static void Disconnected()
     {
         var view = new ConfigManagerPage();
@@ -559,7 +559,7 @@ internal static class ConfigManagerChecks
             Click(window, Find<Button>(page, "ConfigExportButton"));
             Check(files.Exports.Single().Name == "fixture.json" &&
                 System.Text.Json.Nodes.JsonNode.DeepEquals(System.Text.Json.Nodes.JsonNode.Parse(files.Exports[0].Bytes), backend.ConfigValues),
-                "shell export reaches Core adapter and writes only config values through the injected file capability");
+                "shell export reaches Engine adapter and writes only config values through the injected file capability");
             Click(window, Find<Button>(page, "ConfigCreateButton"));
             var overlay = Find<Border>(window, "ConfigFormOverlay");
             Check(overlay.Parent == Find<Grid>(window, "Root") && overlay.Bounds.Size == window.ClientSize,
@@ -600,7 +600,7 @@ internal static class ConfigManagerChecks
             using (var frame = window.CaptureRenderedFrame()) frame?.Save(Path.Combine(output, "config-create-390.png"), PngBitmapEncoderOptions.Default);
         }
         finally { window.Close(); }
-        Console.WriteLine("PASS: configuration routes, Core adapter, shared file operations, modal input and stale response isolation");
+        Console.WriteLine("PASS: configuration routes, Engine adapter, shared file operations, modal input and stale response isolation");
     }
 
     private sealed class MemoryUiFiles : Alas.UI.Platform.IUiFiles

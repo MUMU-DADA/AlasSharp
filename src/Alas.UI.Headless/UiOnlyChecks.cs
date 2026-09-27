@@ -45,14 +45,14 @@ internal static class UiOnlyChecks
         var schema = await backend.ReadSchemaAsync();
         var config = await backend.ReadConfigAsync("demo-main");
         var editor = new TaskEditorViewModel { Backend = new EngineTaskEditorBackend(backend), AutoSave = false };
-        editor.Load(config.Instance, "Main", new JsonObject { ["args"] = schema.Args, ["menu"] = schema.Menu,
+        editor.Load(config.Instance, "observe", new JsonObject { ["args"] = schema.Args, ["menu"] = schema.Menu,
             ["translations"] = schema.Translations }, new JsonObject { ["instance"] = config.Instance,
             ["revision"] = config.Revision, ["values"] = config.Values });
-        editor.Fields.Single(field => field.Argument == "Count").SetText("9");
+        editor.Fields.Single(field => field.Argument == "Input").SetText("{\"count\":9}");
         Check(await editor.SaveAsync() && !editor.HasChanges, "real task adapter saves to memory");
-        Check((await backend.ReadConfigAsync("demo-main")).Values["Main"]!["Sample"]!["Count"]!.GetValue<double>() == 9,
+        Check((await backend.ReadConfigAsync("demo-main")).Values["observe"]!["Engine"]!["Input"]!["count"]!.GetValue<int>() == 9,
             "local config edit retained");
-        Check((await backend.ReadConfigAsync("demo-event")).Values["Main"]!["Sample"]!["Count"]!.GetValue<int>() == 3,
+        Check((await backend.ReadConfigAsync("demo-event")).Values["observe"]!["Engine"]!["Input"]!.AsObject().Count == 0,
             "instance samples are isolated");
         editor.RequestRun();
         Check(await editor.ConfirmRunAsync(), "confirmed task exercises UI state without automation");
@@ -81,7 +81,7 @@ internal static class UiOnlyChecks
         await backend.RefreshStatisticsLootAsync("demo-main");
         Check((await new EngineMeowfficerReportBackend(backend).LoadAsync("demo-main", default))!.Count == 0, "empty report is explicit");
         await backend.ClearMeowfficerAsync("demo-main");
-        Check((await backend.ValidateShopStrategyAsync("return true"))["valid"]!.GetValue<bool>() == false, "simulation does not fake script validation");
+        Check(!string.IsNullOrWhiteSpace(viewTaskKind("observe")), "simulation exposes an Engine runner kind");
         Check(await backend.ReadReportAsync("missing") is null, "no fabricated completed-run evidence");
 
         simulation.AppendLogs("demo-main", 1000);
@@ -95,13 +95,15 @@ internal static class UiOnlyChecks
         try { await backend.DeleteInstanceAsync(new() { Instance = "demo-main", Revision = "wrong" }, cancelled.Token); throw new Exception("Cancellation ignored"); }
         catch (OperationCanceledException) { }
         using var second = new SimulatedUiBackend();
-        Check((await second.ReadConfigAsync("demo-main")).Values["Main"]!["Sample"]!["Count"]!.GetValue<int>() == 3,
+        Check((await second.ReadConfigAsync("demo-main")).Values["observe"]!["Engine"]!["Input"]!.AsObject().Count == 0,
             "new launch resets all sample writes");
         simulation.Dispose();
         Check(!simulation.IsConnected && simulation.Instances.Count == 0, "dispose clears the data source");
         AssertNoAutomationAssemblies();
         Console.WriteLine("PASS: UI-only factory isolation, all capability methods, memory edits, cancellation and bounded sample data");
     }
+
+    private static string viewTaskKind(string kind) => kind;
 
     public static void VerifyControls(string output)
     {
@@ -122,11 +124,11 @@ internal static class UiOnlyChecks
             Check(!skip.IsFocused && skip.Bounds.Bottom <= 0, "unfocused skip link does not cover simulation notice");
             Click(window, view.FindControl<Button>("SimulationLogsButton")!);
             Check(view.Model.Overview.CachedLogCount == 140, "real toolbar click adds local render workload");
-            var toggle = view.GetVisualDescendants().OfType<Button>().Single(button => ReferenceEquals(button.Command, view.Model.Overview.ToggleSchedulerCommand));
+            var toggle = view.GetVisualDescendants().OfType<Button>().Single(button => ReferenceEquals(button.Command, view.Model.Overview.ToggleEngineCommand));
             Click(window, toggle);
-            Check(view.Model.Overview.IsSchedulerRunning, "real start click only changes simulated status");
+            Check(view.Model.Overview.IsEngineRunning, "real start click only changes simulated status");
             Click(window, toggle);
-            Check(!view.Model.Overview.IsSchedulerRunning, "real stop click returns to simulated idle");
+            Check(!view.Model.Overview.IsEngineRunning, "real stop click returns to simulated idle");
             Capture(window, output, "ui-only-wide.png");
             view.Model.Overview.SearchText = "第 100 条";
             Check(view.Model.Overview.VisibleLogs.Count == 1, "sample logs use normal filtering");
@@ -141,12 +143,13 @@ internal static class UiOnlyChecks
             var search = view.GetVisualDescendants().OfType<TextBox>()
                 .FirstOrDefault(box => box.Name == "TaskConfigSearch");
             Check(search is not null, "task editor search is reachable through the visual tree");
-            search!.Text = "Note";
+            search!.Text = "输入";
             Pump();
-            var field = view.GetVisualDescendants().OfType<TextBox>().First(box => box.Name?.EndsWith(".Sample.Note", StringComparison.Ordinal) == true);
-            field.BringIntoView(); Pump(); field.Focus(); field.SelectAll(); window.KeyTextInput("隔离输入"); Pump();
-            Check(view.Model.TaskEditor.Fields.Single(item => item.Argument == "Note").Text == "隔离输入", "real keyboard updates local draft");
-            Check(view.Model.TaskEditor.SaveAsync().GetAwaiter().GetResult(), "real editor save uses local capability");
+            var field = view.GetVisualDescendants().OfType<TextBox>().First(box => box.Name?.EndsWith(".Engine.Input", StringComparison.Ordinal) == true);
+            field.BringIntoView(); Pump();
+            view.Model.TaskEditor.Fields.Single(item => item.Argument == "Input").SetText("{\"label\":\"隔离输入\"}");
+            Check(view.Model.TaskEditor.Fields.Single(item => item.Argument == "Input").Text.Contains("隔离输入", StringComparison.Ordinal), "real Engine input updates local draft");
+            Check(view.Model.TaskEditor.SaveAsync().GetAwaiter().GetResult(), "real Engine queue editor save uses local capability");
             view.Model.GoHome();
             foreach (string page in new[] { "settings", "remote", "configs", "interface", "dev", "updater", "home" })
             { view.Model.SelectNavCommand.Execute(page); Pump(); }

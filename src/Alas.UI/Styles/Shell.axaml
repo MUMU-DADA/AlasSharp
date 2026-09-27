@@ -472,25 +472,25 @@
     <Setter Property="FontSize" Value="14" />
     <Setter Property="FontWeight" Value="Bold" />
   </Style>
-  <Style Selector="Border.scheduler">
+  <Style Selector="Border.engine-queue">
     <Setter Property="Background" Value="{DynamicResource AlasSurfaceMutedBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource AlasBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource AlasSchedulerRadius}" />
-    <Setter Property="BoxShadow" Value="{DynamicResource AlasSchedulerShadow}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource AlasEngineQueueRadius}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource AlasEngineQueueShadow}" />
     <Setter Property="Padding" Value="14" />
     <Setter Property="Margin" Value="14,14,14,12" />
   </Style>
-  <Style Selector="Border.scheduler-stat">
+  <Style Selector="Border.engine-queue-stat">
     <Setter Property="Background" Value="{DynamicResource AlasSurfaceBrush}" />
     <Setter Property="CornerRadius" Value="12" />
     <Setter Property="Padding" Value="10,8" />
   </Style>
-  <Style Selector="TextBlock.scheduler-stat-label">
+  <Style Selector="TextBlock.engine-queue-stat-label">
     <Setter Property="FontSize" Value="9" />
     <Setter Property="Foreground" Value="{DynamicResource AlasMutedBrush}" />
   </Style>
-  <Style Selector="TextBlock.scheduler-stat-value">
+  <Style Selector="TextBlock.engine-queue-stat-value">
     <Setter Property="FontSize" Value="15" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>

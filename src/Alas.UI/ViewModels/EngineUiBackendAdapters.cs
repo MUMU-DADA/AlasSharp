@@ -16,6 +16,33 @@ public sealed class EngineTaskEditorBackend(IAlasControlBackend backend) : ITask
 {
     private readonly IAlasControlBackend _backend = backend ?? throw new ArgumentNullException(nameof(backend));
 
+    public async Task<JsonObject> SaveQueueAsync(string instance, string kind, JsonObject input,
+        CancellationToken cancellationToken)
+    {
+        JsonObject queue = Queue(instance, kind, input);
+        await _backend.SaveQueueAsync(queue, cancellationToken).ConfigureAwait(false);
+        return queue;
+    }
+
+    public Task RunQueueAsync(string instance, string kind, JsonObject input,
+        CancellationToken cancellationToken)
+        => _backend.StartRunAsync(new ControlRunRequest
+        {
+            Instance = instance,
+            Mode = ControlRunMode.Actions,
+            ConfirmActions = true,
+            Queue = Queue(instance, kind, input),
+        }, cancellationToken);
+
+    private static JsonObject Queue(string instance, string kind, JsonObject input) => new()
+    {
+        ["tasks"] = new JsonArray(new JsonObject
+        {
+            ["id"] = kind, ["kind"] = kind, ["input"] = input.DeepClone(),
+            ["required"] = true, ["instance"] = instance,
+        })
+    };
+
     public async Task<JsonObject> SaveAsync(string instance, string revision,
         IReadOnlyList<TaskFieldChange> changes, CancellationToken cancellationToken)
     {
@@ -39,39 +66,7 @@ public sealed class EngineTaskEditorBackend(IAlasControlBackend backend) : ITask
     }
 
     public Task RunAsync(string instance, string task, CancellationToken cancellationToken)
-        => _backend.StartTaskAsync(new InstanceTaskRunRequest
-        {
-            Instance = instance,
-            Task = task,
-            ConfirmActions = true,
-        }, cancellationToken);
-
-    public async Task<ScriptValidation> ValidateScriptAsync(string instance, string task, string script,
-        CancellationToken cancellationToken)
-    {
-        JsonObject response = await _backend.ValidateShopStrategyAsync(script, cancellationToken)
-            .ConfigureAwait(false);
-        if (response["valid"] is not JsonValue validValue || !validValue.TryGetValue<bool>(out bool valid)
-            || response["diagnostics"] is not JsonArray)
-            throw new InvalidOperationException("脚本校验响应缺少 valid/diagnostics 合同");
-        var diagnostics = new List<ScriptDiagnostic>();
-        if (response["diagnostics"] is JsonArray items)
-        {
-            foreach (var node in items)
-            {
-                if (node is not JsonObject item || item["message"] is not JsonValue messageValue ||
-                    !messageValue.TryGetValue<string>(out var message) ||
-                    item["code"] is not JsonValue codeValue || !codeValue.TryGetValue<string>(out var code))
-                    throw new InvalidOperationException("脚本诊断缺少 code/message 合同");
-                diagnostics.Add(new ScriptDiagnostic(message,
-                    item["line"]?.GetValue<int>(), item["column"]?.GetValue<int>(),
-                    "error", code));
-            }
-        }
-        string summary = valid ? "脚本校验通过" : "脚本校验失败";
-        return new ScriptValidation(valid, diagnostics, summary);
-    }
-
+        => RunQueueAsync(instance, task, new JsonObject(), cancellationToken);
 
 }
 

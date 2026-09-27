@@ -190,14 +190,14 @@ internal static class Program
             Check(Near(rail.Bounds.Width, 292), $"rail width 292 at 1280px (got {rail.Bounds.Width})");
             Check(Near(rail.Bounds.X + rail.Bounds.Width, 1280), $"rail flush right (got {rail.Bounds.X})");
 
-            // 侧栏内容：两个一级入口与十个任务分组（上游 TaskNavTree groupIcons 的十组）。
+            // 侧栏内容：两个一级入口与 Engine runner 的四个任务分组。
             var primaryNav = Find<ItemsControl>(view, "PrimaryNav");
             var taskNav = Find<ItemsControl>(view, "TaskNav");
             Check(primaryNav.ItemCount == 2, $"two instance nav entries (got {primaryNav.ItemCount})");
-            Check(taskNav.ItemCount == 10, $"ten task groups (got {taskNav.ItemCount})");
+            Check(taskNav.ItemCount == 4, $"four Engine task groups (got {taskNav.ItemCount})");
             Check(model.PrimaryNav[0].Label == "运行总览" && model.PrimaryNav[1].Label == "资源统计",
                 "instance nav labels");
-            Check(model.TaskGroups[0].Title == "系统" && model.TaskGroups[^1].Title == "工具Plus", "task group order");
+            Check(model.TaskGroups[0].Title == "页面与导航" && model.TaskGroups[^1].Title == "战役队列", "Engine task group order");
 
             // 界面设置页（上游 /interface）：真实页面、真实主题切换、配色 CRUD、未接服务的禁用与说明。
             var settingsOverviewHost = Find<Panel>(view, "OverviewHost");
@@ -300,7 +300,7 @@ internal static class Program
             // 宽屏内容区按视口算好高度，不应出现滚动条。
             Check(main.Extent.Height <= main.Viewport.Height + 0.5,
                 $"wide content area does not overflow (extent {main.Extent.Height}, viewport {main.Viewport.Height})");
-            // 纵向位置对齐上游实测：页标题 89.5、资源卡 153.5、监控面板 258.5、调度器卡 127.5。
+            // 纵向位置对齐上游实测：页标题 89.5、资源卡 153.5、监控面板 258.5、Engine 队列卡 127.5。
             var overviewWindow = window;
             Check(Near(Find<Grid>(view, "PageTitle").TranslatePoint(new Point(0, 0), overviewWindow)!.Value.Y, 89.5, 2),
                 "page title top matches upstream 89.5");
@@ -313,10 +313,10 @@ internal static class Program
             var panel = Find<Border>(view, "MonitorPanel");
             var panelBottom = panel.TranslatePoint(new Point(0, panel.Bounds.Height), overviewWindow)!.Value.Y;
             Check(Near(panelBottom, 820 - 32, 2), $"monitor panel fills the content area (bottom {panelBottom})");
-            Check(Near(Find<Border>(view, "SchedulerWidget").TranslatePoint(new Point(0, 0), overviewWindow)!.Value.Y, 127.5, 2),
-                "scheduler widget top matches upstream 127.5");
+            Check(Near(Find<Border>(view, "EngineQueueWidget").TranslatePoint(new Point(0, 0), overviewWindow)!.Value.Y, 127.5, 2),
+                "Engine queue widget top matches upstream 127.5");
 
-            // 右栏：调度器三格与任务计划三组（待运行 4 / 等待中 2）。
+            // 右栏：Engine 队列三格与任务计划三组。
             Check(model.Rail.Groups.Count == 3, $"three rail groups (got {model.Rail.Groups.Count})");
             Check(model.Rail.Groups[0].IsEmpty && model.Rail.Groups[1].Tasks.Count == 4 && model.Rail.Groups[2].Tasks.Count == 2, "rail task counts");
             Check(model.Rail.Groups[1].Tasks[0].Name == "重启设置" && model.Rail.Groups[2].Tasks[0].Name == "主线图-1Plus", "rail task names");
@@ -497,20 +497,20 @@ internal static class Program
             model.Overview.AppendLog("测试实例已就绪，所有操作均为模拟。");
             Pump();
 
-            // 调度器按钮：只改本地模拟状态，并追加一条如实说明是模拟的日志。
-            Click(window, Find<Button>(view, "SchedulerToggle"));
-            Check(model.Overview.IsSchedulerRunning, "scheduler toggle flips preview state");
-            Check(model.Overview.SchedulerButtonText == "停止运行", "scheduler button label follows state");
+            // Engine 队列按钮：只改本地模拟状态，并追加一条如实说明是模拟的日志。
+            Click(window, Find<Button>(view, "EngineQueueToggle"));
+            Check(model.Overview.IsEngineRunning, "Engine toggle flips preview state");
+            Check(model.Overview.EngineButtonText == "停止运行", "Engine button label follows state");
             Check(model.Rail.RunningCount == "1", "rail running count follows preview state");
-            Check(model.Overview.VisibleLogs.Any(line => line.Message.Contains("模拟调度器已启动")), "scheduler log says it is simulated");
-            Click(window, Find<Button>(view, "SchedulerToggle"));
-            Check(!model.Overview.IsSchedulerRunning && model.Rail.RunningCount == "0", "scheduler toggle returns to stopped");
+            Check(model.Overview.VisibleLogs.Any(line => line.Message.Contains("模拟 Engine 队列已启动")), "Engine log says it is simulated");
+            Click(window, Find<Button>(view, "EngineQueueToggle"));
+            Check(!model.Overview.IsEngineRunning && model.Rail.RunningCount == "0", "Engine toggle returns to stopped");
 
-            // 侧栏任务分组：点击展开/收起子项，并进入 schema 驱动的任务编辑器。
+            // 侧栏任务分组：点击展开/收起子项，并进入 Engine 输入编辑器。
             var firstGroup = model.TaskGroups[0];
-            Check(!firstGroup.IsExpanded && firstGroup.Tasks.Count == 3, "task groups start collapsed with the upstream catalog");
-            Check(firstGroup.Tasks[0].Label == "系统设置" && model.TaskGroups[^1].Tasks[^1].Label == "指挥喵评分",
-                "task labels come from the upstream catalog");
+            Check(!firstGroup.IsExpanded && firstGroup.Tasks.Count == 2, "Engine task groups start collapsed");
+            Check(firstGroup.Tasks[0].Label == "读取页面状态" && model.TaskGroups[^1].Tasks[^1].Label == "继续战役",
+                "task labels come from Engine runners");
             var groupButton = taskNav.GetVisualDescendants().OfType<Button>()
                 .FirstOrDefault(button => button.Classes.Contains("task-group"));
             Check(groupButton is not null, "task group button is rendered");
@@ -518,7 +518,7 @@ internal static class Program
             Check(firstGroup.IsExpanded, "clicking a task group expands its submenu");
             var submenu = taskNav.GetVisualDescendants().OfType<ItemsControl>()
                 .FirstOrDefault(control => control.Name == "TaskSubmenu");
-            Check(submenu is { IsVisible: true } && submenu.ItemCount == 3, "expanded submenu lists the group's tasks");
+            Check(submenu is { IsVisible: true } && submenu.ItemCount == 2, "expanded submenu lists the Engine tasks");
             var subItem = submenu!.GetVisualDescendants().OfType<Button>()
                 .FirstOrDefault(button => button.Classes.Contains("task-submenu-item"));
             Check(subItem is not null, "task submenu item is rendered");
@@ -672,13 +672,13 @@ internal static class Program
             Click(window, Find<Button>(view, "DrawerCloseButton"));
             Check(!model.IsDrawerOpen, "drawer close button still works after the z-order change");
 
-            // 右栏浮层同理：打开右栏后点调度器必须真的执行。
+            // 右栏浮层同理：打开右栏后点 Engine 队列必须真的执行。
             Click(window, Find<Button>(view, "RailToggle"));
             Check(model.IsRailOpen, "rail opens for the z-order check");
-            var schedulerBefore = model.Overview.IsSchedulerRunning;
-            Click(window, Find<Button>(view, "SchedulerToggle"));
-            Check(model.Overview.IsSchedulerRunning != schedulerBefore,
-                "clicking the scheduler inside the open rail really runs (scrim must not cover the rail)");
+            var engineBefore = model.Overview.IsEngineRunning;
+            Click(window, Find<Button>(view, "EngineQueueToggle"));
+            Check(model.Overview.IsEngineRunning != engineBefore,
+                "clicking the Engine queue inside the open rail really runs (scrim must not cover the rail)");
             Check(model.IsRailOpen, "rail stays open while being used");
             Click(window, Find<Button>(view, "RailCloseButton"));
             Check(!model.IsRailOpen, "rail close button still works after the z-order change");
