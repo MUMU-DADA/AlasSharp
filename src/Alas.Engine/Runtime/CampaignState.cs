@@ -13,6 +13,7 @@ public sealed partial class CampaignState
     public bool AutoSearch { get; set; }
     public int FleetIndex { get; set; } = 1;
     public FleetHealthState Health { get; } = new();
+    public FleetLevelState Levels { get; } = new();
     public CampaignWithdrawalEvidence? Withdrawal { get; internal set; }
     public CampaignState(MapDefinition map)
     {

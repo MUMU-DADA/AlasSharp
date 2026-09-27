@@ -130,7 +130,8 @@ internal static class CampaignFleetSelectorChecks
                 }));
                 Environment.SetEnvironmentVariable("ALAS_TEST_ADB_FIXTURE", fixture);
                 await using var session = new EngineSession(new(executable, "offline-replay", GameServer.Cn,
-                    Path.Combine(upstream, "assets"), python, "org.example.game", AllowActions: true));
+                    Path.Combine(upstream, "assets"), python, "org.example.game",
+                    ModelDirectory: Path.Combine(upstream, "bin/ocr_models"), AllowActions: true));
                 var host = (ICampaignInMapHost)session;
                 using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                 Check(await host.VerifyInMapAsync(limit.Token), "Synthetic fleet fixture was not in map");
@@ -146,6 +147,9 @@ internal static class CampaignFleetSelectorChecks
                 await host.InitializeHealthAsync(healthState, selected.LogicalIndex, new(), limit.Token);
                 Check(healthState.Health.Get(selected.LogicalIndex) is { Raw.Length: 6, FrameSequence: > 0 } &&
                     healthState.Health.Get(2) is null, "Session did not initialize HP for the selected logical fleet");
+                await host.InitializeLevelsAsync(healthState, selected.LogicalIndex, new() { Levels = new(120) }, limit.Token);
+                Check(healthState.Levels.Evidence(new(120)).Readings is [{ FleetIndex: 1, Levels.Length: 6, AfterBattle: false }],
+                    "Session did not initialize levels for the selected logical fleet");
                 var boundary = await session.SaveEvidenceAsync(folder, false);
                 Check(boundary.ActionAttempts == 1, "Session used the wrong fleet's formation or repeated the switch");
                 var actions = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(folder, "actions.json")))!.AsArray();

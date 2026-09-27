@@ -182,6 +182,9 @@ public sealed partial class PythonTemplateVision : IVision
         if (new[] { request.LetterR, request.LetterG, request.LetterB }.Any(v => v is < 0 or > 255) ||
             request.Threshold is < 1 or > 255 || !Enum.IsDefined(request.Preprocessing))
             throw new ArgumentException("Invalid OCR image parameters");
+        if ((request.Preprocessing == OcrPreprocessing.PrefixCrop) != (request.PrefixCrop is not null))
+            throw new ArgumentException("OCR prefix preprocessing requires matching pixel parameters");
+        request.PrefixCrop?.Validate(request.Area);
         var model = OcrModels.Find(request.Language);
         var labels = await models.LabelsAsync(model.Name, token);
         var candidates = OcrModels.CandidateIds(labels, request.Alphabet);
@@ -191,7 +194,7 @@ public sealed partial class PythonTemplateVision : IVision
             image = Convert.ToBase64String(frame.Png.Span), area = AreaValues(request.Area),
             model = model.Name, model_sha256 = model.ModelSha256, num_classes = labels.Length, candidates,
             letter = new[] { request.LetterR, request.LetterG, request.LetterB }, threshold = request.Threshold,
-            preprocessing = request.Preprocessing.ToString().ToLowerInvariant()
+            preprocessing = request.Preprocessing.ToString().ToLowerInvariant(), prefix_crop = request.PrefixCrop?.Protocol()
         }, response =>
         {
             if (response.GetProperty("model_sha256").GetString() != model.ModelSha256)

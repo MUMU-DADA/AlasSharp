@@ -12,20 +12,23 @@ public sealed class CampaignResumeTask : ITaskRunner
     public bool RequiresActions => true;
     public void Validate(JsonObject? input)
     {
-        TaskInput.Fields(input, "campaign", "hpControl");
+        TaskInput.Fields(input, "campaign", "hpControl", "reachLevel");
         string id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign resume requires a compiled rule");
         _ = RuleCatalog.Create(id);
         _ = FleetHealthInput.Read(input!);
+        _ = FleetLevelInput.Read(input!);
     }
-    public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities) => [];
+    public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
+        => FleetLevelInput.Read(request.Input!).Enabled && !capabilities.HasOcrModels ? ["ocr_models"] : [];
     public async ValueTask<TaskResult> RunAsync(TaskRequest request, TaskContext context, CancellationToken token)
     {
         Validate(request.Input);
         var service = context.Campaign ?? throw new NotSupportedException("C# campaign execution service is unavailable");
         var rule = RuleCatalog.Create(request.Input!["campaign"]!.GetValue<string>());
         var result = await service.ResumeInMapAsync(rule,
-            new CampaignConfiguration { EmotionMode = CampaignEmotionMode.Ignore, Health = FleetHealthInput.Read(request.Input) }, token);
+            new CampaignConfiguration { EmotionMode = CampaignEmotionMode.Ignore, Health = FleetHealthInput.Read(request.Input),
+                Levels = FleetLevelInput.Read(request.Input) }, token);
         return Describe(request.Id, Kind, rule, result, false);
     }
 
@@ -59,6 +62,7 @@ public sealed class CampaignResumeTask : ITaskRunner
             result.AmmoPickups,
             result.Health,
             result.Withdrawal,
+            result.Levels,
             stageReturn = result.StageReturn, settlementVerified = cleared, cleared,
             sortie = new
             {

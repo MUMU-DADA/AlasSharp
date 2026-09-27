@@ -293,6 +293,8 @@ internal static class AmmoPickupChecks
     }
     private sealed class Host : ICampaignInMapHost
     {
+        public ValueTask InitializeLevelsAsync(CampaignState state, int fleet, CampaignConfiguration config, CancellationToken token)
+        { state.Levels.Reset(); return ValueTask.CompletedTask; }
         public ValueTask InitializeHealthAsync(CampaignState state, int fleet, CampaignConfiguration config, CancellationToken token)
         { state.Health.Commit(fleet, 1, [.9, 0, 0, .9, 0, 0], config.Health); return ValueTask.CompletedTask; }
         public ValueTask<CampaignWithdrawalEvidence> WithdrawAsync(string reason, CancellationToken token) => throw new InvalidOperationException();

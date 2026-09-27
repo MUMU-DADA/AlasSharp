@@ -40,6 +40,7 @@ public sealed record CampaignConfiguration
     public SubmarineMode SubmarineMode { get; init; } = SubmarineMode.DoNotUse;
     public bool UseFleetLock { get; init; } = true;
     public FleetHealthOptions Health { get; init; } = new();
+    public FleetLevelOptions Levels { get; init; } = new();
     public CampaignEmotionMode EmotionMode { get; init; } = CampaignEmotionMode.Calculate;
     public MapVisionOverrides? Vision { get; init; }
 }

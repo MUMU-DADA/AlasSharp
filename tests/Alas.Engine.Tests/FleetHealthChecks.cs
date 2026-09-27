@@ -151,14 +151,14 @@ internal static class FleetHealthChecks
         state.Health.Commit(1, 1, [.9, 0, 0, .9, 0, 0], config.Health);
         int reads = 0;
         var handler = new MapCombatHandler(_ => ValueTask.FromResult(new CombatFlowResult(CombatReturn.InMap, null, false, false, 1)),
-            readHealth: _ => { reads++; state.Health.Commit(1, 2, [.1, 0, 0, .2, 0, 0], config.Health); return ValueTask.CompletedTask; });
+            readFleetStatus: _ => { reads++; state.Health.Commit(1, 2, [.1, 0, 0, .2, 0, 0], config.Health); return ValueTask.CompletedTask; });
         await handler.HandleAsync(MapEncounterKind.Combat, default);
         Check(reads == 1 && state.Health.RetreatTriggered(1, config.Health), "Map combat did not update fleet HP");
         await new MapCombatHandler(_ => ValueTask.FromResult(new CombatFlowResult(CombatReturn.InStage, null, false, false, 1)),
-            readHealth: _ => throw new InvalidOperationException("No HP on stage page")).HandleAsync(MapEncounterKind.Combat, default);
+            readFleetStatus: _ => throw new InvalidOperationException("No HP on stage page")).HandleAsync(MapEncounterKind.Combat, default);
         await Rejects<IOException>(async () => await new MapCombatHandler(
             _ => ValueTask.FromResult(new CombatFlowResult(CombatReturn.InMap, null, false, false, 1)),
-            readHealth: _ => throw new IOException("HP update failed")).HandleAsync(MapEncounterKind.Combat, default));
+            readFleetStatus: _ => throw new IOException("HP update failed")).HandleAsync(MapEncounterKind.Combat, default));
         var camera = new NoTapCamera();
         var movement = new MapMovement(state, config, camera, () => throw new InvalidOperationException("Low HP started a move"),
             withdraw: _ => ValueTask.FromResult(new CampaignWithdrawalEvidence("low_hp", 2, 5, 1, true)));

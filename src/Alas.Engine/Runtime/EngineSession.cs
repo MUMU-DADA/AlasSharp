@@ -85,9 +85,25 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration,
             new MapCombatHandler(token => CreateCombatFlow(entrances).RunAutoAsync(token: token),
-                new MapMysteryItemHandler(Driver), token => ReadFleetHealthAsync(camera.State,
+                new MapMysteryItemHandler(Driver), token => ReadFleetStatusAfterCombatAsync(camera.State,
                     camera.State.FleetIndex, configuration, token))), EnsureNoMapInfoBarAsync,
             token => WithdrawCampaignAsync("low_hp", token));
+    private async ValueTask ReadFleetStatusAfterCombatAsync(CampaignState state, int fleet,
+        CampaignConfiguration configuration, CancellationToken token)
+    {
+        await ReadFleetHealthAsync(state, fleet, configuration, token);
+        _ = await ReadFleetLevelsAsync(state, fleet, true, configuration, token);
+    }
+    private ValueTask<FleetLevelReading?> ReadFleetLevelsAsync(CampaignState state, int fleet, bool afterBattle,
+        CampaignConfiguration configuration, CancellationToken token)
+        => new FleetLevelReader(Driver, () => Driver.Frame?.Sequence ?? 0)
+            .ReadAsync(state.Levels, fleet, afterBattle, configuration.Levels, token);
+    async ValueTask ICampaignInMapHost.InitializeLevelsAsync(CampaignState state, int fleet,
+        CampaignConfiguration configuration, CancellationToken token)
+    {
+        state.Levels.Reset();
+        _ = await ReadFleetLevelsAsync(state, fleet, false, configuration, token);
+    }
     private async ValueTask ReadFleetHealthAsync(CampaignState state, int fleet,
         CampaignConfiguration configuration, CancellationToken token)
         => _ = await new FleetHealthReader(Driver, _vision,
@@ -133,7 +149,8 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         var exit = await execution.RunAsync();
         var operations = (InMapCampaignOperations)execution.Context.Operations;
         return new(exit, execution.Context.State.BattleCount, operations.StageReturn, operations.InitialFleet, operations.AmmoPickups,
-            execution.Context.State.Health.Observations, execution.Context.State.Withdrawal);
+            execution.Context.State.Health.Observations, execution.Context.State.Withdrawal,
+            execution.Context.State.Levels.Evidence(execution.Context.Config.Levels));
     }
     async ValueTask<bool> ICampaignInMapHost.VerifyInMapAsync(CancellationToken token)
     {

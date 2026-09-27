@@ -43,6 +43,8 @@ required 的前置条件缺失计为队列失败；正常边界停止不计业�
 
 `campaign_run` / `campaign_resume` 的队列输入可设置 `hpControl: { "lowHpRetreat": true, "threshold": 0.3, "balanceWeight": "1000, 1000, 1000" }`。缺省遵循原生配置：关闭低血量撤退、阈值 0.3、等权重。权重支持中文逗号和单个整数的广播；拒绝负权重、全零、错误数量及非整数。阈值在 0–1 之间；这是加权血量，首次确认的有船槽位不会因战损归零而变为空槽。进图和战后返回地图时均读取六槽血量；工件的 `health` 保存原始值、加权值、首次槽位掩码和帧号。低血量触发撤退后须有退出动作和新帧的章节页确认，才输出 `withdrawal` 与 `sortie.outcome=withdrawn`，任务仍非成功。此输入不启用前排拖动换位或维修。
 
+两个战役任务还支持 `reachLevel` 非负整数，默认 0 关闭等级观测；开启后要求配置 OCR 模型目录。`levels` 工件保存同帧六槽读数、战前基线及 `reachLevelTriggered`，遵循原生 `after >= limit > before > 0`，且只接受升一级或新等级低于 35 的跨阈值变化。初始读数不会触发停止，后续读数不会清除已触发标记；读取失败或六槽帧号不一致不发布部分状态。当前任务只执行一次出击，`reachLevel` 不会中途撤退，也不影响之后显式排列的独立任务。完整 CampaignRun 连续出击及其到级禁用调度仍待迁移，不能把标记输出当成该调度已完成。等级读数、等级达到和 LV32 标记都不能证明通关。
+
 CLI 公共参数为 --adb、--serial、--server、--assets、--python、--artifacts；OCR 任务使用 --models，动作另需 --allow-actions 和 --package。`campaign --chapter <规则列表>` 默认 dry-run，使用 --run --allow-actions 才执行；--fleet1-formation/--fleet2-formation 选择上述阵型，--fleet-order 指定舰队顺序。运行前读取 --help 核对参数。
 
 ## 待完成能力与验证

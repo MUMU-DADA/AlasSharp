@@ -15,7 +15,37 @@ MODEL_ROOT = None
 OCR_SESSIONS = {}
 
 
-def ocr_preprocess(image, letter, threshold, mode):
+def prefix_crop(image, options):
+    fields={'mask_rows','mask_red_maximum','mask_scale','background','luma','search_top','search_bottom',
+            'search_threshold','prefix_width','right_limit','minimum_remaining','border'}
+    if not isinstance(options,dict) or set(options)!=fields:raise ValueError('prefix_crop_fields')
+    for key in fields-{'mask_scale','background','luma'}:
+        if type(options[key]) is not int:raise ValueError('prefix_crop_integer')
+    rows=options['mask_rows'];maximum=options['mask_red_maximum'];scale=options['mask_scale']
+    bg=options['background'];luma=options['luma'];top=options['search_top'];bottom=options['search_bottom']
+    cutoff=options['search_threshold'];offset=options['prefix_width'];limit=options['right_limit']
+    remaining=options['minimum_remaining'];border=options['border']
+    if not 1<=rows<=image.shape[0] or not 0<=maximum<=255 or type(scale) not in (int,float) or not np.isfinite(scale) or not 0<scale<=255:raise ValueError('prefix_crop_mask')
+    if not isinstance(bg,list) or len(bg)!=3 or any(type(v) is not int or not 0<=v<=255 for v in bg):raise ValueError('prefix_crop_background')
+    if not isinstance(luma,list) or len(luma)!=3 or any(type(v) not in (int,float) or not np.isfinite(v) or v<0 for v in luma) or abs(sum(luma)-1)>1e-12 or np.dot(bg,luma)>=255:raise ValueError('prefix_crop_luma')
+    if not 0<=top<bottom<=image.shape[0] or not 1<=cutoff<=255 or not 0<=offset<image.shape[1] or not 1<=limit<=image.shape[1]+2 or not 0<=remaining<image.shape[1] or not 0<=border<=32:raise ValueError('prefix_crop_bounds')
+    if image[:rows,:,0].max()<=maximum:image=cv2.addWeighted(image,scale,image,0,0)
+    image=cv2.subtract(image,(*bg,0)).dot(luma).round().astype(np.uint8)
+    image=cv2.subtract(255,cv2.multiply(image,255/(255-np.dot(bg,luma))))
+    stroke=np.nonzero(image[top:bottom,:].max(axis=0)<cutoff)[0]
+    if len(stroke):
+        first=int(stroke[0])+offset
+        if first+remaining<limit and first<image.shape[1]:
+            image=image[:,first:]
+            if border:image=cv2.copyMakeBorder(image,border,border,border,border,cv2.BORDER_CONSTANT,value=255)
+            return image
+    return np.array([[255]],dtype=np.uint8)
+
+
+def ocr_preprocess(image, letter, threshold, mode, options=None):
+    if mode == 'prefixcrop':
+        return prefix_crop(image,options)
+    if options is not None:raise ValueError('unexpected_prefix_crop')
     if mode == "letters":
         # Preserve extract_letters' separate positive/negative uint8 scaling and rounding.
         diff = image.astype(np.int16) - np.array(letter, dtype=np.int16)
@@ -60,7 +90,7 @@ def infer_ocr(image, request):
         raise ValueError("ocr_letter")
     if type(threshold) is not int or not 1 <= threshold <= 255:
         raise ValueError("ocr_threshold")
-    prepared = ocr_preprocess(image, letter, threshold, request["preprocessing"])
+    prepared = ocr_preprocess(image, letter, threshold, request["preprocessing"], request.get('prefix_crop'))
     width = max(1, min(round(32 / prepared.shape[0] * prepared.shape[1]), 280))
     prepared = cv2.resize(prepared, (width, 32), interpolation=cv2.INTER_LINEAR)
     prepared = np.pad(prepared, ((0, 0), (0, 280 - width)), constant_values=0)
@@ -437,7 +467,7 @@ def match(request):
     elif request["operation"] == "color_bands":
         fields |= {"color", "closing_size", "row_threshold", "peak_height", "peak_width", "peak_distance", "relative_height"}
     elif request["operation"] == "ocr_infer":
-        fields |= {"model", "model_sha256", "num_classes", "candidates", "letter", "threshold", "preprocessing"}
+        fields |= {"model", "model_sha256", "num_classes", "candidates", "letter", "threshold", "preprocessing", "prefix_crop"}
     elif request["operation"] == "image_patch":
         fields |= {"size", "measure", "processing", "color", "template", "minimum", "lower", "upper",
                    "peak_height", "peak_distance"}

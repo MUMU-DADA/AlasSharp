@@ -9,6 +9,7 @@ public interface ICampaignInMapHost
     ValueTask EnsureFleetLockAsync(bool enabled, CancellationToken token);
     ValueTask<FleetSelection> PrepareInitialFleetAsync(CampaignConfiguration configuration, CancellationToken token);
     ValueTask InitializeHealthAsync(CampaignState state, int fleet, CampaignConfiguration configuration, CancellationToken token);
+    ValueTask InitializeLevelsAsync(CampaignState state, int fleet, CampaignConfiguration configuration, CancellationToken token);
     ValueTask<CampaignWithdrawalEvidence> WithdrawAsync(string reason, CancellationToken token);
     ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state,
         CampaignConfiguration configuration, CancellationToken token);
@@ -17,7 +18,8 @@ public interface ICampaignInMapHost
 
 public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount, MapArrivalResult? StageReturn,
     FleetSelection? InitialFleet = null, IReadOnlyList<AmmoPickupEvidence>? AmmoPickups = null,
-    IReadOnlyList<FleetHealthSnapshot>? Health = null, CampaignWithdrawalEvidence? Withdrawal = null);
+    IReadOnlyList<FleetHealthSnapshot>? Health = null, CampaignWithdrawalEvidence? Withdrawal = null,
+    FleetLevelEvidence? Levels = null);
 public interface ICampaignExecutionService
 {
     ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
@@ -37,6 +39,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask CheckEmotionAsync(int battles)
     {
         _ = configuration.Health.Weights();
+        configuration.Levels.Validate();
         if (battles < 0) throw new ArgumentOutOfRangeException(nameof(battles));
         if (configuration.EmotionMode != CampaignEmotionMode.Ignore)
             throw Missing("emotion calculation before map entry");
@@ -62,6 +65,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
             throw new InvalidOperationException("Map initialization requires the verified campaign declaration");
         InitialFleet = await host.PrepareInitialFleetAsync(configuration, token);
         await host.InitializeHealthAsync(state, InitialFleet.LogicalIndex, configuration, token);
+        await host.InitializeLevelsAsync(state, InitialFleet.LogicalIndex, configuration, token);
         var ready = await CampaignMapInitializer.InitializeAsync(state, configuration, InitialFleet,
             (map, ct) => host.CreateCameraAsync(map, configuration, ct), TimeSpan.FromMinutes(2), token);
         _combat = host.CreateCombat(ready.Camera, configuration);

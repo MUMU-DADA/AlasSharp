@@ -298,6 +298,11 @@ internal static class CampaignMapCombatChecks
 
     private sealed class Host : ICampaignInMapHost
     {
+        public ValueTask InitializeLevelsAsync(CampaignState state, int fleet, CampaignConfiguration config, CancellationToken token)
+        {
+            Check(state.Health.Get(fleet) is not null && Camera is null, "Level initialization did not run after HP and before scanning");
+            state.Levels.Reset(); return ValueTask.CompletedTask;
+        }
         public ValueTask InitializeHealthAsync(CampaignState state, int fleet, CampaignConfiguration config, CancellationToken token)
         {
             Check(StrategyCalls == 1 && Camera is null, "Health initialization did not run after strategy and before scanning");

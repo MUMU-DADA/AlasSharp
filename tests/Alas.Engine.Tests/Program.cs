@@ -254,6 +254,15 @@ try
         return 0;
     }
 
+    if (args is ["--levels", var levelPython, var levelUpstream, var levelArtifacts])
+    {
+        string folder = Path.GetFullPath(levelArtifacts);
+        Directory.CreateDirectory(folder);
+        await FleetLevelChecks.RunAsync(Path.GetFullPath(levelPython), Path.GetFullPath(levelUpstream), folder);
+        await CampaignMapCombatChecks.RunAsync(Path.GetFullPath(levelPython), Path.GetFullPath(levelUpstream));
+        return 0;
+    }
+
     if (args is ["--health", var healthPython, var healthUpstream, var healthArtifacts])
     {
         string folder = Path.GetFullPath(healthArtifacts);
