@@ -5,12 +5,12 @@ using Alas.UI.ViewModels;
 namespace Alas.UI.Headless;
 
 /// <summary>Wire-format fixtures from upstream report and strategy contracts.</summary>
-internal static class CoreUiBackendChecks
+internal static class ControlUiBackendChecks
 {
     public static async Task Verify()
     {
         var backend = new FixtureBackend();
-        var reports = new CoreMeowfficerReportBackend(backend);
+        var reports = new EngineMeowfficerReportBackend(backend);
         var report = await reports.LoadAsync("fixture", CancellationToken.None)
             ?? throw new Exception("Missing report");
         var cat = report.Cats.Single();
@@ -25,7 +25,7 @@ internal static class CoreUiBackendChecks
         Check(backend.Cleared == "fixture", "clear selected instance");
         await ExpectFailure(() => reports.LoadAsync("wrong-instance", CancellationToken.None));
 
-        var editor = new CoreTaskEditorBackend(backend);
+        var editor = new EngineTaskEditorBackend(backend);
         var validation = await editor.ValidateScriptAsync("fixture", "Shop", "bad", CancellationToken.None);
         Check(!validation.Valid && validation.Diagnostics.Single() is
             { Code: "forbidden_statement", Line: 2, Column: 3, Message: "fixture diagnostic" }, "Lua diagnostics preserve code and location");
@@ -194,7 +194,7 @@ internal static class CoreUiBackendChecks
             Listed = [new() { Instance = "fixture", Revision = "rev", Server = "en", Serial = "fixture-device", Status = "running" },
                 new() { Instance = "disabled", Revision = "rev", Server = "disabled" }],
         };
-        var adapter = new CoreConfigInstancesBackend(backend);
+        var adapter = new EngineConfigInstancesBackend(backend);
         var list = await adapter.ListInstancesAsync();
         Check(list[0] is { Name: "fixture", Server: "国际服", Serial: "fixture-device", Status: "running" }
             && list[1].Server == "", "instance list preserves live status and uses upstream server translations");

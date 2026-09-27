@@ -11,7 +11,7 @@
   ./build.ps1 -Clean                               # 非增量：先清理再重建
 
 可运行程序由各入口项目自己生成（OutputType=Exe/WinExe）：
-  Alas.Server.exe      Core 命令、控制 API 与 Web UI 托管，位于 src/Alas.Server/bin/<配置>/net10.0/
+  Alas.Server.exe      控制 API 与 Web UI 托管，位于 src/Alas.Server/bin/<配置>/net10.0/
   Alas.UI.Desktop.exe  桌面界面（需 -Ui），位于 src/Alas.UI.Desktop/bin/<配置>/net10.0/
 这些 exe 是框架依赖的 apphost，运行时需要机器上有 .NET 10 运行时；要脱离运行时就用 -Publish -SelfContained。
 

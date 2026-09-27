@@ -1,10 +1,10 @@
 using System.Text.Json;
 using Alas.Contracts;
-using Alas.Runtime;
+using Alas.Engine.Runtime;
 
 namespace Alas.UI.Desktop;
 
-internal sealed partial class DirectCoreBackend
+internal sealed partial class DirectEngineBackend
 {
     private DeploySettingsWorkspace DeployOrThrow() => _deploy ?? throw new InvalidOperationException("部署设置不可用");
 

@@ -22,7 +22,7 @@ namespace Alas.UI.ViewModels;
 
 /// <summary>
 /// 共享外壳状态：主题、视口断点、抽屉、一级/任务导航、当前页面与右栏。
-/// 预览构造函数使用上游风格的离线数据；生产构造函数通过能力接口读取 Alas.Core，
+/// 预览构造函数使用上游风格的离线数据；生产构造函数通过能力接口读取 Alas.Engine，
 /// 页面本身不持有 HTTP、Python 或设备状态机。
 /// </summary>
 public sealed class ShellViewModel : INotifyPropertyChanged
@@ -62,8 +62,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         Theme = new ThemeService(themeStore);
         InterfaceSettings = new InterfaceSettingsViewModel(Theme);
         _backend = backend ?? DisconnectedInstanceSource.Instance;
-        ConfigManagerBackend = new CoreConfigInstancesBackend(_backend);
-        SettingsBackend = new CoreDeploySettingsBackend(_backend);
+        ConfigManagerBackend = new EngineConfigInstancesBackend(_backend);
+        SettingsBackend = new EngineDeploySettingsBackend(_backend);
         Home = new HomeViewModel(_backend);
         Home.InstanceSelected += (_, instance) => SelectInstance(instance);
         Overview = new OverviewViewModel(previewData, previewData ? null : _backend, resourceStore);
@@ -72,8 +72,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
             (instance, cancellationToken) => _backend.RefreshStatisticsLootAsync(instance, cancellationToken),
             files is null ? null : (export, cancellationToken) => files.SaveAsync(
                 export.FileName, export.MediaType, () => Task.FromResult(export.Content), cancellationToken));
-        TaskEditor = new TaskEditorViewModel { Backend = new CoreTaskEditorBackend(_backend) };
-        MeowfficerBackend = new CoreMeowfficerReportBackend(_backend);
+        TaskEditor = new TaskEditorViewModel { Backend = new EngineTaskEditorBackend(_backend) };
+        MeowfficerBackend = new EngineMeowfficerReportBackend(_backend);
         Placeholder = new PlaceholderViewModel();
         Rail = new RailViewModel(Overview, previewData);
         Instances = new ObservableCollection<string>();
@@ -136,8 +136,8 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public InterfaceSettingsViewModel InterfaceSettings { get; }
     public HomeViewModel Home { get; }
     public OverviewViewModel Overview { get; }
-    public CoreConfigInstancesBackend ConfigManagerBackend { get; }
-    public CoreDeploySettingsBackend SettingsBackend { get; }
+    public EngineConfigInstancesBackend ConfigManagerBackend { get; }
+    public EngineDeploySettingsBackend SettingsBackend { get; }
     public bool IsBackendConnected => _backend.IsConnected;
     public bool IsUiOnly => _backend.IsSimulation;
     public string UiOnlyNotice => Simulation.SimulatedUiBackend.Notice;
@@ -528,7 +528,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         finally { if (_refreshVersion == version) _stateRefreshInFlight = false; }
     }
 
-    /// <summary>选择任务只读取配置；执行必须经过编辑器确认和 Core 队列。</summary>
+    /// <summary>选择任务只读取配置；执行必须经过编辑器确认和 Engine 队列。</summary>
     private void SelectTask(TaskEntry? task)
     {
         if (task is null || !HasInstance) return;
@@ -546,7 +546,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
             var key = (InstanceName, task.Key);
             if (!_editors.TryGetValue(key, out var editor))
             {
-                editor = new TaskEditorViewModel { Backend = new CoreTaskEditorBackend(_backend) };
+                editor = new TaskEditorViewModel { Backend = new EngineTaskEditorBackend(_backend) };
                 editor.PropertyChanged += (_, _) => { if (ReferenceEquals(TaskEditor, editor)) Notify(nameof(BreadcrumbTail)); };
                 _editors.Add(key, editor);
             }
@@ -948,7 +948,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>通过 Core 请求启停；界面状态以运行时回报为准，停止须等上游边界确认。</summary>
+    /// <summary>通过 Engine 请求启停；界面状态以运行时回报为准，停止须等任务边界确认。</summary>
     public async Task ToggleSchedulerAsync()
     {
         if (_previewData)

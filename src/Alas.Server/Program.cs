@@ -1,6 +1,4 @@
 using System.Globalization;
-using Alas.Core.Diagnostics;
-
 namespace Alas.Server;
 
 internal static class Program
@@ -10,8 +8,6 @@ internal static class Program
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         try
         {
-            if (args.Length > 0 && (args[0].Length == 0 || args[0][0] != '-'))
-                return DiagnosticCommands.Run(args);
             if (args is ["--help"] or ["-h"])
             {
                 Console.WriteLine("Alas.Server [--root <运行根目录>] [--repo <上游>] [--data <数据>] " +

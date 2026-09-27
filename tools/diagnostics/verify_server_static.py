@@ -28,8 +28,9 @@ def port() -> int:
         return int(sock.getsockname()[1])
 
 
-def get(base: str, path: str, *, method: str = "GET", headers: dict[str, str] | None = None):
-    request = Request(base + path, method=method, headers=headers or {})
+def get(base: str, path: str, *, method: str = "GET", headers: dict[str, str] | None = None, body=None):
+    request = Request(base + path, method=method, headers=headers or {},
+                      data=None if body is None else json.dumps(body).encode("utf-8"))
     try:
         with urlopen(request, timeout=3) as response:
             return response.status, response.headers, response.read()
@@ -106,6 +107,26 @@ def main() -> int:
                 assert get(base, "/api/state", headers={"Host": "example.invalid"})[0] == 403
                 status, _, body = get(base, "/api/state")
                 assert status == 200 and json.loads(body)["token"]
+                if label == "lf":
+                    token_headers = {"X-Alas-Token": json.loads(body)["token"], "Content-Type": "application/json"}
+                    for route in ("/api/tasks/run", "/api/scheduler/start", "/api/tasks/validate-script"):
+                        payload = {"instance": "fixture", "task": "Main", "script": "", "confirm_actions": True}
+                        assert get(base, route, method="POST", headers=token_headers, body=payload)[0] == 501
+                    payload = {"queue": {"tasks": [{"id": "observe", "kind": "observe", "required": True}]}}
+                    assert get(base, "/api/run", method="POST", headers=token_headers, body=payload)[0] == 202
+                    deadline = time.monotonic() + 10
+                    while True:
+                        state = json.loads(get(base, "/api/state")[2])
+                        if state["active"]["status"] != "running":
+                            break
+                        assert time.monotonic() < deadline, "Engine dry-run did not finish"
+                        time.sleep(0.05)
+                    assert state["active"]["status"] == "completed", state["active"]
+                    assert state["report"]["queue_outcome"] == "dry_run" and state["report"]["evidence_complete"]
+                    assert state["report"]["totals"]["tasks_succeeded"] == 0
+                    assert len(state["live_tasks"]) == 1
+                    stamp = state["report"]["stamp"]
+                    assert json.loads(get(base, f"/api/report?stamp={stamp}")[2])["evidence_complete"]
                 with socket.socket() as probe:
                     probe.settimeout(0.5)
                     assert probe.connect_ex(("127.0.0.1", extra_port)) != 0
@@ -117,7 +138,7 @@ def main() -> int:
                     process.kill()
                     process.wait(timeout=5)
         assert len(set(policies)) == 1
-    print("PASS: standalone Alas.Server serves selected UI assets and keeps loopback/API/path guards")
+    print("PASS: standalone Server static/loopback guards, Engine dry-run/report and HTTP 501 for unported capabilities")
     return 0
 
 

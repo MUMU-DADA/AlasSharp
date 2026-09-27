@@ -70,6 +70,8 @@ public sealed record ControlRunRequest
     public double MaxSeconds { get; init; } = 1500;
     public int MaxRounds { get; init; } = 20;
     public bool Resume { get; init; }
+    public string? ResumeDirectory { get; init; }
+    public string? Instance { get; init; }
     public bool ContinueOnError { get; init; }
 }
 

@@ -17,7 +17,7 @@ public partial class App : Application
     public static Func<IThemeStore>? ThemeStoreFactory { get; set; }
 
     /// <summary>
-    /// 平台后端组合点。桌面传入直接调用 Alas.Core 的实现；浏览器传入 HTTP
+    /// 平台后端组合点。桌面传入直接调用 Alas.Engine 的实现；浏览器传入 HTTP
     /// 传输适配器。共享视图只依赖能力接口，不把传输方式写进页面。
     /// </summary>
     public static Func<IAlasUiBackend>? BackendFactory { get; set; }

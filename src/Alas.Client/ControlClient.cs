@@ -111,7 +111,7 @@ public sealed partial class ControlClient : IDisposable
 
     /// <summary>
     /// Browser/remote transport for the statistics report. The server-side
-    /// handler invokes Alas.Core directly; this method only crosses a process
+    /// handler invokes Alas.Engine directly; this method only crosses a process
     /// boundary when the caller is a web or remote client.
     /// </summary>
     public async Task<JsonObject> GetStatisticsReportAsync(StatisticsRequest request,

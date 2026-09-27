@@ -104,7 +104,7 @@ internal static class UiOnlyPerformanceChecks
             simulation.AppendLogs("demo-main", 1);
             window.Content = view; Pump();
             Check(!view.IsBackendPolling && liveFactories == 0, "reattachment retains isolation");
-            Check(!AppDomain.CurrentDomain.GetAssemblies().Any(assembly => assembly.GetName().Name is "Alas.Core" or "Alas.Client"),
+            Check(!AppDomain.CurrentDomain.GetAssemblies().Any(assembly => assembly.GetName().Name is "Alas.Core" or "Alas.Engine" or "Alas.Client"),
                 "performance entry never loads automation or network adapters");
             Directory.CreateDirectory(output);
             File.WriteAllText(Path.Combine(output, "ui-only-performance.json"), JsonSerializer.Serialize(new

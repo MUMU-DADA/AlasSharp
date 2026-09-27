@@ -1,0 +1,33 @@
+using Alas.Engine.Rules;
+using Alas.Engine.Runtime;
+using Alas.Engine.Tasks;
+
+namespace Alas.Engine.Tests;
+
+internal static class CampaignCommandChecks
+{
+    public static async Task RunAsync(string artifacts)
+    {
+        Check(CampaignCommand.NormalizeRuleId("campaign.campaign_main.campaign_1_1") == "campaign_main/campaign_1_1");
+        Check(CampaignCommand.NormalizeRuleId("campaign/campaign_main/campaign_1_2.py") == "campaign_main/campaign_1_2");
+        Check(CampaignCommand.NormalizeRuleId("campaign_1_3") == "campaign_main/campaign_1_3");
+
+        var options = new CampaignCommandOptions(
+            ["campaign.campaign_main.campaign_1_1", "campaign/campaign_main/campaign_1_2.py", "campaign_main/campaign_9_1"],
+            "missing-adb", "offline", GameServer.Cn, "missing-assets", "missing-python", artifacts,
+            ModelDirectory: "missing-models", DryRun: true, ContinueOnFailure: true);
+        var requests = CampaignCommand.BuildRequests(options);
+        Check(requests.Count == 3 && requests[0].Input!["campaign"]!.GetValue<string>() == "campaign_main/campaign_1_1");
+        var result = await CampaignCommand.RunAsync(options);
+        Check(result.Failed && result.Tasks.Count == 3 &&
+              result.Tasks[0].Outcome == TaskOutcome.DryRun &&
+              result.Tasks[1].Outcome == TaskOutcome.DryRun &&
+              result.Tasks[2].Outcome == TaskOutcome.Refused,
+              "Campaign command did not keep compiled-rule and unsupported-rule outcomes distinct");
+    }
+
+    private static void Check(bool value, string message = "Campaign command check failed")
+    {
+        if (!value) throw new InvalidOperationException(message);
+    }
+}

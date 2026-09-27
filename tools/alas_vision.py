@@ -1,23 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-识图引擎（库）—— 路线甲的核心约定：**识图不重写**。
+已退役 Core 的混合 Python 宿主，仅保留历史和离线语义对照。
 
-本模块只做三件事：
-  1) 复用上游的 `Button` / `Template` 对象（直接 import `module.<x>.assets`，不重建）；
-  2) 直接调用上游的方法（`appear_on` / `match` / `match_result` / `Ocr`），
-     底层就是上游那套 cv2 调用序列；
-  3) 把结果序列化成 JSON。
+它包括上游视觉对象、设备、导航、战役和任务业务操作，不能作为纯视觉
+接口使用。产品 Engine 不导入此模块；其独立视觉 worker 位于
+src/Alas.Engine/Imaging/Worker/vision_worker.py，只执行 CV/OCR 运算。
 
-C# 侧一行图像算法都不实现。手工移植 cv2 已被实测证伪：OpenCV 会按模板/搜索区的
-尺寸比切换相关算法，同一块内容在不同尺寸下得分不同（实测同位置 0.7487 vs 1.0000）。
-
-两种宿主共用本模块：
-  - 进程内：C# 通过 CPython C API 调 `handle_line()`（见 Alas.Core/Vision/PythonHost.cs）
-  - 进程外：`vision_worker.py` 用 stdio/TCP 跑同一份 `handle_line()`
-因此两种宿主的语义完全一致，换宿主不影响上层。
-
-**导入本模块无副作用**（只装配 sys.path），协议流分离之类的事由宿主负责。
+导入会调整 sys.path、切换工作目录并加载上游模块，禁止接入产品组合入口。
 """
 from __future__ import annotations
 

@@ -17,7 +17,7 @@ internal static class AgentIntegrationChecks
 {
     public static void Run()
     {
-        var backend = new CoreUiBackendChecks.FixtureBackend
+        var backend = new ControlUiBackendChecks.FixtureBackend
         {
             DeployRead = () => Task.FromResult(new DeploySettingsResponse
             {
@@ -28,7 +28,7 @@ internal static class AgentIntegrationChecks
                     """)!.AsArray(), Notice = "fixture", Demo = false,
             }),
         };
-        var adapter = new CoreDeploySettingsBackend(backend);
+        var adapter = new EngineDeploySettingsBackend(backend);
         var snapshot = adapter.ReadAsync().GetAwaiter().GetResult()!;
         Check(snapshot.Groups[0].Fields[0].Help == "分支说明", "Core help strips markup without changing the label");
         adapter.SaveAsync(new SettingsChange("SSLVerify", "false")).GetAwaiter().GetResult();

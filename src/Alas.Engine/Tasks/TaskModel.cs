@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Alas.Engine.Navigation;
 using Alas.Engine.Runtime;
 
@@ -6,7 +7,8 @@ namespace Alas.Engine.Tasks;
 
 public enum TaskOutcome { Succeeded, Failed, Skipped, Refused, DryRun }
 public sealed record TaskRequest(string Id, string Kind, JsonObject? Input = null, bool Required = false,
-    string[]? DependsOn = null, double TimeoutSeconds = 120);
+    string[]? DependsOn = null, double TimeoutSeconds = 120,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Instance = null);
 public sealed record TaskResult(string Id, string Kind, TaskOutcome Outcome, string Reason,
     JsonObject? Evidence = null, string? Error = null, string[]? FailureFrames = null, double ElapsedSeconds = 0);
 public sealed record TaskContext(IUiDriver Driver, IPageNavigator Navigator, IPopupHandler Popups, TimeSpan Timeout,

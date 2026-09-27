@@ -4,7 +4,7 @@ using Alas.Contracts;
 namespace Alas.UI.ViewModels;
 
 /// <summary>
-/// Shared UI capabilities. Desktop calls Alas.Core in-process; browser and
+/// Shared UI capabilities. Desktop calls Alas.Engine in-process; browser and
 /// remote hosts may provide a network adapter. Pages never depend on HTTP.
 /// </summary>
 public interface IAlasControlBackend

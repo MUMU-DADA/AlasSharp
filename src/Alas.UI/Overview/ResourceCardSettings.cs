@@ -44,7 +44,7 @@ public sealed class DisconnectedResourceCardSettings : IResourceCardSettings
 {
     public static DisconnectedResourceCardSettings Instance { get; } = new();
 
-    public const string Notice = "未连接 Alas.Core：资源卡片清单由 Core 提供，当前不可用。";
+    public const string Notice = "资源卡片清单尚未启用，当前不可用。";
 
     private static ResourceCardSettingsSnapshot Off =>
         new(Array.Empty<ResourceCardOption>(), Array.Empty<string>(), Notice);

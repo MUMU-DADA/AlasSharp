@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Alas.Contracts;
-using Alas.Runtime;
+using Alas.Engine.Runtime;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -14,11 +14,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Alas.Server;
 
-/// <summary>Kestrel 传输层；队列生命周期与全部执行语义由 Alas.Core/Runtime 管理。</summary>
+/// <summary>Kestrel transport; execution and task lifecycle are owned by Alas.Engine.</summary>
 public sealed class ControlServer
 {
     private const int BodyLimit = ControlProtocol.MaxRequestBodyBytes;
-    private readonly ControlWorkspace _workspace;
+    private readonly EngineControlWorkspace _workspace;
     private readonly ConfigWorkspace _config;
     private readonly DeploySettingsWorkspace _deploy;
     private readonly StaticUiFiles? _ui;
@@ -31,7 +31,7 @@ public sealed class ControlServer
         if (port is < 1 or > 65535) throw new ArgumentException("port 必须在 1–65535 之间");
         _port = port;
         _ui = uiRoot is null ? null : new StaticUiFiles(uiRoot);
-        _workspace = new ControlWorkspace(root, repo, data, tools, artifacts, workspace);
+        _workspace = new EngineControlWorkspace(root, repo, data, tools, artifacts, workspace);
         _config = new ConfigWorkspace(repo);
         _deploy = new DeploySettingsWorkspace(repo, _config);
     }
@@ -297,7 +297,8 @@ public sealed class ControlServer
         catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested || stopping.IsCancellationRequested) { }
         catch (IOException) when (context.RequestAborted.IsCancellationRequested) { }
         catch (BadHttpRequestException error) { await Reply(context, error.StatusCode, Error("无效的 HTTP 请求")); }
-        catch (ControlWorkspaceUnavailableException error) { await Reply(context, 409, Error(error.Message)); }
+        catch (EngineControlWorkspaceUnavailableException error) { await Reply(context, 409, Error(error.Message)); }
+        catch (EngineCapabilityUnavailableException error) { await Reply(context, 501, Error(error.Message)); }
         catch (ConfigWorkspaceException error)
         {
             int status = error.Code switch { "FORBIDDEN" => 403, "CONFLICT" => 409, "NOT_FOUND" => 404, _ => 400 };
@@ -430,11 +431,11 @@ public sealed class ControlServer
         ["values"] = config.Values,
     };
 
-    private static Alas.Runtime.ConfigChange ParseChange(JsonNode? node)
+    private static Alas.Engine.Runtime.ConfigChange ParseChange(JsonNode? node)
     {
         if (node is not JsonObject change) throw new ArgumentException("配置修改项必须是对象");
         string path = RequiredString(change, "path");
-        return new Alas.Runtime.ConfigChange(path, change["value"]?.DeepClone());
+        return new Alas.Engine.Runtime.ConfigChange(path, change["value"]?.DeepClone());
     }
 
     private static string RequiredString(JsonObject body, string key)

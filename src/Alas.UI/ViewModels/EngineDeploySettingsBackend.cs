@@ -8,8 +8,8 @@ using Alas.UI.Settings;
 
 namespace Alas.UI.ViewModels;
 
-/// <summary>Translate the Core deployment schema; desktop remains an in-process capability call.</summary>
-public sealed class CoreDeploySettingsBackend(IAlasUiBackend backend) : ISettingsBackend
+/// <summary>Translate the Engine deployment schema; desktop remains an in-process capability call.</summary>
+public sealed class EngineDeploySettingsBackend(IAlasUiBackend backend) : ISettingsBackend
 {
     private Dictionary<string, string> _types = new(StringComparer.Ordinal);
     public async Task<SettingsSnapshot?> ReadAsync(CancellationToken cancellationToken = default)

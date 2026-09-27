@@ -1,4 +1,4 @@
-namespace Alas.Runtime;
+namespace Alas.Engine.Runtime;
 
 /// <summary>
 /// Observers must not deny writes to live artifacts on Windows. A read may see

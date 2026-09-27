@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""检查项目的不可变架构边界（无需设备）。"""
+"""检查 Engine 产品边界与保留的旧源码对照约束（无需设备）。
+
+旧 Core/混合宿主检查仅保护历史语义对照；不能证明 Engine 行为等价或实机通过。
+产品依赖、组合入口和纯视觉边界由 executable_boundary_intact 独立验证。
+"""
 from __future__ import annotations
 
 import ast
@@ -384,24 +388,92 @@ def contract_consistency() -> list[str]:
 
 
 def executable_boundary_intact() -> list[str]:
-    """Legacy product entries stay separate from the independent native-engine diagnostic CLI."""
+    """Product composition must reach Engine without loading the retired Core backend."""
     problems: list[str] = []
     projects = ROOT / "src"
+    expected_references = {
+        "Alas.Contracts": [],
+        "Alas.Client": ["Alas.Contracts"],
+        "Alas.Engine": [],
+        "Alas.Engine.Cli": ["Alas.Engine"],
+        "Alas.Server": ["Alas.Contracts", "Alas.Engine"],
+        "Alas.UI": ["Alas.Contracts"],
+        "Alas.UI.Desktop": ["Alas.Contracts", "Alas.Engine", "Alas.UI"],
+        "Alas.UI.Browser": ["Alas.Client", "Alas.UI"],
+        "Alas.UI.Headless": ["Alas.UI"],
+    }
     for path in projects.glob("*/*.csproj"):
         tree = ET.parse(path).getroot()
         output = tree.findtext(".//OutputType", "Library")
         if output in ("Exe", "WinExe") and path.parent.name not in (
                 "Alas.Server", "Alas.UI.Desktop", "Alas.UI.Headless", "Alas.Engine.Cli"):
             problems.append(f"额外可执行入口: {path.relative_to(ROOT)}")
-        if path.parent.name == "Alas.Core":
-            references = [item.attrib.get("Include", "") for item in tree.iter("ProjectReference")]
-            if any("Alas.Server" in item or "Alas.UI" in item for item in references):
-                problems.append("Core 反向依赖 Server 或 UI")
-        if path.parent.name in ("Alas.Engine", "Alas.Engine.Cli"):
-            references = [Path(item.attrib.get("Include", "")).stem for item in tree.iter("ProjectReference")]
-            expected = [] if path.parent.name == "Alas.Engine" else ["Alas.Engine"]
-            if references != expected:
-                problems.append(f"独立引擎依赖边界变化: {path.parent.name}")
+        name = path.parent.name
+        if name == "Alas.Core":
+            continue  # Retained source for offline comparison; never part of product composition.
+        references = sorted(Path(item.attrib.get("Include", "")).stem
+                            for item in tree.iter("ProjectReference"))
+        expected = expected_references.get(name)
+        if expected is None:
+            problems.append(f"未登记的产品项目依赖边界: {path.relative_to(ROOT)}")
+        elif references != sorted(expected):
+            problems.append(f"产品项目引用漂移: {name}: {references}")
+        if "Alas.Core" in references:
+            problems.append(f"产品项目仍引用已退役 Core: {name}")
+        for source in path.parent.rglob("*.cs"):
+            if "obj" in source.parts or "bin" in source.parts:
+                continue
+            code = source.read_text(encoding="utf-8-sig")
+            if re.search(r"\b(?:using|global::)\s+Alas\.(?:Core|Runtime|Tasks)\b", code):
+                problems.append(f"产品源码仍调用旧 Core 命名空间: {source.relative_to(ROOT)}")
+        for item in tree.iter("Compile"):
+            if "Alas.Core" in item.attrib.get("Include", ""):
+                problems.append(f"产品项目链接了旧 Core 源码: {name}")
+
+    for solution in (ROOT / "Alas.sln", ROOT / "Alas.Engine.slnx", ROOT / "Alas.UI.slnx"):
+        if "Alas.Core" in solution.read_text(encoding="utf-8"):
+            problems.append(f"产品解决方案仍包含已退役 Core: {solution.name}")
+    main_solution = (ROOT / "Alas.sln").read_text(encoding="utf-8")
+    if "src\\Alas.Engine\\Alas.Engine.csproj" not in main_solution:
+        problems.append("主解决方案未包含 Alas.Engine")
+    engine_solution = (ROOT / "Alas.Engine.slnx").read_text(encoding="utf-8")
+    for project in ("Alas.Engine.csproj", "Alas.Engine.Cli.csproj", "Alas.Engine.Tests.csproj"):
+        if project not in engine_solution:
+            problems.append(f"独立引擎解决方案缺少项目: {project}")
+
+    tests_project = ET.parse(ROOT / "tests/Alas.Engine.Tests/Alas.Engine.Tests.csproj").getroot()
+    test_references = [Path(item.attrib.get("Include", "")).stem
+                       for item in tests_project.iter("ProjectReference")]
+    if test_references != ["Alas.Engine"]:
+        problems.append("Engine 测试必须只引用 Alas.Engine")
+
+    server_project = ET.parse(ROOT / "src/Alas.Server/Alas.Server.csproj").getroot()
+    if sorted(Path(item.attrib.get("Include", "")).stem
+              for item in server_project.iter("ProjectReference")) != ["Alas.Contracts", "Alas.Engine"]:
+        problems.append("Server 必须经 Alas.Engine 提供执行能力")
+    desktop_project = ET.parse(ROOT / "src/Alas.UI.Desktop/Alas.UI.Desktop.csproj").getroot()
+    if "Alas.Engine" not in [Path(item.attrib.get("Include", "")).stem
+                              for item in desktop_project.iter("ProjectReference")]:
+        problems.append("桌面 UI 未引用 Alas.Engine")
+
+    server_program = (ROOT / "src/Alas.Server/Program.cs").read_text(encoding="utf-8")
+    server_control = (ROOT / "src/Alas.Server/ControlServer.cs").read_text(encoding="utf-8")
+    desktop_backend = (ROOT / "src/Alas.UI.Desktop/DirectEngineBackend.cs").read_text(encoding="utf-8")
+    engine_workspace = (ROOT / "src/Alas.Engine/Runtime/EngineControlWorkspace.cs").read_text(encoding="utf-8")
+    engine_queue = (ROOT / "src/Alas.Engine/Tasks/TaskQueue.cs").read_text(encoding="utf-8")
+    if "DiagnosticCommands" in server_program or "Alas.Core" in server_program:
+        problems.append("Server 仍轉發或加载旧 Core 命令")
+    if "EngineControlWorkspace" not in server_control or "QueueExecution" in server_control:
+        problems.append("Server 必须将运行请求交给 EngineControlWorkspace")
+    if "EngineControlWorkspace" not in desktop_backend or "DirectCoreBackend" in desktop_backend:
+        problems.append("桌面 UI 必须在进程内调用 EngineControlWorkspace")
+    if "new TaskQueue().RunAsync" not in engine_workspace:
+        problems.append("EngineControlWorkspace 未将队列交给 Engine.TaskQueue")
+    if "new CampaignRunTask()" not in engine_queue or "new CampaignResumeTask()" not in engine_queue:
+        problems.append("Engine 队列未注册战役任务")
+    if "EngineCapabilityUnavailableException" not in engine_workspace or "501" not in server_control:
+        problems.append("未迁移能力必须显式拒绝，不能回退到 Core")
+
     worker = ROOT / "src/Alas.Engine/Imaging/Worker/vision_worker.py"
     if worker.is_file():
         allowed = {"base64", "io", "json", "sys", "cv2", "numpy", "imageio", "scipy", "hashlib", "pathlib", "PIL", "onnxruntime"}
@@ -417,12 +489,6 @@ def executable_boundary_intact() -> list[str]:
         problems.append("旧 DataTool 可执行项目仍存在")
     if (ROOT / "tools/control_ui.html").exists():
         problems.append("旧控制网页仍存在")
-    server = (ROOT / "src/Alas.Server/Program.cs").read_text(encoding="utf-8")
-    core = (ROOT / "src/Alas.Core/Diagnostics/Program.cs").read_text(encoding="utf-8")
-    if "DiagnosticCommands.Run(args)" not in server or "public static class DiagnosticCommands" not in core:
-        problems.append("Server 未转发 Core 诊断命令")
-    if 'command == "control"' in core or "new ControlServer(" in core:
-        problems.append("Core 诊断命令仍重复启动服务")
     return problems
 
 
@@ -448,14 +514,16 @@ def main() -> int:
         "账号状态任务域": ROOT / "src/Alas.Core/Tasks/AccountStateTask.cs",
         "任务域说明": ROOT / "docs/tasks.md",
         "账号状态验收": ROOT / "tools/diagnostics/verify_account_state.py",
-        "运行报告": ROOT / "src/Alas.Core/Runtime/RunReport.cs",
+        "运行报告": ROOT / "src/Alas.Engine/Runtime/RunReport.cs",
         "运行报告验收": ROOT / "tools/diagnostics/verify_report.py",
         "控制工作区运行时": ROOT / "src/Alas.Core/Runtime/ControlWorkspace.cs",
         "Kestrel 控制传输层": ROOT / "src/Alas.Server/ControlServer.cs",
         "共享控制合同": ROOT / "src/Alas.Contracts/ControlModels.cs",
         "共享控制客户端": ROOT / "src/Alas.Client/ControlClient.cs",
         "控制状态事件流": ROOT / "src/Alas.Server/ControlStateFeed.cs",
-        "并发工件读取": ROOT / "src/Alas.Core/Runtime/ArtifactReader.cs",
+        "并发工件读取": ROOT / "src/Alas.Engine/Runtime/ArtifactReader.cs",
+        "Engine 控制工作区": ROOT / "src/Alas.Engine/Runtime/EngineControlWorkspace.cs",
+        "Engine 任务队列": ROOT / "src/Alas.Engine/Tasks/TaskQueue.cs",
     }
     for label, path in required.items():
         if not path.is_file():
@@ -537,11 +605,10 @@ def main() -> int:
         "共享客户端与合同不依赖宿主或 UI": all(
             forbidden not in read(project)
             for project in ("src/Alas.Client/Alas.Client.csproj", "src/Alas.Contracts/Alas.Contracts.csproj")
-            for forbidden in ("Alas.Core", "Alas.Server", "Alas.UI", "Avalonia", "Microsoft.AspNetCore")),
-        # UI transport boundary: native desktop composition calls Core directly;
-        # only the browser adapter is allowed to depend on ControlClient/HTTP.
-        "桌面 UI 直接调用 Core": "Alas.Runtime" in read("src/Alas.UI.Desktop/DirectCoreBackend.cs")
-                                 and not any(marker in read("src/Alas.UI.Desktop/DirectCoreBackend.cs")
+            for forbidden in ("Alas.Core", "Alas.Engine", "Alas.Server", "Alas.UI", "Avalonia", "Microsoft.AspNetCore")),
+        # UI transport boundary: desktop composes Engine in-process; browser uses HTTP to Server -> Engine.
+        "桌面 UI 直接调用 Engine": "Alas.Engine.Runtime" in read("src/Alas.UI.Desktop/DirectEngineBackend.cs")
+                                 and not any(marker in read("src/Alas.UI.Desktop/DirectEngineBackend.cs")
                                              for marker in ("ControlClient", "HttpClient", "http://", "https://", "/api/")),
         "浏览器 UI 才使用网络适配器": "ControlClient" in read("src/Alas.UI.Browser/BrowserControlBackend.cs")
                                      and "../Alas.Client/Alas.Client.csproj" in read("src/Alas.UI.Browser/Alas.UI.Browser.csproj"),
@@ -553,9 +620,10 @@ def main() -> int:
                                   for path in ('src/Alas.UI.Desktop/Program.cs', 'src/Alas.UI.Browser/Program.cs')),
         "UI 隔离模式无后台轮询": "if (!Model.IsUiOnly) _stateTimer.Start();" in read("src/Alas.UI/Views/MainView.axaml.cs"),
         "UI 模拟数据不调用生产能力": not any(re.search(pattern, read('src/Alas.UI/Simulation/SimulatedUiBackend.cs'))
-                              for pattern in (r'using\s+Alas\.(?:Runtime|Client)', r'\b(?:ControlClient|HttpClient|DirectCoreBackend|BrowserControlBackend)\b',
+                              for pattern in (r'using\s+Alas\.(?:Runtime|Client|Engine)', r'\b(?:ControlClient|HttpClient|DirectCoreBackend|DirectEngineBackend|BrowserControlBackend)\b',
                                               r'\b(?:File|Directory|Process|Socket|Timer)\.')),
-        "路线记录 Core 与传输边界": "桌面 UI 在同一进程内通过能力接口调用 Core" in read("docs/architecture-roadmap.md"),
+        "路线记录 Engine 产品边界": all(marker in read("docs/architecture-roadmap.md") for marker in (
+            "桌面 UI → Alas.Engine", "浏览器 UI → Alas.Server → Alas.Engine", "Core 不在产品依赖图")),
     }
     for label, ok in checks.items():
         if not ok:
@@ -626,7 +694,7 @@ def main() -> int:
         for item in problems:
             print(f"- {item}")
         return 1
-    print("架构守卫通过: 上游宿主链、集中路径、素材模型和迁移规范均存在")
+    print("架构守卫通过: Engine 产品依赖与组合入口、纯视觉边界及旧源码对照约束；不代表完整业务或实机验收")
     return 0
 
 

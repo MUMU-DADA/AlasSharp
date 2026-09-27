@@ -8,13 +8,13 @@ using System.Text.RegularExpressions;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 
-namespace Alas.Runtime;
+namespace Alas.Engine.Runtime;
 
 /// <summary>
 /// Read/write access to the upstream instance configuration contract.
 /// The shape is intentionally data driven by <c>args.json</c>; this class does
-/// not maintain a second task or field table. Runtime campaign execution still
-/// reads the upstream configuration through the Python host.
+/// not maintain a second task or field table. Execution consumes explicit
+/// Engine task inputs; reading or editing an instance does not start Python.
 /// </summary>
 public sealed class ConfigWorkspace
 {

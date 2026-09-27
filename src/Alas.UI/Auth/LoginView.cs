@@ -45,7 +45,7 @@ public sealed class DisconnectedAuth : IAlasAuth
 {
     public static DisconnectedAuth Instance { get; } = new();
 
-    public const string Notice = "未连接 Alas.Core：访问校验由 Core 提供，当前不可用。";
+    public const string Notice = "访问校验服务尚未启用，当前不可用。";
 
     private static AuthStatus Off => new("unavailable", Notice);
 

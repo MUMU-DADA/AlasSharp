@@ -45,7 +45,7 @@ def reference(source):
 HARNESS = r'''
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Alas.Runtime;
+using Alas.Engine.Runtime;
 using Alas.Client;
 using Alas.Contracts;
 var inputs = JsonNode.Parse(File.ReadAllText(args[0]))!.AsArray();
@@ -199,7 +199,7 @@ def main():
     parser.add_argument('--upstream', type=Path, default=ROOT.parent / 'others fork version/AzurPilot')
     args = parser.parse_args()
     definition = export(args.upstream)
-    assert json.loads((ROOT / 'src/Alas.Core/Runtime/Resources/deploy-settings.json').read_text(encoding='utf-8')) == definition
+    assert json.loads((ROOT / 'src/Alas.Engine/Runtime/Resources/deploy-settings.json').read_text(encoding='utf-8')) == definition
     fields = reference(args.upstream)['DEPLOY_FIELDS']
     fixtures = [{'operation': 'read', 'text': ''}, {'operation': 'read', 'text': 'Password: fixture-secret\nBranch: untouched\n'}]
     for key, field in fields.items():
@@ -232,7 +232,7 @@ def main():
         (work / 'fixtures.json').write_text(json.dumps(fixtures, ensure_ascii=False), encoding='utf-8')
         (work / 'Program.cs').write_text(HARNESS, encoding='utf-8')
         project = work / 'DeployProbe.csproj'
-        project.write_text(f'''<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><ProjectReference Include="{escape(str(ROOT / 'src/Alas.Core/Alas.Core.csproj'))}" /><ProjectReference Include="{escape(str(ROOT / 'src/Alas.Client/Alas.Client.csproj'))}" /></ItemGroup></Project>''', encoding='utf-8')
+        project.write_text(f'''<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><ProjectReference Include="{escape(str(ROOT / 'src/Alas.Engine/Alas.Engine.csproj'))}" /><ProjectReference Include="{escape(str(ROOT / 'src/Alas.Client/Alas.Client.csproj'))}" /></ItemGroup></Project>''', encoding='utf-8')
         build = subprocess.run([str(dotnet), 'build', str(project), '-c', 'Release', *(['--source', str(ROOT / '.runtime/nuget/source')]
                                    if (ROOT / '.runtime/nuget/source').is_dir() else []), '-p:NuGetAudit=false'], env=env, capture_output=True, timeout=120)
         assert build.returncode == 0, (build.stdout + build.stderr).decode(errors='replace')

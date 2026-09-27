@@ -4,7 +4,7 @@ using Alas.UI.ConfigManager;
 
 namespace Alas.UI.ViewModels;
 
-public sealed class CoreConfigInstancesBackend(IAlasUiBackend backend) : IConfigInstancesBackend
+public sealed class EngineConfigInstancesBackend(IAlasUiBackend backend) : IConfigInstancesBackend
 {
     public async Task<IReadOnlyList<ConfigInstanceInfo>> ListInstancesAsync(CancellationToken cancellationToken = default)
     {

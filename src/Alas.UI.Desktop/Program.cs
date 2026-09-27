@@ -16,7 +16,7 @@ internal static class Program
         App.ThemeStoreFactory = () => options.CreateThemeStore(static () => new DesktopThemeStore());
         App.ResourceStoreFactory = () => options.CreateResourceStore(static () => new DesktopResourceSelectionStore());
         App.DeployDraftStoreFactory = () => options.CreateDeployDraftStore(static () => SessionDrafts);
-        App.BackendFactory = () => options.CreateBackend(static () => new DirectCoreBackend());
+        App.BackendFactory = () => options.CreateBackend(static () => new DirectEngineBackend());
         AppBuilder.Configure<App>()
         .UsePlatformDetect()
         .LogToTrace()

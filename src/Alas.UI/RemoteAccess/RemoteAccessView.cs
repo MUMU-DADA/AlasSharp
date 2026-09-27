@@ -74,7 +74,7 @@ public sealed class DisconnectedRemoteAccessBackend : IRemoteAccessBackend
 {
     public static DisconnectedRemoteAccessBackend Instance { get; } = new();
 
-    public const string Notice = "未连接 Alas.Core：远程访问状态由 Core 提供，当前不可用。";
+    public const string Notice = "远程访问状态尚未启用，当前不可用。";
 
     public Task<RemoteAccessSchema> ReadStatusAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(new RemoteAccessSchema("disabled", string.Empty, Error: Notice));

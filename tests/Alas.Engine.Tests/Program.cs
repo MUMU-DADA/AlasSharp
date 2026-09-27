@@ -44,7 +44,7 @@ async Task Throws<T>(Func<Task> action, string message) where T : Exception
 try
 {
     var references = typeof(CampaignExecution).Assembly.GetReferencedAssemblies();
-    Check(references.All(r => r.Name is { } name && (name.StartsWith("System.", StringComparison.Ordinal) || name == "Microsoft.Win32.Primitives")),
+    Check(references.All(r => r.Name is { } name && (name.StartsWith("System.", StringComparison.Ordinal) || name is "Microsoft.Win32.Primitives" or "YamlDotNet")),
         "New engine references the legacy backend or an unexpected runtime: " + string.Join(", ", references.Select(r => r.Name)));
     Check(Cell.Parse("AA12").ToString() == "AA12", "Multi-letter map coordinates");
     await Throws<FormatException>(() => Task.Run(() => Cell.Parse("A0")), "Invalid cell accepted");
@@ -251,6 +251,24 @@ try
         string folder = Path.GetFullPath(visionArtifacts);
         Directory.CreateDirectory(folder);
         Console.WriteLine($"Pure CV checks passed: {await VisionChecks.RunAsync(Path.GetFullPath(visionPython), folder)}; native campaign comparison NOT RUN.");
+        return 0;
+    }
+
+    if (args is ["--control-workspace", var controlArtifacts])
+    {
+        string folder = Path.GetFullPath(controlArtifacts);
+        Directory.CreateDirectory(folder);
+        await ControlWorkspaceChecks.RunAsync(folder);
+        Console.WriteLine("Engine control checks passed: dry-run, report evidence, boundary stop, instance identity and shutdown.");
+        return 0;
+    }
+
+    if (args is ["--campaign-command", var campaignArtifacts])
+    {
+        string folder = Path.GetFullPath(campaignArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignCommandChecks.RunAsync(folder);
+        Console.WriteLine("Campaign command checks passed: normalization, dry-run and unsupported-rule refusal.");
         return 0;
     }
 

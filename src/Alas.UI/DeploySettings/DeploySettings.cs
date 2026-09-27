@@ -628,7 +628,7 @@ public sealed class DeploySettingsSession : INotifyPropertyChanged
     public Task SettleAsync(CancellationToken cancellationToken = default) => RefreshAsync(cancellationToken);
 
     /// <summary>未接能力时的固定说明（不伪造设置项，也不假装是空配置）。</summary>
-    public const string DisconnectedNotice = "未连接 Alas.Core：部署设置由 Core 提供，当前不可用。";
+    public const string DisconnectedNotice = "部署设置尚未启用，当前不可用。";
 
     private void Loading(bool value)
     {

@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
-namespace Alas.Runtime;
+namespace Alas.Engine.Runtime;
 
 /// <summary>
 /// Read-only configuration projection for an instance that has no live native observation.

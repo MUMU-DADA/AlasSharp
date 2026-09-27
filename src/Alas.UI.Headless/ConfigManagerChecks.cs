@@ -541,7 +541,7 @@ internal static class ConfigManagerChecks
 
     private static void ShellIntegration(string output)
     {
-        var backend = new CoreUiBackendChecks.FixtureBackend
+        var backend = new ControlUiBackendChecks.FixtureBackend
         {
             Listed = [new() { Instance = "fixture", Revision = "rev-fixture", Server = "en", Status = "running" }],
         };

@@ -7,20 +7,26 @@ using Alas.Engine.Tasks;
 Console.OutputEncoding = Encoding.UTF8;
 if (args.Length == 0 || args is ["--help"])
 {
-    Console.WriteLine("Alas.Engine.Cli <observe|navigate|run> --adb <executable> --serial <device> --server <cn|en|jp|tw> --assets <directory> --python <executable> --artifacts <directory>");
+    Console.WriteLine("Alas.Engine.Cli <observe|navigate|run|campaign> --adb <executable> --serial <device> --server <cn|en|jp|tw> --assets <directory> --python <executable> --artifacts <directory>");
     Console.WriteLine("observe: capture and identify one frame, with device actions disabled.");
     Console.WriteLine("navigate: additionally requires --package <Android package> --page <destination>; --timeout <seconds> defaults to 120. Performs game clicks and recovery.");
     Console.WriteLine("run: --queue <JSON task array> [--models <ONNX directory>] [--allow-actions --package <Android package>] [--dry-run] [--continue-on-failure] [--resume <run directory>]. Task kinds: observe, navigate, data_key, map_observe, campaign_stages (read-only OCR; optional entrances array), campaign_select (input: campaign; stops at map preparation), campaign_fleet_prepare (input: campaign; stops at fleet preparation), campaign_run (input: campaign, fleet1, fleet2, submarine, emotionMode=ignore; performs the independent entry and map graph), campaign_resume (input: campaign; requires a freshly entered map and never records cleared).");
+    Console.WriteLine("campaign: --chapter <rule[,rule...]> --models <OCR model directory>; defaults to dry-run. Add --run --allow-actions --package <Android package> to execute; optional --fleet1/--fleet2/--submarine/--timeout/--continue-on-failure/--resume.");
     return 0;
 }
 try
 {
-    if (args[0] is not ("observe" or "navigate" or "run")) throw new ArgumentException("Unknown command");
+    if (args[0] is not ("observe" or "navigate" or "run" or "campaign")) throw new ArgumentException("Unknown command");
     bool navigate = args[0] == "navigate";
     bool run = args[0] == "run";
-    string[] required = ["--adb", "--serial", "--server", "--assets", "--python", "--artifacts", .. navigate ? new[] { "--package", "--page" } : run ? new[] { "--queue" } : []];
-    var allowed = required.Concat(navigate ? ["--timeout"] : run ? ["--models", "--package", "--resume"] : Array.Empty<string>()).ToHashSet(StringComparer.Ordinal);
-    var switches = (run ? new[] { "--allow-actions", "--dry-run", "--continue-on-failure" } : []).ToHashSet(StringComparer.Ordinal);
+    bool campaign = args[0] == "campaign";
+    string[] required = ["--adb", "--serial", "--server", "--assets", "--python", "--artifacts",
+        .. navigate ? new[] { "--package", "--page" } : run ? new[] { "--queue" } : campaign ? new[] { "--chapter", "--models" } : []];
+    var allowed = required.Concat(navigate ? ["--timeout"] : run ? ["--models", "--package", "--resume"] : campaign
+        ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--timeout"]
+        : Array.Empty<string>()).ToHashSet(StringComparer.Ordinal);
+    var switches = (run ? new[] { "--allow-actions", "--dry-run", "--continue-on-failure" } : campaign
+        ? new[] { "--run", "--allow-actions", "--continue-on-failure" } : []).ToHashSet(StringComparer.Ordinal);
     var flags = new HashSet<string>(StringComparer.Ordinal);
     var values = new Dictionary<string, string>(StringComparer.Ordinal);
     for (int i = 1; i < args.Length; i++)
@@ -41,13 +47,35 @@ try
         "cn" => GameServer.Cn, "en" => GameServer.En, "jp" => GameServer.Jp, "tw" => GameServer.Tw,
         _ => throw new ArgumentException("Unknown game server")
     };
+    if (campaign && flags.Contains("--run") && !flags.Contains("--allow-actions"))
+        throw new ArgumentException("Campaign execution requires --allow-actions");
+    if (campaign && flags.Contains("--run") && !values.ContainsKey("--package"))
+        throw new ArgumentException("Campaign execution requires --package");
     var timeout = values.TryGetValue("--timeout", out var seconds)
-        ? TimeSpan.FromSeconds(double.Parse(seconds, System.Globalization.CultureInfo.InvariantCulture)) : TimeSpan.FromMinutes(2);
+        ? TimeSpan.FromSeconds(double.Parse(seconds, System.Globalization.CultureInfo.InvariantCulture))
+        : campaign ? TimeSpan.FromSeconds(1500) : TimeSpan.FromMinutes(2);
     using var cancellation = new CancellationTokenSource();
     ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; cancellation.Cancel(); };
     Console.CancelKeyPress += cancel;
     try
     {
+        if (campaign)
+        {
+            int ParseFleet(string key, int fallback) => values.TryGetValue(key, out string? value)
+                ? int.Parse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture)
+                : fallback;
+            var options = new CampaignCommandOptions(
+                values["--chapter"].Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                values["--adb"], values["--serial"], server, values["--assets"], values["--python"], values["--artifacts"],
+                values.GetValueOrDefault("--package"), values.GetValueOrDefault("--models"),
+                DryRun: !flags.Contains("--run"), AllowActions: flags.Contains("--allow-actions"),
+                ContinueOnFailure: flags.Contains("--continue-on-failure"), ResumeDirectory: values.GetValueOrDefault("--resume"),
+                Fleet1: ParseFleet("--fleet1", 1), Fleet2: ParseFleet("--fleet2", 0),
+                Submarine: ParseFleet("--submarine", 0), TimeoutSeconds: timeout.TotalSeconds);
+            var campaignResult = await CampaignCommand.RunAsync(options, cancellation.Token);
+            Console.WriteLine(CampaignCommand.Serialize(campaignResult));
+            return campaignResult.Failed || cancellation.IsCancellationRequested ? 1 : 0;
+        }
         if (run)
         {
             var tasks = await TaskQueue.ReadAsync(values["--queue"], cancellation.Token);

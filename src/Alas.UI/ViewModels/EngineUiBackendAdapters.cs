@@ -8,11 +8,11 @@ namespace Alas.UI.ViewModels;
 
 /// <summary>
 /// Adapts the shared task editor to the application capability boundary.
-/// The adapter contains no transport code: desktop reaches Alas.Core directly
+/// The adapter contains no transport code: desktop reaches Alas.Engine directly
 /// through <see cref="IAlasControlBackend"/> and browser builds use its HTTP
 /// implementation behind the same interface.
 /// </summary>
-public sealed class CoreTaskEditorBackend(IAlasControlBackend backend) : ITaskEditorBackend
+public sealed class EngineTaskEditorBackend(IAlasControlBackend backend) : ITaskEditorBackend
 {
     private readonly IAlasControlBackend _backend = backend ?? throw new ArgumentNullException(nameof(backend));
 
@@ -75,8 +75,8 @@ public sealed class CoreTaskEditorBackend(IAlasControlBackend backend) : ITaskEd
 
 }
 
-/// <summary>Maps the shared report view to the same Core capability boundary.</summary>
-public sealed class CoreMeowfficerReportBackend(IAlasControlBackend backend) : IMeowfficerReportBackend
+/// <summary>Maps the shared report view to the Engine capability boundary.</summary>
+public sealed class EngineMeowfficerReportBackend(IAlasControlBackend backend) : IMeowfficerReportBackend
 {
     private readonly IAlasControlBackend _backend = backend ?? throw new ArgumentNullException(nameof(backend));
 

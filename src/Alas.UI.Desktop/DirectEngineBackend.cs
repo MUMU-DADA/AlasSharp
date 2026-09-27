@@ -1,27 +1,27 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Alas.Contracts;
-using Alas.Runtime;
+using Alas.Engine.Runtime;
 using Alas.UI.ViewModels;
-using RuntimeConfigChange = Alas.Runtime.ConfigChange;
+using RuntimeConfigChange = Alas.Engine.Runtime.ConfigChange;
 
 namespace Alas.UI.Desktop;
 
 /// <summary>
 /// Desktop composition root for the real backend. It reads instances through
-/// Alas.Core directly and keeps the control workspace in the same process; no
+/// Alas.Engine directly and keeps the control workspace in the same process; no
 /// loopback HTTP hop is used for native desktop operation.
 /// </summary>
-internal sealed partial class DirectCoreBackend : IAlasUiBackend
+internal sealed partial class DirectEngineBackend : IAlasUiBackend
 {
     private readonly ConfigWorkspace? _configs;
     private readonly DeploySettingsWorkspace? _deploy;
-    private readonly ControlWorkspace? _workspace;
+    private readonly EngineControlWorkspace? _workspace;
     private readonly List<InstanceCardViewModel> _instances = [];
     private bool _disposed;
     private bool _connected;
 
-    public DirectCoreBackend()
+    public DirectEngineBackend()
     {
         string? root = FindProjectRoot();
         string? repo = Environment.GetEnvironmentVariable("ALAS_REPO");
@@ -33,7 +33,7 @@ internal sealed partial class DirectCoreBackend : IAlasUiBackend
         {
             _configs = new ConfigWorkspace(repo);
             _deploy = new DeploySettingsWorkspace(repo, _configs);
-            _workspace = new ControlWorkspace(root, repo, Path.Combine(root, "data"),
+            _workspace = new EngineControlWorkspace(root, repo, Path.Combine(root, "data"),
                 Path.Combine(root, "tools"), Path.Combine(root, ".runtime", "control", "runs"),
                 Path.Combine(root, ".runtime", "control"));
             Refresh();
@@ -194,8 +194,8 @@ internal sealed partial class DirectCoreBackend : IAlasUiBackend
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException) { }
     }
 
-    private ConfigWorkspace ConfigsOrThrow() => _configs ?? throw new InvalidOperationException("Alas.Core 配置工作区不可用");
-    private ControlWorkspace WorkspaceOrThrow() => _workspace ?? throw new InvalidOperationException("Alas.Core 控制工作区不可用");
+    private ConfigWorkspace ConfigsOrThrow() => _configs ?? throw new InvalidOperationException("Alas.Engine 配置工作区不可用");
+    private EngineControlWorkspace WorkspaceOrThrow() => _workspace ?? throw new InvalidOperationException("Alas.Engine 控制工作区不可用");
 
     private Task<JsonObject> ReadHostAsync(string operation, JsonObject arguments, CancellationToken cancellationToken)
         => Task.Run(() => WorkspaceOrThrow().ReadHostJson(operation, arguments), cancellationToken);

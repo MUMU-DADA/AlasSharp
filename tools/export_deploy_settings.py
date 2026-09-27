@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / 'src/Alas.Core/Runtime/Resources/deploy-settings.json'
+OUTPUT = ROOT / 'src/Alas.Engine/Runtime/Resources/deploy-settings.json'
 
 
 def declarations(source: Path) -> dict:

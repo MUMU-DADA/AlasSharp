@@ -5,7 +5,7 @@
 用户最新要求：**最终运行时除确有必要的 CV/OCR 识图桥接外，全部逻辑由 C# 实现。**
 这优先于下文将原生 Python 调用描述为长期不可变边界的旧措辞。
 
-用户进一步要求整体舍弃旧流程，不把新模块逐个嵌回原有结构。新执行架构在独立 `Alas.Engine` 中建设，不引用旧 `Alas.Core`、计划解释器或混合 Python 宿主；完成整体产品组合入口后统一切换。旧代码仅作迁移期间的现状和离线对照，不作为新引擎的兼容实现、业务代理或失败回退。此要求优先于此前的逐消费者/逐域替换路线。
+用户进一步要求整体舍弃旧流程，不把新模块逐个嵌回原有结构。新执行架构在独立 `Alas.Engine` 中建设，不引用旧 `Alas.Core`、计划解释器或混合 Python 宿主；产品入口现为桌面 UI → Alas.Engine、浏览器 UI → Alas.Server → Alas.Engine；Engine 是完整业务后端，不再下接旧 Core 或上游业务引擎。旧代码仅作历史和离线对照，不作为新引擎的兼容实现、业务代理或失败回退。此要求优先于此前的逐消费者/逐域替换路线。
 
 - 战役加载、配置合并、继承与钩子、地图状态、寻路、战斗调度、导航、控件/弹窗、周期任务、大世界、统计及设备控制均是 C# 迁移范围；不能以“复用上游”为理由永久留在 Python。
 - 保留上游语义和完整规则，不等于保留上游执行语言。规则中的可执行逻辑与引擎一起迁成普通 C# 类和方法，由编译器处理控制流与调用；不再以扩张可执行 JSON 计划和 Python 子集解释器作为目标架构。静态配置、地图、页面关系及素材参数使用 C# 类型化定义或纯数据资源。
@@ -63,34 +63,34 @@
 - 上游自身已有的页面及服务器差异可以忠实复用或迁移，但必须能追溯到对应上游实现，并保持其触发条件与语义；不能把本项目新增的逐界面补丁包装成上游兼容。
 - 通用导航与视觉宿主若偏离上游行为，须先记录上游对照、影响范围和真机证据，再作最小通用修复及回归验证；单页成功、截图命中或点击无报错都不等于操作结果正确。
 
-## 已完善能力：修改前必须保持边界
+## 旧路径语义与证据：只作迁移对照
 
-以下两组能力已经完成整体适配并通过对应验收，视为本项目的稳定基线。后续排查新问题时，不能擅自回退、简化、替换其调用链，也不能因为单张地图或单次现场结果另写一套旁路逻辑：
+以下两组能力是已退役 Core 路径的语义与证据基线。迁移须保留其正确行为和原始证据，但不保留其产品调用链，也不能因单张地图或单次现场结果另写旁路逻辑：
 
-- 上一个提交 `bbb4ffb`（`fix(s3): 补齐上游完整关卡流程并禁止逐地图适配`）已经完成 S3 上游流程：章节 `Config` 合并、`MAP` 规则加载、入口准备、上一局撤退清理、原生 `Campaign.run()`、继承钩子、相机恢复兼容，以及成功结算/撤退/失败的结果区分。生产路径必须继续复用 `CampaignRun.load_campaign()` 和原生运行调度。
+- 上一个提交 `bbb4ffb`（`fix(s3): 补齐上游完整关卡流程并禁止逐地图适配`）已经完成 S3 上游流程：章节 `Config` 合并、`MAP` 规则加载、入口准备、上一局撤退清理、原生 `Campaign.run()`、继承钩子、相机恢复兼容，以及成功结算/撤退/失败的结果区分。新 Engine 须忠实迁移加载、继承及运行调度语义，不调用原生 Python 执行业务。
 - 提交 `0827fae`（`fix(export): 完善上游 Config 导出与校验`）已经完善章节 `Config` 导出：相对导入、别名、C3 继承、常量表达式、嵌套容器类型、字段来源和未解析项均由通用导出器处理；`Campaign` 类属性与 `Config` 分开保存；静态导出、原生对照和 C# 验收均覆盖这些内容。
 
 后续修改涉及上述范围时必须遵守：
 
 - 先用完整调用链和可复现证据定位通用根因，再做最小修复；不得按地图名称、编号、尺寸或少数案例增加阈值、坐标、机位、路线、寻敌或战斗分支。
-- JSON 导出配置用于离线展示、来源追踪和漂移校验；地图识别和实战必须继续使用上游 `_map_config(chapter)` 与 `CampaignRun.load_campaign()`，不得把静态摘要改成运行时配置源。
+- JSON 导出配置用于离线展示、来源追踪和漂移校验；新 Engine 使用完整 C# 规则与状态；原生 `_map_config(chapter)` 和 `CampaignRun.load_campaign()` 用于离线对照，不得把静态摘要当成完整规则。
 - 修改加载、导出、结果判定或兼容垫片时，必须同步更新相关回归检查和 `docs/s3-upstream-adaptation.md`，并保留已有成功结算证据；不能以撤退、超时或单张截图成功代替通关验证。
 - 如果确实需要改变已完善能力，提交说明必须明确根因、影响边界、保持的上游语义和新增验证；没有这些证据不得改动稳定实现。
 
 ## 导出素材规则：使用模块与完整性边界
 
-导出的素材规则有明确的离线消费范围；运行时视觉识别有独立的上游对象解析路径。后续修改不能混用两条路径，也不能遗漏已有消费者：
+导出 JSON、上游原生对照与产品 C# 规则是独立边界：
 
-- `data/assets.json`、`data/schema/assets.schema.json` 和 `manifest.json` 中的素材统计、来源及哈希属于离线导出契约。`src/Alas.Core/UpstreamData.cs` 的 `Catalog.Open()` 与 `src/Alas.Core/UpstreamModels.cs` 的 `AssetCatalog` / `AssetBinding` 负责加载和建模；`src/Alas.Core/Diagnostics/Program.cs` 的 `Alas.Server verify`、`tools/verify_export.py`、`tools/make_imaging_fixture.py`、`tools/make_matching_fixture.py` 负责完整性校验和夹具生成；`tools/export_upstream_data.py`、`tools/sync_all.py`、`tools/sync_upstream_assets.py` 负责生成、契约校验和上游素材快照同步。修改素材导出结构时必须逐项检查这些模块，不能只更新其中一个调用点。
-- 运行时页面、按钮、模板和 OCR 素材必须继续由 `tools/alas_vision.py` 的 `_resolve()` 等操作从上游 `module.<module>.assets` 解析。`src/Alas.Core/Vision/IVisionEngine.cs` 只传递素材 id 和调用参数，`src/Alas.Core/Navigation/PageNavigator.cs`、`src/Alas.Core/Diagnostics/DeviceCheck.cs` 等调用方通过该视觉宿主消费上游规则；不得从 `assets.json` 重建运行时视觉对象，不得复制维护另一份素材规则表，也不得绕开服务器变体和上游匹配语义。
-- 地图识别必须使用 `tools/alas_vision.py` 的 `map_detection_assets` 路径和上游 `module.map_detection.utils_assets.Assets`，包括其遮罩、瓦片模板和检测区域；`src/Alas.Core/MapDetection/MapDetection.cs` 只消费视觉宿主返回的地图识别配置。不得把 `assets.json` 中的普通 UI 绑定误当成地图识别素材，也不得在 C# 侧按地图补写坐标、模板或阈值。
-- 导出器必须完整保留素材的所属模块、唯一 id、kind、服务器变体、`area`、`button`、`color`、`file` 和来源信息；不能因为字段暂时没有被某个单一调用点使用就省略。任何模块遗漏、服务器变体丢失、文件引用错误或字段错误映射都必须由导出校验失败暴露，不能静默回退。
-- 调整素材导出字段或语义时，必须同步更新 JSON Schema、C# 数据模型、`Alas.Server verify`、`tools/verify_export.py`、两个夹具生成脚本以及 manifest / 同步校验链，并验证所有消费者。不得按地图、页面、服务器或少数素材名称增加专用坐标、阈值或 fallback；素材失败时先检查模块来源、服务器变体、文件路径和上游调用链。
+- `data/assets.json`、Schema、manifest 只用于离线展示、溯源和漂移校验。旧 `Catalog.Open()` / `AssetCatalog`、导出器和夹具脚本保留作对照；Server 不再转发旧 `verify` 命令。
+- Engine 的素材、页面、配置和地图声明由 `Rules` 的 C# 类型持有。构建期迁移辅助工具可以直接生成 C# 声明，但不得生成供产品解释的可执行 JSON 计划。
+- 视觉 worker 位于 `src/Alas.Engine/Imaging/Worker/vision_worker.py`，只接受图像、模板和数值参数。`tools/alas_vision.py` 是已退役混合宿主，不是 Engine 的视觉后端。
+- 地图识别须忠实迁移上游遮罩、瓦片模板、检测区域和服务器变体，不能用普通 UI 绑定代替地图素材，不能在适配层按地图补坐标或阈值。
+- 素材的模块、唯一 id、kind、服务器变体、area、button、color、file 和来源必须完整。修改声明、生成器或离线契约时须覆盖所有消费者；来源缺失、字段丢失或漂移必须报错。
 
 ## 结果判定：只能走 sortie-result/1 合同
 
-Frozen：结论口径写在 `docs/result-contract.md`，生产方 `tools/sortie_contract.py`、消费方
-`src/Alas.Core/Campaign/SortieResult.cs` 各实现一份，`tools/diagnostics/verify_result_contract.py` 逐例对拍。
+Frozen：结论口径写在 `docs/result-contract.md`，旧 Python/Core 对照实现在 `tools/sortie_contract.py` 和
+`src/Alas.Core/Campaign/SortieResult.cs`；产品裁决在 `Alas.Engine/Tasks/CampaignResumeTask.cs`，必须同时保持合同语义。
 改动结果判定时必须遵守：
 
 - 不得在任何调用点用单个字段拼通关结论；`CampaignEnd` 只表示"出击结束"（撤退也抛它），不能单独证明通关。
@@ -102,49 +102,25 @@ Frozen：结论口径写在 `docs/result-contract.md`，生产方 `tools/sortie_
   发现"声称结果与原始证据对不上"时，先修证据链或补真机验证，不得改小核对规则来让它变绿。
 - 失败必须可定位：`error` 带调用栈尾部，存下来的失败帧必须登记在 `failure_frames`。
 
-## 运行时边界：编排只在 Alas.Core/Runtime
+## 运行时与任务边界
 
-R1 起，业务编排（跑哪几关、怎么判成功、什么时候停、工件写到哪）属于
-`src/Alas.Core/Runtime/`。改动时必须遵守：
+- 业务编排、设备、权威游戏状态、规则和任务调度属于 `Alas.Engine`。Server 只提供传输与托管，桌面只组合界面和 Engine；共享 UI 不解释业务输入或复制状态机。
+- 新域实现 `Alas.Engine/Tasks/ITaskRunner`（Kind、RequiresActions、Validate、Preconditions、RunAsync），由 `TaskQueue` 注册。每个队列复用一个惰性 `EngineSession`，不得通过旧 runner、`IVisionEngine` 或混合宿主执行业务。
+- 未迁移能力明确拒绝，不回退 Core 或 Python。入口接通、方法注册和任务分派不等于领域行为完成。
+- 任务结果只用 `TaskOutcome` 的五个值；未跑与失败分开，required 前置条件缺失才计失败。队列边界停止不将未执行项改成业务失败。
+- 输入由对应 C# runner 校验；JSON 只装载任务数据，不编码可执行步骤。禁止按地图、页面、编号或服务器另造适配特例；上游已有差异在来源明确的 C# 规则中忠实表达。
+- 每个任务含失败和跳过项都写工件。断点只跳过已成功且身份和证据哈希一致的任务，报告不从单一字段重判通关。
+- 控制入口请求停止在任务/关卡边界生效；关闭等待已接受队列收尾。期限、强制取消与正常边界停止分开记录。
 
-- `Alas.Server`（转发 `src/Alas.Core/Diagnostics/Program.cs`）只解析参数、调用运行时、排版输出；
-  不得在命令分支里直接调用 `RunCampaignPlan`、自己驱动宿主或复制一套状态机
-  （`verify_architecture.py` 会静态报错）。
-- 会话（宿主 + 设备后端）一个进程只起一次；新增任务域时复用 `AlasSession`，不要另开宿主。
-- 取消在**关卡边界**生效，不打断正在执行的上游出击；失败即停是默认行为，
-  需要跑完时必须显式开启并说明理由。
-- 每个关卡（含失败、被跳过）都要有工件；工件按运行批次分目录，见 `docs/runtime.md`。
+## 后续整体迁移方向与长期边界
 
-## 任务域边界：新域先接通用任务模型
+完整阶段门槛见[迁移路线](docs/architecture-roadmap.md)。最终交付是独立 C# Engine 的完整业务执行，不能把旧 R0–R5 的阶段顺序当作保留旧产品流程的理由。
 
-R2 起，新业务域必须实现 `Alas.Core/Tasks/ITaskRunner`（`Kind` / `Preconditions` / `Run`），
-再通过 `TaskQueue` 调度；细节见 `docs/tasks.md`。改动时必须遵守：
-
-- **"没跑"与"跑失败"分开**：前置条件不满足记 `Skipped`（`required` 的才算失败），
-  不许为了报告好看把两者合并。
-- 任务结论只用 `TaskOutcome` 的五个值；域内不许发明自己的成功词。
-- 任务输入模型放在 `TaskRequest.Input`（JSON），由该域的 runner 校验与消费；
-  通用层不解释业务字段。
-- **禁止按地图/编号/服务器分支**：战役域只把 `chapters` 翻译成上游调用参数，
-  章节差异全部由上游 `MAP`/`Config`/`Campaign.run()` 消费。
-- 每个任务都要有工件（含失败与被跳过的），队列写 `queue.json` 与 `state.json`；
-  断点续跑只能跳过"已完成"的任务，并如实标注跳过原因。
-- CLI 只解析队列文件与公共参数（`ParseRunFlags`），不得在命令分支里解释任务内容。
-
-## 后续整体迁移方向：R0-R5 路线与长期不可变边界
-
-完整路线、阶段门槛和依赖见 [整体迁移路线 v2 与不可变边界](docs/architecture-roadmap.md)。后续开发必须按 **R0 真值与证据 → R1 常驻运行时 → R2 任务域垂直切片 → R3 原生钩子迁移 → R4 前端 → R5 宿主替换评估** 推进。不能跳过前置阶段，也不能把“独立 C# 关卡引擎”提前当成当前交付目标。
-
-以下约束视为本地协作规范，明确不能变动：
-
-- 生产战役继续走上游 `CampaignRun.load_campaign()`、章节 `Config` 合并和原生 `Campaign.run()`；JSON 只用于离线展示、溯源和漂移校验。
-- 视觉、页面和地图识别继续通过上游对象和 `IVisionEngine`；不得从 `assets.json` 重建运行时规则，也不得复制素材或地图特例表。
-- 界面操作必须复用上游页面关系、素材和原生流程；禁止按页面或界面版本独立维护导航、点击、弹窗及任务交互补丁。
-- 任务域按通用状态和依赖建设，不能按地图名称、编号、尺寸、服务器或少数案例增加坐标、阈值、机位、路线、寻敌或战斗分支。
-- C# 图像代码仅作参考和对拍；没有逐项对拍、性能基准和真实产品路径证据，不能替换上游宿主。
-- `CampaignEnd`、威胁百分比、单张截图、撤退、超时和未知退出不能单独证明通关；必须有成功结算并返回章节页的证据。
-- 新业务域先进入 `Alas.Core` 的通用任务/状态模型，再接入 CLI 或前端；禁止在命令分支复制业务状态机。
-- 修改上述边界时，提交必须写明通用根因、上游语义、影响范围、阶段门槛和新增验证，并通过 `python tools/diagnostics/verify_architecture.py`。
+- 产品依赖图只有桌面 UI → Engine、浏览器 UI → Server → Engine；Core 已退役，不作为兼容实现、代理、运行时开关或失败回退。
+- 页面关系、素材、配置合并、继承、钩子和游戏流程须忠实迁移并可追溯；Python 只允许必要的纯 CV/OCR 运算。
+- 旧原生实机证据只证明旧路径；新 Engine 须独立验规则、执行归属、成功结算、失败工件、性能和发布依赖。不能用删除脚本或静态绿灯代替完整验收。
+- `CampaignEnd`、威胁百分比、单帧、撤退、超时和未知退出均不能单独证明通关。
+- 修改边界须说明根因、保持的上游语义、影响范围及实际验证，并通过 `python tools/diagnostics/verify_architecture.py`。
 
 ## 产品 UI：共享界面，不使用浏览器壳
 

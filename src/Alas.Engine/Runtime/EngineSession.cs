@@ -31,7 +31,9 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         _device = new JournalDevice(new AdbDevice(options.Adb, options.Serial, options.AllowActions));
         _application = options.ApplicationPackage is null ? new UnconfiguredApplication() :
             new JournalApplication(new AdbApplication(options.Adb, options.Serial, options.ApplicationPackage, options.AllowActions), _device);
-        _vision = new PythonTemplateVision(Path.GetFullPath(options.Python), Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"), modelDirectory: options.ModelDirectory);
+        string python = options.Python.Contains(Path.DirectorySeparatorChar) || options.Python.Contains(Path.AltDirectorySeparatorChar)
+            ? Path.GetFullPath(options.Python) : options.Python;
+        _vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"), modelDirectory: options.ModelDirectory);
         _assets = new AssetFiles(options.Assets);
         Driver = new UiDriver(options.Server, _device, _vision, _assets);
     }

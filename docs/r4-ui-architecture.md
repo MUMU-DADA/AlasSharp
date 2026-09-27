@@ -2,7 +2,7 @@
 
 目标：尽量共享 C# 界面代码，覆盖原生桌面、远程网页和纯服务器模式，外观接近 AzurPilot。
 **桌面不能使用浏览器壳或 WebView 承载主要 UI。首选候选为 Avalonia，备选为 Uno Skia；服务使用 ASP.NET Core 10 / Kestrel。**
-已接通共享界面和桌面/WASM 构建入口。任务配置、实例、报告及调度启停已通过能力接口接入 Core；其余页面按功能切片验收，演示数据仅用于离线预览。完整状态见[路线](architecture-roadmap.md)。
+已接通共享界面和桌面/WASM 构建入口。能力接口已切换到 Engine；配置与部署设置可用，旧任务名执行、连续调度、统计和策略服务尚未迁入，演示数据仅用于离线预览。完整状态见[路线](architecture-roadmap.md)。
 
 ## 方案比较
 
@@ -22,22 +22,23 @@
 flowchart LR
   Shared[共享 AXAML / ViewModel / 主题 / 能力接口] --> Desktop[Avalonia 原生桌面]
   Shared --> Browser[Avalonia WebAssembly 网页]
-  Desktop --> Runtime[Alas.Core/Runtime]
+  Desktop --> Runtime[Alas.Engine/Runtime]
   Browser --> Client[HTTP 客户端]
   Client --> API[Kestrel API 与事件流]
   API --> Runtime
-  Runtime --> Engine[上游 Python 与设备后端]
+  Runtime --> Vision[纯 CV/OCR worker]
+  Runtime --> Device[C# 设备后端]
 ```
 
 - `Alas.UI` 保存共享界面、交互、主题和客户端状态；`Alas.Contracts` 保存传输信封，`Alas.Client` 提供 HTTP 客户端，两者不引用设备或 Python 实现。
-- `UI.Desktop` 负责窗口、平台文件能力及同进程 Core 生命周期；业务调用不经过本机 HTTP 中转。
+- `UI.Desktop` 负责窗口、平台文件能力及同进程 Engine 生命周期；业务调用不经过本机 HTTP 中转。
 - `UI.Browser` 使用同一共享界面；文件、剪贴板、下载和页面地址由浏览器适配层处理，不能直接访问服务器文件系统。
 - `Server` 独立发布，只运行 Kestrel、业务运行时和设备依赖，并托管预构建 WASM 静态文件；不启动 Avalonia 桌面、浏览器、显示服务或 Node.js。
-- 桌面和网页使用相同能力合同，分别由直接调用和网络适配器实现。队列、授权、停止、日志及结论留在 Core；桌面关闭通过 Core 等待上游停止边界，浏览器断开不停止服务端任务。
+- 桌面和网页使用相同能力合同，分别由直接调用和网络适配器实现。队列、授权、停止、日志及结论留在 Engine；桌面关闭通过 Engine 等待任务停止边界，浏览器断开不停止服务端任务。
 - 网页用 HTTP 命令/查询；SSE 已有合同回归，尚待接入页面。远程开放前完成认证、HTTPS 与来源检查。
 
 WASM 在访问者浏览器中绘制界面，服务端不按用户渲染桌面画面。这与远程桌面串流或在桌面嵌入 WebView 不同。
-浏览器无法加载现有 CPython/ADB，不能把 `Alas.Core` 整体打进 WASM；服务端事实仍按 `TaskOutcome` 和 `sortie-result/1` 展示。
+浏览器无法加载现有 CPython/ADB，不能把 `Alas.Engine` 整体打进 WASM；服务端事实仍按 `TaskOutcome` 和 `sortie-result/1` 展示。
 
 ## 还原 AzurPilot 的成本
 
@@ -143,10 +144,10 @@ UI 线程托管分配中位 5,672 B；该基准同时断言 54 个字段控件�
 倒序分配中位为 36,096/24,728 B。不同入口与负载的耗时不混比，未验证现场窗口、浏览器或 GPU 性能。
 
 `Alas.UI.slnx` 独立于 CLI 方案，使用 Avalonia 12.1.3、.NET 10。
-`Alas.UI` 的同一 AXAML/样式/ViewModel 供 Desktop 与 Browser 引用。已集成页面及剩余功能统一记在迁移路线；离线演示和真实 Core 数据必须明确区分。中文字体内置 Noto CJK 2.004（OFL），来源见字体目录。
+`Alas.UI` 的同一 AXAML/样式/ViewModel 供 Desktop 与 Browser 引用。已集成页面及剩余功能统一记在迁移路线；离线演示和真实 Engine 数据必须明确区分。中文字体内置 Noto CJK 2.004（OFL），来源见字体目录。
 配置管理与首页共用创建/导入表单，删除保留 revision 校验，配置导出只写 values；桌面与网页共享 Avalonia 文件选择能力。保存先请求选择器，再读取内容并写入；JSON/CSV/PNG、取消与读取失败已离线验证，真实浏览器文件选择器未验收。
 主题使用编译期类型化资源字典，偏好使用无反射 JSON 读写；升级兼容旧版 PascalCase 字段与自定义配色。Headless 已覆盖六主题外壳尺寸、Legacy 内容栏、窄屏输入、任务搜索、资源卡四列/两列布局，以及偏好往返和自定义配色删除；双端现场视觉一致性仍待验收。
-系统/远程设置共用 Core 部署能力和一条草稿队列；Headless 覆盖真实输入、布尔类型、旧响应隔离、异步回执、焦点保持及窄屏命中。草稿序列化不依赖反射，平台存储经外壳注入：桌面在进程会话内复用内存存储，不把可能含凭据的草稿写盘；浏览器使用当前标签页的 `sessionStorage`，被浏览器禁用时在独立存储错误通道报告，当前页面内存草稿照旧可用；UI-only 只用独立内存存储。Headless 以实际输入验证重建视图恢复、系统/远程两页共享、确认清理和读写异常，浏览器现场及桌面重启后的行为尚未验证。
+系统/远程设置共用 Engine 部署能力和一条草稿队列；Headless 覆盖真实输入、布尔类型、旧响应隔离、异步回执、焦点保持及窄屏命中。草稿序列化不依赖反射，平台存储经外壳注入：桌面在进程会话内复用内存存储，不把可能含凭据的草稿写盘；浏览器使用当前标签页的 `sessionStorage`，被浏览器禁用时在独立存储错误通道报告，当前页面内存草稿照旧可用；UI-only 只用独立内存存储。Headless 以实际输入验证重建视图恢复、系统/远程两页共享、确认清理和读写异常，浏览器现场及桌面重启后的行为尚未验证。
 完整上游部署字段声明的离屏性能场景保留全部 36 个字段（系统页 20、远程页 16），用中性值填充，不读取个人配置。五个独立 Release 进程的同入口对照中，首次进入中位 883.5→876.8 ms，稳态切换约 19 ms，输入整帧中位 16.91→16.58 ms；跳过无变化字段的重复刷新使输入动作阶段中位 1.26→0.97 ms，托管分配 208.5→204.6 KB。整帧波动仍重叠，主要耗时在离屏渲染泵，不能外推真实窗口、浏览器或 GPU。更新和登录组件具有局部状态/交互验收，生产后端尚未接通。概览资源设置弹层现直接消费按实例持久化的 `ResourceSelection`，增删、恢复默认和键盘排序即时生效；上游拖拽手势仍未实现。主线 Release Headless 四卡片复跑中，新弹层打开中位 30.3 ms/1.33 MB，旧断开态面板仅作非同功能参照，为 37.3 ms/1.98 MB；排序中位 13.4 ms/1.88 MB，主要耗时在离屏布局和渲染。完整 Headless、桌面与浏览器 Release 构建通过；真实窗口、浏览器及 GPU 帧成本仍待现场验收。
 
 Windows + PowerShell 7 的构建入口（不会启动桌面或浏览器窗口）：
@@ -169,7 +170,7 @@ SDK 固定为 10.0.401，依赖保存在 `.runtime/dotnet`、`.runtime/nuget`，
 尚未验收：真实浏览器/系统输入法、DPI、无障碍、首载与内存、复杂编辑器/玻璃效果、双端现场视觉一致性。
 本地控制 API 由 `Alas.Server` 的 Kestrel 提供。程序目录含 `ui/index.html` 时自动同源托管预构建 WASM，
 也可用 `--ui-root` 指定；服务只监听回环并沿用 Host/Origin/令牌校验；
-静态托管不提供远程认证或 HTTPS。编排收口至 `Alas.Core/Runtime/ControlWorkspace`，合同见[运行时](runtime.md)。
+静态托管不提供远程认证或 HTTPS。编排收口至 `Alas.Engine/Runtime/EngineControlWorkspace`，合同见[运行时](runtime.md)。
 共享 HTTP 客户端已接入网页适配器；SSE 完整状态快照流通过真实服务离线回归，页面目前轮询运行状态。快照有游标、重连基准和慢订阅合并，不承诺审计事件重放。
 独立服务入口和选定 UI 根目录的 HTTP/MIME/路径隔离已有无窗口回归；`tools/publish_server.ps1`
 可生成指定 RID 的服务器并默认包含预构建网页。WASM 实际浏览器加载、远程认证、HTTPS、Python/设备依赖

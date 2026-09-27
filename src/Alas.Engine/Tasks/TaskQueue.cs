@@ -9,8 +9,11 @@ using Alas.Engine.Runtime;
 
 namespace Alas.Engine.Tasks;
 
-public sealed record TaskQueueOptions(string Artifacts, bool DryRun = false, bool ContinueOnFailure = false, string? ResumeDirectory = null);
+public sealed record TaskQueueOptions(string Artifacts, bool DryRun = false, bool ContinueOnFailure = false,
+    string? ResumeDirectory = null, Func<bool>? StopRequested = null, Action<string>? OnStarted = null);
 public sealed record TaskQueueResult(string Directory, IReadOnlyList<TaskResult> Tasks, bool Failed);
+public sealed record QueueSnapshot(string Contract, string Attempt, bool DryRun, bool Complete,
+    bool Failed, string? StopReason, IReadOnlyList<TaskResult> Tasks);
 
 /// <summary>New task composition. A single lazy session, typed runners and evidence-bound resumption.</summary>
 public sealed class TaskQueue
@@ -33,8 +36,7 @@ public sealed class TaskQueue
     public static async Task<TaskRequest[]> ReadAsync(string file, CancellationToken token = default)
         => JsonSerializer.Deserialize<TaskRequest[]>(await File.ReadAllTextAsync(file, token), Json)
             ?? throw new InvalidDataException("Task queue must be an array");
-    public async Task<TaskQueueResult> RunAsync(IReadOnlyList<TaskRequest> requests, EngineSessionOptions sessionOptions,
-        TaskQueueOptions options, CancellationToken token = default)
+    public static void ValidateRequests(IReadOnlyList<TaskRequest> requests)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var request in requests)
@@ -46,6 +48,11 @@ public sealed class TaskQueue
             if (request.DependsOn?.Any(id => id == request.Id || !seen.Contains(id)) == true)
                 throw new ArgumentException("Dependencies must refer to earlier tasks");
         }
+    }
+    public async Task<TaskQueueResult> RunAsync(IReadOnlyList<TaskRequest> requests, EngineSessionOptions sessionOptions,
+        TaskQueueOptions options, CancellationToken token = default)
+    {
+        ValidateRequests(requests);
         // Snapshot mutable JSON inputs before execution and hash the session identity, without storing private paths/serial in state.
         string queueJson = JsonSerializer.Serialize(requests, Json);
         requests = JsonSerializer.Deserialize<TaskRequest[]>(queueJson, Json)!;
@@ -93,7 +100,13 @@ public sealed class TaskQueue
         var results = new List<TaskResult>();
         var satisfied = new HashSet<string>(completed.Keys, StringComparer.Ordinal);
         EngineSession? session = null;
-        bool stop = false, failed = false;
+        bool stop = false, failed = false, boundaryStop = false;
+        async Task SnapshotAsync(bool complete) => await WriteAsync(Path.Combine(directory, "run.json"),
+            new QueueSnapshot("engine-queue/1", attempt, options.DryRun, complete, failed,
+                boundaryStop ? "stop_requested_at_boundary" : token.IsCancellationRequested ? "cancelled" : stop ? "previous_failure" : null,
+                results));
+        await SnapshotAsync(false);
+        options.OnStarted?.Invoke(directory);
         try
         {
             for (int i = 0; i < requests.Count; i++)
@@ -106,11 +119,13 @@ public sealed class TaskQueue
                 TaskResult result;
                 bool executed = false;
                 var elapsed = Stopwatch.StartNew();
+                boundaryStop |= options.StopRequested?.Invoke() == true;
                 if (completed.TryGetValue(request.Id, out var prior))
                     result = new(request.Id, request.Kind, TaskOutcome.Skipped, "previously_completed",
                         new JsonObject { ["sourceArtifact"] = prior.Artifact, ["sourceSha256"] = prior.Sha256 });
-                else if (token.IsCancellationRequested || stop)
-                    result = new(request.Id, request.Kind, TaskOutcome.Skipped, token.IsCancellationRequested ? "cancelled_before_task" : "previous_failure");
+                else if (token.IsCancellationRequested || stop || boundaryStop)
+                    result = new(request.Id, request.Kind, TaskOutcome.Skipped,
+                        token.IsCancellationRequested ? "cancelled_before_task" : boundaryStop ? "stop_requested_at_boundary" : "previous_failure");
                 else if (request.DependsOn?.Any(id => !satisfied.Contains(id)) == true)
                     result = new(request.Id, request.Kind, TaskOutcome.Skipped, "dependency_not_completed");
                 else if (!_runners.TryGetValue(request.Kind, out var runner))
@@ -169,19 +184,24 @@ public sealed class TaskQueue
                     completed[request.Id] = new(relative + "/task.json", Hash(await File.ReadAllBytesAsync(resultFile)), await EvidenceHashesAsync(artifact));
                 }
                 else if (options.DryRun && result.Outcome == TaskOutcome.DryRun) satisfied.Add(request.Id);
-                bool taskFailed = result.Outcome is TaskOutcome.Failed or TaskOutcome.Refused ||
-                    result.Outcome == TaskOutcome.Skipped && request.Required && result.Reason != "previously_completed";
+                bool taskFailed = IsFailure(request, result);
                 failed |= taskFailed;
                 stop |= taskFailed && !options.ContinueOnFailure;
                 if (!options.DryRun) await SaveStateAsync(directory, fingerprint, completed);
+                await SnapshotAsync(false);
             }
             if (!options.DryRun && requests.Count == 0) await SaveStateAsync(directory, fingerprint, completed);
         }
         finally { if (session is not null) await session.DisposeAsync(); }
         var summary = new TaskQueueResult(directory, results, failed);
         await WriteAsync(Path.Combine(directory, attempt, "summary.json"), summary);
+        await SnapshotAsync(true);
         return summary;
     }
+    internal static bool IsFailure(TaskRequest request, TaskResult result)
+        => result.Outcome is TaskOutcome.Failed or TaskOutcome.Refused ||
+           result.Outcome == TaskOutcome.Skipped && request.Required &&
+           result.Reason is not ("previously_completed" or "stop_requested_at_boundary");
     private static string Hash(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
     private static async Task<Dictionary<string, string>> EvidenceHashesAsync(string directory, CancellationToken token = default)
     {

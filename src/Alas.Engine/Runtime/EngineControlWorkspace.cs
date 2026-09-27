@@ -1,0 +1,257 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Alas.Engine.Rules;
+using Alas.Engine.Tasks;
+
+namespace Alas.Engine.Runtime;
+
+/// <summary>In-process control surface backed only by the new Engine task graph.</summary>
+public sealed class EngineControlWorkspace
+{
+    private readonly string _repo;
+    private readonly string _control;
+    private readonly string _artifacts;
+    private readonly ConfigWorkspace _configs;
+    private readonly object _gate = new();
+    private Task? _worker;
+    private string? _mode, _kind, _instance, _startedAt, _finishedAt, _error, _runDirectory;
+    private volatile bool _stopRequested;
+    private bool _shuttingDown;
+
+    public EngineControlWorkspace(string root, string repo, string data, string tools,
+        string? artifacts, string? workspace)
+    {
+        _ = data;
+        _ = tools;
+        _repo = Path.GetFullPath(repo);
+        _control = Path.GetFullPath(workspace ?? Path.Combine(Path.GetFullPath(root), ".runtime", "control"));
+        _artifacts = Path.GetFullPath(artifacts ?? Path.Combine(_control, "runs"));
+        Directory.CreateDirectory(_control);
+        Directory.CreateDirectory(_artifacts);
+        _configs = new ConfigWorkspace(_repo);
+    }
+
+    public JsonObject State(string? selectedInstance = null)
+    {
+        string? runDirectory, mode, kind, instance, started, finished, error;
+        bool stopRequested, running;
+        lock (_gate)
+        {
+            runDirectory = _runDirectory;
+            running = _worker is { IsCompleted: false };
+            mode = _mode; kind = _kind; instance = _instance;
+            started = _startedAt; finished = _finishedAt; error = _error;
+            stopRequested = _stopRequested;
+        }
+        JsonObject? report = runDirectory is not null && RunReport.IsRunDirectory(runDirectory)
+            ? RunReport.Build(runDirectory).ToJson() : null;
+        var active = new JsonObject
+        {
+            ["status"] = running ? "running" : started is null ? "idle" : error is null ? "completed" : "failed",
+            ["mode"] = mode, ["kind"] = kind, ["instance"] = instance,
+            ["scheduler"] = null, ["started_at"] = started, ["finished_at"] = finished,
+            ["stop_requested"] = stopRequested, ["error"] = error, ["run_directory"] = runDirectory,
+        };
+        var state = new JsonObject
+        {
+            ["queue"] = LoadQueue(), ["active"] = active, ["report"] = report,
+            ["live_tasks"] = report?["items"]?.DeepClone() ?? new JsonArray(), ["recent_logs"] = new JsonArray(),
+            ["runs"] = RunReport.Summarize(_artifacts, 20),
+        };
+        if (selectedInstance is not null)
+        {
+            var config = _configs.Get(selectedInstance);
+            var overview = InstanceOverview.FromConfig(config, DateTime.Now);
+            overview["status"] = InstanceOverview.Status(config.Instance, active, report);
+            state["overview"] = overview;
+        }
+        return state;
+    }
+
+    public IReadOnlyList<ConfigInstance> Instances(ConfigWorkspace configs)
+    {
+        var state = State();
+        var active = state["active"]!.AsObject();
+        return configs.List().Select(item => item with
+        {
+            Status = InstanceOverview.Status(item.Instance, active, state["report"] as JsonObject),
+            CurrentTask = active["instance"]?.GetValue<string>() == item.Instance &&
+                          active["status"]?.GetValue<string>() == "running"
+                ? active["kind"]?.GetValue<string>() : null,
+        }).ToArray();
+    }
+
+    public JsonObject? Report(string? stamp)
+    {
+        if (string.IsNullOrWhiteSpace(stamp) ||
+            stamp.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_')))
+            throw new ArgumentException("运行标识无效");
+        string directory = Path.Combine(_artifacts, stamp);
+        return RunReport.IsRunDirectory(directory) ? RunReport.Build(directory).ToJson() : null;
+    }
+
+    private JsonObject LoadQueue()
+    {
+        lock (_gate)
+        {
+            string path = Path.Combine(_control, "queue.json");
+            if (!File.Exists(path))
+                return new JsonObject { ["tasks"] = new JsonArray(new JsonObject
+                    { ["id"] = "observe", ["kind"] = "observe", ["input"] = new JsonObject() }) };
+            return JsonNode.Parse(File.ReadAllText(path)) as JsonObject
+                ?? throw new ArgumentException("保存的队列不是 JSON 对象");
+        }
+    }
+
+    private static JsonObject RequireQueue(JsonObject body)
+    {
+        if (body["queue"] is not JsonObject queue || queue["tasks"] is not JsonArray tasks)
+            throw new ArgumentException("缺少 queue.tasks 数组");
+        var requests = JsonSerializer.Deserialize<TaskRequest[]>(tasks.ToJsonString(), TaskQueue.Json)
+            ?? throw new ArgumentException("任务队列格式无效");
+        TaskQueue.ValidateRequests(requests);
+        return queue;
+    }
+
+    public void SaveQueueRequest(JsonObject body) => SaveQueue(RequireQueue(body));
+
+    private void SaveQueue(JsonObject queue)
+    {
+        lock (_gate)
+        {
+            EnsureAccepting();
+            string path = Path.Combine(_control, "queue.json");
+            string temporary = Path.Combine(_control, $"queue-{Guid.NewGuid():N}.tmp");
+            try
+            {
+                File.WriteAllText(temporary, queue.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                File.Move(temporary, path, overwrite: true);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+    }
+
+    public void StartRun(JsonObject body)
+    {
+        JsonObject queue = RequireQueue(body);
+        string mode = body["mode"]?.GetValue<string>() ?? "dry_run";
+        if (mode is not ("dry_run" or "read_only" or "actions"))
+            throw new ArgumentException("mode 必须是 dry_run、read_only 或 actions");
+        if (mode == "actions" && body["confirm_actions"]?.GetValue<bool>() != true)
+            throw new ArgumentException("动作运行需要明确授权");
+        double maxSeconds = body["max_seconds"]?.GetValue<double>() ?? 1500;
+        int maxRounds = body["max_rounds"]?.GetValue<int>() ?? 20;
+        if (!double.IsFinite(maxSeconds) || maxSeconds <= 0 || maxRounds <= 0)
+            throw new ArgumentException("运行上限必须是正数");
+        if (maxRounds != 20)
+            throw new EngineCapabilityUnavailableException("新引擎目前不接受 max_rounds；请由对应 C# 任务规则定义轮次上限");
+        var tasks = JsonSerializer.Deserialize<TaskRequest[]>(queue["tasks"]!.ToJsonString(), TaskQueue.Json)!;
+        var rawTasks = queue["tasks"]!.AsArray();
+        for (int i = 0; i < tasks.Length; i++)
+            if (rawTasks[i] is JsonObject item && !item.Any(p => p.Key.Equals("timeoutSeconds", StringComparison.OrdinalIgnoreCase)))
+                tasks[i] = tasks[i] with { TimeoutSeconds = maxSeconds };
+        TaskQueue.ValidateRequests(tasks);
+        string? instance = body["instance"]?.GetValue<string>() ?? tasks.Select(task => task.Instance)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        if (tasks.Select(task => task.Instance).Append(instance).Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal).Skip(1).Any())
+            throw new EngineCapabilityUnavailableException("一个队列只能连接一个实例；请拆分为多个 Engine 队列");
+        string? serial = body["serial"]?.GetValue<string>();
+        ConfigSnapshot? config = ResolveConfig(instance, serial);
+        if (config is not null && serial is not null &&
+            serial != config.Values["Alas"]?["Emulator"]?["Serial"]?.GetValue<string>())
+            throw new ArgumentException("serial 与所选实例不一致");
+        var session = BuildSession(config, serial, mode == "actions");
+        bool dryRun = mode == "dry_run";
+        bool continueOnFailure = body["continue_on_error"]?.GetValue<bool>() ?? false;
+        bool resume = body["resume"]?.GetValue<bool>() ?? false;
+        string? resumeDirectory = resume ? body["resume_directory"]?.GetValue<string>() : null;
+        if (resume && string.IsNullOrWhiteSpace(resumeDirectory))
+            throw new ArgumentException("resume_directory 是必需的");
+        if (resume && dryRun) throw new ArgumentException("dry_run 不支持断点续跑");
+        lock (_gate)
+        {
+            EnsureAccepting();
+            if (_worker is { IsCompleted: false }) throw new EngineControlWorkspaceUnavailableException("已有任务队列正在运行");
+            SaveQueue(queue);
+            _mode = mode; _instance = config?.Instance ?? instance;
+            _kind = tasks.Length == 1 ? tasks[0].Kind : "queue";
+            _startedAt = DateTimeOffset.Now.ToString("O"); _finishedAt = null;
+            _error = null; _runDirectory = null; _stopRequested = false;
+            _worker = Task.Run(async () =>
+            {
+                try
+                {
+                    var result = await new TaskQueue().RunAsync(tasks, session,
+                        new TaskQueueOptions(_artifacts, dryRun, continueOnFailure, resumeDirectory,
+                            () => _stopRequested, directory => { lock (_gate) _runDirectory = directory; }));
+                    if (result.Failed) lock (_gate) _error = "一个或多个引擎任务未成功";
+                }
+                catch (Exception error) { lock (_gate) _error = error.Message; }
+                finally { lock (_gate) _finishedAt = DateTimeOffset.Now.ToString("O"); }
+            });
+        }
+    }
+
+    private ConfigSnapshot? ResolveConfig(string? instance, string? serial)
+    {
+        if (instance is not null) return _configs.Get(instance);
+        if (!string.IsNullOrWhiteSpace(serial))
+        {
+            var match = _configs.List().FirstOrDefault(item => item.Serial == serial);
+            if (match is not null) return _configs.Get(match.Instance);
+        }
+        return _configs.List().Count == 1 ? _configs.Get(_configs.List()[0].Instance) : null;
+    }
+
+    private EngineSessionOptions BuildSession(ConfigSnapshot? config, string? serial, bool allowActions)
+    {
+        JsonObject? emulator = config?.Values["Alas"]?["Emulator"] as JsonObject;
+        string actualSerial = serial ?? emulator?["Serial"]?.GetValue<string>() ?? "";
+        if (allowActions && string.IsNullOrWhiteSpace(actualSerial))
+            throw new ArgumentException("动作运行需要实例串号或 serial");
+        string? package = emulator?["PackageName"]?.GetValue<string>();
+        // ServerName selects an account region/shard; the package determines asset variants.
+        GameServer server = GameServerRules.FromPackage(package ?? Environment.GetEnvironmentVariable("ALAS_SERVER") ?? "cn");
+        string? models = Environment.GetEnvironmentVariable("ALAS_OCR_MODELS");
+        return new EngineSessionOptions(
+            Environment.GetEnvironmentVariable("ALAS_ADB") ?? "adb", actualSerial, server,
+            Path.Combine(_repo, "assets"), Environment.GetEnvironmentVariable("ALAS_PYTHON") ?? "python",
+            package, string.IsNullOrWhiteSpace(models) ? null : Path.GetFullPath(models), allowActions);
+    }
+
+    public void StartTask(JsonObject body)
+        => throw new EngineCapabilityUnavailableException("按上游任务名调度尚未迁移到 C# Engine；请提交 Engine 任务队列");
+
+    public void StartScheduler(JsonObject body)
+        => throw new EngineCapabilityUnavailableException("上游周期调度器尚未迁移到 C# Engine");
+
+    public JsonObject ReadHostJson(string operation, JsonObject arguments)
+        => throw new EngineCapabilityUnavailableException($"操作 {operation} 尚未迁移到 C# Engine");
+
+    public bool RequestStop()
+    {
+        lock (_gate)
+        {
+            if (_worker is not { IsCompleted: false }) return false;
+            _stopRequested = true;
+            return true;
+        }
+    }
+
+    public Task BeginShutdown()
+    {
+        Task worker;
+        lock (_gate) { _shuttingDown = true; _stopRequested = true; worker = _worker ?? Task.CompletedTask; }
+        return worker;
+    }
+
+    private void EnsureAccepting()
+    {
+        if (_shuttingDown) throw new EngineControlWorkspaceUnavailableException("控制服务正在关闭");
+    }
+
+}
+
+public sealed class EngineControlWorkspaceUnavailableException(string message) : Exception(message);
+public sealed class EngineCapabilityUnavailableException(string message) : Exception(message);

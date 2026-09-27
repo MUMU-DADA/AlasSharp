@@ -42,7 +42,7 @@ def references(source):
 
 HARNESS = r'''
 using System.Text.Json.Nodes;
-using Alas.Runtime;
+using Alas.Engine.Runtime;
 var inputs = JsonNode.Parse(File.ReadAllText(args[0]))!.AsArray();
 var results = new JsonArray();
 foreach (var input in inputs)
@@ -86,7 +86,7 @@ def main():
         project = work / 'OverviewProbe.csproj'
         project.write_text(f'''<Project Sdk="Microsoft.NET.Sdk">
 <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
-<ItemGroup><ProjectReference Include="{escape(str(ROOT / 'src/Alas.Core/Alas.Core.csproj'))}" /></ItemGroup></Project>''', encoding='utf-8')
+<ItemGroup><ProjectReference Include="{escape(str(ROOT / 'src/Alas.Engine/Alas.Engine.csproj'))}" /></ItemGroup></Project>''', encoding='utf-8')
         dotnet = dotnet_env.executable(ROOT)
         env = dict(os.environ, DOTNET_ROOT=str(dotnet.parent), DOTNET_CLI_HOME=str(ROOT / '.runtime/dotnet-home'),
                    NUGET_PACKAGES=str(ROOT / '.runtime/nuget/packages'))

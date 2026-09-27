@@ -110,7 +110,7 @@ public sealed class DisconnectedSettingsBackend : ISettingsBackend
 {
     public static DisconnectedSettingsBackend Instance { get; } = new();
 
-    public const string Notice = "未连接 Alas.Core：部署设置由 Core 提供，当前不可用。";
+    public const string Notice = "部署设置尚未启用，当前不可用。";
 
     public Task<SettingsSnapshot?> ReadAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<SettingsSnapshot?>(new SettingsSnapshot(Array.Empty<SettingsGroup>(), Notice));

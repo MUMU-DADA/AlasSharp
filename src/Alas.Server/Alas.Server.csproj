@@ -8,7 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <ProjectReference Include="../Alas.Core/Alas.Core.csproj" />
+    <ProjectReference Include="../Alas.Engine/Alas.Engine.csproj" />
     <ProjectReference Include="../Alas.Contracts/Alas.Contracts.csproj" />
     <InternalsVisibleTo Include="Alas.ControlProbe" />
   </ItemGroup>

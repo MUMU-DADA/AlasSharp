@@ -86,7 +86,7 @@ internal static class Program
             ResourceSelectionChecks.Run();
             await UiFilesChecks.Verify();
             await TaskEditorChecks.Verify();
-            await CoreUiBackendChecks.Verify();
+            await ControlUiBackendChecks.Verify();
             await UiOnlyChecks.Verify();
             // Dispatch may complete inline on its own worker. Async disposal lets that worker
             // unwind instead of synchronously waiting for itself in IDisposable.Dispose().

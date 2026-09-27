@@ -127,7 +127,7 @@ internal static class DeployDraftIntegrationChecks
         int expectedSystemFields = groups.Where(group => group!["key"]!.GetValue<string>()
                 is not ("RemoteAccess" or "Webui"))
             .Sum(group => group!["fields"]!.AsArray().Count);
-        var backend = new CoreUiBackendChecks.FixtureBackend
+        var backend = new ControlUiBackendChecks.FixtureBackend
         {
             DeployRead = () => Task.FromResult(new DeploySettingsResponse
             {
@@ -196,7 +196,7 @@ internal static class DeployDraftIntegrationChecks
         for (string? current = Directory.GetCurrentDirectory(); current is not null;
              current = Directory.GetParent(current)?.FullName)
         {
-            var path = Path.Combine(current, "src", "Alas.Core", "Runtime", "Resources", "deploy-settings.json");
+            var path = Path.Combine(current, "src", "Alas.Engine", "Runtime", "Resources", "deploy-settings.json");
             if (File.Exists(path)) return path;
         }
         throw new FileNotFoundException("找不到上游部署字段声明，性能测量不能使用缩减样本。");
@@ -240,7 +240,7 @@ internal static class DeployDraftIntegrationChecks
         return Math.Round(sorted[(int)Math.Ceiling(rank * sorted.Length) - 1], 3);
     }
 
-    private static CoreUiBackendChecks.FixtureBackend Backend(string branch, string port,
+    private static ControlUiBackendChecks.FixtureBackend Backend(string branch, string port,
         Func<DeploySettingsPatchRequest, Task<DeploySettingsPatchResponse>> patch) => new()
     {
         DeployRead = () => Task.FromResult(Response(branch, port)),
@@ -258,7 +258,7 @@ internal static class DeployDraftIntegrationChecks
         return new DeploySettingsResponse { Groups = groups, Notice = "fixture", Demo = false };
     }
 
-    private static (MainView View, Window Window) Show(CoreUiBackendChecks.FixtureBackend backend,
+    private static (MainView View, Window Window) Show(ControlUiBackendChecks.FixtureBackend backend,
         IDeployDraftStore store)
     {
         var view = new MainView(new MemoryThemeStore(), backend, deployDraftStore: store);

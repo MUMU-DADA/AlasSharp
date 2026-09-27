@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
-namespace Alas.Runtime;
+namespace Alas.Engine.Runtime;
 
 /// <summary>
 /// Deployment configuration storage independent of the occupied game host.
@@ -341,7 +341,7 @@ public sealed class DeploySettingsWorkspace
 
     private static JsonObject LoadDefinition()
     {
-        using var stream = typeof(DeploySettingsWorkspace).Assembly.GetManifestResourceStream("Alas.Core.Runtime.Resources.deploy-settings.json")
+        using var stream = typeof(DeploySettingsWorkspace).Assembly.GetManifestResourceStream("Alas.Engine.Runtime.Resources.deploy-settings.json")
             ?? throw new InvalidOperationException("部署设置导出资源缺失");
         return JsonNode.Parse(stream)!.AsObject();
     }

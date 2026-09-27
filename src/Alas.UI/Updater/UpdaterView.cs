@@ -88,7 +88,7 @@ public sealed class DisconnectedUpdaterBackend : IUpdaterBackend
 {
     public static DisconnectedUpdaterBackend Instance { get; } = new();
 
-    public const string Notice = "未连接 Alas.Core：版本与更新由 Core 提供，当前不可用。";
+    public const string Notice = "版本与更新尚未启用，当前不可用。";
 
     public Task<UpdaterStatus> ReadStatusAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(UpdaterStatus.Disconnected);

@@ -25,7 +25,7 @@ from deploy_storage import deploy_transaction, install_on
 
 HARNESS = r'''
 using System.Text.Json.Nodes;
-using Alas.Runtime;
+using Alas.Engine.Runtime;
 if (args[0] == "hold")
 {
     using var stream = new FileStream(Path.Combine(args[1], "config", "deploy.yaml.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
@@ -86,7 +86,7 @@ def main():
         work = Path(directory)
         (work / 'Program.cs').write_text(HARNESS, encoding='utf-8')
         project = work / 'StorageProbe.csproj'
-        project.write_text(f'''<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><ProjectReference Include="{escape(str(ROOT / 'src/Alas.Core/Alas.Core.csproj'))}" /></ItemGroup></Project>''', encoding='utf-8')
+        project.write_text(f'''<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><ProjectReference Include="{escape(str(ROOT / 'src/Alas.Engine/Alas.Engine.csproj'))}" /></ItemGroup></Project>''', encoding='utf-8')
         build = subprocess.run([str(dotnet), 'build', str(project), '-c', 'Release', *(['--source', str(ROOT / '.runtime/nuget/source')]
                                    if (ROOT / '.runtime/nuget/source').is_dir() else []), '-p:NuGetAudit=false'], env=env, capture_output=True, timeout=120)
         assert build.returncode == 0, (build.stdout + build.stderr).decode(errors='replace')

@@ -44,7 +44,7 @@ internal static class UiOnlyChecks
         Check(simulation.Instances.Count == 2 && simulation.Instances.All(card => card.IsDemo), "all fixture instances are labelled");
         var schema = await backend.ReadSchemaAsync();
         var config = await backend.ReadConfigAsync("demo-main");
-        var editor = new TaskEditorViewModel { Backend = new CoreTaskEditorBackend(backend), AutoSave = false };
+        var editor = new TaskEditorViewModel { Backend = new EngineTaskEditorBackend(backend), AutoSave = false };
         editor.Load(config.Instance, "Main", new JsonObject { ["args"] = schema.Args, ["menu"] = schema.Menu,
             ["translations"] = schema.Translations }, new JsonObject { ["instance"] = config.Instance,
             ["revision"] = config.Revision, ["values"] = config.Values });
@@ -64,7 +64,7 @@ internal static class UiOnlyChecks
         await backend.StartRunAsync(new() { Queue = new JsonObject { ["tasks"] = new JsonArray() } });
         Check(await backend.RequestStopAsync(), "queue intent remains in memory");
 
-        var settings = new CoreDeploySettingsBackend(backend);
+        var settings = new EngineDeploySettingsBackend(backend);
         var settingsSnapshot = await settings.ReadAsync();
         Check(settingsSnapshot!.Groups.SelectMany(group => group.Fields).All(field => field.Editable), "simulation settings allow edits");
         await settings.SaveAsync(new("CheckUpdate", "true"));
@@ -81,7 +81,7 @@ internal static class UiOnlyChecks
             Check(StatisticsReport.Parse(await backend.ReadStatisticsAsync(new() { Instance = "demo-main", Category = category })).Series.Count > 0,
                 "statistics sample uses the real report parser");
         await backend.RefreshStatisticsLootAsync("demo-main");
-        Check((await new CoreMeowfficerReportBackend(backend).LoadAsync("demo-main", default))!.Count == 0, "empty report is explicit");
+        Check((await new EngineMeowfficerReportBackend(backend).LoadAsync("demo-main", default))!.Count == 0, "empty report is explicit");
         await backend.ClearMeowfficerAsync("demo-main");
         Check((await backend.ValidateShopStrategyAsync("return true"))["valid"]!.GetValue<bool>() == false, "simulation does not fake script validation");
         Check(await backend.ReadReportAsync("missing") is null, "no fabricated completed-run evidence");
@@ -169,8 +169,8 @@ internal static class UiOnlyChecks
     }
 
     private static void AssertNoAutomationAssemblies()
-        => Check(!AppDomain.CurrentDomain.GetAssemblies().Any(assembly => assembly.GetName().Name is "Alas.Core" or "Alas.Client"),
-            "UI-only tests do not load Core or network adapters");
+        => Check(!AppDomain.CurrentDomain.GetAssemblies().Any(assembly => assembly.GetName().Name is "Alas.Core" or "Alas.Engine" or "Alas.Client"),
+            "UI-only tests do not load Engine, retired Core or network adapters");
     private static void Click(Window window, Control target)
     {
         var origin = target.TranslatePoint(default, window) ?? throw new Exception("Detached click target");

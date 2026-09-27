@@ -87,7 +87,7 @@ public sealed class TaskEditorViewModel : EditorObservable
         IsTool = schema["menu"] is JsonObject menu && menu.Any(pair => pair.Value is JsonObject group &&
             TaskFieldViewModel.String(group["page"]) == "tool" && group["tasks"] is JsonArray tasks &&
             tasks.Any(item => TaskFieldViewModel.String(item) == task));
-        // The upstream menu supplies the tool category; Core validates against
+        // The upstream menu supplies the tool category; Engine validates against
         // get_available_func() again when submitting. Never keep a tool-name table here.
         IsRunnable = arguments[task] is JsonObject && (IsTool ||
             !string.IsNullOrWhiteSpace(TaskFieldViewModel.String(arguments[task]?["Scheduler"]?["Command"]?["value"])));

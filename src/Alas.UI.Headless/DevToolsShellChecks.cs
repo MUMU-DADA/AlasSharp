@@ -17,7 +17,7 @@ internal static class DevToolsShellChecks
     {
         foreach (int width in new[] { 1280, 390 })
         {
-            var view = new MainView(new MemoryThemeStore(), new CoreUiBackendChecks.FixtureBackend());
+            var view = new MainView(new MemoryThemeStore(), new ControlUiBackendChecks.FixtureBackend());
             var window = new Window { Width = width, Height = 844, Content = view };
             window.Show();
             Pump();
