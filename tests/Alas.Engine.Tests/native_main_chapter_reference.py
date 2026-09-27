@@ -46,7 +46,7 @@ def main():
                     airRed=float(get_color(image, MAP_AIR_RAID.area)[0]),
                     ambushRed=float(get_color(image, MAP_AMBUSH.area)[0]))))
         chapters = []
-        for chapter in [4, 5]:
+        for chapter in ([int(value) for value in sys.argv[4:]] or [4, 5]):
             for stage in range(1, 5):
                 module = importlib.import_module(f'campaign.campaign_main.campaign_{chapter}_{stage}')
                 class Config(module.Config, ManualConfig): pass

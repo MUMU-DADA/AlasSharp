@@ -233,6 +233,13 @@ try
         await CampaignMapCombatChecks.MainChapterChecksAsync(Path.GetFullPath(chapterPython), Path.GetFullPath(chapterUpstream), folder);
         return 0;
     }
+    if (args is ["--fleet-position", var positionPython, var positionUpstream, var positionArtifacts])
+    {
+        string folder = Path.GetFullPath(positionArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.FleetPositionChecksAsync(Path.GetFullPath(positionPython), Path.GetFullPath(positionUpstream), folder);
+        return 0;
+    }
     if (args is ["--carrier", var carrierPython, var carrierUpstream, var carrierArtifacts])
     {
         string folder = Path.GetFullPath(carrierArtifacts);
@@ -480,12 +487,16 @@ try
             var spawns = new CampaignState(observedBossRule.Map).Cells.Where(cell => cell.MayBoss).Select(cell => cell.Location.ToString()).Reverse().ToArray();
             foreach (int count in new[] { 0, 3, 4, 5, 12, 13, 14, 15 })
             foreach (bool accessible in new[] { false, true })
-            foreach (string? yes in new[] { null, "clear_roadblocks", "clear_potential_roadblocks" })
+            foreach (string? yes in new[] { null, "clear_roadblocks", "clear_potential_roadblocks", "fleet_2_step_on" })
             foreach (string cells in new[] { "empty", "boss", "boss_enemy" })
                 cases.Add(new Scenario(id, BattleCount: count, Accessible: accessible, TrueOperation: yes, Cells: cells));
             foreach (bool accessible in new[] { false, true })
                 cases.Add(new Scenario(id, BattleCount: observedBossRule.Map.ExpectedBattles - 1, Accessible: accessible, BossCells: string.Join(',', spawns)));
         }
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterSixRule)
+            foreach (string operation in new[] { "fleet_2_step_on", "clear_roadblocks", "clear_all_mystery", "clear_potential_roadblocks" })
+            foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
+                cases.Add(new Scenario(id, "execute", Signal: signal, SignalOperation: operation));
         if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterThreeRule)
         {
             foreach (int count in new[] { 0, 1, 2, 3, 4, 12, 13 })

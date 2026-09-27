@@ -122,6 +122,8 @@ public interface ICampaignOperations
 {
     ValueTask SwitchFleetAsync(int fleet) => throw new NotSupportedException("Fleet switching is unavailable");
     ValueTask<bool> PushSecondFleetForwardAsync() => throw new NotSupportedException("Second-fleet advance is unavailable");
+    ValueTask<bool> PositionSecondFleetAsync(IReadOnlyList<Cell> cells, IReadOnlyList<RoadDefinition> roads)
+        => throw new NotSupportedException("Second-fleet positioning is unavailable");
     ValueTask<bool> RescueSecondFleetAsync(Cell destination) => throw new NotSupportedException("Second-fleet rescue is unavailable");
     bool CheckAccessibility(Cell cell, int? fleet = null) => throw new NotSupportedException("Fleet accessibility is unavailable");
     ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, bool potential = false)

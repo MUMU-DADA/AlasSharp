@@ -35,6 +35,12 @@ internal sealed class ProbeOperations(Scenario scenario) : ICampaignOperations
     public ValueTask<bool> ClearEnemyAsync() => Result("clear_enemy");
     public ValueTask SwitchFleetAsync(int fleet) => Void("fleet_boss:" + fleet);
     public ValueTask<bool> PushSecondFleetForwardAsync() => Result("fleet_2_push_forward");
+    public ValueTask<bool> PositionSecondFleetAsync(IReadOnlyList<Cell> cells, IReadOnlyList<RoadDefinition> roads)
+    {
+        Call("step_on:" + string.Join(',', cells));
+        Call("roads:" + string.Join('|', roads.Select(road => string.Join('/', road.Groups.Select(group => string.Join(',', group))))));
+        return Result("fleet_2_step_on");
+    }
     public ValueTask<bool> RescueSecondFleetAsync(Cell destination) => Result("fleet_2_rescue:" + destination);
     public bool CheckAccessibility(Cell cell, int? fleet = null)
     { Call($"check_access:{cell}:{fleet}"); return scenario.Accessible; }

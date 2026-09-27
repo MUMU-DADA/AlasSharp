@@ -153,6 +153,8 @@ internal static partial class CampaignMapCombatChecks
         {
             var rule = RuleCatalog.Create(id);
             bool carrier = rule.Configure(new()).MysteryHasCarrier;
+            var carrierTargets = new Dictionary<int, Cell>();
+            var completedCombats = new List<CombatFlowResult>();
             Host? host = null;
             host = new Host { ObservationFactory = (_, position, mode) =>
             {
@@ -162,36 +164,53 @@ internal static partial class CampaignMapCombatChecks
                 shadow.InitializeMapData(new(PoorMapData: true));
                 shadow.Fleet1Location = start; shadow.RefreshFleetPaths(new() { HasAmbush = false });
                 bool boss = state.BattleCount >= rule.Map.ExpectedBattles - 1;
-                var target = shadow.Cells.Where(cell => cell.Location != start && cell.IsAccessible &&
-                    (mode == MapScanMode.Carrier ? cell.IsSea && !cell.MayEnemy && !cell.MayMystery && !cell.MayAmmo : boss ? cell.MayBoss : cell.MayEnemy))
+                var target = mode == MapScanMode.Carrier && carrierTargets.TryGetValue(state.CarrierCount, out var priorCarrier)
+                    ? shadow[priorCarrier] : shadow.Cells.Where(cell => cell.Location != start && cell.IsAccessible &&
+                    (mode == MapScanMode.Carrier ? cell.IsSea && !cell.MayEnemy && !cell.MayMystery && !cell.MayAmmo && state[cell.Location].IsSea : boss ? cell.MayBoss : cell.MayEnemy))
                     .OrderBy(cell => cell.Cost).First();
+                if (mode == MapScanMode.Carrier) carrierTargets[state.CarrierCount] = target.Location;
                 var observations = new List<MapCellObservation> { new(new(start.Column - position.Column, start.Row - position.Row), new(IsFleet: true, IsCurrentFleet: true)),
                     new(new(target.Location.Column - position.Column, target.Location.Row - position.Row),
-                        boss ? new(IsBoss: true) : new(IsEnemy: true, EnemyScale: 1)) };
-                if (carrier && state.MysteryCount == 0)
+                        boss && mode != MapScanMode.Carrier ? new(IsBoss: true) : new(IsEnemy: true, EnemyScale: 1)) };
+                if (carrier && state.MysteryCount < rule.Map.Waves.Where(wave => wave.Battle <= state.BattleCount).Sum(wave => wave.Mystery))
                 {
                     var mystery = shadow.Cells.First(cell => cell.MayMystery);
                     observations.Add(new(new(mystery.Location.Column - position.Column, mystery.Location.Row - position.Row), new(IsMystery: true)));
                 }
                 return new(observations, position, new(0, 0), mode);
-            }, CombatFactory = carrier ? (camera, config, refocus) =>
+            }, CombatFactory = (camera, config, refocus) =>
             {
                 var scanner = new MapScanner(camera.State, camera, camera.Clock);
                 var movement = new MapMovement(camera.State, config, camera, () => new(camera, camera.State, camera.InMapAsync, camera.Clock,
-                    new CarrierCampaignProbe(camera), new CarrierSequenceHandler(camera),
-                    new MapCombatRecovery(camera.State, camera, refocus).RecoverAsync), carrierScanner: scanner);
+                    carrier ? new CarrierCampaignProbe(camera) : new Probe(camera),
+                    carrier ? new CarrierSequenceHandler(camera) { OnCombat = completedCombats.Add } : new Handler(camera, completedCombats.Add),
+                    new MapCombatRecovery(camera.State, camera, refocus).RecoverAsync),
+                    waitForInfoBar: _ => ValueTask.CompletedTask, carrierScanner: scanner);
                 return new(camera.State, config, movement, scanner);
-            } : null };
+            } };
             var execution = new CampaignExecution(rule, new() { EmotionMode = CampaignEmotionMode.Ignore, UseFleetLock = false },
                 (state, config) => new InMapCampaignOperations(host, state, config, default, rule));
             var exit = await execution.RunAsync();
             var operations = (InMapCampaignOperations)execution.Context.Operations;
+            // A late carrier can block the boss route. Count completed synthetic encounters
+            // independently instead of assuming the boss spawn wave is the final battle count.
             Check(exit == CampaignLoopExit.Ended && ReferenceEquals(execution.Context.State.Rule, rule) &&
-                execution.Context.State.BattleCount == rule.Map.ExpectedBattles - 1 && operations.StageReturn is not null,
-                "Compiled chapter failed its C# campaign/movement/boss-return composition: " + id);
+                execution.Context.State.BattleCount == completedCombats.Count(combat => combat.Return == CombatReturn.InMap) &&
+                execution.Context.State.BattleCount >= rule.Map.ExpectedBattles - 1 &&
+                execution.Context.State.BattleCount <= rule.Map.ExpectedBattles - 1 + carrierTargets.Count &&
+                completedCombats.Count(combat => combat.Return == CombatReturn.InStage) == 1 && operations.StageReturn is not null,
+                $"Compiled chapter failed its C# campaign/movement/boss-return composition: {id}; exit={exit}, battles={execution.Context.State.BattleCount}, expected={rule.Map.ExpectedBattles - 1}, stage={operations.StageReturn is not null}, mysteries={execution.Context.State.MysteryCount}, carriers={execution.Context.State.CarrierCount}");
             if (carrier)
-                Check(execution.Context.State is { MysteryCount: 1, CarrierCount: 1 } && execution.Context.State.CarrierScans.Count == 1 &&
-                    execution.Context.State.CarrierScans[0].NewEnemies.Count() > 0, "Compiled chapter omitted carrier mystery/scanning: " + id);
+            {
+                int expected = rule.Map.Waves.Sum(wave => wave.Mystery);
+                Check(execution.Context.State.MysteryCount == expected && execution.Context.State.CarrierCount == expected &&
+                    execution.Context.State.CarrierScans.Count == expected && execution.Context.State.CarrierScans.All(scan =>
+                        scan.NewEnemies.Except(scan.Scan.Predictions).SequenceEqual([carrierTargets[scan.CarrierCount]])),
+                    $"Compiled chapter omitted declared mystery waves/carrier scanning: {id}; expected={expected}, mysteries={execution.Context.State.MysteryCount}, carriers={execution.Context.State.CarrierCount}, scans={JsonSerializer.Serialize(execution.Context.State.CarrierScans)}");
+            }
+            if (rule is Alas.Engine.Rules.Main.Campaign64)
+                Check(operations.AmmoPickups.Count == 1 && operations.AmmoPickups[0].ExpectedRecovered == 3,
+                    "Compiled 6-4 omitted the native pre-boss supply pickup");
         }
     }
 }

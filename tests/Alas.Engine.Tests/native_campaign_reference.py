@@ -54,6 +54,11 @@ def main():
 
                 def clear_enemy(self): return self.record("clear_enemy")
                 def fleet_2_push_forward(self): return self.record("fleet_2_push_forward")
+                def fleet_2_step_on(self, grids, roadblocks):
+                    from module.base.utils import location2node
+                    self.record('step_on:' + ','.join(location2node(grid.location) for grid in grids))
+                    self.roads_record(roadblocks)
+                    return self.record('fleet_2_step_on')
                 def fleet_2_rescue(self, grid):
                     from module.base.utils import location2node
                     return self.record('fleet_2_rescue:' + location2node(grid.location))

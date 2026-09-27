@@ -8,6 +8,8 @@ public sealed record MapVisionOverrides(PeakParameters InternalPeaks, PeakParame
     (int Low, int High) Canny, (int Low, int High) EdgeColor,
     int InternalHough, int EdgeHough, int HomographyEdgeHough)
 {
+    public static MapVisionOverrides Default { get; } = new(new(150, 222, .9, 10, 10, 35),
+        new(222, 255, null, null, 10, 50, 1000), (100, 150), (0, 33), 75, 75, 180);
     public double? CoincidentEncourage { get; init; }
     public NumberRange? MidHorizontal { get; init; }
     public NumberRange? MidVertical { get; init; }

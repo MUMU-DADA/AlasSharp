@@ -162,10 +162,11 @@ internal static partial class CampaignMapCombatChecks
     private sealed class CarrierSequenceHandler(Camera camera) : IMapEncounterHandler
     {
         public string? Failure { get; init; }
+        public Action<CombatFlowResult>? OnCombat { get; init; }
         public async ValueTask<MapEncounterHandling> HandleAsync(MapEncounterKind encounter, CancellationToken token)
         {
             if (encounter == MapEncounterKind.ItemPopup) { await camera.RefreshImageAsync(token); return new(MapEncounterContinuation.InMap); }
-            if (encounter != MapEncounterKind.CarrierSpawn) return await new Handler(camera).HandleAsync(encounter, token);
+            if (encounter != MapEncounterKind.CarrierSpawn) return await new Handler(camera, OnCombat).HandleAsync(encounter, token);
             long observed = camera.FrameSequence;
             camera.State.CarrierCount++;
             if (Failure == "wait") throw new IOException("Synthetic carrier wait failure");

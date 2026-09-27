@@ -602,7 +602,7 @@ internal static partial class CampaignMapCombatChecks
         }
     }
 
-    private sealed class Handler(Camera camera) : IMapEncounterHandler
+    private sealed class Handler(Camera camera, Action<CombatFlowResult>? onCombat = null) : IMapEncounterHandler
     {
         public ValueTask<MapEncounterHandling> HandleAsync(MapEncounterKind encounter, CancellationToken token)
         {
@@ -613,9 +613,11 @@ internal static partial class CampaignMapCombatChecks
             var returned = camera.ReturningToStage ? CombatReturn.InStage : CombatReturn.InMap;
             var rank = camera.Rank is { } value
                 ? new CombatRankEvidence(value, CombatRankSource.BattleStatus, UiAssets.Combat.BATTLE_STATUS_S.Id) : null;
+            var result = new CombatFlowResult(returned, rank, false, false, 1);
+            onCombat?.Invoke(result);
             return ValueTask.FromResult(new MapEncounterHandling(camera.ReturningToStage ?
                 MapEncounterContinuation.InStage : MapEncounterContinuation.InMap,
-                new CombatFlowResult(returned, rank, false, false, 1)));
+                result));
         }
     }
 }

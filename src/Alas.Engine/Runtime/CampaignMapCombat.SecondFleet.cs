@@ -20,9 +20,42 @@ public sealed partial class CampaignMapCombat
         var target = grids.FirstOrDefault(grid => grid.IsAccessible2 && grid.IsSea && grid.Location != first && grid.Location != second);
         if (target is null || state[second].Weight <= target.Weight) return false;
         await SwitchFleetAsync(2, token);
-        var route = state.Paths.FindRoute(target.Location, FleetRoles.Step(2, configuration), configuration.HasAmbush);
+        await RepositionFleetAsync(target.Location, token);
+        // No finally: native goto can raise a round change before this restoration.
+        await SwitchFleetAsync(1, token);
+        return true;
+    }
+
+    /// <summary>Native fleet_2_step_on. A successful relocation returns false; only clearing a roadblock returns true.</summary>
+    public async ValueTask<bool> PositionSecondFleetAsync(IReadOnlyList<Cell> cells, IReadOnlyList<RoadDefinition> roads,
+        CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        if (configuration.Fleet2 == 0) return false;
+        if (!state.IsMapInitialized || state.Fleet1Location is null || state.Fleet2Location is not { } second)
+            throw new InvalidOperationException("Second-fleet positioning requires initialized fleet locations");
+        var targets = cells.Select(cell => state[cell]).ToArray();
+        if (targets.Any(grid => grid.Location == second)) return false;
+        bool allCleared = targets.All(grid => grid.IsCleared);
+        foreach (var target in targets)
+        {
+            if (target.IsEnemy || !allCleared && target.IsCleared || !CheckAccessibility(target.Location, 2)) continue;
+            await SwitchFleetAsync(2, token);
+            await RepositionFleetAsync(target.Location, token);
+            await SwitchFleetAsync(1, token);
+            return false;
+        }
+        await SwitchFleetAsync(1, token);
+        bool cleared = await ClearRoadblocksAsync(roads, token: token);
+        await ClearMysteriesAsync(token);
+        return cleared;
+    }
+
+    private async ValueTask RepositionFleetAsync(Cell target, CancellationToken token)
+    {
+        var route = state.Paths.FindRoute(target, FleetRoles.Step(state.FleetIndex, configuration), configuration.HasAmbush);
         if (!route.IsReachable || route.Waypoints.Count == 0)
-            throw new CampaignScriptException("Second-fleet advance has no confirmed route");
+            throw new CampaignScriptException("Fleet repositioning has no confirmed route");
         foreach (var cell in route.Waypoints)
         {
             await WaitForMazeAsync(cell, token);
@@ -30,14 +63,11 @@ public sealed partial class CampaignMapCombat
             if (result.Outcome == MapMoveOutcome.StageReturned)
             {
                 StageReturn = result.Arrival;
-                throw new CampaignEndedException("Encounter during second-fleet advance returned to stage");
+                throw new CampaignEndedException("Encounter during fleet repositioning returned to stage");
             }
             if (result.Outcome != MapMoveOutcome.Committed)
-                throw new CampaignScriptException($"Second-fleet advance to {cell} ended as {result.Outcome}");
+                throw new CampaignScriptException($"Fleet repositioning to {cell} ended as {result.Outcome}");
         }
-        // No finally: native goto can raise a round change before this restoration.
-        await SwitchFleetAsync(1, token);
-        return true;
     }
 
     public ValueTask<bool> RescueSecondFleetAsync(Cell destination, CancellationToken token = default)
