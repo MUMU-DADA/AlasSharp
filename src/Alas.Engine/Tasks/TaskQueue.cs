@@ -10,7 +10,9 @@ using Alas.Engine.Runtime;
 namespace Alas.Engine.Tasks;
 
 public sealed record TaskQueueOptions(string Artifacts, bool DryRun = false, bool ContinueOnFailure = false,
-    string? ResumeDirectory = null, Func<bool>? StopRequested = null, Action<string>? OnStarted = null);
+    string? ResumeDirectory = null, Func<bool>? StopRequested = null, Action<string>? OnStarted = null,
+    Action<TaskActivity>? OnTask = null);
+public sealed record TaskActivity(string Id, string Kind, string State, string? Reason = null);
 public sealed record TaskQueueResult(string Directory, IReadOnlyList<TaskResult> Tasks, bool Failed);
 public sealed record QueueSnapshot(string Contract, string Attempt, bool DryRun, bool Complete,
     bool Failed, string? StopReason, IReadOnlyList<TaskResult> Tasks);
@@ -147,6 +149,7 @@ public sealed class TaskQueue
                             result = new(request.Id, request.Kind, TaskOutcome.Refused, "actions_disabled");
                         else
                         {
+                            options.OnTask?.Invoke(new TaskActivity(request.Id, request.Kind, "running"));
                             session ??= new EngineSession(sessionOptions);
                             var context = session.BeginTask(TimeSpan.FromSeconds(request.TimeoutSeconds));
                             executed = true;
@@ -168,6 +171,15 @@ public sealed class TaskQueue
                             Error: error.ToString());
                     }
                 }
+                options.OnTask?.Invoke(new TaskActivity(request.Id, request.Kind,
+                    result.Outcome switch
+                    {
+                        TaskOutcome.Succeeded => "completed",
+                        TaskOutcome.DryRun => "dry_run",
+                        TaskOutcome.Skipped => "skipped",
+                        TaskOutcome.Refused => "refused",
+                        _ => "failed"
+                    }, result.Reason));
                 if (executed && session is not null)
                 {
                     var evidence = await session.SaveEvidenceAsync(artifact, result.Outcome == TaskOutcome.Failed);
@@ -227,11 +239,31 @@ public sealed class TaskQueue
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string temporary = path + ".tmp";
-        await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(value, Json));
-        // Reports may hold the current snapshot open with delete sharing. On Windows,
-        // MoveFileEx(overwrite) still fails in that case; ReplaceFile preserves those readers.
-        if (File.Exists(path)) File.Replace(temporary, path, null);
-        else File.Move(temporary, path);
+        try
+        {
+            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(value, Json));
+            // Reports may hold the current snapshot open with delete sharing. On Windows,
+            // MoveFileEx(overwrite) still fails in that case; ReplaceFile preserves those readers.
+            // A reader that opened the file without delete sharing can still race the swap,
+            // so retry the atomic operation briefly before surfacing the real I/O failure.
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    if (File.Exists(path)) File.Replace(temporary, path, null);
+                    else File.Move(temporary, path);
+                    return;
+                }
+                catch (IOException) when (attempt < 4)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(25 * (attempt + 1)));
+                }
+            }
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
     }
     private sealed record CompletedTask(string Artifact, string Sha256, Dictionary<string, string> Files);
     private sealed record QueueState(string Fingerprint, Dictionary<string, CompletedTask> Completed);

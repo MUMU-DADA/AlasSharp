@@ -27,7 +27,8 @@ internal static class ControlWorkspaceChecks
         Check(state["active"]!["status"]!.GetValue<string>() == "completed", "Dry-run did not finish: " + state["active"]);
         Check(state["active"]!["engine"]!["contract"]!.GetValue<string>() == "engine-activity/1" &&
             state["active"]!["engine"]!["source"]!.GetValue<string>() == "engine-queue" &&
-            state["active"]!["engine"]!["tasks"]!.AsArray().Count == 2,
+            state["active"]!["engine"]!["tasks"]!.AsArray().Count == 2 &&
+            state["active"]!["engine"]!["tasks"]!.AsArray().All(item => item!["state"]!.GetValue<string>() == "dry_run"),
             "Engine activity snapshot did not describe the completed queue");
         var report = state["report"]!.AsObject();
         Check(report["queue_outcome"]!.GetValue<string>() == "dry_run" && report["evidence_complete"]!.GetValue<bool>(), "Engine report could not read Engine artifacts");
@@ -59,6 +60,12 @@ internal static class ControlWorkspaceChecks
         // Multiple required tasks after a normal stop remain unexecuted, not failed.
         var queue = new TaskQueue();
         var options = new EngineSessionOptions("missing-adb", "offline", GameServer.Cn, "missing-assets", "missing-python");
+        var activities = new List<TaskActivity>();
+        await queue.RunAsync([new("same-a", "observe"), new("same-b", "observe")], options,
+            new(root, DryRun: true, OnTask: activities.Add));
+        Check(activities.Select(activity => activity.Id).SequenceEqual(["same-a", "same-b"]) &&
+            activities.All(activity => activity.Kind == "observe" && activity.State == "dry_run"),
+            "Engine task activity callback lost task identity for repeated kinds");
         var stopped = await queue.RunAsync([new("a", "observe", Required: true), new("b", "observe", Required: true)],
             options, new(root, DryRun: true, StopRequested: () => true));
         Check(!stopped.Failed && stopped.Tasks.All(t => t.Reason == "stop_requested_at_boundary"), "Boundary stop became previous failure");

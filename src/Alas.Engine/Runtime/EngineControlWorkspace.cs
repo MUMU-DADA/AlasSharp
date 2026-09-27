@@ -15,6 +15,7 @@ public sealed class EngineControlWorkspace
     private readonly object _gate = new();
     private Task? _worker;
     private string? _mode, _kind, _instance, _startedAt, _finishedAt, _error, _runDirectory;
+    private Dictionary<string, TaskActivity> _activities = new(StringComparer.Ordinal);
     private volatile bool _stopRequested;
     private bool _shuttingDown;
 
@@ -44,6 +45,8 @@ public sealed class EngineControlWorkspace
             stopRequested = _stopRequested;
         }
         JsonObject queue = LoadQueue();
+        Dictionary<string, TaskActivity> activities;
+        lock (_gate) activities = new(_activities, StringComparer.Ordinal);
         string status = running ? "running" : started is null ? "idle" : error is null ? "completed" : "failed";
         JsonObject? report = runDirectory is not null && RunReport.IsRunDirectory(runDirectory)
             ? RunReport.Build(runDirectory).ToJson() : null;
@@ -54,7 +57,7 @@ public sealed class EngineControlWorkspace
             // The control plane exposes the Engine queue as a typed activity.
             // Keep the legacy scheduler slot empty so clients cannot mistake
             // configuration task names for an upstream scheduler process.
-            ["engine"] = EngineActivity(queue, status, kind), ["scheduler"] = null,
+            ["engine"] = EngineActivity(queue, status, kind, activities), ["scheduler"] = null,
             ["started_at"] = started, ["finished_at"] = finished,
             ["stop_requested"] = stopRequested, ["error"] = error, ["run_directory"] = runDirectory,
         };
@@ -74,9 +77,12 @@ public sealed class EngineControlWorkspace
         return state;
     }
 
-    private static JsonObject? EngineActivity(JsonObject queue, string status, string? currentKind)
+    private static JsonObject? EngineActivity(JsonObject queue, string status, string? currentKind,
+        IReadOnlyDictionary<string, TaskActivity> activities)
     {
         if (currentKind is null && status == "idle") return null;
+        string? runningKind = activities.Values.FirstOrDefault(activity => activity.State == "running")?.Kind
+            ?? (status == "running" ? currentKind : null);
         var tasks = new JsonArray();
         if (queue["tasks"] is JsonArray entries)
             foreach (var entry in entries.OfType<JsonObject>())
@@ -84,11 +90,13 @@ public sealed class EngineControlWorkspace
                 string? id = entry["id"]?.GetValue<string>();
                 string? kind = entry["kind"]?.GetValue<string>();
                 if (id is null || kind is null) continue;
+                activities.TryGetValue(id, out var activity);
                 tasks.Add(new JsonObject
                 {
                     ["id"] = id, ["kind"] = kind,
-                    ["state"] = status == "running" && kind == currentKind ? "running" :
-                        status == "completed" ? "completed" : status == "failed" ? "failed" : "pending"
+                    ["state"] = activity?.State ?? (status == "running" ? "pending" :
+                        status == "completed" ? "completed" : status == "failed" ? "failed" : "pending"),
+                    ["reason"] = activity?.Reason
                 });
             }
         return new JsonObject
@@ -96,7 +104,7 @@ public sealed class EngineControlWorkspace
             ["contract"] = "engine-activity/1",
             ["source"] = "engine-queue",
             ["phase"] = status,
-            ["task"] = currentKind,
+            ["task"] = runningKind ?? currentKind,
             ["tasks"] = tasks
         };
     }
@@ -209,6 +217,8 @@ public sealed class EngineControlWorkspace
             SaveQueue(queue);
             _mode = mode; _instance = config?.Instance ?? instance;
             _kind = tasks.Length == 1 ? tasks[0].Kind : "queue";
+            _activities = tasks.ToDictionary(task => task.Id,
+                task => new TaskActivity(task.Id, task.Kind, "pending"), StringComparer.Ordinal);
             _startedAt = DateTimeOffset.Now.ToString("O"); _finishedAt = null;
             _error = null; _runDirectory = null; _stopRequested = false;
             _worker = Task.Run(async () =>
@@ -217,7 +227,8 @@ public sealed class EngineControlWorkspace
                 {
                     var result = await new TaskQueue().RunAsync(tasks, session,
                         new TaskQueueOptions(_artifacts, dryRun, continueOnFailure, resumeDirectory,
-                            () => _stopRequested, directory => { lock (_gate) _runDirectory = directory; }));
+                            () => _stopRequested, directory => { lock (_gate) _runDirectory = directory; },
+                            activity => { lock (_gate) _activities[activity.Id] = activity; }));
                     if (result.Failed) lock (_gate) _error = "一个或多个引擎任务未成功";
                 }
                 catch (Exception error) { lock (_gate) _error = error.Message; }
