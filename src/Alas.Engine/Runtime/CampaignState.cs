@@ -8,6 +8,8 @@ public sealed partial class CampaignState
     public MapDefinition Map { get; }
     public IReadOnlyList<CellState> Cells { get; }
     public MapPathfinder Paths { get; }
+    public MapRounds Rounds { get; }
+    public bool MovementInvalidated { get; internal set; }
     public int MazeRound { get; private set; } = 9;
     public int BattleCount { get; set; }
     public bool AutoSearch { get; set; }
@@ -18,6 +20,9 @@ public sealed partial class CampaignState
     private readonly List<MechanismReleaseEvidence> _mechanismReleases = [];
     public IReadOnlyList<MechanismReleaseEvidence> MechanismReleases => _mechanismReleases.AsReadOnly();
     internal void RecordMechanismRelease(MechanismReleaseEvidence evidence) => _mechanismReleases.Add(evidence);
+    private readonly List<MovableScanEvidence> _movableScans = [];
+    public IReadOnlyList<MovableScanEvidence> MovableScans => _movableScans.AsReadOnly();
+    internal void RecordMovableScan(MovableScanEvidence evidence) => _movableScans.Add(evidence);
     public CampaignState(MapDefinition map)
     {
         Map = map;
@@ -31,6 +36,7 @@ public sealed partial class CampaignState
         }).ToArray());
         foreach (var portal in map.Portals) this[portal.From].IsPortal = true;
         Paths = new MapPathfinder(this);
+        Rounds = new MapRounds(this);
     }
     public CellState this[Cell cell] => Cells[Map.IndexOf(cell)];
     public bool HasBoss => Cells.Any(c => c.IsBoss);

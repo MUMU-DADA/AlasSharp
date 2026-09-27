@@ -27,6 +27,10 @@ public sealed record CampaignConfiguration
     public Alas.Engine.Runtime.CampaignMapInfo? PreparationInfo { get; init; }
     public bool HasMovableNormalEnemy { get; init; }
     public bool HasMovableEnemy { get; init; }
+    public System.Collections.Immutable.ImmutableArray<int> MovableEnemyTurns { get; init; } = [2];
+    public System.Collections.Immutable.ImmutableArray<int> MovableNormalEnemyTurns { get; init; } = [1];
+    public int MovableEnemyStep { get; init; } = 2;
+    public double SirenMoveWait { get; init; } = 1.5;
     public bool HasMaze { get; init; }
     public bool HasWall { get; init; }
     public bool HasPortal { get; init; }
@@ -42,6 +46,8 @@ public sealed record CampaignConfiguration
     public bool ClearPercentageShort { get; init; }
     public bool IsOneTimeStage { get; init; }
     public bool HasFleetStep { get; init; }
+    public int Fleet1Step { get; init; } = 3;
+    public int Fleet2Step { get; init; } = 2;
     public bool HasDecoyEnemy { get; init; }
     public bool HasAmbush { get; init; } = true;
     public bool HandleError { get; init; }

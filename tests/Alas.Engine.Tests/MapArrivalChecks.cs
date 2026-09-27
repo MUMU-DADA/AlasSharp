@@ -146,12 +146,20 @@ internal static class MapArrivalChecks
             bool siren = scenario["siren"]!.GetValue<bool>();
             var snapshots = scenario["snapshots"]!.AsArray();
             Check(snapshots.Count == 11, "Native ammo reference omitted move outcomes");
-            var state = new CampaignState(new MapDefinition("D1", "SP ME ME MA", [], [], []));
-            state.InitializeMapData(new());
-            state.FleetIndex = fleet;
-            if (fleet == 1) state.Fleet1Location = new(1, 1);
-            else state.Fleet2Location = new(1, 1);
-            state[new(1, 1)].IsFleet = state[new(1, 1)].IsCurrentFleet = true;
+            CampaignState Fixture(int battles = 0)
+            {
+                var created = new CampaignState(new MapDefinition("D1", "SP ME ME MA", [], [], []));
+                created.InitializeMapData(new());
+                created.FleetIndex = fleet;
+                var location = new Cell(battles == 0 ? 1 : 3, 1);
+                if (fleet == 1) created.Fleet1Location = location; else created.Fleet2Location = location;
+                created[location].IsFleet = created[location].IsCurrentFleet = true;
+                for (int i = 0; i < battles; i++) created.CommitBattle(siren);
+                created.Paths.ComputeFleetCosts([new(fleet, location)], location, true);
+                return created;
+            }
+            var state = Fixture();
+            var continuing = state;
             void Compare(int index)
             {
                 var expected = snapshots[index]!;
@@ -165,6 +173,9 @@ internal static class MapArrivalChecks
             Compare(0);
             for (int battle = 0; battle < 10; battle++)
             {
+                // The two terminal outcomes compare the same bookkeeping baseline independently.
+                // Production must never resume a sortie after an uncertain action or stage return.
+                if (battle >= 8) state = Fixture(8);
                 var destination = new Cell(battle < 8 ? 2 + battle % 2 : 2, 1);
                 state[destination].IsEnemy = !siren;
                 state[destination].IsSiren = siren;
@@ -183,7 +194,9 @@ internal static class MapArrivalChecks
                 catch (IOException) when (battle == 8) { failed = true; }
                 Check(failed == (battle == 8), "Ammo fixture did not exercise the failed combat path");
                 Compare(battle + 1);
+                if (battle >= 8) Check(state.MovementInvalidated, "Terminal movement allowed reuse of its sortie state");
             }
+            state = continuing;
             var supply = state[new(4, 1)];
             Check(!supply.IsAmmo && supply.MayAmmo && supply.IsAccessible,
                 "Ammo fixture must have an accessible declared supply without a visible icon");

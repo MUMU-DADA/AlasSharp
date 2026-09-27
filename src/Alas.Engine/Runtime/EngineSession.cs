@@ -104,14 +104,16 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     }
     public MapMovement CreateMapMovement(MapCamera camera, CampaignConfiguration configuration)
         => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration), EnsureNoMapInfoBarAsync,
-            token => WithdrawCampaignAsync("low_hp", token));
+            token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration));
     public MapMovement CreateMapCombatMovement(MapCamera camera, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration,
             new MapCombatHandler(token => CreateCampaignCombatFlow(camera.State, configuration, entrances).RunAutoAsync(token: token),
                 new MapMysteryItemHandler(Driver), token => ReadFleetStatusAfterCombatAsync(camera.State,
                     camera.State.FleetIndex, configuration, token))), EnsureNoMapInfoBarAsync,
-            token => WithdrawCampaignAsync("low_hp", token));
+            token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration));
+    private MapMovableScan CreateMovableScan(MapCamera camera, CampaignConfiguration configuration)
+        => new(camera.State, configuration, new MapScanner(camera.State, camera, Driver.Clock), camera.HasEnemyTemplates);
     private async ValueTask ReadFleetStatusAfterCombatAsync(CampaignState state, int fleet,
         CampaignConfiguration configuration, CancellationToken token)
     {
@@ -176,7 +178,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         var operations = (InMapCampaignOperations)execution.Context.Operations;
         return new(exit, execution.Context.State.BattleCount, operations.StageReturn, operations.InitialFleet, operations.AmmoPickups,
             execution.Context.State.Health.Observations, execution.Context.State.Withdrawal,
-            execution.Context.State.Levels.Evidence(execution.Context.Config.Levels), execution.Context.State.MechanismReleases);
+            execution.Context.State.Levels.Evidence(execution.Context.Config.Levels), execution.Context.State.MechanismReleases,
+            execution.Context.State.MovableScans);
     }
     async ValueTask<bool> ICampaignInMapHost.VerifyInMapAsync(CancellationToken token)
     {

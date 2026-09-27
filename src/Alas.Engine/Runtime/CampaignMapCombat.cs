@@ -22,7 +22,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         var candidates = grids is { Count: > 0 } ? grids.Select(cell => state[cell]) : state.Cells;
         var target = Order(candidates.Where(grid => grid.IsMechanismTrigger && !grid.IsMechanismBlock && grid.IsAccessible)).FirstOrDefault();
         if (target is null) return false;
-        var route = state.Paths.FindRoute(target.Location, turningOptimize: configuration.HasAmbush);
+        var route = state.Paths.FindRoute(target.Location, FleetRoles.Step(state.FleetIndex, configuration), turningOptimize: configuration.HasAmbush);
         if (!route.IsReachable || route.Waypoints.Count == 0)
             throw new InvalidOperationException("Selected mechanism has no confirmed fleet route");
         foreach (var cell in route.Waypoints)
@@ -51,7 +51,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         token.ThrowIfCancellationRequested();
         var target = state.Cells.FirstOrDefault(grid => grid.MayAmmo);
         if (target is null || state.AmmoCount <= 0 || !target.IsAccessible) return false;
-        var route = state.Paths.FindRoute(target.Location, turningOptimize: configuration.HasAmbush);
+        var route = state.Paths.FindRoute(target.Location, FleetRoles.Step(state.FleetIndex, configuration), turningOptimize: configuration.HasAmbush);
         if (!route.IsReachable || route.Waypoints.Count == 0)
             throw new InvalidOperationException("Selected supply has no confirmed fleet route");
         for (int index = 0; index < route.Waypoints.Count; index++)
@@ -76,7 +76,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
             var target = state.Cells.Where(grid => grid.IsMystery && grid.IsAccessible)
                 .OrderBy(grid => grid.Cost).FirstOrDefault();
             if (target is null) return false;
-            var route = state.Paths.FindRoute(target.Location, turningOptimize: configuration.HasAmbush);
+            var route = state.Paths.FindRoute(target.Location, FleetRoles.Step(state.FleetIndex, configuration), turningOptimize: configuration.HasAmbush);
             if (!route.IsReachable || route.Waypoints.Count == 0)
                 throw new InvalidOperationException("Selected mystery has no confirmed fleet route");
             for (int index = 0; index < route.Waypoints.Count; index++)
@@ -182,7 +182,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
             var target = Order(potential.Where(grid => grid.IsAccessible && grid.Location != current &&
                 !tried.Contains(grid.Location))).FirstOrDefault();
             if (target is null) break;
-            var route = state.Paths.FindRoute(target.Location, turningOptimize: configuration.HasAmbush);
+            var route = state.Paths.FindRoute(target.Location, FleetRoles.Step(state.FleetIndex, configuration), turningOptimize: configuration.HasAmbush);
             if (!route.IsReachable || route.Waypoints.Count == 0)
                 throw new InvalidOperationException("Potential boss has no confirmed fleet route");
             int previousBattles = state.BattleCount;
@@ -243,7 +243,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
             // Native clear_chosen_enemy uses the logical index here; combat_preparation uses the displayed index.
             await waitEmotion(state.FleetIndex, token);
         }
-        var route = state.Paths.FindRoute(target.Location, turningOptimize: configuration.HasAmbush);
+        var route = state.Paths.FindRoute(target.Location, FleetRoles.Step(state.FleetIndex, configuration), turningOptimize: configuration.HasAmbush);
         if (!route.IsReachable || route.Waypoints.Count == 0)
             throw new InvalidOperationException("Selected combat target has no confirmed fleet route");
         for (int index = 0; index < route.Waypoints.Count; index++)

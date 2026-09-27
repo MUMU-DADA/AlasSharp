@@ -18,6 +18,7 @@ public static class CampaignMapInitializer
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(selected);
         ArgumentNullException.ThrowIfNull(createCamera);
+        MapRounds.Validate(configuration);
         if (scanTimeout <= TimeSpan.Zero || scanTimeout.TotalMilliseconds > int.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(scanTimeout));
         if (configuration.Submarine != 0)
@@ -56,6 +57,7 @@ public static class CampaignMapInitializer
         state.Fleet1Location = fleet1;
         state.Fleet2Location = fleet2;
         state.RefreshFleetPaths(configuration);
+        state.Rounds.Initialize(configuration);
         return new(camera, scan, fleet1, fleet2);
     }
 }

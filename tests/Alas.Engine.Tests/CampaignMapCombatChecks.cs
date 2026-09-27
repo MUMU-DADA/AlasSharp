@@ -471,7 +471,8 @@ internal static partial class CampaignMapCombatChecks
     {
         var movement = new MapMovement(state, config, camera, () =>
             new MapArrivalCheck(camera, state, camera.InMapAsync, camera.Clock,
-                new Probe(camera), new Handler(camera)));
+                new Probe(camera), new Handler(camera)),
+            movableScan: new(state, config, new(state, camera, camera.Clock)));
         return new(state, config, movement, new MapScanner(state, camera, camera.Clock), waitEmotion, switchFleet);
     }
 

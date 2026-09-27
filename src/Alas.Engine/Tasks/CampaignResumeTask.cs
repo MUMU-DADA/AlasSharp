@@ -71,6 +71,7 @@ public sealed class CampaignResumeTask : ITaskRunner
             result.Withdrawal,
             result.Levels,
             result.MechanismReleases,
+            result.MovableScans,
             stageReturn = result.StageReturn, settlementVerified = cleared, cleared,
             sortie = new
             {

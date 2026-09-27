@@ -67,6 +67,36 @@ public sealed class MapPathfinder(CampaignState state)
         }
     }
 
+    /// <summary>Hypothetical enemy reachability without changing fleet costs, predecessors or wall topology.</summary>
+    public IReadOnlySet<Cell> EnemyReachable(Cell start, int step, bool ignoreWalls, CancellationToken token = default)
+    {
+        if (step < 0) throw new ArgumentOutOfRangeException(nameof(step));
+        _ = state[start]; _ = Connections;
+        var reached = new HashSet<Cell> { start };
+        var queue = new Queue<(Cell Cell, int Cost)>();
+        queue.Enqueue((start, 0));
+        while (queue.TryDequeue(out var entry))
+        {
+            token.ThrowIfCancellationRequested();
+            if (entry.Cost >= step) continue;
+            IEnumerable<Cell> adjacent = Connections[entry.Cell];
+            if (ignoreWalls)
+            {
+                var links = state.Covered(entry.Cell, [(0, -1), (0, 1), (-1, 0), (1, 0)]).Select(g => g.Location).ToHashSet();
+                foreach (var portal in state.Map.Portals.Where(p => p.From == entry.Cell))
+                    if (state[portal.From].IsPortal) links.Add(portal.To); else links.Remove(portal.To);
+                adjacent = links;
+            }
+            foreach (var cell in adjacent)
+            {
+                var grid = state[cell];
+                if (grid.IsLand || grid.IsMechanismBlock || !reached.Add(cell)) continue;
+                if (grid.IsSea) queue.Enqueue((cell, entry.Cost + 1));
+            }
+        }
+        return reached;
+    }
+
     public void ComputeFleetCosts(IReadOnlyList<KeyValuePair<int, Cell?>> fleets, Cell current, bool hasAmbush)
     {
         if (fleets.Any(p => p.Key is not (1 or 2)) || fleets.Select(p => p.Key).Distinct().Count() != fleets.Count)

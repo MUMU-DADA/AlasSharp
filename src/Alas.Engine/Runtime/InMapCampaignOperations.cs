@@ -21,7 +21,8 @@ public interface ICampaignInMapHost
 public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount, MapArrivalResult? StageReturn,
     FleetSelection? InitialFleet = null, IReadOnlyList<AmmoPickupEvidence>? AmmoPickups = null,
     IReadOnlyList<FleetHealthSnapshot>? Health = null, CampaignWithdrawalEvidence? Withdrawal = null,
-    FleetLevelEvidence? Levels = null, IReadOnlyList<MechanismReleaseEvidence>? MechanismReleases = null);
+    FleetLevelEvidence? Levels = null, IReadOnlyList<MechanismReleaseEvidence>? MechanismReleases = null,
+    IReadOnlyList<MovableScanEvidence>? MovableScans = null);
 public interface ICampaignExecutionService
 {
     ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,

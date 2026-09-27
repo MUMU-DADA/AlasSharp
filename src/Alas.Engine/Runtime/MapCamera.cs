@@ -61,6 +61,7 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
     private readonly IMapSwipeInput _input;
     private readonly IMapGridInput? _gridInput;
     private readonly GridRecognition _recognition;
+    public bool HasEnemyTemplates => _recognition.HasEnemyTemplates;
     private readonly MapSwipePredictor _predictor;
     private readonly MapCameraRules _rules;
     private readonly ScreenPoint _multiply;

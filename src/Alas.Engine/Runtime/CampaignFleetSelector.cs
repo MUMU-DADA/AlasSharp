@@ -28,6 +28,13 @@ public static class FleetRoles
         if (displayed is not (1 or 2)) throw new ArgumentOutOfRangeException(nameof(displayed));
         return Reversed(configuration) ? 3 - displayed : displayed;
     }
+    public static int Step(int logical, CampaignConfiguration configuration)
+    {
+        int displayed = LogicalIndex(logical, configuration);
+        if (!configuration.HasFleetStep) return 0;
+        int step = displayed == 1 ? configuration.Fleet1Step : configuration.Fleet2Step;
+        return step > 0 ? step : throw new ArgumentException("Fleet step must be positive");
+    }
     public static string Name(FleetOrder order) => order switch
     {
         FleetOrder.Fleet1MobFleet2Boss => "fleet1_mob_fleet2_boss",

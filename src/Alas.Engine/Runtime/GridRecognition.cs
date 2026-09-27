@@ -11,6 +11,7 @@ public sealed record VisibleGrid(ViewCell LocalCell, GridCorners Corners);
 /// <summary>Native GridPredictor decisions in C#. The CV service returns numeric measurements only.</summary>
 public sealed partial class GridRecognition(IImagePatchVision vision, AssetFiles assets, GameServer server, GridRecognitionRules rules)
 {
+    public bool HasEnemyTemplates => !rules.Enemies.IsEmpty;
     public static readonly SourceFile Source = new("module/map_detection/grid_predictor.py",
         "7e191b0c48ceb89ecb453742e559b7c4b26fdb920c80e1e128d4e79331d26caa");
 

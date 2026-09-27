@@ -205,6 +205,13 @@ try
         await CampaignFleetSwitcherChecks.RunAsync();
         return 0;
     }
+    if (args is ["--movable", var movablePython, var movableUpstream, var movableArtifacts])
+    {
+        string folder = Path.GetFullPath(movableArtifacts);
+        Directory.CreateDirectory(folder);
+        await MapMovableChecks.RunAsync(Path.GetFullPath(movablePython), Path.GetFullPath(movableUpstream), folder);
+        return 0;
+    }
     if (args is ["--mechanisms", var mechanismPython, var mechanismUpstream, var mechanismArtifacts])
     {
         string folder = Path.GetFullPath(mechanismArtifacts);

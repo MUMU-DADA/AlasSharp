@@ -19,7 +19,8 @@ internal enum MapAction { Move, Fight, Mystery, ProbeBoss, Ammo }
 public sealed class MapMovement(CampaignState state, CampaignConfiguration configuration,
     IMapArrivalCamera camera, Func<MapArrivalCheck> createArrival,
     Func<CancellationToken, ValueTask>? waitForInfoBar = null,
-    Func<CancellationToken, ValueTask<CampaignWithdrawalEvidence>>? withdraw = null)
+    Func<CancellationToken, ValueTask<CampaignWithdrawalEvidence>>? withdraw = null,
+    MapMovableScan? movableScan = null)
 {
     public ValueTask<MapMoveResult> MoveAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
@@ -45,10 +46,14 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         MapArrivalOptions? options, CancellationToken token)
     {
         if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before moving a fleet");
+        if (state.MovementInvalidated) throw new InvalidOperationException("Map movement state was invalidated; this sortie cannot be reused");
         _ = state.Paths.Connections;
-        if (configuration.HasMovableEnemy || configuration.HasMovableNormalEnemy || configuration.HasMaze ||
-            state.Cells.Any(cell => cell.IsMaze))
-            throw new NotSupportedException("Moving-enemy and maze rounds require their map-state transition before fleet movement");
+        if (configuration.HasMaze || state.Cells.Any(cell => cell.IsMaze))
+            throw new NotSupportedException("Maze movement requires its active-wall waypoint workflow");
+        bool dynamic = configuration.HasMovableEnemy || configuration.HasMovableNormalEnemy;
+        if (dynamic && (movableScan is null || !state.Rounds.Initialized || state.SpawnStack.IsEmpty) ||
+            configuration.HasBouncingEnemy && !state.Rounds.Initialized)
+            throw new NotSupportedException("Dynamic movement requires initialized rounds, spawn declarations and movable scanning");
         if (state.FleetIndex is not (1 or 2)) throw new InvalidOperationException("Invalid current fleet index");
         Cell origin = (state.FleetIndex == 1 ? state.Fleet1Location : state.Fleet2Location)
             ?? throw new InvalidOperationException("Current fleet location is unknown");
@@ -103,9 +108,21 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             if (options.ConfirmDelay < TimeSpan.Zero || !double.IsFinite(wait) || wait < 0 ||
                 !double.IsFinite(delay) || delay >= options.WalkTimeout.TotalSeconds)
                 throw new InvalidDataException("Mechanism confirmation delay must fit the movement deadline");
-            options = options with { ConfirmDelay = TimeSpan.FromSeconds(delay) };
+            options = options with { ConfirmDelay = TimeSpan.FromSeconds(delay), AfterCombatConfirmDelay = TimeSpan.FromSeconds(delay) };
             release = new(destination, triggers.Select(cell => cell.Location).ToImmutableArray(),
                 blocks.Select(cell => cell.Location).ToImmutableArray(), delay, 0);
+        }
+
+        // Native removes the enemy animation wait after combat but keeps mechanism and base delays.
+        var before = dynamic ? MovableEnemySnapshot.Capture(state) : null;
+        if (state.Rounds.Initialized)
+        {
+            state.Rounds.RequireConfiguration(configuration);
+            options ??= MapArrivalOptions.Default;
+            double seconds = options.ConfirmDelay.TotalSeconds + state.Rounds.WaitSeconds;
+            if (!double.IsFinite(seconds) || seconds >= options.WalkTimeout.TotalSeconds)
+                throw new InvalidDataException("Round confirmation delay must fit the movement deadline");
+            options = options with { ConfirmDelay = TimeSpan.FromSeconds(seconds), AfterCombatConfirmDelay = options.ConfirmDelay };
         }
 
         token.ThrowIfCancellationRequested();
@@ -116,7 +133,10 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             finally { camera.Invalidate(); }
             throw new CampaignEndedException("Withdraw: low HP");
         }
-        var result = await createArrival().TapAndCheckAsync(destination, options, token);
+        MapArrivalResult result;
+        try { result = await createArrival().TapAndCheckAsync(destination, options, token); }
+        catch { state.MovementInvalidated = true; camera.Invalidate(); throw; }
+        if (result.Outcome != MapArrivalOutcome.MarkerConfirmed) state.MovementInvalidated = true;
         if (result.Outcome == MapArrivalOutcome.Unconfirmed) return new(MapMoveOutcome.Unconfirmed, result);
         if (result.Outcome == MapArrivalOutcome.MapInterrupted) return new(MapMoveOutcome.Interrupted, result);
         if (result.Outcome == MapArrivalOutcome.StageReturned)
@@ -147,10 +167,13 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         };
         if (!interactionsConfirmed || landingGrid.MayAmmo && !result.SupplyClickCompleted)
         {
+            state.MovementInvalidated = true;
             camera.Invalidate();
             return new(MapMoveOutcome.UnsupportedEncounter, result);
         }
 
+        bool redispatch = false;
+        MapMoveResult committed;
         try
         {
             if (result.SupplyClickCompleted)
@@ -176,11 +199,23 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             state.RefreshFleetPaths(configuration);
             if (release is not null)
             {
-                release = release with { ArrivalSequence = result.FrameSequence };
+                release = release with { ArrivalSequence = result.FrameSequence,
+                    ConfirmSeconds = (battled ? options!.AfterCombatConfirmDelay ?? options.ConfirmDelay : options!.ConfirmDelay).TotalSeconds };
                 state.RecordMechanismRelease(release);
             }
+            if (state.Rounds.Initialized)
+            {
+                if (battled) state.Rounds.RecordBattle();
+                state.Rounds.Advance();
+                if (state.Rounds.EnemyMoved)
+                {
+                    await movableScan!.ScanAsync(before!, battled, token);
+                    redispatch = true;
+                }
+            }
             AmmoPickupEvidence? pickup = null;
-            if (ammo)
+            // Native goto raises the round change before pick_up_ammo's inventory update.
+            if (ammo && !redispatch)
             {
                 long beforeWait = camera.FrameSequence;
                 await waitForInfoBar!(token);
@@ -192,12 +227,15 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
                 pickup = new(destination, expectedRecovered, stockBefore, state.AmmoCount,
                     fleetBefore, state.FleetAmmo, result.FrameSequence, camera.FrameSequence);
             }
-            return new(MapMoveOutcome.Committed, result) { AmmoPickup = pickup, MechanismRelease = release };
+            committed = new(MapMoveOutcome.Committed, result) { AmmoPickup = pickup, MechanismRelease = release };
         }
         catch
         {
+            state.MovementInvalidated = true;
             camera.Invalidate();
             throw;
         }
+        if (redispatch) throw new MapEnemyMovedException();
+        return committed;
     }
 }

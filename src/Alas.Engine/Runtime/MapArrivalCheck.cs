@@ -29,6 +29,7 @@ public sealed record MapArrivalResult(MapArrivalOutcome Outcome, long FrameSeque
 }
 public sealed record MapArrivalOptions(TimeSpan ConfirmDelay, TimeSpan WalkTimeout, bool AllowCurrentMarker = false)
 {
+    public TimeSpan? AfterCombatConfirmDelay { get; init; }
     public static MapArrivalOptions Default { get; } = new(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(20));
 }
 
@@ -55,7 +56,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
         if (!state.Contains(destination)) throw new ArgumentOutOfRangeException(nameof(destination));
         options ??= MapArrivalOptions.Default;
         if (options.ConfirmDelay < TimeSpan.Zero || options.WalkTimeout <= TimeSpan.Zero ||
-            options.ConfirmDelay >= options.WalkTimeout || options.WalkTimeout.TotalMilliseconds > int.MaxValue)
+            options.ConfirmDelay >= options.WalkTimeout || options.WalkTimeout.TotalMilliseconds > int.MaxValue ||
+            options.AfterCombatConfirmDelay is { } afterCombat && (afterCombat < TimeSpan.Zero || afterCombat >= options.WalkTimeout))
             throw new ArgumentOutOfRangeException(nameof(options));
         if (Interlocked.Exchange(ref _started, 1) != 0)
             throw new InvalidOperationException("An arrival check belongs to one grid tap");
@@ -155,6 +157,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                             ? CombatReturn.InStage : CombatReturn.InMap))
                         throw new InvalidDataException("Combat encounter has no matching C# battle result");
                     combats.Add(combat);
+                    if (options.AfterCombatConfirmDelay is { } delay)
+                        confirm = new IntervalTimer(_clock, delay.TotalSeconds, count: 2);
                 }
                 else if (resolution.Combat is not null || resolution.Continuation == MapEncounterContinuation.InStage)
                     throw new InvalidDataException("Noncombat interaction returned battle or stage evidence");
