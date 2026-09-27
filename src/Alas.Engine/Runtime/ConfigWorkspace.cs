@@ -1,28 +1,21 @@
 using System.Security.Cryptography;
-using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using YamlDotNet.Core;
-using YamlDotNet.Serialization;
 
 namespace Alas.Engine.Runtime;
 
 /// <summary>
-/// Read/write access to the upstream instance configuration contract.
-/// The shape is intentionally data driven by <c>args.json</c>; this class does
-/// not maintain a second task or field table. Execution consumes explicit
-/// Engine task inputs; reading or editing an instance does not start Python.
+/// Read/write access to an Engine instance profile.
+/// Runtime task behavior is owned by typed Engine runners; this store only
+/// persists instance identity and user supplied profile values.
 /// </summary>
 public sealed partial class ConfigWorkspace
 {
     private static readonly Regex NamePattern = new(
         @"^[\p{L}\p{N}][\p{L}\p{N}_. \-]{0,63}$",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex DateTimePattern = new(
-        @"\A\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\z",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -32,16 +25,12 @@ public sealed partial class ConfigWorkspace
     };
     private readonly string _root;
     private readonly string _config;
-    private readonly string _argument;
-    private readonly string _i18n;
     private readonly object _gate = new();
 
     public ConfigWorkspace(string root)
     {
         _root = Path.GetFullPath(root);
         _config = Path.Combine(_root, "config");
-        _argument = Path.Combine(_root, "module", "config", "argument");
-        _i18n = Path.Combine(_root, "module", "config", "i18n");
         EnsureDirectory(_config);
         RejectLink(_root);
     }
@@ -79,45 +68,6 @@ public sealed partial class ConfigWorkspace
             string name = ValidateName(instance);
             var values = ReadMerged(name, out string revision);
             return new ConfigSnapshot(name, revision, values);
-        }
-    }
-
-    public ConfigSchema Schema(string language = "zh-CN")
-    {
-        if (language is not ("zh-CN" or "zh-MIAO" or "en-US" or "ja-JP" or "zh-TW"))
-            throw new ArgumentException("不支持的配置语言");
-        return new ConfigSchema(
-            ReadObject(Path.Combine(_argument, "menu.json")),
-            ReadObject(Path.Combine(_argument, "args.json")),
-            ReadObject(Path.Combine(_i18n, language + ".json")));
-    }
-
-    public ConfigSnapshot Patch(string instance, string? revision, IReadOnlyList<ConfigChange> changes)
-    {
-        if (changes.Count is < 1 or > 200) throw new ArgumentException("一次最多保存 200 个配置字段");
-        lock (_gate)
-        {
-            string name = ValidateName(instance);
-            using var transaction = AcquireTransaction(name);
-            var raw = ReadRaw(name, out _);
-            var schema = ReadObject(Path.Combine(_argument, "args.json"));
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (ConfigChange change in changes)
-            {
-                string path = ValidatePath(change.Path);
-                if (!seen.Add(path)) throw new ArgumentException("同一次保存不能重复修改同一个参数");
-                JsonObject descriptor = FindDescriptor(schema, path);
-                ValidateValue(descriptor, change.Value, path);
-                SetPath(raw, path, change.Value?.DeepClone());
-                SyncRecordTime(raw, path);
-            }
-            WriteRaw(name, raw);
-            // The revision argument is intentionally compatibility-only, matching
-            // ConfigService.patch: merge against the newest locked snapshot.
-            _ = revision;
-            string updatedRevision = ReadRaw(name, out string computedRevision) is not null
-                ? computedRevision : throw new InvalidOperationException("配置保存后无法读取");
-            return new ConfigSnapshot(name, updatedRevision, MergeTemplate(raw));
         }
     }
 
@@ -307,149 +257,15 @@ public sealed partial class ConfigWorkspace
                !ReservedNames.Contains(name.Split('.')[0]);
     }
 
-    private static string ValidatePath(string path)
+    private static string? ReadString(JsonObject root, params string[] path)
     {
-        if (string.IsNullOrWhiteSpace(path) || path.Length > 180 || path.Split('.').Length != 3 ||
-            path.Split('.').Any(part => part.Length == 0 || part.Any(c => !char.IsLetterOrDigit(c) && c != '_')))
-            throw new ArgumentException("配置路径必须为 Task.Group.Field");
-        return path;
+        JsonNode? current = root;
+        foreach (string part in path) current = current?[part];
+        return current?.GetValueKind() == JsonValueKind.String ? current.GetValue<string>() : null;
     }
 
-    private static JsonObject FindDescriptor(JsonObject schema, string path)
-    {
-        JsonNode? node = schema;
-        foreach (string part in path.Split('.')) node = node?[part];
-        return node as JsonObject ?? throw new ArgumentException("参数不存在或不允许修改：" + path);
-    }
-
-    private static void ValidateValue(JsonObject descriptor, JsonNode? value, string path)
-    {
-        string? display = descriptor["display"]?.GetValue<string>();
-        string? kind = descriptor["type"]?.GetValue<string>();
-        if (kind == "storage" && display != "hide" && value is JsonObject { Count: 0 }) return;
-        if (display is "hide" or "disabled" or "readonly" || kind is "storage" or "stored" or "state" or "lock")
-            throw new ConfigWorkspaceException("READ_ONLY", "参数不允许修改：" + path);
-        JsonArray? options = descriptor["option"] as JsonArray;
-        if (kind == "multiselect")
-        {
-            if (value is not JsonArray selected || options is null || selected.Count > options.Count ||
-                selected.Any(item => !options.Any(option => SameOption(option, item))) ||
-                selected.DistinctBy(OptionText).Count() != selected.Count)
-                throw new ArgumentException("多选参数包含无效或重复选项：" + path);
-            return;
-        }
-        if (options is { Count: > 0 } && !options.Any(item => SameOption(item, value)))
-            throw new ArgumentException("请选择有效选项：" + path);
-        JsonNode? defaultValue = descriptor["value"];
-        bool valid = kind == "checkbox" || defaultValue?.GetValueKind() is JsonValueKind.True or JsonValueKind.False
-            ? value?.GetValueKind() is JsonValueKind.True or JsonValueKind.False
-            : defaultValue?.GetValueKind() == JsonValueKind.Number
-                ? value?.GetValueKind() == JsonValueKind.Number &&
-                  (IsFloating(defaultValue) || options is { Count: > 0 } ? IsFiniteNumber(value) : IsInteger(value))
-                : value?.GetValueKind() == JsonValueKind.String || defaultValue is null && value is null;
-        if (!valid || value?.GetValueKind() == JsonValueKind.String && value.GetValue<string>().Length > 20000)
-            throw new ArgumentException("参数类型或长度不正确：" + path);
-        JsonNode? rule = descriptor["validate"];
-        if (rule?.GetValueKind() == JsonValueKind.String && rule.GetValue<string>() == "datetime" || kind == "datetime")
-        {
-            if (value is null || value.GetValueKind() != JsonValueKind.String ||
-                !DateTimePattern.IsMatch(value.GetValue<string>()) ||
-                !DateTime.TryParseExact(value.GetValue<string>(), "yyyy-MM-dd HH:mm:ss",
-                    CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
-                throw new ArgumentException("日期格式应为 YYYY-MM-DD HH:mm:ss：" + path);
-        }
-        else if (rule is JsonArray range && range.Count == 2)
-        {
-            if (!TryFiniteDouble(value, out double number) ||
-                !TryFiniteDouble(range[0], out double minimum) ||
-                !TryFiniteDouble(range[1], out double maximum) || number < minimum || number > maximum)
-                throw new ArgumentException("参数超出允许范围：" + path);
-        }
-        else if (rule?.GetValueKind() == JsonValueKind.String && value?.GetValueKind() is JsonValueKind.String or JsonValueKind.Number)
-        {
-            string pattern = rule.GetValue<string>();
-            Regex validator;
-            try
-            {
-                validator = new Regex($"\\A(?:{pattern})\\z", RegexOptions.CultureInvariant,
-                    TimeSpan.FromSeconds(1));
-            }
-            catch (ArgumentException error)
-            {
-                throw new ArgumentException("参数校验规则无效：" + path, error);
-            }
-            try
-            {
-                string candidate = value is JsonValue jsonValue && jsonValue.GetValueKind() == JsonValueKind.String
-                    ? jsonValue.GetValue<string>()
-                    : value!.ToJsonString();
-                if (!validator.IsMatch(candidate)) throw new ArgumentException("参数格式不正确：" + path);
-            }
-            catch (RegexMatchTimeoutException error)
-            {
-                throw new ArgumentException("参数校验超时：" + path, error);
-            }
-        }
-        if (descriptor["mode"]?.GetValueKind() == JsonValueKind.String && descriptor["mode"]!.GetValue<string>() == "yaml")
-            ValidateYaml(value, path);
-    }
-
-    private static bool SameOption(JsonNode? option, JsonNode? value)
-        => option?.GetValueKind() == value?.GetValueKind() &&
-           (option?.GetValueKind() != JsonValueKind.Number || IsInteger(option) == IsInteger(value)) &&
-           JsonNode.DeepEquals(option, value);
-
-    private static string OptionText(JsonNode? value) => value?.GetValueKind() switch
-    {
-        null or JsonValueKind.Null => "None",
-        JsonValueKind.String => value.GetValue<string>(),
-        JsonValueKind.True => "True",
-        JsonValueKind.False => "False",
-        _ => value.ToJsonString(),
-    };
-
-    private static bool IsInteger(JsonNode? value)
-    {
-        if (value?.GetValueKind() != JsonValueKind.Number) return false;
-        using var document = JsonDocument.Parse(value.ToJsonString());
-        return document.RootElement.GetRawText().IndexOfAny(['.', 'e', 'E']) < 0;
-    }
-
-    private static bool IsFloating(JsonNode value)
-        => value.GetValueKind() == JsonValueKind.Number && !IsInteger(value);
-
-    private static bool IsFiniteNumber(JsonNode? value)
-    {
-        if (value?.GetValueKind() != JsonValueKind.Number) return false;
-        using var document = JsonDocument.Parse(value.ToJsonString());
-        return document.RootElement.TryGetDouble(out double parsed) && double.IsFinite(parsed);
-    }
-
-    private static bool TryFiniteDouble(JsonNode? value, out double result)
-    {
-        result = 0;
-        if (value?.GetValueKind() != JsonValueKind.Number) return false;
-        using var document = JsonDocument.Parse(value.ToJsonString());
-        return document.RootElement.TryGetDouble(out result) && double.IsFinite(result);
-    }
-
-    private static void ValidateYaml(JsonNode? value, string path)
-    {
-        if (value?.GetValueKind() != JsonValueKind.String)
-            throw new ArgumentException("YAML 必须是文本：" + path);
-        try
-        {
-            using var reader = new StringReader(value.GetValue<string>());
-            object? parsed = new DeserializerBuilder().Build().Deserialize<object>(reader);
-            if (parsed is not null && parsed is not IDictionary<object, object>)
-                throw new ArgumentException("YAML 顶层必须是键值映射：" + path);
-        }
-        catch (YamlException error)
-        {
-            throw new ArgumentException("YAML 格式不正确：" + path, error);
-        }
-    }
-
+    // Internal typed stores use the same bounded JSON path writer. Public UI
+    // patching is intentionally removed; queue inputs are the only task editor contract.
     private static void SetPath(JsonObject root, string path, JsonNode? value)
     {
         string[] parts = path.Split('.');
@@ -459,29 +275,12 @@ public sealed partial class ConfigWorkspace
         current[parts[^1]] = value;
     }
 
-    private static void SyncRecordTime(JsonObject root, string path)
-    {
-        string[] parts = path.Split('.');
-        if (!parts[^1].EndsWith("Value", StringComparison.Ordinal)) return;
-        string record = parts[^1][..^5] + "Record";
-        JsonNode? group = root[parts[0]]?[parts[1]];
-        if (group is JsonObject fields && fields.ContainsKey(record))
-            fields[record] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-    }
-
-    private static string? ReadString(JsonObject root, params string[] path)
-    {
-        JsonNode? current = root;
-        foreach (string part in path) current = current?[part];
-        return current?.GetValueKind() == JsonValueKind.String ? current.GetValue<string>() : null;
-    }
-
     private JsonObject ReadObject(string path)
     {
         RejectLink(path);
-        if (!File.Exists(path)) throw new ConfigWorkspaceException("SCHEMA_UNAVAILABLE", "配置 schema 不可用");
+        if (!File.Exists(path)) throw new ConfigWorkspaceException("CONFIG_UNAVAILABLE", "配置文件不可用");
         return JsonNode.Parse(File.ReadAllText(path)) as JsonObject
-            ?? throw new ConfigWorkspaceException("SCHEMA_INVALID", "配置 schema 不是 JSON 对象");
+            ?? throw new ConfigWorkspaceException("CONFIG_INVALID", "配置文件不是 JSON 对象");
     }
 
     private void EnsureDirectory(string path)
@@ -523,12 +322,6 @@ public sealed record ConfigInstance(string Instance, string Revision, string? Se
 }
 public sealed record ConfigImport(string Name, DateTimeOffset ModifiedAt);
 public sealed record ConfigSnapshot(string Instance, string Revision, JsonObject Values);
-public sealed record ConfigSchema(JsonObject Menu, JsonObject Args, JsonObject Translations);
-public sealed class ConfigChange(string path, JsonNode? value)
-{
-    public string Path { get; } = path;
-    public JsonNode? Value { get; } = value;
-}
 public sealed class ConfigWorkspaceException(string code, string message) : Exception(message)
 {
     public string Code { get; } = code;

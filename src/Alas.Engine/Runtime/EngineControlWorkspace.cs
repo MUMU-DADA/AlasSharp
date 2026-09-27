@@ -8,7 +8,7 @@ namespace Alas.Engine.Runtime;
 /// <summary>In-process control surface backed only by the new Engine task graph.</summary>
 public sealed class EngineControlWorkspace
 {
-    private readonly string _repo;
+    private readonly string _engineRoot;
     private readonly string _control;
     private readonly string _artifacts;
     private readonly ConfigWorkspace _configs;
@@ -19,17 +19,17 @@ public sealed class EngineControlWorkspace
     private volatile bool _stopRequested;
     private bool _shuttingDown;
 
-    public EngineControlWorkspace(string root, string repo, string data, string tools,
+    public EngineControlWorkspace(string root, string engineRoot, string instanceStore, string assets,
         string? artifacts, string? workspace)
     {
-        _ = data;
-        _ = tools;
-        _repo = Path.GetFullPath(repo);
+        _ = instanceStore;
+        _ = assets;
+        _engineRoot = Path.GetFullPath(engineRoot);
         _control = Path.GetFullPath(workspace ?? Path.Combine(Path.GetFullPath(root), ".runtime", "control"));
         _artifacts = Path.GetFullPath(artifacts ?? Path.Combine(_control, "runs"));
         Directory.CreateDirectory(_control);
         Directory.CreateDirectory(_artifacts);
-        _configs = new ConfigWorkspace(_repo);
+        _configs = new ConfigWorkspace(_engineRoot);
     }
 
     public JsonObject State(string? selectedInstance = null)
@@ -262,9 +262,9 @@ public sealed class EngineControlWorkspace
         string? models = Environment.GetEnvironmentVariable("ALAS_OCR_MODELS");
         return new EngineSessionOptions(
             Environment.GetEnvironmentVariable("ALAS_ADB") ?? "adb", actualSerial, server,
-            Path.Combine(_repo, "assets"), Environment.GetEnvironmentVariable("ALAS_PYTHON") ?? "python",
+            Path.Combine(_engineRoot, "assets"), Environment.GetEnvironmentVariable("ALAS_PYTHON") ?? "python",
             package, string.IsNullOrWhiteSpace(models) ? null : Path.GetFullPath(models), allowActions,
-            config is null ? null : _repo, config?.Instance);
+            config is null ? null : _engineRoot, config?.Instance);
     }
 
     // These are deliberately typed Engine capability seams.  They do not

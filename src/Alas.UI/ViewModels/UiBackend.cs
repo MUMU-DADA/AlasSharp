@@ -17,9 +17,7 @@ public interface IAlasControlBackend
     Task<JsonObject> ReadStateAsync(CancellationToken cancellationToken = default);
     Task<JsonObject> ReadInstanceStateAsync(string instance, CancellationToken cancellationToken = default);
     Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default);
-    Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default);
     Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default);
-    Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default);
     Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default);
     Task DeleteInstanceAsync(InstanceDeleteRequest request, CancellationToken cancellationToken = default);
     Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default);

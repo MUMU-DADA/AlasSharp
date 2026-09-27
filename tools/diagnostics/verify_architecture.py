@@ -147,6 +147,26 @@ def product_boundary() -> list[str]:
             if re.search(r"(?:alas_vision|s3_campaign|native_campaign_runtime|RunCampaignPlan|InProcessVisionEngine)", text, re.I):
                 problems.append(f"产品源码保留 Python/旧计划业务入口: {source.relative_to(ROOT)}")
 
+    # The retired UI task schema and script/config editor must not return as a
+    # compatibility layer. DeploySchema belongs to deployment settings and is
+    # intentionally outside this list; Engine task input is one JSON document.
+    retired_editor_markers = (
+        "SchemaResponse", "GetSchemaAsync", "api/schema", "TaskFieldChange",
+        "ValidateScriptAsync", "ScriptValidation", "TaskEditorConflictException",
+    )
+    for source_root in (ROOT / "src/Alas.Client", ROOT / "src/Alas.Contracts", ROOT / "src/Alas.Server",
+                        ROOT / "src/Alas.UI", ROOT / "src/Alas.UI.Desktop", ROOT / "src/Alas.UI.Browser"):
+        for source in source_root.rglob("*.cs"):
+            if any(part in {"bin", "obj"} for part in source.parts):
+                continue
+            text = source.read_text(encoding="utf-8-sig")
+            for marker in retired_editor_markers:
+                if marker in text:
+                    problems.append(f"产品源码保留退役任务 schema/脚本接口 {marker}: {source.relative_to(ROOT)}")
+    server_program = read("src/Alas.Server/Program.cs")
+    if re.search(r"--repo|--tools|ALAS_REPO|ALAS_DATA", server_program):
+        problems.append("Server 启动参数仍暴露旧上游仓库/宿主命名")
+
     tests = ROOT / "tests/Alas.Engine.Tests/Alas.Engine.Tests.csproj"
     if project_references(tests) != ["Alas.Engine"]:
         problems.append("Engine 测试必须只引用 Alas.Engine")

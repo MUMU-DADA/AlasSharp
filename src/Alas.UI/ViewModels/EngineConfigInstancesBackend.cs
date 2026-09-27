@@ -9,24 +9,21 @@ public sealed class EngineConfigInstancesBackend(IAlasUiBackend backend) : IConf
     public async Task<IReadOnlyList<ConfigInstanceInfo>> ListInstancesAsync(CancellationToken cancellationToken = default)
     {
         var result = await backend.ReadInstancesAsync(cancellationToken);
-        var translations = result.Instances.Count == 0 ? null :
-            (await backend.ReadSchemaAsync(cancellationToken: cancellationToken)).Translations;
         return result.Instances.Select(item => new ConfigInstanceInfo(item.Instance,
-            ServerLabel(item.Server, translations), item.Serial ?? "", item.Status)).ToArray();
+            ServerLabel(item.Server), item.Serial ?? "", item.Status)).ToArray();
     }
 
-    private static string ServerLabel(string? server, System.Text.Json.Nodes.JsonObject? translations)
+    private static string ServerLabel(string? server)
     {
         if (string.IsNullOrEmpty(server) || server == "disabled") return "";
-        string key = $"Emulator.ServerName.{server}";
-        System.Text.Json.Nodes.JsonNode? value = translations?[key];
-        if (value is null)
+        return server switch
         {
-            value = translations;
-            foreach (string part in key.Split('.')) value = (value as System.Text.Json.Nodes.JsonObject)?[part];
-        }
-        return value is System.Text.Json.Nodes.JsonValue text && text.TryGetValue<string>(out var label)
-            ? label : server;
+            "cn" => "中国大陆",
+            "en" => "国际服",
+            "jp" => "日本",
+            "tw" => "中国台湾",
+            _ => server,
+        };
     }
 
     public async Task<ConfigContent> ReadConfigAsync(string instance, CancellationToken cancellationToken = default)

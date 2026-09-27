@@ -10,18 +10,18 @@ internal static class Program
         {
             if (args is ["--help"] or ["-h"])
             {
-                Console.WriteLine("Alas.Server [--root <运行根目录>] [--repo <上游>] [--data <数据>] " +
-                    "[--tools <宿主脚本>] [--workspace <控制工作区>] [--artifacts <工件>] " +
+                Console.WriteLine("Alas.Server [--root <运行根目录>] [--engine-root <Engine 根目录>] [--instance-store <实例存储>] " +
+                    "[--assets <Engine 素材>] [--workspace <控制工作区>] [--artifacts <工件>] " +
                     "[--ui-root <预构建 wwwroot>] [--port 8765]");
                 Console.WriteLine("仅监听 127.0.0.1；root 默认是程序目录，其余相对路径均相对于 root。" +
-                    "程序目录的 ui/ 存在时自动托管预构建 Web UI，也可用 --ui-root 指定；自动化仍需要配置上游和 Python 依赖。");
+                    "程序目录的 ui/ 存在时自动托管预构建 Web UI，也可用 --ui-root 指定；Python 仅作为 Engine 的 CV/OCR worker。");
                 return 0;
             }
             var values = new Dictionary<string, string>(StringComparer.Ordinal);
             for (int i = 0; i < args.Length; i++)
             {
                 string key = args[i];
-                if (key is not ("--root" or "--repo" or "--data" or "--tools" or "--workspace" or
+                if (key is not ("--root" or "--engine-root" or "--instance-store" or "--assets" or "--workspace" or
                     "--artifacts" or "--ui-root" or "--port"))
                     throw new ArgumentException($"未知服务参数: {key}");
                 if (++i == args.Length || string.IsNullOrWhiteSpace(args[i]) || args[i].StartsWith("--", StringComparison.Ordinal))
@@ -34,9 +34,9 @@ internal static class Program
             if (values.TryGetValue("--port", out var text) &&
                 (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out port) || port is < 1 or > 65535))
                 throw new ArgumentException("--port 必须在 1–65535 之间");
-            string repo = Resolve("--repo", Environment.GetEnvironmentVariable("ALAS_REPO") ?? ".runtime/engine");
-            string data = Resolve("--data", Environment.GetEnvironmentVariable("ALAS_DATA") ?? "data");
-            string tools = Resolve("--tools", "tools");
+            string engineRoot = Resolve("--engine-root", ".runtime/engine");
+            string instanceStore = Resolve("--instance-store", "data");
+            string assets = Resolve("--assets", "assets");
             string workspace = Resolve("--workspace", ".runtime/control");
             string? artifacts = values.ContainsKey("--artifacts") ? Resolve("--artifacts", "") : null;
             string? ui = values.ContainsKey("--ui-root") ? Resolve("--ui-root", "") : null;
@@ -45,7 +45,7 @@ internal static class Program
                 string publishedUi = Path.Combine(AppContext.BaseDirectory, "ui");
                 if (File.Exists(Path.Combine(publishedUi, "index.html"))) ui = publishedUi;
             }
-            return await new ControlServer(root, repo, data, tools, artifacts, workspace, port, ui).RunAsync();
+            return await new ControlServer(root, engineRoot, instanceStore, assets, artifacts, workspace, port, ui).RunAsync();
         }
         catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException)
         {

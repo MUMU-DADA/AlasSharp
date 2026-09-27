@@ -101,14 +101,6 @@ public sealed partial class ControlClient : IDisposable
             .ConfigureAwait(false);
     }
 
-    public async Task<SchemaResponse> GetSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get,
-            new Uri(_endpoint, "api/schema?language=" + Uri.EscapeDataString(language)));
-        return await SendAsync(request, HttpStatusCode.OK, ControlJsonContext.Default.SchemaResponse, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     /// <summary>
     /// Browser/remote transport for the statistics report. The server-side
     /// handler invokes Alas.Engine directly; this method only crosses a process
@@ -158,11 +150,6 @@ public sealed partial class ControlClient : IDisposable
         return await SendAsync(request, HttpStatusCode.OK, ControlJsonContext.Default.ConfigResponse, cancellationToken)
             .ConfigureAwait(false);
     }
-
-    public Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default)
-        => WriteReadAsync("api/config/" + Uri.EscapeDataString(request.Instance), request,
-            ControlJsonContext.Default.ConfigPatchRequest, ControlJsonContext.Default.ConfigResponse,
-            HttpMethod.Patch, HttpStatusCode.OK, cancellationToken);
 
     public Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default)
         => WriteReadAsync("api/instances", request, ControlJsonContext.Default.InstanceCreateRequest,

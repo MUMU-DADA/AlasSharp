@@ -25,15 +25,15 @@ public sealed class ControlServer
     private readonly int _port;
     private readonly string _token = RandomNumberGenerator.GetHexString(32);
 
-    public ControlServer(string root, string repo, string data, string tools,
+    public ControlServer(string root, string engineRoot, string instanceStore, string assets,
                          string? artifacts, string? workspace, int port, string? uiRoot = null)
     {
         if (port is < 1 or > 65535) throw new ArgumentException("port 必须在 1–65535 之间");
         _port = port;
         _ui = uiRoot is null ? null : new StaticUiFiles(uiRoot);
-        _workspace = new EngineControlWorkspace(root, repo, data, tools, artifacts, workspace);
-        _config = new ConfigWorkspace(repo);
-        _deploy = new DeploySettingsWorkspace(repo, _config);
+        _workspace = new EngineControlWorkspace(root, engineRoot, instanceStore, assets, artifacts, workspace);
+        _config = new ConfigWorkspace(engineRoot);
+        _deploy = new DeploySettingsWorkspace(engineRoot, _config);
     }
 
     public int Run() => RunAsync().GetAwaiter().GetResult();
@@ -117,18 +117,6 @@ public sealed class ControlServer
             if (HttpMethods.IsGet(request.Method) && path == "/api/instances")
             {
                 await Reply(context, 200, Instances(_workspace.Instances(_config)));
-                return;
-            }
-            if (HttpMethods.IsGet(request.Method) && path == "/api/schema")
-            {
-                string language = request.Query["language"].ToString();
-                var schema = _config.Schema(string.IsNullOrWhiteSpace(language) ? "zh-CN" : language);
-                await Reply(context, 200, new JsonObject
-                {
-                    ["menu"] = schema.Menu,
-                    ["args"] = schema.Args,
-                    ["translations"] = schema.Translations,
-                });
                 return;
             }
             if (HttpMethods.IsGet(request.Method) && path == "/api/settings")
@@ -225,18 +213,6 @@ public sealed class ControlServer
                 RequireToken(request);
                 var body = await ReadBody(request);
                 await Reply(context, 200, _workspace.ClearMeowfficer(RequiredString(body, "instance")));
-                return;
-            }
-            if (HttpMethods.IsPatch(request.Method) && TryInstancePath(path, "config", out configInstance))
-            {
-                RequireToken(request);
-                var body = await ReadBody(request);
-                string? revision = OptionalString(body, "revision");
-                if (body["changes"] is not JsonArray changes || changes.Count is < 1 or > 200)
-                    throw new ArgumentException("changes 必须包含 1 到 200 项");
-                var parsed = changes.Select(ParseChange).ToArray();
-                var updated = _config.Patch(configInstance, revision, parsed);
-                await Reply(context, 200, Config(updated));
                 return;
             }
             if (HttpMethods.IsDelete(request.Method) && TryInstancePath(path, "instances", out string? deleteInstance))
@@ -401,13 +377,6 @@ public sealed class ControlServer
         ["revision"] = config.Revision,
         ["values"] = config.Values,
     };
-
-    private static Alas.Engine.Runtime.ConfigChange ParseChange(JsonNode? node)
-    {
-        if (node is not JsonObject change) throw new ArgumentException("配置修改项必须是对象");
-        string path = RequiredString(change, "path");
-        return new Alas.Engine.Runtime.ConfigChange(path, change["value"]?.DeepClone());
-    }
 
     private static string RequiredString(JsonObject body, string key)
     {

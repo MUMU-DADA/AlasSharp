@@ -43,31 +43,6 @@ public sealed class EngineTaskEditorBackend(IAlasControlBackend backend) : ITask
         })
     };
 
-    public async Task<JsonObject> SaveAsync(string instance, string revision,
-        IReadOnlyList<TaskFieldChange> changes, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(instance);
-        var response = await _backend.PatchConfigAsync(new ConfigPatchRequest
-        {
-            Instance = instance,
-            Revision = revision,
-            Changes = changes.Select(change => new ConfigChange
-            {
-                Path = change.Path,
-                Value = change.Value?.DeepClone(),
-            }).ToArray(),
-        }, cancellationToken).ConfigureAwait(false);
-        return new JsonObject
-        {
-            ["instance"] = response.Instance,
-            ["revision"] = response.Revision,
-            ["values"] = response.Values.DeepClone(),
-        };
-    }
-
-    public Task RunAsync(string instance, string task, CancellationToken cancellationToken)
-        => RunQueueAsync(instance, task, new JsonObject(), cancellationToken);
-
 }
 
 /// <summary>Maps the shared report view to the Engine capability boundary.</summary>

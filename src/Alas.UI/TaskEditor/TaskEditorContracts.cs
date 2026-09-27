@@ -12,22 +12,8 @@ public interface ITaskEditorBackend
     /// <summary>Submit the same queue entry for action execution.</summary>
     Task RunQueueAsync(string instance, string kind, JsonObject input,
         CancellationToken cancellationToken)
-        => RunAsync(instance, kind, cancellationToken);
-
-    // Kept for the independent configuration editor checks.  The production
-    // Engine task page never calls these upstream-config methods.
-    Task<JsonObject> SaveAsync(string instance, string revision,
-        IReadOnlyList<TaskFieldChange> changes, CancellationToken cancellationToken);
-    Task RunAsync(string instance, string task, CancellationToken cancellationToken);
-    Task<ScriptValidation> ValidateScriptAsync(string instance, string task, string script,
-        CancellationToken cancellationToken)
-        => Task.FromException<ScriptValidation>(new NotSupportedException("Engine 任务不支持脚本字段"));
+        => Task.FromException(new NotSupportedException("此编辑器后端未接入 Engine 队列运行"));
 }
-
-public sealed record TaskFieldChange(string Path, JsonNode? Value);
-public sealed record ScriptDiagnostic(string Message, int? Line = null, int? Column = null,
-    string Severity = "error", string? Code = null);
-public sealed record ScriptValidation(bool Valid, IReadOnlyList<ScriptDiagnostic> Diagnostics, string Summary = "");
 
 public sealed record MeowfficerScoreReport(string Instance, string GeneratedAt, int Count,
     IReadOnlyList<MeowfficerCat> Cats);
@@ -51,14 +37,7 @@ public interface IMeowfficerReportBackend
     Task ClearAsync(string instance, CancellationToken cancellationToken);
 }
 
-/// <summary>A transport adapter maps a revision conflict to this exception, without retrying the write.</summary>
-public sealed class TaskEditorConflictException(JsonObject currentConfig)
-    : Exception("配置已在其他位置修改。请检查冲突并选择要保留的值。")
-{
-    public JsonObject CurrentConfig { get; } = (JsonObject)currentConfig.DeepClone();
-}
-
-public enum TaskFieldKind { Text, Number, Boolean, Select, MultiSelect, Multiline, DateTime, Password, Json, Yaml, Lua, Storage }
+public enum TaskFieldKind { Json }
 
 public sealed record TaskFieldOption(JsonNode? Value, string Label)
 {

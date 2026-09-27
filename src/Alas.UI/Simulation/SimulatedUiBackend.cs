@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
 using Alas.Contracts;
-using Alas.UI.TaskEditor;
 using Alas.UI.ViewModels;
 
 namespace Alas.UI.Simulation;
@@ -18,7 +17,6 @@ public sealed class SimulatedUiBackend : IAlasUiBackend
     private readonly Dictionary<string, JsonObject> _imports = new(StringComparer.Ordinal);
     private readonly JsonObject _deploy = new();
     private readonly HashSet<string> _startup = new(StringComparer.Ordinal);
-    private readonly SchemaResponse _schema = BuildSchema();
     private IReadOnlyList<InstanceCardViewModel> _cards = [];
     private JsonObject _queue = new();
     private string? _running;
@@ -120,40 +118,8 @@ public sealed class SimulatedUiBackend : IAlasUiBackend
             Status = item.Key == _running ? "running" : "stopped", CurrentTask = item.Key == _running ? _task : null,
         }).ToArray() }, cancellationToken);
 
-    public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
-        => Read(() => new SchemaResponse { Menu = (JsonObject)_schema.Menu.DeepClone(),
-            Args = (JsonObject)_schema.Args.DeepClone(), Translations = (JsonObject)_schema.Translations.DeepClone() }, cancellationToken);
-
     public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default)
         => Read(() => Config(instance), cancellationToken);
-
-    public Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default)
-        => Read(() =>
-        {
-            var sample = Get(request.Instance);
-            CheckRevision(request.Instance, request.Revision);
-            var updated = (JsonObject)sample.Values.DeepClone();
-            foreach (var change in request.Changes)
-            {
-                string[] path = change.Path.Split('.');
-                if (path.Length != 3 || updated[path[0]]?[path[1]] is not JsonObject group || !group.ContainsKey(path[2]))
-                    throw new ArgumentException("未知的模拟字段");
-                group[path[2]] = change.Value?.DeepClone();
-            }
-            sample.Values = updated; sample.Revision++;
-            Refresh();
-            return Config(request.Instance);
-        }, cancellationToken);
-
-    private void CheckRevision(string instance, string? revision)
-    {
-        if (revision != Get(instance).Version)
-        {
-            var config = Config(instance);
-            throw new TaskEditorConflictException(new JsonObject { ["instance"] = instance,
-                ["revision"] = config.Revision, ["values"] = config.Values });
-        }
-    }
 
     public Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default)
         => Read(() =>
@@ -175,6 +141,12 @@ public sealed class SimulatedUiBackend : IAlasUiBackend
             if (_running == request.Instance) throw new InvalidOperationException("请先停止模拟运行");
             _samples.Remove(request.Instance); _startup.Remove(request.Instance);
         }, cancellationToken);
+
+    private void CheckRevision(string instance, string revision)
+    {
+        if (revision != Get(instance).Version)
+            throw new InvalidOperationException($"模拟实例 {instance} 的配置版本已更新。");
+    }
 
     public Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default)
         => Read(() =>
@@ -266,40 +238,7 @@ public sealed class SimulatedUiBackend : IAlasUiBackend
             ["generatedAt"] = Epoch.ToString("O"), ["count"] = 0, ["cats"] = new JsonArray() }; }, cancellationToken);
     public Task<JsonObject> ClearMeowfficerAsync(string instance, CancellationToken cancellationToken = default)
         => Read(() => { Get(instance); return new JsonObject { ["cleared"] = true, ["simulation"] = true }; }, cancellationToken);
-    private static SchemaResponse BuildSchema()
-    {
-        var args = new JsonObject(); var menu = new JsonObject(); var translations = new JsonObject();
-        foreach (var (group, label, _, tasks, labels) in EngineTaskCatalog.Groups)
-        {
-            menu[group] = new JsonObject { ["page"] = "tool",
-                ["tasks"] = new JsonArray(tasks.Select(task => (JsonNode?)JsonValue.Create(task)).ToArray()) };
-            for (int i = 0; i < tasks.Length; i++)
-            {
-                args[tasks[i]] = JsonNode.Parse("""
-                    {"Engine":{"Input":{"type":"json","value":{}}}}
-                    """);
-                translations[$"Task.{tasks[i]}.name"] = labels[i] + "（模拟）";
-            }
-        }
-        translations["Engine._info.name"] = "Engine 输入";
-        translations["Engine.Input.name"] = "任务输入";
-        return new() { Menu = menu, Args = args, Translations = translations };
-    }
-
-    private JsonObject DefaultValues()
-    {
-        var values = new JsonObject();
-        foreach (var (task, groups) in _schema.Args)
-        {
-            var taskValues = new JsonObject(); values[task] = taskValues;
-            foreach (var (group, fields) in groups!.AsObject())
-            {
-                var groupValues = new JsonObject(); taskValues[group] = groupValues;
-                foreach (var (key, definition) in fields!.AsObject()) groupValues[key] = definition?["value"]?.DeepClone();
-            }
-        }
-        return values;
-    }
+    private static JsonObject DefaultValues() => new();
 
     public void Dispose()
     { _disposed = true; Changed = null; _samples.Clear(); _imports.Clear(); _cards = []; _deploy.Clear(); _startup.Clear(); }

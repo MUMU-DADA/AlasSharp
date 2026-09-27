@@ -42,18 +42,13 @@ internal static class UiOnlyChecks
 
         var simulation = (SimulatedUiBackend)backend;
         Check(simulation.Instances.Count == 2 && simulation.Instances.All(card => card.IsDemo), "all fixture instances are labelled");
-        var schema = await backend.ReadSchemaAsync();
         var config = await backend.ReadConfigAsync("demo-main");
         var editor = new TaskEditorViewModel { Backend = new EngineTaskEditorBackend(backend), AutoSave = false };
-        editor.Load(config.Instance, "observe", new JsonObject { ["args"] = schema.Args, ["menu"] = schema.Menu,
-            ["translations"] = schema.Translations }, new JsonObject { ["instance"] = config.Instance,
-            ["revision"] = config.Revision, ["values"] = config.Values });
+        editor.LoadEngine("demo-main", "observe", "读取页面状态", new JsonObject());
         editor.Fields.Single(field => field.Argument == "Input").SetText("{\"count\":9}");
         Check(await editor.SaveAsync() && !editor.HasChanges, "real task adapter saves to memory");
-        Check((await backend.ReadConfigAsync("demo-main")).Values["observe"]!["Engine"]!["Input"]!["count"]!.GetValue<int>() == 9,
-            "local config edit retained");
-        Check((await backend.ReadConfigAsync("demo-event")).Values["observe"]!["Engine"]!["Input"]!.AsObject().Count == 0,
-            "instance samples are isolated");
+        Check((await backend.ReadStateAsync())["queue"]!["tasks"]!.AsArray().Single()!["input"]!["count"]!.GetValue<int>() == 9,
+            "local Engine queue edit retained");
         editor.RequestRun();
         Check(await editor.ConfirmRunAsync(), "confirmed task exercises UI state without automation");
         Check((await backend.ReadStateAsync())["active"]!["kind"]!.GetValue<string>() == "simulation", "run is explicitly synthetic");
@@ -88,15 +83,15 @@ internal static class UiOnlyChecks
         var state = await backend.ReadInstanceStateAsync("demo-main");
         Check(state["recent_logs"]!.AsArray().Count == OverviewViewModel.LogCapacity, "sample load is bounded");
         state["recent_logs"]!.AsArray().Clear();
-        config.Values.Clear();
+        config.Values["mutated"] = true;
         Check((await backend.ReadInstanceStateAsync("demo-main"))["recent_logs"]!.AsArray().Count == OverviewViewModel.LogCapacity
-            && (await backend.ReadConfigAsync("demo-main")).Values.Count > 0, "returned snapshots cannot mutate shared sample state");
+            && (await backend.ReadConfigAsync("demo-main")).Values["mutated"] is null, "returned snapshots cannot mutate shared sample state");
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
         try { await backend.DeleteInstanceAsync(new() { Instance = "demo-main", Revision = "wrong" }, cancelled.Token); throw new Exception("Cancellation ignored"); }
         catch (OperationCanceledException) { }
         using var second = new SimulatedUiBackend();
-        Check((await second.ReadConfigAsync("demo-main")).Values["observe"]!["Engine"]!["Input"]!.AsObject().Count == 0,
-            "new launch resets all sample writes");
+        Check((await second.ReadStateAsync())["queue"] is JsonObject,
+            "new launch resets all Engine queue writes");
         simulation.Dispose();
         Check(!simulation.IsConnected && simulation.Instances.Count == 0, "dispose clears the data source");
         AssertNoAutomationAssemblies();

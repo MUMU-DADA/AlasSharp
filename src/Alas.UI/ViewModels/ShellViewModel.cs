@@ -450,7 +450,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         var expanded = TaskGroups.Where(group => group.IsExpanded).Select(group => group.Key).ToHashSet();
         TaskGroups.Clear();
         if (!HasInstance) return;
-        // 分组与任务来自 Engine 已注册 runner；UI 不再复制上游 menu.json。
+        // 分组与任务来自 Engine 已注册 runner；UI 不维护第二份任务目录。
         foreach (var (group, groupLabel, icon, tasks, labels) in EngineTaskCatalog.Groups)
         {
             var entries = new List<TaskEntry>();

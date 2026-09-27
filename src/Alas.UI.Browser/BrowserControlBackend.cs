@@ -86,17 +86,11 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
         catch (ControlApiException error) when (error.StatusCode == HttpStatusCode.NotFound) { return null; }
     }
 
-    public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
-        => _client.GetSchemaAsync(language, cancellationToken);
-
     public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default)
         => _client.GetConfigAsync(instance, cancellationToken);
 
     public Task<InstanceListResponse> ReadInstancesAsync(CancellationToken cancellationToken = default)
         => _client.ListInstancesAsync(cancellationToken);
-
-    public Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default)
-        => _client.PatchConfigAsync(request, cancellationToken);
 
     public Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default)
         => _client.CreateInstanceAsync(request, cancellationToken);

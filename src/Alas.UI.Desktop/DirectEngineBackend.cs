@@ -3,7 +3,6 @@ using System.Text.Json.Nodes;
 using Alas.Contracts;
 using Alas.Engine.Runtime;
 using Alas.UI.ViewModels;
-using RuntimeConfigChange = Alas.Engine.Runtime.ConfigChange;
 
 namespace Alas.UI.Desktop;
 
@@ -24,17 +23,17 @@ internal sealed partial class DirectEngineBackend : IAlasUiBackend
     public DirectEngineBackend()
     {
         string? root = FindProjectRoot();
-        string? repo = Environment.GetEnvironmentVariable("ALAS_REPO");
-        if (string.IsNullOrWhiteSpace(repo))
-            repo = root is null ? null : Path.Combine(root, ".runtime", "engine");
-        if (root is null || repo is null || !Directory.Exists(repo)) return;
+        string? engineRoot = Environment.GetEnvironmentVariable("ALAS_ENGINE_ROOT");
+        if (string.IsNullOrWhiteSpace(engineRoot))
+            engineRoot = root is null ? null : Path.Combine(root, ".runtime", "engine");
+        if (root is null || engineRoot is null || !Directory.Exists(engineRoot)) return;
 
         try
         {
-            _configs = new ConfigWorkspace(repo);
-            _deploy = new DeploySettingsWorkspace(repo, _configs);
-            _workspace = new EngineControlWorkspace(root, repo, Path.Combine(root, "data"),
-                Path.Combine(root, "tools"), Path.Combine(root, ".runtime", "control", "runs"),
+            _configs = new ConfigWorkspace(engineRoot);
+            _deploy = new DeploySettingsWorkspace(engineRoot, _configs);
+            _workspace = new EngineControlWorkspace(root, engineRoot, Path.Combine(root, "data"),
+                Path.Combine(root, "assets"), Path.Combine(root, ".runtime", "control", "runs"),
                 Path.Combine(root, ".runtime", "control"));
             Refresh();
         }
@@ -67,23 +66,8 @@ internal sealed partial class DirectEngineBackend : IAlasUiBackend
     public Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default)
         => Task.Run(() => WorkspaceOrThrow().Report(stamp), cancellationToken);
 
-    public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
-        => Task.Run(() =>
-        {
-            ConfigSchema schema = ConfigsOrThrow().Schema(language);
-            return new SchemaResponse { Menu = schema.Menu, Args = schema.Args, Translations = schema.Translations };
-        }, cancellationToken);
-
     public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default)
         => Task.Run(() => ToResponse(ConfigsOrThrow().Get(instance)), cancellationToken);
-
-    public Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default)
-        => Task.Run(() =>
-        {
-            ArgumentNullException.ThrowIfNull(request);
-            var changes = request.Changes.Select(change => new RuntimeConfigChange(change.Path, change.Value?.DeepClone())).ToArray();
-            return ToResponse(ConfigsOrThrow().Patch(request.Instance, request.Revision, changes));
-        }, cancellationToken);
 
     public Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default)
         => Task.Run(() =>

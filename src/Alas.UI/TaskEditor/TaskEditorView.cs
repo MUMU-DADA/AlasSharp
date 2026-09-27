@@ -181,52 +181,12 @@ public sealed class TaskEditorView : UserControl, IDisposable
         var controls = new StackPanel { Spacing = 6 };
         var editor = CreateInput(field);
         controls.Children.Add(editor);
-        Action? refreshFieldActions = null;
-        if (field.Kind == TaskFieldKind.Lua)
-        {
-            var check = Button("检查脚本", "Check_" + field.Path);
-            var apply = Button("应用脚本", "Apply_" + field.Path, primary: true);
-            check.Click += async (_, _) => await _model.CheckScriptAsync(field);
-            apply.Click += async (_, _) => await _model.ApplyScriptAsync(field);
-            var scriptStatus = Text("", 12);
-            var diagnostics = Text("", 12);
-            Resource(diagnostics, TextBlock.ForegroundProperty, "AlasDangerBrush");
-            controls.Children.Add(new WrapPanel { Children = { check, apply } }); controls.Children.Add(scriptStatus); controls.Children.Add(diagnostics);
-            refreshFieldActions = () =>
-            {
-                check.IsEnabled = !field.ReadOnly && !field.IsChecking && !_model.IsBusy && _model.Backend is not null;
-                apply.IsEnabled = !field.ReadOnly && !field.IsChecking && !_model.IsBusy && field.ScriptValidated && _model.Backend is not null;
-                scriptStatus.Text = field.ScriptStatus;
-                diagnostics.Text = string.Join(Environment.NewLine, field.Diagnostics.Select(d =>
-                    (d.Line is { } line ? $"{line}:{d.Column ?? 1} " : "") + $"{d.Severity}: {d.Message}"));
-                diagnostics.IsVisible = field.Diagnostics.Count > 0;
-            };
-            _refreshFields.Add(refreshFieldActions);
-        }
-        if (field.CanClearStorage)
-        {
-            var clear = Button("清除记录", "Clear_" + field.Path);
-            var approve = Button("确认清除", "ClearConfirm_" + field.Path);
-            var cancel = Button("取消", "ClearCancel_" + field.Path);
-            var confirmation = new WrapPanel { IsVisible = false, Children = { approve, cancel } };
-            clear.Click += (_, _) => confirmation.IsVisible = true;
-            cancel.Click += (_, _) => confirmation.IsVisible = false;
-            approve.Click += (_, _) => { field.ClearStorage(); confirmation.IsVisible = false; };
-            controls.Children.Add(clear); controls.Children.Add(confirmation);
-        }
         var error = Text("", 12);
         Resource(error, TextBlock.ForegroundProperty, "AlasDangerBrush");
         controls.Children.Add(error);
         var state = Text("", 11);
         Resource(state, TextBlock.ForegroundProperty, "AlasMutedBrush");
         controls.Children.Add(state);
-        var remote = Text("", 12);
-        var mine = Button("保留我的修改", "KeepMine_" + field.Path);
-        var theirs = Button("采用远端值", "KeepRemote_" + field.Path);
-        var resolution = new StackPanel { Spacing = 6, Children = { remote, new WrapPanel { Children = { mine, theirs } } } };
-        mine.Click += (_, _) => field.ResolveConflict(true);
-        theirs.Click += (_, _) => field.ResolveConflict(false);
-        controls.Children.Add(resolution);
         var grid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions(field.IsMultiline ? "*" : "*,*"),
@@ -263,13 +223,10 @@ public sealed class TaskEditorView : UserControl, IDisposable
         {
             error.Text = field.Error; error.IsVisible = field.Error.Length > 0;
             state.Text = field.IsDirty ? "尚未保存" : ""; state.IsVisible = field.IsDirty;
-            resolution.IsVisible = field.HasConflict;
-            remote.Text = "远端值：" + (field.Kind == TaskFieldKind.Password ? "••••••" : field.RemoteText);
         }
         PropertyChangedEventHandler handler = (_, _) =>
         {
             Update();
-            refreshFieldActions?.Invoke();
             if (row.IsVisible != _model.Matches(field)) RefreshSearch();
         };
         field.PropertyChanged += handler; _detach.Add(() => field.PropertyChanged -= handler);
@@ -282,57 +239,15 @@ public sealed class TaskEditorView : UserControl, IDisposable
         Control input;
         Action refresh;
         var changing = false;
-        if (field.Kind == TaskFieldKind.Boolean)
+        var text = new TextBox
         {
-            var toggle = new ToggleSwitch { IsEnabled = !field.ReadOnly, OnContent = "开", OffContent = "关" };
-            toggle.IsCheckedChanged += (_, _) => { if (!changing) field.SetBoolean(toggle.IsChecked == true); };
-            refresh = () => { changing = true; toggle.IsChecked = field.BoolValue; changing = false; };
-            input = toggle;
-        }
-        else if (field.Kind == TaskFieldKind.Select)
-        {
-            var options = new List<TaskFieldOption>(field.Options);
-            var select = new ComboBox { ItemsSource = options, HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = !field.ReadOnly };
-            select.SelectionChanged += (_, _) => { if (!changing && select.SelectedItem is TaskFieldOption option) field.SelectOption(option); };
-            refresh = () =>
-            {
-                changing = true;
-                var selected = options.FirstOrDefault(option => System.Text.Json.Nodes.JsonNode.DeepEquals(option.Value, field.Value));
-                if (selected is null)
-                {
-                    selected = new TaskFieldOption(field.Value, field.Text.Length == 0 ? "未设置" : field.Text);
-                    options = [selected, .. field.Options]; select.ItemsSource = options;
-                }
-                select.SelectedItem = selected; changing = false;
-            };
-            input = select;
-        }
-        else if (field.Kind == TaskFieldKind.MultiSelect)
-        {
-            var panel = new WrapPanel();
-            var boxes = field.Options.Select(option =>
-            {
-                var box = new CheckBox { Content = option.Label, IsEnabled = !field.ReadOnly, Margin = new Thickness(0, 0, 12, 4) };
-                box.IsCheckedChanged += (_, _) => { if (!changing) field.ToggleOption(option, box.IsChecked == true); };
-                panel.Children.Add(box); return (option, box);
-            }).ToArray();
-            refresh = () => { changing = true; foreach (var (option, box) in boxes) box.IsChecked = field.IsSelected(option); changing = false; };
-            input = panel;
-        }
-        else
-        {
-            var text = new TextBox
-            {
-                IsReadOnly = field.ReadOnly, AcceptsReturn = field.IsMultiline, TextWrapping = TextWrapping.Wrap,
-                MinHeight = field.IsMultiline ? 130 : 36, MaxHeight = field.IsMultiline ? 520 : double.PositiveInfinity,
-                PasswordChar = field.Kind == TaskFieldKind.Password ? '●' : '\0', HorizontalAlignment = HorizontalAlignment.Stretch,
-            };
-            text.TextChanged += (_, _) => { if (!changing && text.Text != field.Text) field.SetText(text.Text); };
-            refresh = () => { changing = true; if (text.Text != field.Text) text.Text = field.Text; changing = false; };
-            if (field.Kind is TaskFieldKind.Yaml or TaskFieldKind.Lua)
-                ToolTip.SetTip(text, field.Kind == TaskFieldKind.Yaml ? "YAML 文本；保留原始缩进，保存时由服务端校验" : "受限 Lua；服务端检查通过后才能保存");
-            input = text;
-        }
+            IsReadOnly = field.ReadOnly, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
+            MinHeight = 130, MaxHeight = 520,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        text.TextChanged += (_, _) => { if (!changing && text.Text != field.Text) field.SetText(text.Text); };
+        refresh = () => { changing = true; if (text.Text != field.Text) text.Text = field.Text; changing = false; };
+        input = text;
         input.Name = "Field_" + field.Path;
         AutomationProperties.SetName(input, field.Label);
         AutomationProperties.SetHelpText(input, field.Help);

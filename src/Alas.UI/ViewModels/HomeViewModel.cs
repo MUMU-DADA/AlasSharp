@@ -64,9 +64,7 @@ public sealed class DisconnectedInstanceSource : IAlasUiBackend
     public Task<InstanceListResponse> ReadInstancesAsync(CancellationToken cancellationToken = default) => Task.FromException<InstanceListResponse>(Unavailable());
     public Task<JsonObject> ReadInstanceStateAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<JsonObject>(Unavailable());
     public Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default) => Task.FromException<JsonObject?>(Unavailable());
-    public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default) => Task.FromException<SchemaResponse>(Unavailable());
     public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<ConfigResponse>(Unavailable());
-    public Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default) => Task.FromException<ConfigResponse>(Unavailable());
     public Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default) => Task.FromException<ConfigResponse>(Unavailable());
     public Task DeleteInstanceAsync(InstanceDeleteRequest request, CancellationToken cancellationToken = default) => Task.FromException(Unavailable());
     public Task<InstanceImportSource> ImportInstanceAsync(InstanceImportRequest request, CancellationToken cancellationToken = default) => Task.FromException<InstanceImportSource>(Unavailable());

@@ -271,12 +271,8 @@ internal static class ControlUiBackendChecks
         public Task<JsonObject> ReadInstanceStateAsync(string instance, CancellationToken cancellationToken = default)
             => InstanceRead?.Invoke(instance) ?? ReadStateAsync(cancellationToken);
         public Task<JsonObject?> ReadReportAsync(string stamp, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<SchemaResponse> ReadSchemaAsync(string language = "zh-CN", CancellationToken cancellationToken = default) =>
-            Task.FromResult(new SchemaResponse { Menu = [], Args = [],
-                Translations = new JsonObject { ["Emulator.ServerName.en"] = "国际服" } });
         public Task<ConfigResponse> ReadConfigAsync(string instance, CancellationToken cancellationToken = default) =>
             Task.FromResult(new ConfigResponse { Instance = instance, Revision = "rev-" + instance, Values = (JsonObject)ConfigValues.DeepClone() });
-        public Task<ConfigResponse> PatchConfigAsync(ConfigPatchRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<ConfigResponse> CreateInstanceAsync(InstanceCreateRequest request, CancellationToken cancellationToken = default)
         { Created = request; return ReadConfigAsync(request.Instance.Trim(), cancellationToken); }
         public Task DeleteInstanceAsync(InstanceDeleteRequest request, CancellationToken cancellationToken = default)

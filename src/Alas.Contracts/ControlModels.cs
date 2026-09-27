@@ -108,26 +108,6 @@ public sealed record ConfigResponse
     public required JsonObject Values { get; init; }
 }
 
-public sealed record SchemaResponse
-{
-    public required JsonObject Menu { get; init; }
-    public required JsonObject Args { get; init; }
-    public required JsonObject Translations { get; init; }
-}
-
-public sealed record ConfigChange
-{
-    public required string Path { get; init; }
-    public required JsonNode? Value { get; init; }
-}
-
-public sealed record ConfigPatchRequest
-{
-    public required string Instance { get; init; }
-    public string? Revision { get; init; }
-    public required IReadOnlyList<ConfigChange> Changes { get; init; }
-}
-
 public sealed record InstanceCreateRequest
 {
     public required string Instance { get; init; }
@@ -219,9 +199,6 @@ public sealed record StartupRunResponse
 [JsonSerializable(typeof(InstanceSummary))]
 [JsonSerializable(typeof(InstanceListResponse))]
 [JsonSerializable(typeof(ConfigResponse))]
-[JsonSerializable(typeof(SchemaResponse))]
-[JsonSerializable(typeof(ConfigPatchRequest))]
-[JsonSerializable(typeof(ConfigChange))]
 [JsonSerializable(typeof(InstanceCreateRequest))]
 [JsonSerializable(typeof(InstanceDeleteRequest))]
 [JsonSerializable(typeof(InstanceImportRequest))]
@@ -230,6 +207,5 @@ public sealed record StartupRunResponse
 [JsonSerializable(typeof(StatisticsRequest))]
 [JsonSerializable(typeof(MeowfficerRequest))]
 [JsonSerializable(typeof(IReadOnlyList<InstanceSummary>))]
-[JsonSerializable(typeof(IReadOnlyList<ConfigChange>))]
 [JsonSerializable(typeof(JsonObject))]
 public partial class ControlJsonContext : JsonSerializerContext;
