@@ -13,7 +13,7 @@ internal static class CampaignCommandChecks
         Check(CampaignCommand.NormalizeRuleId("campaign_1_3") == "campaign_main/campaign_1_3");
 
         var options = new CampaignCommandOptions(
-            ["campaign.campaign_main.campaign_1_1", "campaign/campaign_main/campaign_1_2.py", "campaign_main/campaign_9_1"],
+            ["campaign.campaign_main.campaign_1_1", "campaign/campaign_main/campaign_10_2.py", "campaign_main/campaign_99_1"],
             "missing-adb", "offline", GameServer.Cn, "missing-assets", "missing-python", artifacts,
             ModelDirectory: "missing-models", DryRun: true, ContinueOnFailure: true,
             Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead,

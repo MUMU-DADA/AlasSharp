@@ -157,8 +157,9 @@ def main():
 
         # Exercise actual native focus/edge loops, map_swipe, displacement updates and gesture optimization.
         controls = []
-        for action, preset, reverse, skip in itertools.product(['focus','edges','center'],[None,[1,-1]],[False,True],[False,True]):
-            c = object.__new__(Camera); c.config=ManualConfig(); c.config.MAP_ENSURE_EDGE_INSIGHT_CORNER='bottom-left'
+        for action, preset, reverse, skip, corner, draw in itertools.product(['focus','edges','center'],[None,[1,-1]],[False,True],[False,True],
+                ['bottom-left', 'bottom', 'upper', 'right', ''], [.25, .75]):
+            c = object.__new__(Camera); c.config=ManualConfig(); c.config.MAP_ENSURE_EDGE_INSIGHT_CORNER=corner
             c.config.MAP_SWIPE_OPTIMIZE=False; c.config.DEVICE_CONTROL_METHOD='adb'; c.config.MAP_SWIPE_PREDICT=False
             c.map=SimpleNamespace(shape=(8,6)); c.camera=(4,3)
             c._prev_view=c._prev_swipe=None; trace=[]; captures=[]
@@ -183,10 +184,15 @@ def main():
                     c.view=geometry(layout('control',columns=3,rows=3,screen=(262,227.5)))
                     Camera._update_view_data(c)
                 c.update=update_center
-            if action=='focus': value=Camera.focus_to(c,(6,5))
-            elif action=='center': value=Camera.focus_to_grid_center(c,0)
-            else: value=Camera.ensure_edge_insight(c,preset=preset,reverse=reverse,skip_first_update=skip)
-            controls.append(dict(sample=dict(action=action,preset=preset,reverse=reverse,skip=skip),
+            original_uniform = np.random.uniform
+            np.random.uniform = lambda: draw
+            try:
+                if action=='focus': value=Camera.focus_to(c,(6,5))
+                elif action=='center': value=Camera.focus_to_grid_center(c,0)
+                else: value=Camera.ensure_edge_insight(c,preset=preset,reverse=reverse,skip_first_update=skip)
+            finally:
+                np.random.uniform = original_uniform
+            controls.append(dict(sample=dict(action=action,preset=preset,reverse=reverse,skip=skip,corner=corner,draw=draw),
                                  expected=dict(trace=trace,captures=len(captures),position=np.add(c.camera,[1,1]),record=value)))
 
         # Full native swipe optimization from map/global flags and current view predictions.

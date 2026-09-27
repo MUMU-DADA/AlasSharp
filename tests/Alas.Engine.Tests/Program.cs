@@ -233,6 +233,20 @@ try
         await CampaignMapCombatChecks.MainChapterChecksAsync(Path.GetFullPath(chapterPython), Path.GetFullPath(chapterUpstream), folder);
         return 0;
     }
+    if (args is ["--chapter-camera", var cameraPython, var cameraUpstream, var cameraArtifacts])
+    {
+        string folder = Path.GetFullPath(cameraArtifacts);
+        Directory.CreateDirectory(folder);
+        await DetectorChecks.ChapterStoredCameraAsync(Path.GetFullPath(cameraPython), Path.GetFullPath(cameraUpstream), folder);
+        return 0;
+    }
+    if (args is ["--chapter-ten", var tenPython, var tenUpstream, var tenArtifacts])
+    {
+        string folder = Path.GetFullPath(tenArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.ChapterTenChecksAsync(Path.GetFullPath(tenPython), Path.GetFullPath(tenUpstream), folder);
+        return 0;
+    }
     if (args is ["--chapter-nine", var ninePython, var nineUpstream, var nineArtifacts])
     {
         string folder = Path.GetFullPath(nineArtifacts);
@@ -549,6 +563,19 @@ try
             foreach (int count in new[] { 0, 5 })
             foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
                 cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation, SecondFleet: "D5"));
+        }
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterTenRule)
+        {
+            foreach (int count in new[] { 0, 5, 6, 7, 15, 16 })
+            foreach (int fleet2 in new[] { 0, 2 })
+            foreach (int bossFleet in new[] { 1, 2 })
+            foreach (bool accessible in new[] { false, true })
+            foreach (string? yes in new[] { null, "fleet_2_push_forward", "fleet_2_step_on", "clear_roadblocks", "clear_potential_roadblocks" })
+                cases.Add(new Scenario(id, BattleCount: count, Fleet2: fleet2, BossFleet: bossFleet, Accessible: accessible, TrueOperation: yes));
+            foreach (string operation in new[] { "fleet_2_push_forward", "fleet_2_step_on", "clear_roadblocks", "clear_potential_roadblocks", "clear_all_mystery", "clear_boss" })
+            foreach (int count in new[] { 0, 6 })
+            foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
+                cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation, Fleet2: 2));
         }
         if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.Campaign72)
             foreach (int count in new[] { 0, 4, 5, 6 })

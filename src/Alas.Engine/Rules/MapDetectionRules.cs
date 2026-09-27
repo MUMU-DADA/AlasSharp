@@ -59,7 +59,7 @@ public sealed record MapDetectionRules
             CoincidentEncourage = overrides.CoincidentEncourage ?? CoincidentEncourage,
             MidHorizontal = overrides.MidHorizontal ?? MidHorizontal,
             MidVertical = overrides.MidVertical ?? MidVertical,
-            Storage = overrides.Storage ?? Storage };
+            Storage = overrides.Storage ?? Storage, Backend = overrides.Backend ?? Backend };
     }
 
     public void Validate()

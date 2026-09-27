@@ -176,11 +176,61 @@ internal static class DetectorChecks
         await SessionAsync(python, upstream, artifacts, positive);
         await QueueAsync(python, upstream, artifacts, positive);
         await InputChecksAsync();
+        await ChapterStoredCameraAsync(python, upstream, artifacts);
         await File.WriteAllTextAsync(Path.Combine(artifacts, "csharp-summary.json"), JsonSerializer.Serialize(new
         { calibrations = 90, swipes = 180, fallbacks = reference["fallbacks"]!.AsArray().Count, warps = reference["warps"]!.AsArray().Count,
             perspectives, detections, negative, elapsed_ms = timings, saved_frames = frames.Length,
             evidence = "Offline image replay only; no real-device actions or sortie settlement" }));
         Console.WriteLine($"Grid detector: 90 calibrations/edges; 180 native swipe placements; {reference["fallbacks"]!.AsArray().Count} fallback traces; {perspectives} perspective fits; {detections} complete views and {negative} expected failures; {frames.Length} saved input frames. Session screenshot/CV/ADB replay passed. No live device or settlement evidence.");
+    }
+
+    public static async Task ChapterStoredCameraAsync(string python, string upstream, string artifacts)
+    {
+        string output = Path.Combine(artifacts, "chapter-camera.json");
+        var run = await new ProcessRunner().RunAsync(python,
+            [Path.Combine(AppContext.BaseDirectory, "native_chapter_camera_reference.py"), upstream, output], TimeSpan.FromMinutes(1));
+        Check(run.ExitCode == 0, "Native stored chapter geometry failed: " + run.Error);
+        string? previousFixture = Environment.GetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE");
+        string? previousFailure = Environment.GetEnvironmentVariable("ALAS_TEST_MAP_SWIPE_FAIL");
+        try
+        {
+            foreach (var entry in JsonNode.Parse(await File.ReadAllTextAsync(output))!.AsArray())
+            {
+                var expected = entry!;
+                var rule = RuleCatalog.Create(expected["id"]!.GetValue<string>());
+                string fixture = Path.Combine(artifacts, expected["image"]!.GetValue<string>());
+                Environment.SetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE", fixture);
+                Environment.SetEnvironmentVariable("ALAS_TEST_MAP_SWIPE_FAIL", "1");
+                int before = File.Exists(fixture + ".actions") ? File.ReadAllLines(fixture + ".actions").Length : 0;
+                string executable = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Alas.Engine.Tests.exe" : "Alas.Engine.Tests");
+                await using var session = new EngineSession(new(executable, "offline-map", GameServer.Cn, Path.Combine(upstream, "assets"), python,
+                    "org.example.game", AllowActions: true));
+                var map = new CampaignState(new MapDefinition("T20", string.Join('\n', Enumerable.Repeat(string.Join(' ', Enumerable.Repeat("--", 20)), 20)), ["J10"], [], []));
+                var camera = (MapCamera)await ((ICampaignInMapHost)session).CreateCameraAsync(map, rule.Configure(new()), default);
+                var geometry = camera.View.Geometry;
+                Grids(geometry.Grids, expected["grids"]!, "Actual chapter camera factory " + rule.Id);
+                Check(geometry.Center == new ViewCell(I(expected["center"]![0]!), I(expected["center"]![1]!)), "Stored chapter center differs");
+                Near(geometry.CenterOffset, expected["offset"]!, "Stored chapter offset");
+                Near(geometry.SwipeBase, expected["swipe"]!, "Stored chapter swipe scale");
+                Check(geometry.Edges == default && camera.Position == new Cell(10, 10), "Synthetic stored view acquired phantom edges");
+                bool failed = false;
+                try { await camera.EnsureEdgesAsync(true, default); }
+                catch (IOException) { failed = true; }
+                var actions = File.ReadAllLines(fixture + ".actions");
+                Check(failed && actions.Length == before + 1, "Stored chapter edge recovery did not stop at its first synthetic swipe");
+                var action = JsonNode.Parse(actions[^1])!.AsArray().Select(item => item!.GetValue<string>()).ToArray();
+                int dx = int.Parse(action[5]) - int.Parse(action[3]), dy = int.Parse(action[6]) - int.Parse(action[4]);
+                Check(action[2] == "swipe" && expected["gestures"]!.AsArray().Any(gesture =>
+                    dx == (int)Math.Round(D(gesture![0]!)) && dy == (int)Math.Round(D(gesture[1]!))),
+                    "Factory edge direction/calibrated gesture differs from native chapter camera");
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE", previousFixture);
+            Environment.SetEnvironmentVariable("ALAS_TEST_MAP_SWIPE_FAIL", previousFailure);
+        }
+        Console.WriteLine("Stored chapter camera: native 9-1/10-2 projected lattice, complete geometry and bottom-edge first ADB gesture passed through actual EngineSession/CV factory; offline only.");
     }
 
     private sealed class ScriptedFeatures(JsonNode sample) : IGridFeatureVision
@@ -342,7 +392,7 @@ internal static class DetectorChecks
             }
             Check(success.Tasks[1].Evidence!["frame"]!.GetValue<long>() > success.Tasks[0].Evidence!["frame"]!.GetValue<long>(), "Map tasks did not share one session");
             Check(!File.Exists(fixture + ".actions"), "Read-only observation attempted a gesture");
-            var invalid = await queue.RunAsync([new("missing", "map_observe", new JsonObject { ["campaign"] = "campaign_main/campaign_10_1" })],
+            var invalid = await queue.RunAsync([new("missing", "map_observe", new JsonObject { ["campaign"] = "campaign_main/campaign_99_1" })],
                 options with { Python = "missing", Adb = "missing" }, new(artifacts));
             Check(invalid.Failed && invalid.Tasks[0] is { Outcome: TaskOutcome.Refused, Reason: "NotSupportedException" }, "Unported campaign was executed");
             Environment.SetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE", Path.Combine(artifacts, "frame-1.png"));

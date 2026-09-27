@@ -168,6 +168,8 @@ internal static partial class CampaignMapCombatChecks
                 actual["MAP_ENSURE_EDGE_INSIGHT_CORNER"] = new MapCameraRules().WithChapter(config.SwipeMultipliers, config.MapEdgeCorner).EdgeCorner;
                 actual["MAP_HAS_MYSTERY"] = config.HasMystery;
             }
+            if (expected.AsObject().ContainsKey("DETECTION_BACKEND"))
+                actual!["DETECTION_BACKEND"] = detector.Backend.ToString().ToLowerInvariant();
             Check(JsonNode.DeepEquals(actual, expected), "Inherited chapter config differs: " + rule.Id + ": " + actual);
         }
     }
@@ -197,7 +199,7 @@ internal static partial class CampaignMapCombatChecks
                     new(new(target.Location.Column - position.Column, target.Location.Row - position.Row),
                         boss && mode != MapScanMode.Carrier ? new(IsBoss: true) : new(IsEnemy: true, EnemyScale: 1)) };
                 int pendingMysteries = rule.Map.Waves.Where(wave => wave.Battle <= state.BattleCount).Sum(wave => wave.Mystery) - state.MysteryCount;
-                if ((carrier || rule is Alas.Engine.Rules.Main.ChapterSevenRule or Alas.Engine.Rules.Main.ChapterEightRule or Alas.Engine.Rules.Main.ChapterNineRule) && pendingMysteries > 0)
+                if ((carrier || rule is Alas.Engine.Rules.Main.ChapterSevenRule or Alas.Engine.Rules.Main.ChapterEightRule or Alas.Engine.Rules.Main.ChapterNineRule or Alas.Engine.Rules.Main.ChapterTenRule) && pendingMysteries > 0)
                 {
                     foreach (var mystery in shadow.Cells.Where(cell => cell.MayMystery && cell.Location != start).Take(pendingMysteries))
                         observations.Add(new(new(mystery.Location.Column - position.Column, mystery.Location.Row - position.Row), new(IsMystery: true)));

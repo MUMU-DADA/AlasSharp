@@ -415,6 +415,10 @@ internal static partial class MapViewChecks
         public ValueTask SwipeAsync(MapSwipeGesture gesture, CancellationToken token)
         { token.ThrowIfCancellationRequested(); Gestures.Add(gesture); if (Fail) throw new IOException("synthetic gesture failure"); return ValueTask.CompletedTask; }
     }
+    private sealed class DirectionRandom(double draw) : Random
+    {
+        public override double NextDouble() => draw;
+    }
     private static CampaignState Map() => new(new MapDefinition("I7", string.Join('\n', Enumerable.Repeat("-- -- -- -- -- -- -- -- --", 7)), [], [], []));
     private static async Task ControlAsync(JsonNode entry, ScreenFrame frame, GridRecognition recognition)
     {
@@ -426,7 +430,8 @@ internal static partial class MapViewChecks
         var source = new Source(i => new(frame with { Sequence = i + 1 }, Regular(center, edge ? new(Left: i >= 1, Lower: i >= 2) : default)), clock);
         var input = new Input();
         var camera = new MapCamera(Map(), new(5, 4), old, source, input, recognition, new(new FixedEvidence(null)),
-            new() { Predict = false, Optimize = false, EdgeCorner = "bottom-left" }, clock: clock);
+            new() { Predict = false, Optimize = false, EdgeCorner = s["corner"]!.GetValue<string>() },
+            clock: clock, random: new DirectionRandom(D(s["draw"]!)));
         IReadOnlyList<ViewCell>? record = null;
         if (edge) record = await camera.EnsureEdgesAsync(B(s["skip"]!), B(s["reverse"]!), s["preset"] is { } preset ? Cell(preset) : null, new(3, 2));
         else if (action == "focus") await camera.FocusAsync(new(7, 6), default);

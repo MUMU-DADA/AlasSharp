@@ -17,6 +17,7 @@ public sealed record MapVisionOverrides(PeakParameters InternalPeaks, PeakParame
     public NumberRange? MidHorizontal { get; init; }
     public NumberRange? MidVertical { get; init; }
     public HomographyStorage? Storage { get; init; }
+    public GridDetectionBackend? Backend { get; init; }
 }
 
 public enum EnemyScalePriority { Default, StrongestFirst, WeakestFirst }
