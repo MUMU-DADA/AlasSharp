@@ -30,7 +30,7 @@ internal static class CampaignMapCombatChecks
         var camera = new Camera(state);
         var combat = Create(state, new(), camera);
         Check(await combat.ClearEnemyAsync() && camera.Taps == 2 && camera.Scans == 1 &&
-            state.BattleCount == 1 && state.AmmoCount == 2 && state.Fleet1Location == new Cell(3, 2) &&
+            state.BattleCount == 1 && state.AmmoCount == 3 && state.FleetAmmo == 4 && state.Fleet1Location == new Cell(3, 2) &&
             !state[new(3, 2)].IsEnemy && combat.StageReturn is null,
             "Enemy clear did not follow route nodes, commit one battle, then scan");
         Check(!await combat.ClearEnemyAsync() && camera.Taps == 2,
@@ -45,7 +45,7 @@ internal static class CampaignMapCombatChecks
         combat = Create(state, new(), camera);
         Check(!await combat.ClearMysteriesAsync() && camera.Taps == 2 && state.MysteryCount == 2 &&
             state.Fleet1Location == new Cell(3, 1) && !state.Cells.Any(grid => grid.IsMystery) &&
-            state.BattleCount == 0 && state.AmmoCount == 3 && !await combat.ClearMysteriesAsync(),
+            state.BattleCount == 0 && state.AmmoCount == 3 && state.FleetAmmo == 5 && !await combat.ClearMysteriesAsync(),
             "Accessible mysteries were not picked up in cost order without changing battle state");
 
         map = new MapDefinition("B2", "SP ME\nME --", ["A1"], [], [new SpawnWave(0, Enemy: 2)]);
@@ -157,7 +157,7 @@ internal static class CampaignMapCombatChecks
             (state, config) => new InMapCampaignOperations(mysteryHost, state, config, default));
         Check(await mysteryExecution.RunAsync() == CampaignLoopExit.Ended &&
             mysteryHost.Camera is { Taps: 3, Scans: 2 } &&
-            mysteryExecution.Context.State is { MysteryCount: 1, BattleCount: 1, AmmoCount: 2 } &&
+            mysteryExecution.Context.State is { MysteryCount: 1, BattleCount: 1, AmmoCount: 3, FleetAmmo: 4 } &&
             !mysteryExecution.Context.State.Cells.Any(grid => grid.IsMystery),
             "Compiled rule did not pick up mystery before combat and boss return in one C# sortie");
 

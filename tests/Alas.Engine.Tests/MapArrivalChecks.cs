@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+using Alas.Engine.Devices;
 using Alas.Engine.Rules;
 using Alas.Engine.Runtime;
 
@@ -127,6 +129,81 @@ internal static class MapArrivalChecks
         Console.WriteLine("Map arrival/movement: fresh-frame confirmation, ordinary/portal, combat and item-mystery commits, stage return, air-raid wait and unsupported-interaction rejection passed; no real combat or settlement verification.");
     }
 
+    public static async Task AmmoChecksAsync(string python, string upstream, string artifacts)
+    {
+        string output = Path.Combine(artifacts, "native-ammo.json");
+        var reference = await new ProcessRunner().RunAsync(python,
+            [Path.Combine(AppContext.BaseDirectory, "native_ammo_reference.py"), upstream, output], TimeSpan.FromSeconds(60));
+        Check(reference.ExitCode == 0, "Native ammo comparison failed: " + reference.Error);
+        var native = JsonNode.Parse(await File.ReadAllTextAsync(output))!;
+        foreach (var source in new[] { CampaignState.InitializationSource, CampaignMapCombat.Source })
+            Check(native["sources"]![source.Path]!.GetValue<string>() == source.Sha256, "Native ammo source drifted");
+        Check(native["results"]!.AsArray().Count == 4, "Native ammo reference omitted scenarios");
+        int compared = 0;
+        foreach (var scenario in native["results"]!.AsArray())
+        {
+            int fleet = scenario!["index"]!.GetValue<int>();
+            bool siren = scenario["siren"]!.GetValue<bool>();
+            var snapshots = scenario["snapshots"]!.AsArray();
+            Check(snapshots.Count == 11, "Native ammo reference omitted move outcomes");
+            var state = new CampaignState(new MapDefinition("D1", "SP ME ME MA", [], [], []));
+            state.InitializeMapData(new());
+            state.FleetIndex = fleet;
+            if (fleet == 1) state.Fleet1Location = new(1, 1);
+            else state.Fleet2Location = new(1, 1);
+            state[new(1, 1)].IsFleet = state[new(1, 1)].IsCurrentFleet = true;
+            void Compare(int index)
+            {
+                var expected = snapshots[index]!;
+                Check(state.BattleCount == expected["battle"]!.GetValue<int>() &&
+                    state.SirenCount == expected["siren"]!.GetValue<int>() &&
+                    state.AmmoCount == expected["stock"]!.GetValue<int>() &&
+                    state.FleetAmmo == expected["fleet"]!.GetValue<int>(),
+                    $"Native ammo bookkeeping differs for fleet {fleet}, siren {siren}, step {index}");
+                compared++;
+            }
+            Compare(0);
+            for (int battle = 0; battle < 10; battle++)
+            {
+                var destination = new Cell(battle < 8 ? 2 + battle % 2 : 2, 1);
+                state[destination].IsEnemy = !siren;
+                state[destination].IsSiren = siren;
+                var clock = new TestClock();
+                var camera = new Camera(clock, [new(true, default), new(true, default), new(true, new(true, true))]);
+                var handler = battle == 8 ? (IMapEncounterHandler)new MapCombatHandler(_ => throw new IOException("Synthetic combat failure")) :
+                    new Handler(camera, clock, combatReturn: battle == 9 ? CombatReturn.InStage : CombatReturn.InMap);
+                var arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock, new Probe(MapEncounterKind.Combat), handler);
+                bool failed = false;
+                try
+                {
+                    var move = await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination);
+                    Check(move.Outcome == (battle == 9 ? MapMoveOutcome.StageReturned : MapMoveOutcome.Committed),
+                        "Ammo fixture did not reach its intended move outcome");
+                }
+                catch (IOException) when (battle == 8) { failed = true; }
+                Check(failed == (battle == 8), "Ammo fixture did not exercise the failed combat path");
+                Compare(battle + 1);
+            }
+            var supply = state[new(4, 1)];
+            Check(!supply.IsAmmo && supply.MayAmmo && supply.IsAccessible,
+                "Ammo fixture must have an accessible declared supply without a visible icon");
+            var operations = new InMapCampaignOperations(null!, state, new(), default);
+            bool required = false;
+            try { await operations.PickUpAmmoAsync(); }
+            catch (NotSupportedException) { required = true; }
+            Check(required == scenario["supply_required"]!.GetValue<bool>() && required,
+                "Supply stock was exhausted by combat, or a hidden icon suppressed the missing pickup operation");
+        }
+        var ordering = new CampaignState(new MapDefinition("C1", "SP MA MA", [], [], []));
+        ordering.InitializeMapData(new());
+        ordering[new(2, 1)].Cost = MapPathfinder.Unreachable;
+        ordering[new(3, 1)].Cost = 1;
+        Check(!await new InMapCampaignOperations(null!, ordering, new(), default).PickUpAmmoAsync(),
+            "Supply selection skipped the first declaration for a later accessible tile");
+        Check(ordering is { AmmoCount: 3, FleetAmmo: 5 }, "Fresh sortie inherited another sortie's ammo");
+        Console.WriteLine($"Ammo bookkeeping: {compared} actual native move snapshots and declared-supply gating passed; combat I/O is synthetic, pickup execution remains unported.");
+    }
+
     private static async Task MovementChecksAsync(Cell destination, MapArrivalOptions options)
     {
         static CampaignState State(bool portal = false)
@@ -214,7 +291,7 @@ internal static class MapArrivalChecks
                     false, false, 5));
             }));
         moved = await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options);
-        Check(moved.Outcome == MapMoveOutcome.Committed && state.Progress.Battle == 1 && state.AmmoCount == 2 &&
+        Check(moved.Outcome == MapMoveOutcome.Committed && state.Progress.Battle == 1 && state.AmmoCount == 3 && state.FleetAmmo == 4 &&
             state.Fleet1Location == destination && !state[new(1, 1)].IsFleet &&
             state[destination].IsFleet && state[destination].IsCleared && !state[destination].IsEnemy &&
             moved.Arrival.Combats is [ { Rank: { Rank: CombatRank.S } } ] && combatCalls == 1,
@@ -227,7 +304,7 @@ internal static class MapArrivalChecks
             new Probe(MapEncounterKind.Combat), new Handler(camera, clock));
         moved = await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.Committed && state.Progress is { Battle: 1, Siren: 1 } &&
-            state.AmmoCount == 2 && !state[destination].IsSiren && !state[destination].IsCleared,
+            state.AmmoCount == 3 && state.FleetAmmo == 4 && !state[destination].IsSiren && !state[destination].IsCleared,
             "Siren combat did not update its own counter or clear the target");
 
         clock = new TestClock(); state = State();
@@ -237,7 +314,7 @@ internal static class MapArrivalChecks
             new Probe(MapEncounterKind.ItemPopup), new Handler(camera, clock, MapEncounterKind.ItemPopup));
         moved = await new MapMovement(state, new(), camera, () => arrival).CollectMysteryAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.Committed && state.MysteryCount == 1 &&
-            state.BattleCount == 0 && state.AmmoCount == 3 && !state[destination].IsMystery &&
+            state.BattleCount == 0 && state.AmmoCount == 3 && state.FleetAmmo == 5 && !state[destination].IsMystery &&
             state.Fleet1Location == destination &&
             moved.Arrival.HandledEncounters.SequenceEqual([MapEncounterKind.ItemPopup]),
             "Confirmed item mystery did not commit one pickup and fleet movement");
@@ -267,7 +344,7 @@ internal static class MapArrivalChecks
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
         moved = await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.UnsupportedEncounter && state.Progress.Battle == 0 &&
-            state.AmmoCount == 3 && state[destination].IsEnemy && state.Fleet1Location == new Cell(1, 1),
+            state.AmmoCount == 3 && state.FleetAmmo == 5 && state[destination].IsEnemy && state.Fleet1Location == new Cell(1, 1),
             "Enemy-grid marker without combat evidence changed authoritative state");
 
         foreach (var rank in new CombatRank?[] { null, CombatRank.C })
@@ -279,7 +356,7 @@ internal static class MapArrivalChecks
                 new Probe(MapEncounterKind.Combat), new Handler(camera, clock, rank: rank));
             moved = await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options);
             Check(moved.Outcome == MapMoveOutcome.UnsupportedEncounter && state.Progress.Battle == 0 &&
-                state.AmmoCount == 3 && state.Fleet1Location == new Cell(1, 1) && state[destination].IsEnemy,
+                state.AmmoCount == 3 && state.FleetAmmo == 5 && state.Fleet1Location == new Cell(1, 1) && state[destination].IsEnemy,
                 "Combat with missing or losing rank changed authoritative map state");
         }
 
@@ -291,7 +368,7 @@ internal static class MapArrivalChecks
         bool combatFailed = false;
         try { await new MapMovement(state, new(), camera, () => arrival).FightAsync(destination, options); }
         catch (IOException) { combatFailed = true; }
-        Check(combatFailed && camera.Invalidated && state.Progress.Battle == 0 && state.AmmoCount == 3 &&
+        Check(combatFailed && camera.Invalidated && state.Progress.Battle == 0 && state.AmmoCount == 3 && state.FleetAmmo == 5 &&
             state[destination].IsEnemy && state.Fleet1Location == new Cell(1, 1),
             "Failed C# combat left a usable camera or committed map state");
 
@@ -346,7 +423,7 @@ internal static class MapArrivalChecks
             new Probe(MapEncounterKind.Combat), new Handler(camera, clock));
         moved = await new MapMovement(state, new(), camera, () => arrival).ProbeBossAsync(destination, options);
         Check(moved.Outcome == MapMoveOutcome.Committed && state.BattleCount == 1 &&
-            state.AmmoCount == 2 && state.Fleet1Location == destination &&
+            state.AmmoCount == 3 && state.FleetAmmo == 4 && state.Fleet1Location == destination &&
             moved.Arrival.Combats is [ { Return: CombatReturn.InMap } ],
             "Winning hidden-boss combat returning to map was not committed as a battle");
 

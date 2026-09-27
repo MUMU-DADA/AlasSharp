@@ -35,7 +35,10 @@ public sealed partial class CampaignState
     public int MysteryCount { get; set; }
     public int SirenCount { get; set; }
     public int CarrierCount { get; set; }
+    /// <summary>Map supply stock (native ammo_count); combat does not consume it.</summary>
     public int AmmoCount { get; private set; } = 3;
+    /// <summary>Native fleet_ammo counter, initialized for each fresh sortie; may go below zero.</summary>
+    public int FleetAmmo { get; private set; } = 5;
     public Cell? Fleet1Location { get; set; }
     public Cell? Fleet2Location { get; set; }
     public Cell? SubmarineLocation { get; set; }
@@ -43,10 +46,10 @@ public sealed partial class CampaignState
     internal void CommitBattle(bool siren)
     {
         int battle = checked(BattleCount + 1);
-        int ammo = checked(AmmoCount - 1);
+        int ammo = checked(FleetAmmo - 1);
         int sirens = checked(SirenCount + (siren ? 1 : 0));
         BattleCount = battle;
-        AmmoCount = ammo;
+        FleetAmmo = ammo;
         SirenCount = sirens;
     }
     // Upstream names this is_map_data_poor, although True means declarations exist.
@@ -63,6 +66,7 @@ public sealed partial class CampaignState
         FleetIndex = 1;
         Fleet1Location = Fleet2Location = SubmarineLocation = null;
         AmmoCount = 3;
+        FleetAmmo = 5;
         ResetMap();
         // Native clear-mode override runs before loading loop tile/spawn declarations.
         PoorMapData = options.PoorMapData && !(options.ClearMode && HasCompleteSpawnDeclarations);

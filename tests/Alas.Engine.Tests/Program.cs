@@ -254,6 +254,16 @@ try
         return 0;
     }
 
+    if (args is ["--ammo-state", var ammoPython, var ammoUpstream, var ammoArtifacts])
+    {
+        string folder = Path.GetFullPath(ammoArtifacts);
+        Directory.CreateDirectory(folder);
+        await MapArrivalChecks.RunAsync(Path.GetFullPath(ammoUpstream));
+        await MapArrivalChecks.AmmoChecksAsync(Path.GetFullPath(ammoPython), Path.GetFullPath(ammoUpstream), folder);
+        await CampaignMapCombatChecks.RunAsync(Path.GetFullPath(ammoPython), Path.GetFullPath(ammoUpstream));
+        return 0;
+    }
+
     if (args is ["--fleet-selection", var fleetPython, var fleetUpstream, var fleetArtifacts])
     {
         string folder = Path.GetFullPath(fleetArtifacts);
