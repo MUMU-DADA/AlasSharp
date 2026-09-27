@@ -35,8 +35,8 @@ Python 规则脚本只作离线 oracle，产品裁决由 `Alas.Engine.Contracts.
 | `end_evidence` | 结算证据链：`battle_rank` / `rank_source` / `combat_status` / `stage_observed` / `withdrawn` / `call_path` |
 | `failure` | 导致原生运行终止的失败；逐步观测时取首处失败：`step` / `error` / `traceback_tail` / `frame` |
 | `failure_frames` | 本次落盘的全部失败帧路径（`failure.*` 与各步 `failure_frame` 都必须在里面登记） |
-| `contract_violations` | 生产方**自报**的违例码；消费方不信它，会自己再判一次 |
-| `steps` | 上游操作轨迹（`prepare_campaign_navigation` / `enter_map` / `execute_a_battle` …） |
+| `contract_violations` | Engine 记录的违例码；消费方仍会重新裁决，不信任调用方自报值 |
+| `steps` | Engine 操作轨迹（准备、进图、战斗等步骤） |
 | `dry_run` | 为真时不得出现任何驱动游戏的操作步 |
 
 ## 三、不变量（违例码）
@@ -78,21 +78,21 @@ Python 规则脚本只作离线 oracle，产品裁决由 `Alas.Engine.Contracts.
 
 | 环节 | 定义 | 实现 |
 | --- | --- | --- |
-| 设备记录 | 每次出击前清空 stuck / click 记录 | `s3_campaign_entry.clear_campaign_device_records` |
-| 上一局残留 | 若仍在图内，**先撤退再导航**；这次撤退记为 `withdrew_previous_sortie=true` 的清理步 | `prepare_campaign_navigation` |
-| 清理撤退的结论 | 清理造成的 `CampaignEnd` **不参与**本局结果判定 | `s3_campaign_entry` 文档串 + `verify_s3_plan.py` 回归 |
-| 导航期撤退 | 上游导航内部自己撤退（客户端状态残留）时，把 `navigation_end` / `navigation_withdrawn` 记进 `ensure_campaign_ui` 步 | `op_s3_run_plan`（真机证据见 [结果审计](archive/reports/result-evidence.md)） |
-| 结果证据 | 每关独立一份文档；上一关的 `end_evidence` / `failure_frames` 不得出现在这一关 | 每关各自 `finalize_sortie_result` |
-| 账号状态 | 数据（心情、石油、通关进度）由上游管；宿主不维护第二份 | 上游 `Emotion` / `CampaignRun` |
+| 设备记录 | 每次出击前清空 Engine 会话内的动作/失败状态 | `Alas.Engine.Runtime.EngineSession` |
+| 上一局残留 | 若仍在图内，先执行通用撤退再导航；清理动作写入当前批次工件 | `CampaignPreparation` / `CampaignWithdrawal` |
+| 清理撤退的结论 | 清理造成的结束信号不参与本局结果判定 | `CampaignResumeTask` + `SortieContract` |
+| 导航期撤退 | 导航状态残留按 Engine 的通用页面恢复流程记录，不回退 Python 宿主 | `UiNavigator` / `CampaignPreparation` |
+| 结果证据 | 每关独立一份 Engine 工件；上一关的证据不会进入下一关 | `TaskQueue` 批次目录 |
+| 账号状态 | 由 Engine 规则和会话持有，不复制旧宿主状态 | `Alas.Engine.Rules` / `EngineSession` |
 
 ## 五、怎么被强制
 
-1. **生产方自报**：`finalize_sortie_result` 末尾 `stamp()`，把 `cleared` 从 `outcome` 推出，
-   有违例就写进 `contract_violations`（不吞掉、不抛异常，结果本身要留给调用方）。
-2. **消费方裁决**：`Alas.Engine` 的战役任务使用 `SortieContract.Violations`，
+1. **Engine 生成**：`CampaignResumeTask` 生成结果并把 `cleared` 从 `outcome` 推出，
+   违例写进工件（不吞掉、不抛异常，结果本身要留给调用方）。
+2. **Engine 裁决**：战役任务使用 `SortieContract.Violations`，
    有违例就让任务失败；工件保存整份结果文档。
 3. **跨语言对拍**：`python tools/diagnostics/verify_result_contract.py`
-   —— 四类结果由替身真跑产出、20 条反例必须被拒绝、两侧裁决逐例相同。
+   —— Engine 结果夹具和 20 条反例必须被正确裁决，两侧逐例相同。
 4. **静态守卫**：`python tools/diagnostics/verify_architecture.py`
    —— 生产代码出现 `cleared = ... campaign_end` 直接失败；两侧词表/违例码漂移也直接失败；
    并要求 `docs/result-contract.md`、`tools/sortie_contract.py`、Engine 合同源文件都在。

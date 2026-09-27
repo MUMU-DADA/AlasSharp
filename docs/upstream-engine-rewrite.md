@@ -123,7 +123,9 @@ Server 与桌面使用 EngineControlWorkspace；配置、部署、队列与新�
 | 设备 I/O | C# 有 `AdbTransport` / `DeviceController`，主要由诊断使用；产品会话仍配置 Python 设备后端 | C# 统一设备接口，逐后端迁移并验收 |
 | CV/OCR | Python 视觉宿主 | 收窄为纯识别服务，可保留现有算法和模型 |
 
-`tools/alas_vision.py` 的 OPS 当前有 58 个协议入口，包括完整任务、导航、统计和设备操作；`IVisionEngine` 实际是混合业务宿主接口。入口数量不代表工作量，尤其 `s3_campaign_call` 可继续进入任意受限的原生业务方法。将 C# 原语改为调用此接口，只是转发，不能算完成引擎迁移。
+旧混合宿主（现归档于 `tools/archive/legacy-python/`）曾有 58 个协议入口，包括完整任务、导航、统计和设备操作；
+`IVisionEngine` 实际是混合业务宿主接口。入口数量不代表工作量，尤其旧 `s3_campaign_call` 可进入任意受限的原生业务方法。
+将 C# 原语改为调用此接口只是转发，不能算完成引擎迁移；产品运行路径已移除这类入口。
 
 ## 迁移顺序与最终验收
 

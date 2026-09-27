@@ -83,7 +83,7 @@
 
 - `data/assets.json`、Schema、manifest 只用于离线展示、溯源和漂移校验。旧 `Catalog.Open()` / `AssetCatalog`、导出器和夹具脚本保留作对照；Server 不再转发旧 `verify` 命令。
 - Engine 的素材、页面、配置和地图声明由 `Rules` 的 C# 类型持有。构建期迁移辅助工具可以直接生成 C# 声明，但不得生成供产品解释的可执行 JSON 计划。
-- 视觉 worker 位于 `src/Alas.Engine/Imaging/Worker/vision_worker.py`，只接受图像、模板和数值参数。`tools/alas_vision.py` 是已退役混合宿主，不是 Engine 的视觉后端。
+- 视觉 worker 位于 `src/Alas.Engine/Imaging/Worker/vision_worker.py`，只接受图像、模板和数值参数。旧混合宿主已归档到 `tools/archive/legacy-python/`，不是 Engine 的视觉后端。
 - 地图识别须忠实迁移上游遮罩、瓦片模板、检测区域和服务器变体，不能用普通 UI 绑定代替地图素材，不能在适配层按地图补坐标或阈值。
 - 素材的模块、唯一 id、kind、服务器变体、area、button、color、file 和来源必须完整。修改声明、生成器或离线契约时须覆盖所有消费者；来源缺失、字段丢失或漂移必须报错。
 

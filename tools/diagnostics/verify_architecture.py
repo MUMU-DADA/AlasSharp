@@ -17,6 +17,36 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
+# These modules belonged to the retired Core/S3/R5 Python host. Keeping their
+# names in the active tools tree makes it too easy to reintroduce a business
+# Python dependency through an ad-hoc import. Historical copies live under
+# tools/archive/legacy-python and are deliberately outside the product path.
+LEGACY_HOST_FILES = (
+    "alas_vision.py",
+    "vision_worker.py",
+    "campaign_rules.py",
+    "campaign_shadow_observation.py",
+    "native_campaign_runtime.py",
+    "native_scheduler.py",
+    "native_task_overrides.py",
+    "native_telemetry.py",
+    "native_tool_device.py",
+    "s3_camera_compat.py",
+    "s3_campaign_entry.py",
+    "s3_campaign_execution.py",
+    "s3_campaign_outcome.py",
+    "ui_rule_catalog.py",
+)
+LEGACY_IMPORT = re.compile(
+    r"(?:^|\n)\s*(?:from\s+(?:alas_vision|campaign_rules|native_campaign_runtime|"
+    r"native_scheduler|native_task_overrides|native_telemetry|native_tool_device|"
+    r"campaign_shadow_observation|s3_campaign_[a-z_]+|ui_rule_catalog)\b|"
+    r"import\s+(?:alas_vision|campaign_rules|native_campaign_runtime|"
+    r"native_scheduler|native_task_overrides|native_telemetry|native_tool_device|"
+    r"campaign_shadow_observation|s3_campaign_[a-z_]+|ui_rule_catalog)\b)",
+    re.MULTILINE,
+)
+
 
 def read(relative: str) -> str:
     path = ROOT / relative
@@ -51,6 +81,27 @@ def contract_consistency() -> list[str]:
 
 def product_boundary() -> list[str]:
     problems: list[str] = []
+    tools_root = ROOT / "tools"
+    for filename in LEGACY_HOST_FILES:
+        active = tools_root / filename
+        if active.is_file():
+            problems.append(f"退役 Python 业务宿主仍位于活动目录: {active.relative_to(ROOT)}")
+    # The active diagnostics directory may contain export/oracle checks, but
+    # it must not import the retired host. Archive paths are intentionally
+    # skipped and are checked only as historical files.
+    active_diagnostics = tools_root / "diagnostics"
+    if active_diagnostics.is_dir():
+        for script in active_diagnostics.rglob("*.py"):
+            if script.name == Path(__file__).name:
+                continue
+            try:
+                text = script.read_text(encoding="utf-8")
+            except OSError as error:
+                problems.append(f"无法读取活动诊断脚本 {script.relative_to(ROOT)}: {error}")
+                continue
+            if LEGACY_IMPORT.search(text):
+                problems.append(f"活动诊断脚本导入退役 Python 宿主: {script.relative_to(ROOT)}")
+
     retired_core = ROOT / "src/Alas.Core"
     if retired_core.exists():
         tracked = list(retired_core.rglob("*"))
@@ -124,11 +175,14 @@ def product_boundary() -> list[str]:
         problems.append("缺少独立 CV/OCR worker")
     else:
         allowed = {"base64", "io", "json", "sys", "cv2", "numpy", "imageio", "scipy", "hashlib", "pathlib", "PIL", "onnxruntime"}
-        for node in ast.walk(ast.parse(worker.read_text(encoding="utf-8"))):
+        worker_text = worker.read_text(encoding="utf-8")
+        for node in ast.walk(ast.parse(worker_text)):
             imports = ([alias.name for alias in node.names] if isinstance(node, ast.Import)
                        else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
             if any(name.split(".")[0] not in allowed for name in imports):
                 problems.append("CV/OCR worker 导入了业务依赖")
+        if re.search(r"(?i)(?:alas_vision|campaign_rules|s3_campaign|native_campaign|adb|device\.click|run_campaign|campaign\.run)", worker_text):
+            problems.append("CV/OCR worker 包含业务宿主、设备动作或战役调度入口")
     return problems
 
 

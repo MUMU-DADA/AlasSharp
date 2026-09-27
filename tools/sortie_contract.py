@@ -5,8 +5,8 @@
 只要有人把 `cleared` 写成 `campaign_end`，表面上一切照旧、却会把"撤退"记成"通关"。
 本模块把这些口径**显式化**成一张可执行的不变量表：
 
-  * 生产方：`tools/s3_campaign_outcome.py`（`finalize_sortie_result` 末尾 stamp 一次）
-  * 消费方：`src/Alas.Engine/Contracts/SortieContract.cs`（同一套规则，逐条对齐）
+  * 产品方：`src/Alas.Engine/Contracts/SortieContract.cs`（Engine 唯一运行时裁决）
+  * 离线 oracle：本模块（保留同一套规则，供导出审计和跨语言对拍）
   * 对拍方：`tools/diagnostics/verify_result_contract.py`（两侧裁决必须逐例一致）
 
 四条硬规则（对应 R0 阶段门槛）：
@@ -310,5 +310,5 @@ def describe(verdict):
 
 
 def default_artifact_root():
-    """生产方默认的失败帧目录（与 `s3_campaign_execution.record_failure` 一致）。"""
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 's3_failures')
+    """离线检查默认的失败帧目录；产品工件路径由 Engine 运行批次决定。"""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'engine_failures')

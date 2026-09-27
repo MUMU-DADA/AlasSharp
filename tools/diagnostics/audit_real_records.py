@@ -651,7 +651,7 @@ def main() -> int:
     if navigation_swallowed:
         gaps.append('导航期撤退目前只记在 `ensure_campaign_ui` 的步骤里'
                     '（`navigation_end`/`navigation_withdrawn`），不再被静默吞掉；'
-                    '对应回归见 `verify_s3_plan.py`。')
+                    '对应历史回归已归档，当前产品由 Engine 合同检查。')
 
     audit = {
         'generated_by': 'tools/diagnostics/audit_real_records.py',

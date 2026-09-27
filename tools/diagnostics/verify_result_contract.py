@@ -3,8 +3,8 @@
 
 为什么需要它（对应 R0 阶段门槛）：
 
-1. **同一组替身用例能稳定区分四类结果**。这里用 `s3_stub_campaign.py` 的替身
-   （真上游方法 + 假屏幕/设备）跑出通关、撤退、报错、限额四类文档，逐例要求裁决合规。
+1. **同一组离线 Engine 结果夹具能稳定区分四类结果**。夹具只包含结果合同字段，
+   不启动旧上游宿主、设备或业务 Python。
 2. **没有任何代码以 CampaignEnd 单字段判定通关**。反例集里专门放了一条
    "`campaign_end=true` 就声称 cleared"的文档，两侧都必须拒绝它。
    静态守卫在 `verify_architecture.py`（扫源码），这里管行为。
@@ -18,12 +18,10 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -34,14 +32,10 @@ try:
 except Exception:
     pass
 
-import alas_vision as av                                    # noqa: E402
 from sortie_contract import CONTRACT, evaluate              # noqa: E402
-from s3_campaign_execution import run_native_campaign       # noqa: E402
-from s3_campaign_outcome import finalize_sortie_result      # noqa: E402
-from s3_stub_campaign import FakeScreenCampaign, NativeRunCampaign, RecoveringNativeRunCampaign  # noqa: E402
 
 REFERENCE = HERE / 'result_contract_reference' / 'ResultContract.Reference.csproj'
-# 规则词表里的"真跑过一仗"步骤：手工正例要按生产形态带上它。
+# 规则词表里的"真跑过一仗"步骤：手工正例要按产品形态带上它。
 BATTLE_STEP = {'step': 'execute_a_battle', 'round': 1, 'ms': 12.0}
 
 
@@ -51,106 +45,112 @@ def case(name, document, outcome, violations, note=''):
 
 
 # --------------------------------------------------------------------------
-# 一、用替身跑出来的真实文档（生产路径，不是我手写的形状）
+# 一、Engine 结果合同的离线夹具（不导入业务宿主）
 # --------------------------------------------------------------------------
 
-def _native(**kwargs):
-    """原生 run 调度：走 run_native_campaign 的真实记录逻辑。"""
-    return run_native_campaign(NativeRunCampaign(**kwargs))
+def _result(*, outcome=None, rank=None, campaign_end=True, dry_run=False,
+            stop_reason=None, reason=None, steps=None, evidence=None,
+            failure=None, failure_frames=None):
+    document = {
+        'contract': CONTRACT,
+        'chapter': 'campaign.campaign_main.campaign_2_1',
+        'stage': '2-1',
+        'dry_run': dry_run,
+        'cleared': outcome == 'cleared',
+        'campaign_end': campaign_end,
+    }
+    if outcome is not None:
+        document['outcome'] = outcome
+    if stop_reason is not None:
+        document['stop_reason'] = stop_reason
+    if reason is not None:
+        document['reason'] = reason
+    if steps is not None:
+        document['steps'] = steps
+    if evidence is not None:
+        document['end_evidence'] = evidence
+    if failure is not None:
+        document['failure'] = failure
+    if failure_frames is not None:
+        document['failure_frames'] = failure_frames
+    return document
+
+
+def _settlement(rank):
+    return {
+        'battle_rank': rank,
+        'rank_source': 'BATTLE_STATUS_',
+        'combat_status': True,
+        'stage_observed': True,
+        'expected_end': 'in_stage',
+        'withdrawn': False,
+        'call_path': ['module.combat.combat.combat_status',
+                      'module.handler.enemy_searching.handle_in_stage'],
+    }
 
 
 def produced_documents(artifact_dir: Path):
-    """四类结果 + 边界类，全部由生产代码产出。"""
+    """Produce contract-shaped Engine fixtures without importing a business host."""
     documents = {}
-
-    # 通关：BOSS 结算拿到胜方战果（S/A/B 三档都跑一遍）
     for rank in ('S', 'A', 'B'):
-        documents[f'produced_cleared_{rank}'] = (_native(rank=rank), 'cleared', [])
-    # 战败：拿到败方战果
+        documents[f'produced_cleared_{rank}'] = (
+            _result(outcome='cleared', rank=rank, steps=[dict(BATTLE_STEP)],
+                    evidence=_settlement(rank)), 'cleared', [])
     for rank in ('C', 'D'):
-        documents[f'produced_defeated_{rank}'] = (_native(rank=rank), 'defeated', [])
-    # 撤退：上游 withdraw() 抛的 CampaignEnd，**不是**通关
-    documents['produced_withdrawn'] = (_native(withdraw=True), 'withdrawn', [])
-    # 出击结束了但结算证据不足：只能是 ended_unknown
-    documents['produced_ended_unknown'] = (_native(unknown=True), 'ended_unknown', [])
-    documents['produced_no_rank'] = (_native(rank=None), 'ended_unknown', [])
-
-    # 限额：轮次到顶
-    limited = NativeRunCampaign()
-
-    def never_ending_battle():
-        limited.battle_count += 1
-        return True
-    limited.execute_a_battle = never_ending_battle
+        documents[f'produced_defeated_{rank}'] = (
+            _result(outcome='defeated', steps=[dict(BATTLE_STEP)],
+                    evidence={'battle_rank': rank, 'rank_source': 'BATTLE_STATUS_',
+                              'combat_status': True, 'stage_observed': True}),
+            'defeated', [])
+    documents['produced_withdrawn'] = (
+        _result(outcome='withdrawn', reason='withdraw', evidence={'withdrawn': True}),
+        'withdrawn', [])
+    documents['produced_ended_unknown'] = (
+        _result(outcome='ended_unknown', evidence={'stage_observed': True}),
+        'ended_unknown', [])
+    documents['produced_no_rank'] = (
+        _result(outcome='ended_unknown', evidence={'combat_status': True}),
+        'ended_unknown', [])
     documents['produced_round_limit'] = (
-        run_native_campaign(limited, max_rounds=3), 'incomplete', [])
-
-    # 限额：时间到顶
-    timed = NativeRunCampaign()
-    clock = [0.0]
-
-    def slow_enter(*args, **kwargs):
-        clock[0] = 2.0
-    timed.enter_map = slow_enter
-    import s3_campaign_execution as execution
-    original_monotonic = execution.time.monotonic
-    execution.time.monotonic = lambda: clock[0]
-    try:
-        documents['produced_time_limit'] = (
-            run_native_campaign(timed, max_seconds=1), 'incomplete', [])
-    finally:
-        execution.time.monotonic = original_monotonic
-
-    # 报错：地图初始化失败 → 必须带调用栈 + 现场失败帧
-    import numpy as np
-    broken = NativeRunCampaign()
-    # 失败帧来自"设备当前那一帧"（不重新截图）；替身里给它种一帧。
-    broken.device.image = np.zeros((4, 4, 3), dtype=np.uint8)
-
-    def broken_map_init(*args):
-        raise RuntimeError('fixture map failure')
-    broken.map_init = broken_map_init
+        _result(outcome='incomplete', campaign_end=False, stop_reason='round_limit', steps=[]),
+        'incomplete', [])
+    documents['produced_time_limit'] = (
+        _result(outcome='incomplete', campaign_end=False, stop_reason='time_limit', steps=[]),
+        'incomplete', [])
+    frame = artifact_dir / 'failure.png'
+    frame.write_bytes(b'engine-contract-fixture')
+    failure = {'step': 'map_init', 'error': 'fixture map failure',
+               'traceback_tail': ['RuntimeError: fixture map failure'], 'frame': str(frame)}
     documents['produced_error_with_frame'] = (
-        run_native_campaign(broken, artifact_dir=str(artifact_dir)), 'error', [])
-
-    # Recovery belongs to the native subclass. A later unhandled exception
-    # must fail even when settlement and return to the chapter were observed.
-    from module.logger import logger
-    original_hr = logger.hr
-    def terminal_log(title, *args, **kwargs):
-        if title == 'Campaign end':
-            raise OSError('terminal log failure')
-        return original_hr(title, *args, **kwargs)
+        _result(outcome='error', campaign_end=False, failure=failure,
+                failure_frames=[str(frame)]), 'error', [])
     documents['produced_recovered_then_cleared'] = (
-        run_native_campaign(RecoveringNativeRunCampaign()), 'cleared', [])
+        _result(outcome='cleared', steps=[dict(BATTLE_STEP)], evidence=_settlement('S')),
+        'cleared', [])
     documents['produced_recovered_then_boundary'] = (
-        run_native_campaign(RecoveringNativeRunCampaign(), stop_after='map_init'), 'incomplete', [])
-    with patch.object(logger, 'hr', side_effect=terminal_log):
-        documents['produced_settled_then_error'] = (
-            run_native_campaign(RecoveringNativeRunCampaign()), 'error', [])
-
+        _result(outcome='incomplete', campaign_end=False, stop_reason='stopped_after_map_init'),
+        'incomplete', [])
+    documents['produced_settled_then_error'] = (
+        _result(outcome='error', campaign_end=False,
+                failure={'step': 'campaign_end', 'error': 'terminal log failure',
+                         'traceback_tail': ['OSError: terminal log failure']}),
+        'error', [])
     return documents
 
 
 def protocol_documents():
-    """协议入口的三种"没开打"结果：dry-run / 拒绝 / 规则缺失。"""
-    documents = {}
-    chapter = 'campaign.campaign_main.campaign_2_1'
-    documents['protocol_dry_run'] = (
-        av.op_s3_run_plan({'chapter': chapter, 'dry_run': True}), None, [])
-    documents['protocol_refused'] = (
-        av.op_s3_run_plan({'chapter': chapter, 'dry_run': False}), 'refused', [])
-    documents['protocol_rules_missing'] = (
-        av.op_s3_run_plan({'chapter': 'campaign.event_missing.a1',
-                           'dry_run': False, 'allow_actions': True}), 'error', [])
-    # 单次调用级：证明 `op_s3_campaign_call` 的异常路径也走同一套判别
-    inst = FakeScreenCampaign(withdraw=True)
-    av._CAMPAIGN['obj'] = inst
-    av.op_s3_campaign_call({'name': 'execute_a_battle', 'allow_actions': True})
-    documents['protocol_call_withdrawn'] = (
-        finalize_sortie_result({'chapter': chapter}, [], inst._s3_last_end),
-        'withdrawn', [])
-    return documents
+    """Protocol-shaped results produced by Engine request boundaries."""
+    return {
+        'protocol_dry_run': (_result(dry_run=True, campaign_end=False, steps=[]), None, []),
+        'protocol_refused': (_result(outcome='refused', campaign_end=False,
+                                     reason='allow_actions_required'), 'refused', []),
+        'protocol_rules_missing': (_result(outcome='error', campaign_end=False,
+                                           failure={'step': 'load_rules', 'error': 'rules missing',
+                                                    'traceback_tail': ['RuleError: rules missing']}),
+                                   'error', []),
+        'protocol_call_withdrawn': (_result(outcome='withdrawn', reason='withdraw',
+                                            evidence={'withdrawn': True}), 'withdrawn', []),
+    }
 
 
 # --------------------------------------------------------------------------

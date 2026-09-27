@@ -41,7 +41,7 @@
 | `Alas.UI` | `Alas.Contracts` |
 | `Alas.Client` | `Alas.Contracts` |
 
-任何产品源码出现 `Alas.Core`、`tools/alas_vision.py`、`s3_campaign_*` 或计划解释入口都应被架构检查拒绝。未迁移能力由 Engine 明确返回不可用，不能回退旧流程。
+任何产品源码出现 `Alas.Core`、归档 Python 宿主符号、`s3_campaign_*` 或计划解释入口都应被架构检查拒绝。未迁移能力由 Engine 明确返回不可用，不能回退旧流程。
 
 ## 验证入口
 
