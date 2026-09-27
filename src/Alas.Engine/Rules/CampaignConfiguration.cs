@@ -45,6 +45,9 @@ public sealed record CampaignConfiguration
     public double SirenMoveWait { get; init; } = 1.5;
     public bool HasMaze { get; init; }
     public bool WalkUseCurrentFleet { get; init; }
+    // Retained source declaration. Native Fleet.goto currently uses HasAmbush instead.
+    public bool WalkTurningOptimize { get; init; } = true;
+    public bool SwipePredictWithSeaGrids { get; init; }
     public (int X, int Y)? BossAppearRefocusSwipe { get; init; } = (0, 0);
     public bool HasWall { get; init; }
     public bool HasPortal { get; init; }

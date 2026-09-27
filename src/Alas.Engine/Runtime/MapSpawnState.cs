@@ -75,6 +75,8 @@ public sealed partial class CampaignState
         if (IsMapInitialized || !SpawnStack.IsEmpty)
             throw new InvalidOperationException("Map initialization requires a fresh sortie state");
         BattleCount = MysteryCount = SirenCount = CarrierCount = 0;
+        _pickedFlares.Clear();
+        _pickedLightHouses.Clear();
         FleetIndex = 1;
         Fleet1Location = Fleet2Location = SubmarineLocation = null;
         AmmoCount = 3;
@@ -88,6 +90,7 @@ public sealed partial class CampaignState
         LoadSpawnData(options.ClearMode);
         Paths.InitializeConnections(options.Walls, options.Portals);
         LoadMechanisms(options.LandBased, options.Maze, options.Fortress, options.BouncingEnemy);
+        Rule?.InitializeMapState(this, options);
         IsMapInitialized = true;
     }
 

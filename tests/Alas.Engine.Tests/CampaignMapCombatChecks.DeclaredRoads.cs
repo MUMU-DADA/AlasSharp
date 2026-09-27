@@ -175,6 +175,18 @@ internal static partial class CampaignMapCombatChecks
                 actual!["MAP_HAS_SIREN"] = config.HasSiren;
                 actual["MAP_HAS_FORTRESS"] = config.HasFortress;
             }
+            if (expected.AsObject().ContainsKey("MAP_HAS_MOVABLE_ENEMY"))
+            {
+                actual!["MAP_HAS_MOVABLE_ENEMY"] = config.HasMovableEnemy;
+                actual["MOVABLE_ENEMY_TURN"] = JsonSerializer.SerializeToNode(config.MovableEnemyTurns);
+                actual["MAP_HAS_MAP_STORY"] = config.HasMapStory;
+                actual["MAP_HAS_FLEET_STEP"] = config.HasFleetStep;
+                actual["MAP_HAS_AMBUSH"] = config.HasAmbush;
+                actual["MAP_WALK_TURNING_OPTIMIZE"] = config.WalkTurningOptimize;
+                actual["MAP_WALK_USE_CURRENT_FLEET"] = config.WalkUseCurrentFleet;
+                actual["MAP_SWIPE_PREDICT_WITH_SEA_GRIDS"] = new MapCameraRules { PredictSeaGrids = true }
+                    .WithChapter(config.SwipeMultipliers, config.MapEdgeCorner, config.SwipePredictWithSeaGrids).PredictSeaGrids;
+            }
             Check(JsonNode.DeepEquals(actual, expected), "Inherited chapter config differs: " + rule.Id + ": " + actual);
         }
     }
@@ -191,7 +203,7 @@ internal static partial class CampaignMapCombatChecks
             {
                 var state = host!.Camera!.State;
                 Cell start = state.Fleet1Location ?? state.Cells.First(cell => cell.IsSpawnPoint).Location;
-                var shadow = new CampaignState(rule.Map);
+                var shadow = new CampaignState(rule.Map, rule);
                 shadow.InitializeMapData(new(PoorMapData: true));
                 shadow.Fleet1Location = start; shadow.RefreshFleetPaths(new() { HasAmbush = false });
                 bool boss = state.BattleCount >= rule.Map.ExpectedBattles - 1;
@@ -218,7 +230,7 @@ internal static partial class CampaignMapCombatChecks
                     carrier ? new CarrierSequenceHandler(camera) { OnCombat = completedCombats.Add } : new Handler(camera, completedCombats.Add),
                     new MapCombatRecovery(camera.State, camera, refocus).RecoverAsync),
                     waitForInfoBar: _ => ValueTask.CompletedTask, carrierScanner: scanner);
-                return new(camera.State, config, movement, scanner);
+                return new(camera.State, config, movement, scanner, waitForInfoBar: _ => ValueTask.CompletedTask);
             } };
             var execution = new CampaignExecution(rule, new() { EmotionMode = CampaignEmotionMode.Ignore, UseFleetLock = false },
                 (state, config) => new InMapCampaignOperations(host, state, config, default, rule));

@@ -120,6 +120,21 @@ def main():
                     self.fleet_current = grid.location
                     grid.is_mystery = False
                 def pick_up_ammo(self): return self.record("pick_up_ammo")
+                def pick_up_flare(self, grid):
+                    from module.base.utils import location2node
+                    return self.record('pick_up_flare:' + location2node(grid.location))
+                def pick_up_light_house(self, grid):
+                    from module.base.utils import location2node
+                    return self.record('pick_up_light_house:' + location2node(grid.location))
+                def goto(self, grid):
+                    from module.base.utils import location2node
+                    self.record('goto:' + location2node(grid.location))
+                @property
+                def fleet_1(self):
+                    self.fleet_current_index = 1
+                    self.record('fleet_boss:1')
+                    return self
+                def switch_to(self): pass
                 def clear_siren(self): return self.record("clear_siren")
                 def clear_any_enemy(self, sort):
                     assert sort == ("cost_2",), sort
@@ -153,6 +168,8 @@ def main():
             probe.fleet_1_location = node2location(scenario['firstFleet']) if scenario.get('firstFleet') else ()
             probe.fleet_2_location = node2location(scenario['secondFleet']) if scenario.get('secondFleet') else ()
             probe.fleet_current_index = 1
+            probe.picked_flare = [True] if scenario.get('flarePicked', False) else []
+            probe.picked_light_house = []
             # Chapter hooks reference module-level GridInfo objects, as real map_init does.
             source.MAP.reset()
             probe.map = copy.deepcopy(source.MAP)
@@ -162,6 +179,9 @@ def main():
             grid.is_siren = scenario["cells"] == "siren"
             grid.is_fortress = scenario["cells"] == "fortress"
             for selected_map in (source.MAP, probe.map):
+                if scenario['rule'].startswith('campaign_main/campaign_14_'):
+                    for selected_grid in selected_map:
+                        selected_grid.cost = 0 if scenario['accessible'] else 9999
                 next(iter(selected_map)).enemy_scale = scenario.get('firstScale', 0)
                 for cell in (scenario.get('mysteries') or '').split(','):
                     if cell: selected_map[node2location(cell)].is_mystery = True

@@ -240,6 +240,13 @@ try
         await CampaignMapCombatChecks.EnemyFilterChecksAsync(Path.GetFullPath(filterPython), Path.GetFullPath(filterUpstream), folder);
         return 0;
     }
+    if (args is ["--chapter-fourteen", var fourteenPython, var fourteenUpstream, var fourteenArtifacts])
+    {
+        string folder = Path.GetFullPath(fourteenArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.ChapterFourteenAsync(Path.GetFullPath(fourteenPython), Path.GetFullPath(fourteenUpstream), folder);
+        return 0;
+    }
     if (args is ["--chapters-eleven-twelve", var laterPython, var laterUpstream, var laterArtifacts])
     {
         string folder = Path.GetFullPath(laterArtifacts);
@@ -618,6 +625,23 @@ try
             foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
                 cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation, Fleet2: 2));
         }
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterFourteenRule)
+        {
+            foreach (int count in new[] { 0, 3, 5, 6, 7, 15, 16, 17 })
+            foreach (int fleet2 in new[] { 0, 2 })
+            foreach (int bossFleet in new[] { 1, 2 })
+            foreach (bool accessible in new[] { false, true })
+            foreach (bool picked in new[] { false, true })
+            foreach (string? yes in new[] { null, "clear_filter_enemy", "clear_roadblocks", "pick_up_ammo" })
+                cases.Add(new Scenario(id, BattleCount: count, Fleet2: fleet2, BossFleet: bossFleet,
+                    Accessible: accessible, FlarePicked: picked, TrueOperation: yes, CombatReturn: false));
+            foreach (string operation in new[] { "clear_filter_enemy", "clear_roadblocks", "pick_up_ammo", "clear_boss",
+                "pick_up_flare:H7", "pick_up_flare:A5", "pick_up_flare:C5", "pick_up_flare:D5", "pick_up_flare:H9",
+                "pick_up_light_house:E3", "pick_up_light_house:J7", "pick_up_light_house:A9", "goto:D6" })
+            foreach (int count in new[] { 0, 3, 5, 6, 7 })
+            foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
+                cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation, Fleet2: 2));
+        }
         if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.Campaign72)
             foreach (int count in new[] { 0, 4, 5, 6 })
             foreach (string secondLocation in new[] { "A3", "G3", "C3" })
@@ -717,6 +741,9 @@ static async Task<ProbeResult> Execute(Scenario scenario)
     var state = operations.State = execution.Context.State;
     state.BattleCount = scenario.BattleCount;
     state.MysteryCount = scenario.MysteryCount;
+    if (scenario.FlarePicked) state.RecordFlare(Cell.Parse("A5"));
+    if (rule is Alas.Engine.Rules.Main.ChapterFourteenRule)
+        foreach (var cell in state.Cells) cell.Cost = scenario.Accessible ? 0 : 9999;
     state.Fleet1Location = scenario.FirstFleet is null ? null : Cell.Parse(scenario.FirstFleet);
     state.Fleet2Location = scenario.SecondFleet is null ? null : Cell.Parse(scenario.SecondFleet);
     state.Cells[0].EnemyScale = scenario.FirstScale;

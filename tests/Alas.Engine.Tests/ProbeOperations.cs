@@ -9,7 +9,7 @@ internal sealed record Scenario(string Rule, string Operation = "dispatch", int 
     bool AutoSearch = false, string? Signal = null, int SignalCount = 1, string SignalOperation = "clear_enemy",
     bool Advance = false, bool Accessible = true, string? BossCells = null,
     int Fleet2 = 0, int? BossFleet = null, string? FirstFleet = null, string? SecondFleet = null, int FirstScale = 0, string? Mysteries = null,
-    int MysteryCount = 0, int CollectedMysteries = 0);
+    int MysteryCount = 0, int CollectedMysteries = 0, bool FlarePicked = false);
 internal sealed record ProbeResult(string[] Calls, object? Value, string? Exception, int BattleCount, double[]? Weights);
 
 /// <summary>Synthetic terminal actions only; the compiled rule and native oracle each own their control flow.</summary>
@@ -84,6 +84,9 @@ internal sealed class ProbeOperations(Scenario scenario) : ICampaignOperations
         return ValueTask.CompletedTask;
     }
     public ValueTask<bool> PickUpAmmoAsync() => Result("pick_up_ammo");
+    public ValueTask<bool> PickUpFlareAsync(Cell cell) => Result("pick_up_flare:" + cell);
+    public ValueTask<bool> PickUpLightHouseAsync(Cell cell) => Result("pick_up_light_house:" + cell);
+    public ValueTask MoveFleetAsync(Cell cell) => Void("goto:" + cell);
     public ValueTask<bool> ClearSirenAsync() => Result("clear_siren");
     public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync() => Result("clear_any_enemy:cost_2");
     public ValueTask<bool> ClearBouncingEnemyAsync() => Result("clear_bouncing_enemy");

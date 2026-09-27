@@ -13,6 +13,12 @@ public sealed partial class CampaignState
     public bool MovementInvalidated { get; internal set; }
     public int MazeRound { get; private set; } = 9;
     public int BattleCount { get; set; }
+    private readonly List<Cell> _pickedLightHouses = [];
+    private readonly List<Cell> _pickedFlares = [];
+    public IReadOnlyList<Cell> PickedLightHouses => _pickedLightHouses.AsReadOnly();
+    public IReadOnlyList<Cell> PickedFlares => _pickedFlares.AsReadOnly();
+    internal void RecordLightHouse(Cell cell) => _pickedLightHouses.Add(cell);
+    internal void RecordFlare(Cell cell) => _pickedFlares.Add(cell);
     public bool AutoSearch { get; set; }
     public int FleetIndex { get; set; } = 1;
     public FleetHealthState Health { get; } = new();
@@ -127,6 +133,9 @@ public sealed record CampaignContext(CampaignState State, CampaignConfiguration 
 /// <summary>Typed domain operations for the new C# action implementation. No method-name RPC.</summary>
 public interface ICampaignOperations
 {
+    ValueTask MoveFleetAsync(Cell destination) => throw new NotSupportedException("Explicit fleet movement is unavailable");
+    ValueTask<bool> PickUpFlareAsync(Cell destination) => throw new NotSupportedException("Flare pickup is unavailable");
+    ValueTask<bool> PickUpLightHouseAsync(Cell destination) => throw new NotSupportedException("Lighthouse pickup is unavailable");
     ValueTask SwitchFleetAsync(int fleet) => throw new NotSupportedException("Fleet switching is unavailable");
     ValueTask<bool> PushSecondFleetForwardAsync() => throw new NotSupportedException("Second-fleet advance is unavailable");
     ValueTask<bool> PositionSecondFleetAsync(IReadOnlyList<Cell> cells, IReadOnlyList<RoadDefinition> roads)

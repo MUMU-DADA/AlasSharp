@@ -6,7 +6,8 @@ namespace Alas.Engine.Runtime;
 public sealed partial class CampaignMapCombat(CampaignState state, CampaignConfiguration configuration,
     MapMovement movement, MapScanner scanner, Func<int, CancellationToken, ValueTask>? waitEmotion = null,
     Func<int, CancellationToken, ValueTask>? switchFleet = null,
-    Func<CancellationToken, ValueTask>? ensureEdges = null)
+    Func<CancellationToken, ValueTask>? ensureEdges = null,
+    Func<CancellationToken, ValueTask>? waitForInfoBar = null)
 {
     public static readonly SourceFile Source = new("module/map/map.py",
         "187a5ee7d8fbde3c944681216fd2ac75f68036716b17db5a8bb43fdd42de5365");

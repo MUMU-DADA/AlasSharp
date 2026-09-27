@@ -175,7 +175,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             new MapScanner(camera.State, camera, Driver.Clock),
             waitEmotion: (fleet, token) => RequireEmotion(configuration).WaitAsync(fleet, token, configuration.IsDoubleBook),
             switchFleet: CreateFleetSwitcher(camera, configuration).SwitchAsync,
-            ensureEdges: token => camera.EnsureEdgesAsync(skipFirstUpdate: true, token));
+            ensureEdges: token => camera.EnsureEdgesAsync(skipFirstUpdate: true, token), waitForInfoBar: EnsureNoMapInfoBarAsync);
     public CampaignExecution CreateInMapCampaignExecution(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token = default)
         => new(rule, configuration, (state, effective) => new InMapCampaignOperations(this, state, effective, token, rule));
@@ -224,7 +224,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         return await CreateMapCameraAsync(state, state.Map.Cameras[0],
             new MapDetectionRules().WithChapter(configuration.Vision),
             new GridRecognitionRules { HasSiren = configuration.HasSiren, HasMystery = configuration.HasMystery },
-            new MapCameraRules().WithChapter(configuration.SwipeMultipliers, configuration.MapEdgeCorner),
+            new MapCameraRules().WithChapter(configuration.SwipeMultipliers, configuration.MapEdgeCorner, configuration.SwipePredictWithSeaGrids),
             TimeSpan.FromSeconds(30), token);
     }
     CampaignMapCombat ICampaignInMapHost.CreateCombat(IMapScanCamera camera,

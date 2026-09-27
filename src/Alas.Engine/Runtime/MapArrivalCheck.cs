@@ -221,7 +221,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                 }
                 else if (resolution.Ambush is not null || resolution.Combat is not null || resolution.Continuation == MapEncounterContinuation.InStage)
                     throw new InvalidDataException("Noncombat interaction returned battle or stage evidence");
-                if (encounter == MapEncounterKind.ItemPopup) lastMysteryWasCarrier = false;
+                if (encounter == MapEncounterKind.ItemPopup && state.Rule?.CountMysteryItems != false) lastMysteryWasCarrier = false;
                 handled.Add(encounter);
                 if (resolution.Continuation == MapEncounterContinuation.InStage)
                     return Result(MapArrivalOutcome.StageReturned, encounter);

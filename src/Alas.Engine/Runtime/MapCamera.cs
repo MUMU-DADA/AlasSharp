@@ -39,11 +39,11 @@ public sealed record MapCameraRules
     public bool PredictSeaGrids { get; init; }
     public bool Optimize { get; init; } = true;
     public string EdgeCorner { get; init; } = "";
-    public MapCameraRules WithChapter(MapSwipeMultipliers? multipliers, string? edgeCorner = null)
+    public MapCameraRules WithChapter(MapSwipeMultipliers? multipliers, string? edgeCorner = null, bool? predictSeaGrids = null)
         => this with { Multiply = multipliers?.Adb ?? Multiply,
             MultiplyMinitouch = multipliers?.Minitouch ?? MultiplyMinitouch,
             MultiplyMaaTouch = multipliers?.MaaTouch ?? MultiplyMaaTouch,
-            EdgeCorner = edgeCorner ?? EdgeCorner };
+            EdgeCorner = edgeCorner ?? EdgeCorner, PredictSeaGrids = predictSeaGrids ?? PredictSeaGrids };
     public void Validate()
     {
         if (!double.IsFinite(CenterTolerance) || CenterTolerance is < 0 or > 0.5 ||

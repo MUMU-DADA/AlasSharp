@@ -78,6 +78,10 @@ def main():
                     chapter_names += ['DETECTION_BACKEND']
                 if chapter >= 13:
                     chapter_names += ['MAP_HAS_SIREN', 'MAP_HAS_FORTRESS']
+                if chapter >= 14:
+                    chapter_names += ['MAP_HAS_MOVABLE_ENEMY', 'MOVABLE_ENEMY_TURN', 'MAP_HAS_MAP_STORY',
+                        'MAP_HAS_FLEET_STEP', 'MAP_HAS_AMBUSH', 'MAP_WALK_TURNING_OPTIMIZE',
+                        'MAP_WALK_USE_CURRENT_FLEET', 'MAP_SWIPE_PREDICT_WITH_SEA_GRIDS']
                 entry = dict(id=f'campaign_main/campaign_{chapter}_{stage}', config={name: getattr(Config(), name, None) for name in chapter_names},
                     attributes={name: getattr(module.Campaign, name) for name in attribute_names}, cases=cases)
                 if chapter == 8 and stage == 1:
