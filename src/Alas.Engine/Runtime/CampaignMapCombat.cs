@@ -7,7 +7,8 @@ public sealed partial class CampaignMapCombat(CampaignState state, CampaignConfi
     MapMovement movement, MapScanner scanner, Func<int, CancellationToken, ValueTask>? waitEmotion = null,
     Func<int, CancellationToken, ValueTask>? switchFleet = null,
     Func<CancellationToken, ValueTask>? ensureEdges = null,
-    Func<CancellationToken, ValueTask>? waitForInfoBar = null)
+    Func<CancellationToken, ValueTask>? waitForInfoBar = null,
+    Func<Cell, Cell, CancellationToken, ValueTask<bool>>? moveMob = null)
 {
     public static readonly SourceFile Source = new("module/map/map.py",
         "187a5ee7d8fbde3c944681216fd2ac75f68036716b17db5a8bb43fdd42de5365");
@@ -25,6 +26,49 @@ public sealed partial class CampaignMapCombat(CampaignState state, CampaignConfi
         // fleet must not switch the device or mutate active costs/predecessors.
         return selected == state.FleetIndex ? cell.IsAccessible : selected == 1
             ? state.Fleet1Location is not null && cell.IsAccessible1 : state.Fleet2Location is not null && cell.IsAccessible2;
+    }
+
+    /// <summary>Move one observed enemy through the native strategy overlay.
+    /// Validation and state migration are shared for every chapter; only the
+    /// injected UI action knows how to operate the current device.</summary>
+    public async ValueTask<bool> MoveMobAsync(Cell origin, Cell target, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before moving an enemy");
+        if (!state.Contains(origin) || !state.Contains(target)) throw new ArgumentOutOfRangeException(nameof(origin));
+        if (Math.Abs(origin.Column - target.Column) + Math.Abs(origin.Row - target.Row) != 1)
+            throw new InvalidOperationException($"Movable enemy target {target} is not adjacent to {origin}");
+        var source = state[origin];
+        var destination = state[target];
+        if (!source.IsEnemy) return false;
+        if (!destination.IsSea) return false;
+        if (moveMob is null) throw new NotSupportedException("Movable-enemy UI interaction is unavailable");
+        if (!await moveMob(origin, target, token)) return false;
+
+        destination.EnemyScale = source.EnemyScale;
+        destination.EnemyGenre = source.EnemyGenre;
+        destination.IsBoss = source.IsBoss;
+        destination.IsEnemy = true;
+        destination.MayEnemy = true;
+        destination.IsMovable = source.IsMovable || configuration.HasMovableNormalEnemy;
+        source.EnemyScale = 0;
+        source.EnemyGenre = null;
+        source.IsBoss = false;
+        source.IsEnemy = false;
+        source.IsMovable = false;
+        state.RefreshFleetPaths(configuration);
+        return true;
+    }
+
+    public async ValueTask<bool> ClearChosenEnemyAsync(Cell destination, CancellationToken token = default,
+        MapCombatExpectation expectation = MapCombatExpectation.Enemy)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before selecting an enemy");
+        if (!state.Contains(destination)) throw new ArgumentOutOfRangeException(nameof(destination));
+        var grid = state[destination];
+        if (!grid.IsAccessible || !(grid.IsEnemy || grid.IsSiren || grid.IsBoss || grid.IsFortress)) return false;
+        return await FightAsync(grid, token, expectation);
     }
 
     public ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, bool potential = false, CancellationToken token = default)

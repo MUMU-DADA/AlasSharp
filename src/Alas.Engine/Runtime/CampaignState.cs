@@ -134,6 +134,10 @@ public sealed record CampaignContext(CampaignState State, CampaignConfiguration 
 public interface ICampaignOperations
 {
     ValueTask MoveFleetAsync(Cell destination) => throw new NotSupportedException("Explicit fleet movement is unavailable");
+    ValueTask<bool> MoveMobAsync(Cell origin, Cell target)
+        => throw new NotSupportedException("Movable-enemy movement is unavailable");
+    ValueTask<bool> ClearChosenEnemyAsync(Cell destination, MapCombatExpectation expectation = MapCombatExpectation.Enemy)
+        => throw new NotSupportedException("Chosen enemy combat is unavailable");
     ValueTask<bool> PickUpFlareAsync(Cell destination) => throw new NotSupportedException("Flare pickup is unavailable");
     ValueTask<bool> PickUpLightHouseAsync(Cell destination) => throw new NotSupportedException("Lighthouse pickup is unavailable");
     ValueTask SwitchFleetAsync(int fleet) => throw new NotSupportedException("Fleet switching is unavailable");

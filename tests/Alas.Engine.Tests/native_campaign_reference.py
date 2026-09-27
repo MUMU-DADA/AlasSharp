@@ -58,6 +58,13 @@ def main():
                 def clear_enemy(self, **kwargs):
                     self.selection_record(kwargs)
                     return self.record("clear_enemy")
+                def clear_chosen_enemy(self, grid, expected=None):
+                    from module.base.utils import location2node
+                    self.calls.append(f"clear_chosen_enemy:{location2node(grid.location)}:{expected or 'enemy'}")
+                    return True
+                def mob_move(self, location, target):
+                    from module.base.utils import location2node
+                    return self.record(f"mob_move:{location2node(location.location if hasattr(location, 'location') else location)}>{location2node(target.location if hasattr(target, 'location') else target)}")
                 def clear_filter_enemy(self, string, preserve=0):
                     self.record(f'enemy_filter:{string}:{preserve}')
                     return self.record('clear_filter_enemy')
@@ -162,6 +169,7 @@ def main():
                 Error_HandleError=scenario["handleError"], Campaign_Mode="normal",
                 FLEET_2=getattr(source.Config, 'FLEET_2', scenario.get('fleet2', 0)),
                 FLEET_BOSS=getattr(source.Config, 'FLEET_BOSS', scenario.get('bossFleet') or (2 if scenario.get('fleet2') else 1)))
+            probe.config.EnemyPriority_EnemyScaleBalanceWeight = 0
             probe.battle_count = scenario["battleCount"]
             probe.mystery_count = scenario['mysteryCount']
             from module.base.utils import node2location

@@ -87,6 +87,12 @@ internal sealed class ProbeOperations(Scenario scenario) : ICampaignOperations
     public ValueTask<bool> PickUpFlareAsync(Cell cell) => Result("pick_up_flare:" + cell);
     public ValueTask<bool> PickUpLightHouseAsync(Cell cell) => Result("pick_up_light_house:" + cell);
     public ValueTask MoveFleetAsync(Cell cell) => Void("goto:" + cell);
+    public ValueTask<bool> MoveMobAsync(Cell origin, Cell target) => Result($"mob_move:{origin}>{target}");
+    public ValueTask<bool> ClearChosenEnemyAsync(Cell destination, MapCombatExpectation expectation = MapCombatExpectation.Enemy)
+    {
+        Calls.Add($"clear_chosen_enemy:{destination}:{expectation.ToString().ToLowerInvariant()}");
+        return ValueTask.FromResult(true);
+    }
     public ValueTask<bool> ClearSirenAsync() => Result("clear_siren");
     public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync() => Result("clear_any_enemy:cost_2");
     public ValueTask<bool> ClearBouncingEnemyAsync() => Result("clear_bouncing_enemy");

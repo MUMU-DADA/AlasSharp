@@ -23,6 +23,10 @@ public abstract class CampaignRule
     public virtual ValueTask RefocusBossAsync(CampaignContext context) => context.Operations.RefocusBossAsync(null);
     public virtual ValueTask<bool> BattleDefaultAsync(CampaignContext context) => context.Operations.ClearEnemyAsync();
     public virtual ValueTask<bool> BattleBossAsync(CampaignContext context) => context.Operations.BruteClearBossAsync();
+    /// <summary>Some upstream campaigns select an exact battle hook even while
+    /// clear-all is enabled. The default keeps the common full-clear scheduler.</summary>
+    protected virtual bool UseHookInClearAll(CampaignContext context)
+        => false;
 
     /// <summary>Port of CampaignBase.battle_function, including all three Config.when variants.</summary>
     public async ValueTask<bool> DispatchAsync(CampaignContext context)
@@ -39,6 +43,9 @@ public abstract class CampaignRule
             if (await operations.ClearSirenAsync()) return true;
             return await operations.ClearEnemyAsync();
         }
+        if (context.Config.ClearAllThisTime && UseHookInClearAll(context) &&
+            Hooks.TryGetValue(state.BattleCount, out var clearHook))
+            return await clearHook(context);
         if (context.Config.ClearAllThisTime)
         {
             if (await operations.BreakSirenCaughtAsync()) return true;

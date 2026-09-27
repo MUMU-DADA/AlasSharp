@@ -221,6 +221,32 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
         }, token, requiresFreshImage: true);
     }
 
+    /// <summary>Tap several visible grids without forcing a map refresh between taps.
+    /// Strategy interactions keep the map underneath the overlay, so refreshing after
+    /// the first tap would invalidate the localized geometry before the target tap.</summary>
+    public async ValueTask TapCellsAsync(IReadOnlyList<Cell> destinations, CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(destinations);
+        if (destinations.Count == 0) throw new ArgumentException("At least one grid is required", nameof(destinations));
+        if (_gridInput is null) throw new InvalidOperationException("Map grid tap input is not configured");
+        if (destinations.Any(destination => !_map.Contains(destination)))
+            throw new ArgumentOutOfRangeException(nameof(destinations));
+        await RunAsync(async ct =>
+        {
+            foreach (var destination in destinations)
+            {
+                ViewCell local = new(checked(destination.Column - Position.Column + View.Geometry.Center.X),
+                    checked(destination.Row - Position.Row + View.Geometry.Center.Y));
+                if (!View.Geometry.Projections.TryGetValue(local, out var grid))
+                    throw new MapGeometryException($"Destination grid {destination} is outside the localized map view");
+                await _gridInput!.TapAsync(grid.Inner, ct);
+            }
+            _observation = null;
+            _requiresRefresh = true;
+            return true;
+        }, token, requiresFreshImage: true);
+    }
+
     private async ValueTask FocusCoreAsync(Cell destination, CancellationToken token)
     {
         while (true)

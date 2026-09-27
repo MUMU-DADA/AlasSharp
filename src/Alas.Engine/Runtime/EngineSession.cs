@@ -171,11 +171,15 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     }
     public CampaignMapCombat CreateCampaignMapCombat(MapCamera camera, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal, Func<CancellationToken, ValueTask>? refocusBoss = null)
-        => new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances, refocusBoss),
+    {
+        var mobMovement = new CampaignMobMovement(Driver, camera);
+        return new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances, refocusBoss),
             new MapScanner(camera.State, camera, Driver.Clock),
             waitEmotion: (fleet, token) => RequireEmotion(configuration).WaitAsync(fleet, token, configuration.IsDoubleBook),
             switchFleet: CreateFleetSwitcher(camera, configuration).SwitchAsync,
-            ensureEdges: token => camera.EnsureEdgesAsync(skipFirstUpdate: true, token), waitForInfoBar: EnsureNoMapInfoBarAsync);
+            ensureEdges: token => camera.EnsureEdgesAsync(skipFirstUpdate: true, token), waitForInfoBar: EnsureNoMapInfoBarAsync,
+            moveMob: mobMovement.MoveAsync);
+    }
     public CampaignExecution CreateInMapCampaignExecution(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token = default)
         => new(rule, configuration, (state, effective) => new InMapCampaignOperations(this, state, effective, token, rule));

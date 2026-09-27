@@ -96,6 +96,9 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask ClearMysteryAsync(Cell destination) => Combat.ClearMysteryAsync(destination, token);
     public ValueTask SwitchFleetAsync(int fleet) => Combat.SwitchFleetAsync(fleet, token);
     public ValueTask MoveFleetAsync(Cell destination) => Combat.MoveFleetAsync(destination, token);
+    public ValueTask<bool> MoveMobAsync(Cell origin, Cell target) => Combat.MoveMobAsync(origin, target, token);
+    public ValueTask<bool> ClearChosenEnemyAsync(Cell destination, MapCombatExpectation expectation = MapCombatExpectation.Enemy)
+        => Combat.ClearChosenEnemyAsync(destination, token, expectation);
     public ValueTask<bool> PickUpFlareAsync(Cell destination) => Combat.PickUpFlareAsync(destination, token);
     public ValueTask<bool> PickUpLightHouseAsync(Cell destination) => Combat.PickUpLightHouseAsync(destination, token);
     public ValueTask<bool> PushSecondFleetForwardAsync() => Combat.PushSecondFleetForwardAsync(token);
