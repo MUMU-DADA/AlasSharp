@@ -1,6 +1,6 @@
 namespace Alas.Engine.Imaging;
 
-public sealed partial class PythonTemplateVision : IImagePatchVision
+public sealed partial class PureVisionWorker : IImagePatchVision
 {
     public async ValueTask<ImagePatchObservation> MeasurePatchAsync(ScreenFrame frame, ImagePatchRequest request,
         CancellationToken token = default)

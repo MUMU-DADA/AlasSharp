@@ -162,6 +162,29 @@ def product_boundary() -> list[str]:
                 if marker in text:
                     problems.append(f"产品源码保留退役配置语义 {marker}: {source.relative_to(ROOT)}")
 
+    # The only Python process allowed in the product is the image-only worker.
+    # Keep its boundary explicit in names and composition roots so the retired
+    # mixed Python host cannot be reintroduced under a generic `Python` option.
+    vision_boundary_markers = (
+        "PythonTemplateVision", "ALAS_PYTHON", '"--python"',
+        "string Python", "options.Python", "new PythonTemplateVision",
+        "PythonText", "PythonNumber", "PythonRepr",
+    )
+    for source_root in source_roots:
+        for source in source_root.rglob("*.cs"):
+            if any(part in {"bin", "obj"} for part in source.parts):
+                continue
+            text = source.read_text(encoding="utf-8-sig")
+            for marker in vision_boundary_markers:
+                if marker in text:
+                    problems.append(f"产品源码使用未隔离的 Python/CV 入口 {marker}: {source.relative_to(ROOT)}")
+    session = read("src/Alas.Engine/Runtime/EngineSession.cs")
+    navigation = read("src/Alas.Engine/Runtime/NavigationRun.cs")
+    if "PureVisionWorker" not in session or "PureVisionWorker" not in navigation:
+        problems.append("Engine 组合根未统一创建 PureVisionWorker")
+    if "VisionRuntime" not in session or "VisionRuntime" not in navigation:
+        problems.append("Engine 视觉运行时参数未使用明确的 VisionRuntime 边界")
+
     # The retired UI task schema and script/config editor must not return as a
     # compatibility layer. DeploySchema belongs to deployment settings and is
     # intentionally outside this list; Engine task input is one JSON document.

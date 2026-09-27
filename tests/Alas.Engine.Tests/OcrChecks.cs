@@ -20,7 +20,7 @@ internal static class OcrChecks
         if (reference.ExitCode != 0) throw new InvalidOperationException("Native OCR reference failed: " + reference.Error);
         var native = JsonNode.Parse(await File.ReadAllTextAsync(output))!;
         string models = Path.Combine(upstream, "bin/ocr_models");
-        await using var vision = new PythonTemplateVision(python, worker, modelDirectory: models);
+        await using var vision = new PureVisionWorker(python, worker, modelDirectory: models);
         int inferred = 0, rejectedAlphabets = 0, sequence = 0, decoded = 0, parsed = 0;
         foreach (var sample in native["cases"]!.AsArray())
         {
@@ -77,7 +77,7 @@ internal static class OcrChecks
         if (!rejected) throw new InvalidOperationException("Corrupt OCR labels were accepted");
         await File.WriteAllBytesAsync(Path.Combine(corrupt, "azur_lane.labels.txt"), await File.ReadAllBytesAsync(Path.Combine(models, "azur_lane.labels.txt")));
         await File.WriteAllTextAsync(Path.Combine(corrupt, "azur_lane.onnx"), "corrupt");
-        await using var broken = new PythonTemplateVision(python, worker, modelDirectory: corrupt);
+        await using var broken = new PureVisionWorker(python, worker, modelDirectory: corrupt);
         rejected = false;
         try { await broken.ReadTextAsync(new ScreenFrame(1, DateTimeOffset.UtcNow, VisionChecks.Png(1, 1, [255, 255, 255])), new OcrRequest(new PixelArea(0, 0, 1, 1), "azur_lane", null)); }
         catch (InvalidDataException failure) { rejected = failure.Message.Contains("ocr_model_hash_mismatch", StringComparison.Ordinal); }

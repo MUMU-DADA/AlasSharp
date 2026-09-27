@@ -6,7 +6,7 @@ public interface IColorBarVision
     ValueTask<IReadOnlyList<double>> ColorBarsAsync(ScreenFrame frame, IReadOnlyList<ColorBarRequest> bars, CancellationToken token);
 }
 
-public sealed partial class PythonTemplateVision : IColorBarVision
+public sealed partial class PureVisionWorker : IColorBarVision
 {
     public ValueTask<IReadOnlyList<double>> ColorBarsAsync(ScreenFrame frame, IReadOnlyList<ColorBarRequest> bars, CancellationToken token)
     {

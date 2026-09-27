@@ -8,7 +8,7 @@ using Alas.Engine.Tasks;
 
 namespace Alas.Engine.Runtime;
 
-public sealed record EngineSessionOptions(string Adb, string Serial, GameServer Server, string Assets, string Python,
+public sealed record EngineSessionOptions(string Adb, string Serial, GameServer Server, string Assets, string VisionRuntime,
     string? ApplicationPackage = null, string? ModelDirectory = null, bool AllowActions = false,
     string? ProfileRoot = null, string? ProfileInstance = null)
 {
@@ -25,7 +25,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     ICampaignExecutionService, ICampaignStageObservationService, ICampaignFleetPreparationService,
     ICampaignEntryService, ICampaignMapPreparationService, ICampaignEmotionService
 {
-    private readonly PythonTemplateVision _vision;
+    private readonly PureVisionWorker _vision;
     private readonly JournalDevice _device;
     private readonly IApplicationHealth _application;
     private readonly AssetFiles _assets;
@@ -49,9 +49,9 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         _device = new JournalDevice(new AdbDevice(options.Adb, options.Serial, options.AllowActions));
         _application = options.ApplicationPackage is null ? new UnconfiguredApplication() :
             new JournalApplication(new AdbApplication(options.Adb, options.Serial, options.ApplicationPackage, options.AllowActions), _device);
-        string python = options.Python.Contains(Path.DirectorySeparatorChar) || options.Python.Contains(Path.AltDirectorySeparatorChar)
-            ? Path.GetFullPath(options.Python) : options.Python;
-        _vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"), modelDirectory: options.ModelDirectory);
+        string visionRuntime = options.VisionRuntime.Contains(Path.DirectorySeparatorChar) || options.VisionRuntime.Contains(Path.AltDirectorySeparatorChar)
+            ? Path.GetFullPath(options.VisionRuntime) : options.VisionRuntime;
+        _vision = new PureVisionWorker(visionRuntime, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"), modelDirectory: options.ModelDirectory);
         _assets = new AssetFiles(options.Assets);
         Driver = new UiDriver(options.Server, _device, _vision, _assets);
         _imageStability = new(Driver, _vision, () => Driver.Frame ?? throw new InvalidOperationException("No stability screenshot"));

@@ -138,7 +138,7 @@ public sealed class DeploySettingsWorkspace
         JsonArray? items = value as JsonArray;
         if (items is null)
         {
-            string text = PythonText(value).Trim();
+            string text = YamlScalarText(value).Trim();
             if (text.Length == 0 || text.Equals("null", StringComparison.OrdinalIgnoreCase)) return [];
             if (text.StartsWith('[') && text.EndsWith(']'))
             {
@@ -147,7 +147,7 @@ public sealed class DeploySettingsWorkspace
             }
             items ??= new JsonArray(text.Trim('[', ']').Split(',').Select(item => (JsonNode?)JsonValue.Create(item)).ToArray());
         }
-        return items.Select(item => PythonText(item).Trim(' ', '\t', '\r', '\n', '\'', '"'))
+        return items.Select(item => YamlScalarText(item).Trim(' ', '\t', '\r', '\n', '\'', '"'))
             .Where(item => item.Length != 0).Distinct(StringComparer.Ordinal).ToList();
     }
 
@@ -281,7 +281,7 @@ public sealed class DeploySettingsWorkspace
             if (number.Sign < 0) throw new ArgumentException(key + " 不能小于 0");
             return JsonNode.Parse(number.ToString(CultureInfo.InvariantCulture));
         }
-        string text = value is null ? "" : PythonText(value).Trim();
+        string text = value is null ? "" : YamlScalarText(value).Trim();
         if (type == "select")
         {
             if (!field["options"]!.AsArray().Any(option => option!.GetValue<string>() == text)) throw new ArgumentException(key + " 的值无效");
@@ -294,18 +294,18 @@ public sealed class DeploySettingsWorkspace
 
     private static string NormalizeDigits(string text) => string.Concat(text.Select(c => char.IsDigit(c) ? ((int)char.GetNumericValue(c)).ToString(CultureInfo.InvariantCulture) : c.ToString()));
     private static string YamlText(JsonNode? value) => value?.GetValueKind() switch
-        { null or JsonValueKind.Null => "null", JsonValueKind.True => "true", JsonValueKind.False => "false", _ => PythonText(value) };
+        { null or JsonValueKind.Null => "null", JsonValueKind.True => "true", JsonValueKind.False => "false", _ => YamlScalarText(value) };
 
-    private static string PythonText(JsonNode? value) => value?.GetValueKind() switch
+    private static string YamlScalarText(JsonNode? value) => value?.GetValueKind() switch
     {
         null or JsonValueKind.Null => "None", JsonValueKind.True => "True", JsonValueKind.False => "False",
         JsonValueKind.String => value.GetValue<string>(),
-        JsonValueKind.Array => "[" + string.Join(", ", value.AsArray().Select(PythonRepr)) + "]",
-        JsonValueKind.Object => "{" + string.Join(", ", value.AsObject().Select(item => PythonRepr(JsonValue.Create(item.Key)) + ": " + PythonRepr(item.Value))) + "}",
-        _ => PythonNumber(value!),
+        JsonValueKind.Array => "[" + string.Join(", ", value.AsArray().Select(YamlRepr)) + "]",
+        JsonValueKind.Object => "{" + string.Join(", ", value.AsObject().Select(item => YamlRepr(JsonValue.Create(item.Key)) + ": " + YamlRepr(item.Value))) + "}",
+        _ => YamlNumber(value!),
     };
 
-    private static string PythonNumber(JsonNode value)
+    private static string YamlNumber(JsonNode value)
     {
         string raw = value.ToJsonString();
         if (raw.IndexOfAny(['.', 'e', 'E']) < 0) return raw;
@@ -331,9 +331,9 @@ public sealed class DeploySettingsWorkspace
             digits.Length <= position ? digits.PadRight(position, '0') + ".0" : digits.Insert(position, "."));
     }
 
-    private static string PythonRepr(JsonNode? value)
+    private static string YamlRepr(JsonNode? value)
     {
-        if (value?.GetValueKind() != JsonValueKind.String) return PythonText(value);
+        if (value?.GetValueKind() != JsonValueKind.String) return YamlScalarText(value);
         string text = value.GetValue<string>();
         char quote = text.Contains('\'') && !text.Contains('"') ? '"' : '\'';
         return quote + text.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t")

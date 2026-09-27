@@ -93,7 +93,7 @@ internal static class RetirementChecks
             Check(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(ui.Keys), sample["clicks"]) &&
                 ui.Active.Order(StringComparer.Ordinal).SequenceEqual(Strings(sample["active"]!)), "Native setting execution differs");
         }
-        await using var vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
+        await using var vision = new PureVisionWorker(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
         var files = new AssetFiles(Path.Combine(upstream, "assets"));
         var device = new StaticDevice();
         var driver = new UiDriver(GameServer.Cn, device, vision, files, new ManualClock());

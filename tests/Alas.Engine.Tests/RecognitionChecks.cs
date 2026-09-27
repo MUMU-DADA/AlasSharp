@@ -24,7 +24,7 @@ internal static class RecognitionChecks
         var reference = JsonNode.Parse(await File.ReadAllTextAsync(output))!;
         string worker = Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py");
         var files = new AssetFiles(Path.Combine(upstream, "assets"));
-        await using var vision = new PythonTemplateVision(python, worker);
+        await using var vision = new PureVisionWorker(python, worker);
         long sequence = 0;
         int cases = 0, patches = 0, views = 0;
         var positive = new HashSet<string>();

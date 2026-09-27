@@ -81,7 +81,7 @@ required 的前置条件缺失计为队列失败；正常边界停止不计业�
 
 退役由 Engine 的通用船坞筛选、排序/收藏开关、一键设置和船/装备/奖励确认流程执行，进图与战斗准备共用同一会话处理器；`emotionMode=ignore` / `calculate_ignore` 的低心情确认已接入。`retirement.json` 保存开始/返回帧、确认动作及未完成尝试；`NativeSelectionEstimate` 是原生选择估算，不是实测退役数。未确认设置、缺少实际确认动作或最后动作后的新帧、超时无奖励证据均失败；只见离开船坞不证明返回特定页面，更不证明通关。强化、GemsFarming 保留航母/退役旗舰与长期心情重启调度仍未迁移，没有新增实机退役证据。
 
-CLI 公共参数为 --adb、--serial、--server、--assets、--python、--artifacts；OCR 任务使用 --models，动作另需 --allow-actions 和 --package。`campaign --chapter <规则列表>` 默认 dry-run，使用 --run --allow-actions 才执行；--fleet1-formation/--fleet2-formation 选择上述阵型，--fleet-order 指定舰队顺序。自定义退役选项使用队列输入；直接 campaign 命令沿用缺省选项。运行前读取 --help 核对参数。
+CLI 公共参数为 --adb、--serial、--server、--assets、--vision-runtime、--artifacts；其中 vision-runtime 只启动纯 CV/OCR worker，不承载业务规则。OCR 任务使用 --models，动作另需 --allow-actions 和 --package。`campaign --chapter <规则列表>` 默认 dry-run，使用 --run --allow-actions 才执行；--fleet1-formation/--fleet2-formation 选择上述阵型，--fleet-order 指定舰队顺序。自定义退役选项使用队列输入；直接 campaign 命令沿用缺省选项。运行前读取 --help 核对参数。
 
 ## 待完成能力与验证
 

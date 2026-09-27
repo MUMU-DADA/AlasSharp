@@ -19,7 +19,7 @@ public interface IGridFeatureVision
     ValueTask<IReadOnlyList<IReadOnlyList<PixelArea>>> RectanglesAsync(ScreenFrame frame, CancellationToken token);
 }
 
-public sealed partial class PythonTemplateVision : IGridFeatureVision
+public sealed partial class PureVisionWorker : IGridFeatureVision
 {
     public ValueTask<ScreenFrame> MaskAsync(ScreenFrame frame, ReadOnlyMemory<byte> mask, PixelPoint origin, CancellationToken token)
     {

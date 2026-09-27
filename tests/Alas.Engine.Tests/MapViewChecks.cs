@@ -450,7 +450,7 @@ internal static partial class MapViewChecks
 
     private static async Task PixelChecksAsync(JsonNode pixels, string python, string artifacts, AssetFiles files)
     {
-        await using var vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
+        await using var vision = new PureVisionWorker(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
         var recognition = new GridRecognition(vision, files, GameServer.Cn, new());
         async Task<ScreenFrame> Frame(string name, long sequence) => new(sequence, DateTimeOffset.UnixEpoch, await File.ReadAllBytesAsync(Path.Combine(artifacts, name)));
         var old = await Frame("pair-0.png", 1); var next = await Frame("pair-1.png", 2); var mask = await Frame("pair-mask.png", 3);
@@ -486,7 +486,7 @@ internal static partial class MapViewChecks
                 print(json.dumps(dict(protocol='alas-cv/1', id=request['id'], frame=request['frame'],
                     second_frame=request['second_frame'] + 1, value=0.99)), flush=True)
             """);
-        await using var wrong = new PythonTemplateVision(python, wrongWorker);
+        await using var wrong = new PureVisionWorker(python, wrongWorker);
         rejected = false;
         try { await wrong.CompareAsync(old, next, new(new(0, 0, 5, 5), new(5, 5), new(0, 0, 7, 7), new(7, 7))); }
         catch (InvalidDataException) { rejected = true; }

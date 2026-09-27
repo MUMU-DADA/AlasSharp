@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace Alas.Engine.Imaging;
 
 /// <summary>One persistent, image-only worker. Protocol failures permanently close this instance.</summary>
-public sealed partial class PythonTemplateVision : IVision
+public sealed partial class PureVisionWorker : IVision
 {
     private readonly Process _process;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -19,15 +19,15 @@ public sealed partial class PythonTemplateVision : IVision
     private string _errorTail = "";
     private readonly OcrModels? _ocrModels;
 
-    public PythonTemplateVision(string python, string worker, TimeSpan? timeout = null, string? modelDirectory = null)
+    public PureVisionWorker(string visionRuntime, string worker, TimeSpan? timeout = null, string? modelDirectory = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(python);
+        ArgumentException.ThrowIfNullOrWhiteSpace(visionRuntime);
         ArgumentException.ThrowIfNullOrWhiteSpace(worker);
         if (!File.Exists(worker)) throw new FileNotFoundException("Pure vision worker is missing", worker);
         _timeout = timeout ?? TimeSpan.FromSeconds(30);
         if (_timeout <= TimeSpan.Zero || _timeout.TotalMilliseconds > int.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(timeout));
-        var start = new ProcessStartInfo(python)
+        var start = new ProcessStartInfo(visionRuntime)
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
             RedirectStandardOutput = true, RedirectStandardError = true,

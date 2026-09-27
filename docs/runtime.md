@@ -17,7 +17,7 @@
 
 `POST /api/run` 接收 `{queue:{tasks:[...]}, mode, instance?, serial?, max_seconds?, resume?, resume_directory?, continue_on_error?}`。mode 为 dry_run（默认）、read_only 或 actions；动作模式须显式 `confirm_actions=true`。每任务 `timeoutSeconds` 优先于公共 `max_seconds`；旧 `max_rounds` 仅接受兼容默认值 20，实际行为由 C# runner 规则定义。任务输入格式见[任务域](tasks.md)。
 
-一次只执行一个队列。实例和设备必须一致；不得在同队列混用实例。视觉解释器、ADB、OCR 模型通过 `ALAS_PYTHON`（绝对路径）、`ALAS_ADB` 和 `ALAS_OCR_MODELS` 配置，素材从配置根目录的 assets 读取。
+一次只执行一个队列。实例和设备必须一致；不得在同队列混用实例。纯 CV/OCR worker、ADB、OCR 模型通过 `ALAS_CV_RUNTIME`（绝对路径）、`ALAS_ADB` 和 `ALAS_OCR_MODELS` 配置，素材从 Engine 根目录的 assets 读取；业务规则、导航和任务调度不经过 worker。
 
 控制入口的停止与关闭只设置边界信号，不中断当前任务；后续任务记 skipped / stop_requested_at_boundary。关闭先拒绝新请求，再等待已接受队列收尾。HTTP 取消或断开不会停止队列。Engine CLI 的取消令牌和任务期限可中断当前任务，须保留失败证据，不能把它当作正常结算。
 

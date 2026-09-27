@@ -8,7 +8,7 @@ using Alas.Engine.Rules;
 namespace Alas.Engine.Runtime;
 
 public sealed record NavigationRunOptions(string Adb, string Serial, GameServer Server, string Assets,
-    string Python, string Artifacts, string? Destination = null, string? ApplicationPackage = null, TimeSpan? Timeout = null);
+    string VisionRuntime, string Artifacts, string? Destination = null, string? ApplicationPackage = null, TimeSpan? Timeout = null);
 public sealed record NavigationRunResult(string Artifacts, IReadOnlyList<string> Pages, int ActionAttempts, string? Error);
 
 /// <summary>Independent composition root; never enters legacy tasks, configuration, or business Python.</summary>
@@ -32,7 +32,7 @@ public static class NavigationRun
         UiDriver? driver = null;
         try
         {
-            await using var vision = new PythonTemplateVision(Path.GetFullPath(options.Python),
+            await using var vision = new PureVisionWorker(Path.GetFullPath(options.VisionRuntime),
                 Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
             driver = new UiDriver(options.Server, device, vision, new AssetFiles(options.Assets));
             IReadOnlyList<string> pages;

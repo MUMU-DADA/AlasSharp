@@ -68,7 +68,7 @@ internal static class AmmoPickupChecks
     private static async Task VisualChecksAsync(string python, string upstream, string artifacts, JsonArray images)
     {
         Check(images.Count == 4, "Native ammo visual fixtures are incomplete");
-        await using var vision = new PythonTemplateVision(python,
+        await using var vision = new PureVisionWorker(python,
             Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
         var files = new AssetFiles(Path.Combine(upstream, "assets"));
         long sequence = 0;

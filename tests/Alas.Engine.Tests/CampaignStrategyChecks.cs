@@ -84,7 +84,7 @@ internal static class CampaignStrategyChecks
         }
 
         var files = new AssetFiles(Path.Combine(upstream, "assets"));
-        await using var vision = new PythonTemplateVision(python,
+        await using var vision = new PureVisionWorker(python,
             Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
         foreach (var pixel in native["pixels"]!.AsArray())
         {

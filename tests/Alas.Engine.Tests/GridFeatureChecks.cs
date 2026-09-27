@@ -19,11 +19,11 @@ internal static class GridFeatureChecks
         var transform = new ProjectiveTransform(corners, corners);
         string worker = Path.Combine(artifacts, "feature_response_worker.py");
         // An isolated worker returns the supplied malformed measurement with correct identity.
-        async Task Reject(JsonObject response, Func<PythonTemplateVision, Task> invoke, string label)
+        async Task Reject(JsonObject response, Func<PureVisionWorker, Task> invoke, string label)
         {
             await File.WriteAllTextAsync(worker, "import json,sys\npayload=json.loads(" + JsonSerializer.Serialize(response.ToJsonString()) + ")\n" +
                 "for line in sys.stdin:\n r=json.loads(line); print(json.dumps(dict(protocol='alas-cv/1',id=r['id'],frame=r['frame'],**payload)),flush=True)\n");
-            await using var vision = new PythonTemplateVision(python, worker);
+            await using var vision = new PureVisionWorker(python, worker);
             bool rejected = false;
             try { await invoke(vision); }
             catch (InvalidDataException) { rejected = true; }

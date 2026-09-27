@@ -28,7 +28,7 @@ internal static class FleetHealthChecks
             Check(data["sources"]![source.Path]!.GetValue<string>() == source.Sha256, "HP/withdrawal source drift: " + source.Path);
 
         var measured = new Dictionary<string, double[]>();
-        await using var vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
+        await using var vision = new PureVisionWorker(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
         long frame = 0;
         foreach (var sample in data["images"]!.AsArray())
         {

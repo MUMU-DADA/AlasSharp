@@ -62,7 +62,7 @@ internal static class MapRecoveryChecks
     private static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
     private static async Task CameraTimerChecksAsync(string python, string upstream, string artifacts, JsonArray updates)
     {
-        await using var vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
+        await using var vision = new PureVisionWorker(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
         var assets = new AssetFiles(Path.Combine(upstream, "assets"));
         var recognizer = new GridRecognition(vision, assets, GameServer.Cn, new());
         var predictor = new MapSwipePredictor(new EmptyEvidence());

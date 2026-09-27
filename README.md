@@ -18,7 +18,7 @@
 
 ```powershell
 $env:ALAS_REPO = "<配置与素材根目录>"
-$env:ALAS_PYTHON = "<纯视觉 Python 可执行文件绝对路径>"
+$env:ALAS_CV_RUNTIME = "<纯视觉 Python 可执行文件绝对路径>"
 $env:ALAS_ADB = "<ADB 可执行文件路径>"
 $env:ALAS_OCR_MODELS = "<OCR 模型目录>"
 dotnet build Alas.sln -c Release

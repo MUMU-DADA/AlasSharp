@@ -91,7 +91,7 @@ internal static class DetectorChecks
             { Check(error.Message == sample["expected"]!["error"]?.GetValue<string>(), "Fallback error differs: " + sample["name"]); }
             Check(fake.Calls.SequenceEqual(sample["calls"]!.AsArray().Select(c => c!.GetValue<string>())), "Fallback evaluation order differs");
         }
-        await using var vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
+        await using var vision = new PureVisionWorker(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
         var mask = await files.ReadAsync(MapDetectionAssets.Mask);
         long sequence = 0;
         foreach (var entry in reference["warps"]!.AsArray())
@@ -394,7 +394,7 @@ internal static class DetectorChecks
             Check(success.Tasks[1].Evidence!["frame"]!.GetValue<long>() > success.Tasks[0].Evidence!["frame"]!.GetValue<long>(), "Map tasks did not share one session");
             Check(!File.Exists(fixture + ".actions"), "Read-only observation attempted a gesture");
             var invalid = await queue.RunAsync([new("missing", "map_observe", new JsonObject { ["campaign"] = "campaign_main/campaign_99_1" })],
-                options with { Python = "missing", Adb = "missing" }, new(artifacts));
+                options with { VisionRuntime = "missing", Adb = "missing" }, new(artifacts));
             Check(invalid.Failed && invalid.Tasks[0] is { Outcome: TaskOutcome.Refused, Reason: "NotSupportedException" }, "Unported campaign was executed");
             Environment.SetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE", Path.Combine(artifacts, "frame-1.png"));
             var failed = await queue.RunAsync([Request("blank"), Request("stopped")], options, new(artifacts));
@@ -430,7 +430,7 @@ internal static class DetectorChecks
             await File.WriteAllTextAsync(queueFile, JsonSerializer.Serialize(new[] { Request("cli") }, TaskQueue.Json));
             var cliResult = await new ProcessRunner().RunAsync("dotnet", [cli, "run", "--queue", queueFile,
                 "--adb", executable, "--serial", "offline-map", "--server", "cn", "--assets", options.Assets,
-                "--python", python, "--artifacts", Path.Combine(artifacts, "cli")], TimeSpan.FromSeconds(45));
+                "--vision-runtime", python, "--artifacts", Path.Combine(artifacts, "cli")], TimeSpan.FromSeconds(45));
             Check(cliResult.ExitCode == 0, "CLI map task failed: " + cliResult.Error);
             var cliEvidence = JsonNode.Parse(cliResult.Output)!;
             Check(cliEvidence["tasks"]![0]!["outcome"]!.GetValue<string>() == "succeeded" && !File.Exists(fixture + ".actions"),

@@ -24,7 +24,7 @@ internal static class VisionChecks
             pixels.AsSpan(((9 + row) * 32 + 14) * 3, 5 * 3).CopyTo(crop.AsSpan(row * 5 * 3));
         var frame = new ScreenFrame(17, DateTimeOffset.UtcNow, Png(32, 24, pixels));
         var request = new TemplateRequest(Png(5, 4, crop), new PixelArea(7, 5, 20, 15), 0.99);
-        await using (var vision = new PythonTemplateVision(python, worker))
+        await using (var vision = new PureVisionWorker(python, worker))
         {
             foreach (var preprocessing in new[] { TemplatePreprocessing.Color, TemplatePreprocessing.Luma })
             {
@@ -69,7 +69,7 @@ internal static class VisionChecks
             catch (NotSupportedException) { ocrRejected = true; }
             Check(ocrRejected, "Unported OCR did not refuse");
         }
-        await using (var invalid = new PythonTemplateVision(python, worker))
+        await using (var invalid = new PureVisionWorker(python, worker))
         {
             bool rejected = false;
             try { await invalid.MatchAsync(frame, request with { SearchArea = new PixelArea(0, 0, 4, 3) }); }
@@ -91,7 +91,7 @@ internal static class VisionChecks
                     dict(similarity=0.9, location=[8, 6]), dict(similarity=0.95, location=[9, 7]),
                     dict(similarity=0.8, location=[10, 8])])), flush=True)
             """);
-        await using (var animated = new PythonTemplateVision(python, animatedWorker))
+        await using (var animated = new PureVisionWorker(python, animatedWorker))
         {
             var first = await animated.MatchAsync(frame, request with { Similarity = 0.85 });
             Check(first.Matched && first.Location == new PixelPoint(8, 6), "Animated match selected best score instead of first passing frame");
@@ -108,7 +108,7 @@ internal static class VisionChecks
                 print(json.dumps(dict(protocol='alas-cv/1', id=request['id'] + 1,
                     frame=request['frame'], similarity=1.0, location=[14, 9])), flush=True)
             """);
-        await using (var wrong = new PythonTemplateVision(python, wrongWorker))
+        await using (var wrong = new PureVisionWorker(python, wrongWorker))
         {
             bool rejected = false;
             try { await wrong.MatchAsync(frame, request); }
@@ -117,14 +117,14 @@ internal static class VisionChecks
         }
         string stalledWorker = Path.Combine(artifacts, "stalled_worker.py");
         await File.WriteAllTextAsync(stalledWorker, "import time\ntime.sleep(60)\n");
-        await using (var stalled = new PythonTemplateVision(python, stalledWorker, TimeSpan.FromMilliseconds(300)))
+        await using (var stalled = new PureVisionWorker(python, stalledWorker, TimeSpan.FromMilliseconds(300)))
         {
             bool timedOut = false;
             try { await stalled.MatchAsync(frame, request); }
             catch (TimeoutException) { timedOut = true; }
             Check(timedOut, "CV request deadline was ignored");
         }
-        await using (var cancelled = new PythonTemplateVision(python, stalledWorker))
+        await using (var cancelled = new PureVisionWorker(python, stalledWorker))
         using (var cancellation = new CancellationTokenSource(300))
         {
             bool wasCancelled = false;
@@ -132,7 +132,7 @@ internal static class VisionChecks
             catch (OperationCanceledException) { wasCancelled = true; }
             Check(wasCancelled, "CV cancellation became timeout or success");
         }
-        var disposing = new PythonTemplateVision(python, stalledWorker);
+        var disposing = new PureVisionWorker(python, stalledWorker);
         var pending = disposing.MatchAsync(frame, request).AsTask();
         await disposing.DisposeAsync();
         bool disposed = false;
@@ -142,7 +142,7 @@ internal static class VisionChecks
         await disposing.DisposeAsync();
         string failingWorker = Path.Combine(artifacts, "failing_worker.py");
         await File.WriteAllTextAsync(failingWorker, "raise RuntimeError('synthetic CV root cause')\n");
-        await using (var failing = new PythonTemplateVision(python, failingWorker))
+        await using (var failing = new PureVisionWorker(python, failingWorker))
         {
             bool preserved = false;
             try { await failing.MatchAsync(frame, request); }

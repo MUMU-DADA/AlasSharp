@@ -264,7 +264,7 @@ public sealed class EngineControlWorkspace
         string? models = Environment.GetEnvironmentVariable("ALAS_OCR_MODELS");
         return new EngineSessionOptions(
             Environment.GetEnvironmentVariable("ALAS_ADB") ?? "adb", actualSerial, server,
-            Path.Combine(_engineRoot, "assets"), Environment.GetEnvironmentVariable("ALAS_PYTHON") ?? "python",
+            Path.Combine(_engineRoot, "assets"), Environment.GetEnvironmentVariable("ALAS_CV_RUNTIME") ?? "python",
             package, string.IsNullOrWhiteSpace(models) ? null : Path.GetFullPath(models), allowActions,
             profile is null ? null : _engineRoot, profile?.Instance);
     }

@@ -84,7 +84,7 @@ internal static partial class EmotionChecks
         try
         {
             string executable = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Alas.Engine.Tests.exe" : "Alas.Engine.Tests");
-            await using var session = new EngineSession(options with { Adb = executable, Python = python, Assets = Path.Combine(upstream, "assets"),
+            await using var session = new EngineSession(options with { Adb = executable, VisionRuntime = python, Assets = Path.Combine(upstream, "assets"),
                 ModelDirectory = null, ProfileRoot = high.Root });
             session.BeginTask(TimeSpan.FromSeconds(10));
             var configuration = new CampaignConfiguration { Fleet2 = 2, FleetOrder = FleetOrder.Fleet1BossFleet2Mob };
@@ -109,7 +109,7 @@ internal static partial class EmotionChecks
         var (_, root) = await FixtureAsync(artifacts, Defaults(0, DateTimeOffset.Now.AddMinutes(10)));
         var environment = new Dictionary<string, string>
         {
-            ["ALAS_PYTHON"] = python, ["ALAS_ADB"] = "must-not-start-adb",
+            ["ALAS_CV_RUNTIME"] = python, ["ALAS_ADB"] = "must-not-start-adb",
             ["ALAS_OCR_MODELS"] = Path.Combine(upstream, "bin/ocr_models")
         };
         var previous = environment.Keys.ToDictionary(key => key, Environment.GetEnvironmentVariable);

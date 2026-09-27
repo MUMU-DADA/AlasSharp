@@ -9,7 +9,7 @@ internal static partial class MapEncounterProbeChecks
 {
     public static async Task<int> OverlayRulesAsync(string python, string upstream, string artifacts, GameServer server, JsonNode native)
     {
-        await using var vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
+        await using var vision = new PureVisionWorker(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
         var colors = new Dictionary<string, (double Air, double Ambush)>();
         int cases = 0;
         foreach (var entry in native["chapters"]!.AsArray())

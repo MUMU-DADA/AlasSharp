@@ -67,7 +67,7 @@ internal static class RecoveryChecks
                     throw new InvalidOperationException("Native interval reset differs: " + sample["asset"]);
                 resets++;
             }
-            await using var vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
+            await using var vision = new PureVisionWorker(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
             foreach (var sample in native["options"]!.AsArray())
             {
                 var frame = new ScreenFrame(++images, DateTimeOffset.UtcNow,

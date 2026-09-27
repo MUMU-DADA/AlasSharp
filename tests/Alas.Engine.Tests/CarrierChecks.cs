@@ -13,7 +13,7 @@ internal static class CarrierChecks
     public static async Task RunAsync(string python, string upstream, string artifacts)
     {
         var assets = new AssetFiles(Path.Combine(upstream, "assets"));
-        await using var vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging", "Worker", "vision_worker.py"));
+        await using var vision = new PureVisionWorker(python, Path.Combine(AppContext.BaseDirectory, "Imaging", "Worker", "vision_worker.py"));
         int cases = 0, fixtures = 0;
         foreach (var server in Enum.GetValues<GameServer>())
         {

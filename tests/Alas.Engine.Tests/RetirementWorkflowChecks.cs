@@ -9,7 +9,7 @@ namespace Alas.Engine.Tests;
 /// <summary>Actual dock/setting/retirement composition with pure CV pixels and synthetic device boundaries.</summary>
 internal static class RetirementWorkflowChecks
 {
-    internal static async Task RunAsync(PythonTemplateVision vision)
+    internal static async Task RunAsync(PureVisionWorker vision)
     {
         foreach (GameServer server in Enum.GetValues<GameServer>())
         {
@@ -72,7 +72,7 @@ internal static class RetirementWorkflowChecks
         Console.WriteLine("Retirement composition: four-server real dock + quick settings + fallback, old-retire batches, partial failure and tips passed; CV pixels and synthetic I/O only.");
     }
 
-    private static async Task TipsAsync(PythonTemplateVision vision)
+    private static async Task TipsAsync(PureVisionWorker vision)
     {
         foreach (var asset in new[] { UiAssets.Handler.GAME_TIPS, UiAssets.Handler.GAME_TIPS3, UiAssets.Handler.GAME_TIPS4 })
             foreach (int count in new[] { 50, 51 })
@@ -88,8 +88,8 @@ internal static class RetirementWorkflowChecks
             }
     }
 
-    private static RetirementDock Dock(DockUi ui, PythonTemplateVision vision) => new(ui, new(vision, () => ui.Current));
-    private static RetirementHandler Handler(DockUi ui, PythonTemplateVision vision)
+    private static RetirementDock Dock(DockUi ui, PureVisionWorker vision) => new(ui, new(vision, () => ui.Current));
+    private static RetirementHandler Handler(DockUi ui, PureVisionWorker vision)
         => new(ui, Dock(ui, vision), () => ui.Current.Sequence, ui.InfoAsync);
     private static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
     private static async Task Rejects<T>(Func<Task> action) where T : Exception

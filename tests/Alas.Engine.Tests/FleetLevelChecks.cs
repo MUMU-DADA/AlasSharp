@@ -33,7 +33,7 @@ internal static class FleetLevelChecks
         var data = JsonNode.Parse(await File.ReadAllTextAsync(output))!;
         Check(data["sources"]![FleetLevelRules.Source.Path]!.GetValue<string>() == FleetLevelRules.Source.Sha256,
             "Native level source drifted");
-        await using var vision = new PythonTemplateVision(python, worker, modelDirectory: Path.Combine(upstream, "bin/ocr_models"));
+        await using var vision = new PureVisionWorker(python, worker, modelDirectory: Path.Combine(upstream, "bin/ocr_models"));
         int images = 0, states = 0;
         long frame = 0;
         foreach (var sample in data["cases"]!.AsArray())

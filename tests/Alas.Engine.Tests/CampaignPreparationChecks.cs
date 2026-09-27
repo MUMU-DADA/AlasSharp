@@ -77,7 +77,7 @@ internal static class CampaignPreparationChecks
 
     private static async Task PixelChecksAsync(string python, string upstream, string artifacts, JsonArray samples)
     {
-        await using var vision = new PythonTemplateVision(python,
+        await using var vision = new PureVisionWorker(python,
             Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
         var assets = new AssetFiles(Path.Combine(upstream, "assets"));
         foreach (var sample in samples)

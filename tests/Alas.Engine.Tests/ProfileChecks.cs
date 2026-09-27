@@ -14,7 +14,7 @@ internal static class ProfileChecks
         int stages = 0, profiles = 0, entrances = 0;
         ScreenFrame? last = null;
         var assets = new AssetFiles(Path.Combine(upstream, "assets"));
-        await using var vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
+        await using var vision = new PureVisionWorker(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
         foreach (var server in Enum.GetValues<GameServer>())
         {
             string output = Path.Combine(artifacts, $"profiles-{server}.json");
@@ -43,7 +43,7 @@ internal static class ProfileChecks
             }
         }
         Check(entrances >= 100, "Profile oracle did not exercise positive entrance extraction");
-        await using (var withOcr = new PythonTemplateVision(python,
+        await using (var withOcr = new PureVisionWorker(python,
             Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"),
             modelDirectory: Path.Combine(upstream, "bin/ocr_models")))
         {
@@ -70,7 +70,7 @@ internal static class ProfileChecks
         foreach (var (kind, value) in cases)
         {
             await File.WriteAllTextAsync(path, "import json,sys\nfor line in sys.stdin:\n r=json.loads(line)\n print(json.dumps(dict(protocol='alas-cv/1',id=r['id'],frame=r['frame'],size=[2,2]," + kind + "=" + value + ")),flush=True)\n");
-            await using var broken = new PythonTemplateVision(python, path);
+            await using var broken = new PureVisionWorker(python, path);
             bool failed = false;
             try
             {

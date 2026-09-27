@@ -10,7 +10,7 @@ public interface IImagePairVision
         ImagePairRequest request, CancellationToken token = default);
 }
 
-public sealed partial class PythonTemplateVision : IImagePairVision
+public sealed partial class PureVisionWorker : IImagePairVision
 {
     public async ValueTask<ImagePairObservation> CompareAsync(ScreenFrame first, ScreenFrame second,
         ImagePairRequest request, CancellationToken token = default)

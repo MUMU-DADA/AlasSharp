@@ -14,7 +14,7 @@ public interface IImageProfileVision
     ValueTask<IReadOnlyList<double>> LetterColumnMeansAsync(ScreenFrame frame, PixelArea area, PixelColor letter, int threshold, CancellationToken token);
 }
 
-public sealed partial class PythonTemplateVision : IImageProfileVision
+public sealed partial class PureVisionWorker : IImageProfileVision
 {
     public ValueTask<IReadOnlyList<int>> ColorRowPeaksAsync(ScreenFrame frame, PixelArea area, PixelColor color,
         double height, double prominence, double distance, CancellationToken token)

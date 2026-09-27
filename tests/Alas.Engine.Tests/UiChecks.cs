@@ -76,7 +76,7 @@ internal static class UiChecks
                 Check(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(driver.Calls, options), scenario["calls"]), "Page appearance call order/offset differs");
                 appearanceCases++;
             }
-            await using var vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging", "Worker", "vision_worker.py"));
+            await using var vision = new PureVisionWorker(python, Path.Combine(AppContext.BaseDirectory, "Imaging", "Worker", "vision_worker.py"));
             var files = new AssetFiles(Path.Combine(upstream, "assets"));
             var matcher = new AssetMatcher(server, vision, files);
             var byId = UiAssets.All.ToDictionary(a => a.Id, StringComparer.Ordinal);

@@ -49,7 +49,7 @@ internal static class CombatHealthChecks
                 "Native repair decision differs: " + sample.ToJsonString());
 
         var pngs = await Task.WhenAll(Enumerable.Range(0, 3).Select(i => File.ReadAllBytesAsync(Path.Combine(artifacts, $"power-{i}.png"))));
-        await using var vision = new PythonTemplateVision(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
+        await using var vision = new PureVisionWorker(python, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"));
         var area = Ints(data["area"]!);
         var stableUi = new Ui(pngs, [0]);
         await stableUi.PrimeAsync();

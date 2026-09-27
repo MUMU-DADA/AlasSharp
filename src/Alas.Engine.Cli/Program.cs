@@ -7,7 +7,7 @@ using Alas.Engine.Tasks;
 Console.OutputEncoding = Encoding.UTF8;
 if (args.Length == 0 || args is ["--help"])
 {
-    Console.WriteLine("Alas.Engine.Cli <observe|navigate|run|campaign> --adb <executable> --serial <device> --server <cn|en|jp|tw> --assets <directory> --python <executable> --artifacts <directory>");
+    Console.WriteLine("Alas.Engine.Cli <observe|navigate|run|campaign> --adb <executable> --serial <device> --server <cn|en|jp|tw> --assets <directory> --vision-runtime <executable> --artifacts <directory>");
     Console.WriteLine("observe: capture and identify one frame, with device actions disabled.");
     Console.WriteLine("navigate: additionally requires --package <Android package> --page <destination>; --timeout <seconds> defaults to 120. Performs game clicks and recovery.");
     Console.WriteLine("run: --queue <JSON task array> [--models <ONNX directory>] [--allow-actions --package <Android package>] [--dry-run] [--continue-on-failure] [--resume <run directory>]. Task kinds: observe, navigate, data_key, map_observe, campaign_stages (read-only OCR; optional entrances array), campaign_select (input: campaign; stops at map preparation), campaign_fleet_prepare (input: campaign; stops at fleet preparation), campaign_run (input: campaign, fleet1, fleet2, submarine; default emotionMode=calculate), campaign_resume (input: campaign; default emotionMode=ignore; requires a freshly entered map and never records cleared).");
@@ -24,7 +24,7 @@ try
     bool navigate = args[0] == "navigate";
     bool run = args[0] == "run";
     bool campaign = args[0] == "campaign";
-    string[] required = ["--adb", "--serial", "--server", "--assets", "--python", "--artifacts",
+    string[] required = ["--adb", "--serial", "--server", "--assets", "--vision-runtime", "--artifacts",
         .. navigate ? new[] { "--package", "--page" } : run ? new[] { "--queue" } : campaign ? new[] { "--chapter", "--models" } : []];
     var allowed = required.Concat(navigate ? ["--timeout"] : run ? ["--models", "--package", "--resume", "--profile-root", "--instance"] : campaign
         ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--timeout", "--fleet1-formation", "--fleet2-formation", "--fleet-order", "--profile-root", "--instance", "--emotion-mode", "--clear-mode", "--double-book", "--map-achievement", "--stage-increase"]
@@ -70,7 +70,7 @@ try
                 : fallback;
             var options = new CampaignCommandOptions(
                 values["--chapter"].Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
-                values["--adb"], values["--serial"], server, values["--assets"], values["--python"], values["--artifacts"],
+                values["--adb"], values["--serial"], server, values["--assets"], values["--vision-runtime"], values["--artifacts"],
                 values.GetValueOrDefault("--package"), values.GetValueOrDefault("--models"),
                 DryRun: !flags.Contains("--run"), AllowActions: flags.Contains("--allow-actions"),
                 ContinueOnFailure: flags.Contains("--continue-on-failure"), ResumeDirectory: values.GetValueOrDefault("--resume"),
@@ -92,7 +92,7 @@ try
         if (run)
         {
             var tasks = await TaskQueue.ReadAsync(values["--queue"], cancellation.Token);
-            var session = new EngineSessionOptions(values["--adb"], values["--serial"], server, values["--assets"], values["--python"],
+            var session = new EngineSessionOptions(values["--adb"], values["--serial"], server, values["--assets"], values["--vision-runtime"],
                 values.GetValueOrDefault("--package"), values.GetValueOrDefault("--models"), flags.Contains("--allow-actions"),
                 values.GetValueOrDefault("--profile-root"), values.GetValueOrDefault("--instance"));
             var queue = await new TaskQueue().RunAsync(tasks, session,
@@ -101,7 +101,7 @@ try
             return queue.Failed || cancellation.IsCancellationRequested ? 1 : 0;
         }
         var result = await NavigationRun.RunAsync(new NavigationRunOptions(values["--adb"], values["--serial"], server,
-            values["--assets"], values["--python"], values["--artifacts"], values.GetValueOrDefault("--page"),
+            values["--assets"], values["--vision-runtime"], values["--artifacts"], values.GetValueOrDefault("--page"),
             values.GetValueOrDefault("--package"), timeout), cancellation.Token);
         Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         return result.Error is null ? 0 : 1;

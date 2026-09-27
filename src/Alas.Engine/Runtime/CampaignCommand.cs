@@ -12,7 +12,7 @@ public sealed record CampaignCommandOptions(
     string Serial,
     GameServer Server,
     string Assets,
-    string Python,
+    string VisionRuntime,
     string Artifacts,
     string? ApplicationPackage = null,
     string? ModelDirectory = null,
@@ -76,7 +76,7 @@ public static class CampaignCommand
     {
         var requests = BuildRequests(options);
         var session = new EngineSessionOptions(options.Adb, options.Serial, options.Server,
-            Path.GetFullPath(options.Assets), options.Python,
+            Path.GetFullPath(options.Assets), options.VisionRuntime,
             options.ApplicationPackage, options.ModelDirectory is null ? null : Path.GetFullPath(options.ModelDirectory),
             options.AllowActions, options.ProfileRoot, options.ProfileInstance);
         return await new TaskQueue().RunAsync(requests, session,
