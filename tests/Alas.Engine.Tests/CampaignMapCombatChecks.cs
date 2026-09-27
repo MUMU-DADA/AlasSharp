@@ -165,14 +165,16 @@ internal static class CampaignMapCombatChecks
         var request = new TaskRequest("resume", task.Kind,
             new JsonObject { ["campaign"] = "campaign_main/campaign_1_1" });
         var stage = ((InMapCampaignOperations)execution.Context.Operations).StageReturn;
+        var initialFleet = ((InMapCampaignOperations)execution.Context.Operations).InitialFleet;
         var result = await task.RunAsync(request,
             new TaskContext(null!, null!, null!, TimeSpan.FromMinutes(2),
-                Campaign: new ResumeService(new(CampaignLoopExit.Ended, 1, stage))), default);
+                Campaign: new ResumeService(new(CampaignLoopExit.Ended, 1, stage, initialFleet))), default);
         Check(result is { Outcome: TaskOutcome.Failed, Reason: "sortie_settlement_unverified" } &&
             result.Evidence?["cleared"]?.GetValue<bool>() == false &&
             result.Evidence["settlementVerified"]?.GetValue<bool>() == false &&
             result.Evidence["campaignIdentityVerified"]?.GetValue<bool>() == false &&
             result.Evidence["stageReturn"] is not null &&
+            result.Evidence["initialFleet"]?["displayedIndex"]?.GetValue<int>() == 1 &&
             result.Evidence["sortie"]?["outcome"]?.GetValue<string>() == "ended_unknown" &&
             result.Evidence["sortie"]?["campaign_end"]?.GetValue<bool>() == true &&
             result.Evidence["sortie"]?["end_evidence"]?["rank_source"]?.GetValue<string>() == "BATTLE_STATUS_",
@@ -305,12 +307,12 @@ internal static class CampaignMapCombatChecks
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(InMap); }
         public ValueTask EnsureFleetLockAsync(bool enabled, CancellationToken token)
         { token.ThrowIfCancellationRequested(); FleetLockCalls++; return ValueTask.CompletedTask; }
-        public ValueTask EnsureInitialStrategyAsync(CampaignConfiguration configuration, CancellationToken token)
+        public ValueTask<FleetSelection> PrepareInitialFleetAsync(CampaignConfiguration configuration, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
             Check(FleetLockCalls == 1 && Camera is null, "Strategy did not run between fleet lock and map scanning");
             StrategyCalls++;
-            return ValueTask.CompletedTask;
+            return ValueTask.FromResult(new FleetSelection(1, 1, 0, 1));
         }
         public ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state,
             CampaignConfiguration configuration, CancellationToken token)

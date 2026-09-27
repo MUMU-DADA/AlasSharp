@@ -12,6 +12,7 @@ public enum EnemyScalePriority { Default, StrongestFirst, WeakestFirst }
 public enum CampaignEmotionMode { Calculate, Ignore }
 public enum FleetFormation { LineAhead, DoubleLine, Diamond }
 public enum SubmarineMode { DoNotUse, HuntOnly, BossOnly, HuntAndBoss, EveryCombat }
+public enum FleetOrder { Fleet1MobFleet2Boss, Fleet1BossFleet2Mob, Fleet1AllFleet2Standby, Fleet1StandbyFleet2All }
 
 public sealed record CampaignConfiguration
 {
@@ -31,6 +32,8 @@ public sealed record CampaignConfiguration
     public bool HandleError { get; init; }
     public EnemyScalePriority EnemyPriority { get; init; }
     public int Fleet2 { get; init; }
+    public FleetOrder FleetOrder { get; init; } = FleetOrder.Fleet1MobFleet2Boss;
+    public bool WaitForFleetSwitchInfoBar { get; init; }
     public int Submarine { get; init; }
     public FleetFormation Fleet1Formation { get; init; } = FleetFormation.DoubleLine;
     public FleetFormation Fleet2Formation { get; init; } = FleetFormation.DoubleLine;

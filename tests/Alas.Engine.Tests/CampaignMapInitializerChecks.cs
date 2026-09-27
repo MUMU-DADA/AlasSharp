@@ -18,7 +18,7 @@ internal static class CampaignMapInitializerChecks
              new(new(2, 0), new(IsEnemy: true, EnemyScale: 1))], new(2, 1), new(1, 0)));
         int factories = 0;
         var ready = await CampaignMapInitializer.InitializeAsync(state,
-            new CampaignConfiguration { HasWall = true }, (_, _) =>
+            new CampaignConfiguration { HasWall = true }, new(1, 1, 0, 1), (_, _) =>
             {
                 factories++;
                 return ValueTask.FromResult<IMapScanCamera>(camera);
@@ -36,7 +36,7 @@ internal static class CampaignMapInitializerChecks
         bool rejected = false;
         try
         {
-            await CampaignMapInitializer.InitializeAsync(state, new(),
+            await CampaignMapInitializer.InitializeAsync(state, new(), new(1, 1, 0, 1),
                 (_, _) => ValueTask.FromResult<IMapScanCamera>(camera), TimeSpan.FromSeconds(3));
         }
         catch (InvalidDataException) { rejected = true; }
@@ -49,18 +49,35 @@ internal static class CampaignMapInitializerChecks
             [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true)),
              new(new(1, 0), new(IsFleet: true)),
              new(new(2, 0), new(IsEnemy: true, EnemyScale: 1))], new(2, 1), new(1, 0)));
-        ready = await CampaignMapInitializer.InitializeAsync(state, new CampaignConfiguration { Fleet2 = 2 },
+        ready = await CampaignMapInitializer.InitializeAsync(state, new CampaignConfiguration { Fleet2 = 2 }, new(1, 1, 0, 1),
             (_, _) => ValueTask.FromResult<IMapScanCamera>(camera), TimeSpan.FromSeconds(3));
         Check(ready.Fleet1 == new Cell(1, 1) && ready.Fleet2 == new Cell(2, 1) &&
             state.Fleet2Location == ready.Fleet2 && state[new(2, 1)].Cost2 == 0,
             "Two observed fleets were not assigned separate cost fields");
+
+        state = new CampaignState(map);
+        ready = await CampaignMapInitializer.InitializeAsync(state,
+            new CampaignConfiguration { Fleet2 = 2, FleetOrder = FleetOrder.Fleet1BossFleet2Mob }, new(2, 1, 1, 2),
+            (_, _) => ValueTask.FromResult<IMapScanCamera>(camera), TimeSpan.FromSeconds(3));
+        Check(ready.Fleet1 == new Cell(2, 1) && ready.Fleet2 == new Cell(1, 1) && state.FleetIndex == 2 &&
+            state[new(1, 1)].Cost2 == 0 && state[new(1, 1)].Cost == 0 && state[new(2, 1)].Cost1 == 0,
+            "Reversed fleet selection was relabeled as the first fleet or used another fleet's path origin");
+        state = new CampaignState(map);
+        rejected = false;
+        try
+        {
+            await CampaignMapInitializer.InitializeAsync(state, new CampaignConfiguration { Fleet2 = 2 },
+                new(2, 1, 0, 1), (_, _) => throw new InvalidOperationException("Camera must not start"), TimeSpan.FromSeconds(3));
+        }
+        catch (InvalidDataException) { rejected = true; }
+        Check(rejected && !state.IsMapInitialized, "Inconsistent displayed/logical fleet identity initialized the map");
 
         map = new MapDefinition("B1", "SP --", ["A1"], [], [], swipePreset: new(1, 0));
         state = new CampaignState(map);
         factories = 0; rejected = false;
         try
         {
-            await CampaignMapInitializer.InitializeAsync(state, new(), (_, _) =>
+            await CampaignMapInitializer.InitializeAsync(state, new(), new(1, 1, 0, 1), (_, _) =>
             {
                 factories++;
                 throw new InvalidOperationException("Camera must not start");

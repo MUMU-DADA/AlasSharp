@@ -94,7 +94,7 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         var execution = CreateInMapCampaignExecution(rule, configuration, token);
         var exit = await execution.RunAsync();
         var operations = (InMapCampaignOperations)execution.Context.Operations;
-        return new(exit, execution.Context.State.BattleCount, operations.StageReturn);
+        return new(exit, execution.Context.State.BattleCount, operations.StageReturn, operations.InitialFleet);
     }
     async ValueTask<bool> ICampaignInMapHost.VerifyInMapAsync(CancellationToken token)
     {
@@ -103,14 +103,24 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     }
     async ValueTask ICampaignInMapHost.EnsureFleetLockAsync(bool enabled, CancellationToken token)
         => _ = await new CampaignFleetLock(Driver).EnsureAsync(enabled, token);
-    async ValueTask ICampaignInMapHost.EnsureInitialStrategyAsync(CampaignConfiguration configuration, CancellationToken token)
+    async ValueTask<FleetSelection> ICampaignInMapHost.PrepareInitialFleetAsync(CampaignConfiguration configuration, CancellationToken token)
     {
+        var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
+        var observations = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No fleet screenshot"),
+            _vision, _assets, Driver.Server, StageEntranceKind.Normal);
+        var guard = new MapUiRecovery(Driver, observations, _application, recovery, recovery);
+        var selector = new CampaignFleetSelector(Driver, recovery, guard.HandleInStageAsync,
+            () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No fleet screenshot"));
+        var selected = await selector.InitializeAsync(configuration, TimeSpan.FromSeconds(45), token);
+        if (selected.Clicks > 0 && configuration.WaitForFleetSwitchInfoBar)
+            await guard.EnsureNoInfoBarAsync(TimeSpan.FromSeconds(.6), token);
         var buff = new MapFormationProbe(_vision, _assets, Driver.Server,
             () => Driver.Frame ?? throw new InvalidOperationException("No strategy screenshot"));
-        // Each sortie owns its formation flags. Fleet switching/reversal is a
-        // separate migration; the current entry initializes the first fleet.
+        // Formation settings refer to the displayed fleet, while path costs use
+        // logical mob/boss roles. Both derive from the same observed selection.
         _ = await new CampaignStrategy(Driver, buff.ObserveAsync)
-            .EnsureAsync(1, configuration, TimeSpan.FromSeconds(45), token);
+            .EnsureAsync(selected.DisplayedIndex, configuration, TimeSpan.FromSeconds(45), token);
+        return selected;
     }
     async ValueTask<IMapScanCamera> ICampaignInMapHost.CreateCameraAsync(CampaignState state,
         CampaignConfiguration configuration, CancellationToken token)

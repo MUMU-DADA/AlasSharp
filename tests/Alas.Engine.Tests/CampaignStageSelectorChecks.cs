@@ -200,14 +200,16 @@ internal static class CampaignStageSelectorChecks
         runInput["emotionMode"] = "ignore";
         runInput["fleet1Formation"] = "diamond";
         runInput["fleet2Formation"] = "line_ahead";
+        runInput["fleetOrder"] = "fleet1_boss_fleet2_mob";
         foreach (var value in new JsonNode?[] { null, JsonValue.Create("unknown"), JsonValue.Create(1) })
+        foreach (var field in new[] { "fleet1Formation", "fleetOrder" })
         {
             var malformed = runInput.DeepClone().AsObject();
-            malformed["fleet1Formation"] = value?.DeepClone();
+            malformed[field] = value?.DeepClone();
             bool rejected = false;
             try { runTask.Validate(malformed); }
             catch (Exception error) when (error is ArgumentException or InvalidOperationException) { rejected = true; }
-            Check(rejected, "Campaign accepted an invalid formation before device entry");
+            Check(rejected, "Campaign accepted invalid formation/order before device entry");
         }
         await Throws<NotSupportedException>(() =>
         {
@@ -342,7 +344,8 @@ internal static class CampaignStageSelectorChecks
         {
             if (Fail) throw new IOException("Injected map execution failure");
             Check(configuration is { EmotionMode: CampaignEmotionMode.Ignore, UseFleetLock: true,
-                Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead, Vision: not null },
+                Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead,
+                FleetOrder: FleetOrder.Fleet1BossFleet2Mob, Vision: not null },
                 "Integrated campaign did not preserve explicit emotion, fleet-lock and formation settings");
             return ValueTask.FromResult(new CampaignResumeResult(CampaignLoopExit.Ended, 1, StageReturn));
         }

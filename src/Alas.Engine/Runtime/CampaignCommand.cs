@@ -26,7 +26,8 @@ public sealed record CampaignCommandOptions(
     bool FleetLock = true,
     double TimeoutSeconds = 1500,
     FleetFormation Fleet1Formation = FleetFormation.DoubleLine,
-    FleetFormation Fleet2Formation = FleetFormation.DoubleLine);
+    FleetFormation Fleet2Formation = FleetFormation.DoubleLine,
+    FleetOrder FleetOrder = FleetOrder.Fleet1MobFleet2Boss);
 
 /// <summary>Translates CLI chapter arguments into typed C# task requests.</summary>
 public static class CampaignCommand
@@ -51,7 +52,8 @@ public static class CampaignCommand
                 ["emotionMode"] = "ignore",
                 ["fleetLock"] = options.FleetLock,
                 ["fleet1Formation"] = CampaignStrategy.FormationName(options.Fleet1Formation),
-                ["fleet2Formation"] = CampaignStrategy.FormationName(options.Fleet2Formation)
+                ["fleet2Formation"] = CampaignStrategy.FormationName(options.Fleet2Formation),
+                ["fleetOrder"] = FleetRoles.Name(options.FleetOrder)
             },
             Required: true,
             TimeoutSeconds: options.TimeoutSeconds)).ToArray();

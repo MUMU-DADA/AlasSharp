@@ -39,9 +39,9 @@ required 的前置条件缺失计为队列失败；正常边界停止不计业�
 | campaign_run | 同一 C# 会话完成选关、舰队、进图与地图执行；仅经结果合同确认才计 cleared |
 | campaign_resume | 从新进入的图中执行，因未验证选关身份永不记 cleared |
 
-具体输入由各 runner.Validate 定义。已编译地图声明不代表对应章节钩子和配置已迁完；可执行 RuleCatalog 仍只有已迁移的规则。战役 fleet1/fleet2/submarine 必须明确；情绪计算未迁完，当前须明确 emotionMode=ignore。campaign_run 的可选 fleet1Formation/fleet2Formation 为 line_ahead、double_line（默认）或 diamond，非法值在操作设备前拒绝；章节配置覆盖保留并传入地图执行。当前只有初始第一舰队策略已接入，双舰队切换与潜艇实战仍有缺口。禁止按地图/页面补特例来绕过缺失语义。
+具体输入由各 runner.Validate 定义。已编译地图声明不代表对应章节钩子和配置已迁完；可执行 RuleCatalog 仍只有已迁移的规则。战役 fleet1/fleet2/submarine 必须明确；情绪计算未迁完，当前须明确 emotionMode=ignore。campaign_run 的可选 fleet1Formation/fleet2Formation 为 line_ahead、double_line（默认）或 diamond，非法值在操作设备前拒绝；章节配置覆盖保留并传入地图执行。fleetOrder 接收 fleet1_mob_fleet2_boss（默认）、fleet1_boss_fleet2_mob、fleet1_all_fleet2_standby、fleet1_standby_fleet2_all。初始舰队选择/反转和对应阵型已接入，章节覆盖禁用二队时不反转；战中双舰队调度与潜艇实战仍有缺口。禁止按地图/页面补特例来绕过缺失语义。
 
-CLI 公共参数为 --adb、--serial、--server、--assets、--python、--artifacts；OCR 任务使用 --models，动作另需 --allow-actions 和 --package。`campaign --chapter <规则列表>` 默认 dry-run，使用 --run --allow-actions 才执行；--fleet1-formation/--fleet2-formation 选择上述阵型。运行前读取 --help 核对参数。
+CLI 公共参数为 --adb、--serial、--server、--assets、--python、--artifacts；OCR 任务使用 --models，动作另需 --allow-actions 和 --package。`campaign --chapter <规则列表>` 默认 dry-run，使用 --run --allow-actions 才执行；--fleet1-formation/--fleet2-formation 选择上述阵型，--fleet-order 指定舰队顺序。运行前读取 --help 核对参数。
 
 ## 待完成能力与验证
 

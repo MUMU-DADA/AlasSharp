@@ -52,6 +52,7 @@ public sealed class CampaignResumeTask : ITaskRunner
         {
             campaign = rule.Id, campaignIdentityVerified = identityVerified,
             loopExit = result.Exit.ToString(), result.BattleCount,
+            result.InitialFleet,
             stageReturn = result.StageReturn, settlementVerified = cleared, cleared,
             sortie = new
             {

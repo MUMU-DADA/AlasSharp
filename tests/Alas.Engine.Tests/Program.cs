@@ -254,6 +254,14 @@ try
         return 0;
     }
 
+    if (args is ["--fleet-selection", var fleetPython, var fleetUpstream, var fleetArtifacts])
+    {
+        string folder = Path.GetFullPath(fleetArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignFleetSelectorChecks.RunAsync(Path.GetFullPath(fleetPython), Path.GetFullPath(fleetUpstream), folder);
+        return 0;
+    }
+
     if (args is ["--strategy", var strategyPython, var strategyUpstream, var strategyArtifacts])
     {
         string folder = Path.GetFullPath(strategyArtifacts);

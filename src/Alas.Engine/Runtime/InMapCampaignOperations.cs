@@ -7,13 +7,14 @@ public interface ICampaignInMapHost
 {
     ValueTask<bool> VerifyInMapAsync(CancellationToken token);
     ValueTask EnsureFleetLockAsync(bool enabled, CancellationToken token);
-    ValueTask EnsureInitialStrategyAsync(CampaignConfiguration configuration, CancellationToken token);
+    ValueTask<FleetSelection> PrepareInitialFleetAsync(CampaignConfiguration configuration, CancellationToken token);
     ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state,
         CampaignConfiguration configuration, CancellationToken token);
     CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration);
 }
 
-public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount, MapArrivalResult? StageReturn);
+public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount, MapArrivalResult? StageReturn,
+    FleetSelection? InitialFleet = null);
 public interface ICampaignExecutionService
 {
     ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
@@ -27,6 +28,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     private CampaignMapCombat? _combat;
     private bool _entered;
     public MapArrivalResult? StageReturn => _combat?.StageReturn;
+    public FleetSelection? InitialFleet { get; private set; }
 
     public ValueTask CheckEmotionAsync(int battles)
     {
@@ -53,8 +55,8 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     {
         if (!_entered || !ReferenceEquals(state.Map, definition))
             throw new InvalidOperationException("Map initialization requires the verified campaign declaration");
-        await host.EnsureInitialStrategyAsync(configuration, token);
-        var ready = await CampaignMapInitializer.InitializeAsync(state, configuration,
+        InitialFleet = await host.PrepareInitialFleetAsync(configuration, token);
+        var ready = await CampaignMapInitializer.InitializeAsync(state, configuration, InitialFleet,
             (map, ct) => host.CreateCameraAsync(map, configuration, ct), TimeSpan.FromMinutes(2), token);
         _combat = host.CreateCombat(ready.Camera, configuration);
     }

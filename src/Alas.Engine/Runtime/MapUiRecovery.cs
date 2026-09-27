@@ -31,6 +31,7 @@ public sealed class MapUiRecovery(IUiDriver ui, IMapUiObservations observations,
     public static readonly SourceFile AutoSearchSource = new("module/handler/auto_search.py", "f61796a116840175a539a9154252afa3587da9824791604fe574540f27e94d56");
     private static ButtonOffset Wide => ButtonOffset.Expand(20, 20);
     private static ButtonOffset AutoMenu => ButtonOffset.Expand(250, 30);
+    private readonly IntervalTimer _inStage = new(ui.Clock, .5, count: 2);
     private ValueTask<bool> Appear(AssetRule asset, ButtonOffset offset = default, double interval = 0,
         CancellationToken token = default, TemplatePreprocessing preprocessing = TemplatePreprocessing.Color)
         => ui.AppearsAsync(asset, offset, interval, preprocessing: preprocessing, token: token);
@@ -44,6 +45,41 @@ public sealed class MapUiRecovery(IUiDriver ui, IMapUiObservations observations,
         foreach (var asset in new[] { UiAssets.Ui.CAMPAIGN_CHECK, UiAssets.Ui.EVENT_CHECK, UiAssets.Ui.SP_CHECK })
             if (await Appear(asset, Wide, token: token)) return await observations.HasStageEntranceAsync(token);
         return false;
+    }
+    public async ValueTask<bool> HandleInStageAsync(CancellationToken token)
+    {
+        if (await IsInStageAsync(token))
+        {
+            if (_inStage.Reached())
+            {
+                await EnsureNoInfoBarAsync(TimeSpan.FromSeconds(1.2), token);
+                throw new CampaignEndedException("Fleet selection returned to stage");
+            }
+        }
+        else
+        {
+            if (await Appear(UiAssets.Map.MAP_PREPARATION, Wide, token: token) ||
+                await Appear(UiAssets.Map.MAP_PREPARATION_HARD, Wide, token: token) ||
+                await Appear(UiAssets.Map.FLEET_PREPARATION, ButtonOffset.Expand(20, 50), token: token))
+                await ui.ClickAsync(UiAssets.Map.MAP_PREPARATION_CANCEL, token);
+            _inStage.Reset();
+        }
+        return false;
+    }
+    public async ValueTask EnsureNoInfoBarAsync(TimeSpan duration, CancellationToken token)
+    {
+        var timer = new IntervalTimer(ui.Clock, duration.TotalSeconds);
+        timer.Reset();
+        bool first = true;
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            if (!first) await ui.ScreenshotAsync(token);
+            first = false;
+            if (await observations.InfoBarCountAsync(token) > 0)
+                do { await ui.ScreenshotAsync(token); } while (await observations.InfoBarCountAsync(token) > 0);
+            if (timer.Reached()) return;
+        }
     }
     public async ValueTask<bool> RecoverAsync(MapGeometryException error, CancellationToken token)
     {

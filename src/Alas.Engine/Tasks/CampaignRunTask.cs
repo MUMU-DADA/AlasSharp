@@ -14,7 +14,7 @@ public sealed class CampaignRunTask : ITaskRunner
     public void Validate(JsonObject? input)
     {
         TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
-            "fleet1Formation", "fleet2Formation");
+            "fleet1Formation", "fleet2Formation", "fleetOrder");
         var id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign run requires a compiled campaign rule");
         if (RuleCatalog.Create(id).StageName is null)
@@ -27,6 +27,7 @@ public sealed class CampaignRunTask : ITaskRunner
         if (input["fleetLock"] is not null) _ = input["fleetLock"]!.GetValue<bool>();
         _ = Formation(input, "fleet1Formation");
         _ = Formation(input, "fleet2Formation");
+        _ = Order(input);
     }
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
@@ -49,6 +50,7 @@ public sealed class CampaignRunTask : ITaskRunner
             Submarine = requestedPlan.Submarine,
             Fleet1Formation = Formation(request.Input, "fleet1Formation"),
             Fleet2Formation = Formation(request.Input, "fleet2Formation"),
+            FleetOrder = Order(request.Input),
             UseFleetLock = request.Input["fleetLock"]?.GetValue<bool>() ?? true
         };
         // Config inheritance is authoritative. Apply it before touching the
@@ -72,6 +74,7 @@ public sealed class CampaignRunTask : ITaskRunner
         };
         evidence["fleet1Formation"] = CampaignStrategy.FormationName(configuration.Fleet1Formation);
         evidence["fleet2Formation"] = CampaignStrategy.FormationName(configuration.Fleet2Formation);
+        evidence["fleetOrder"] = FleetRoles.Name(configuration.FleetOrder);
         string phase = "navigation";
         try
         {
@@ -109,6 +112,9 @@ public sealed class CampaignRunTask : ITaskRunner
     private static FleetFormation Formation(JsonObject input, string name)
         => CampaignStrategy.ParseFormation(input.TryGetPropertyValue(name, out var value)
             ? value?.GetValue<string>() ?? throw new ArgumentException(name + " cannot be null") : "double_line");
+
+    private static FleetOrder Order(JsonObject input) => FleetRoles.Parse(input.TryGetPropertyValue("fleetOrder", out var value)
+        ? value?.GetValue<string>() ?? throw new ArgumentException("fleetOrder cannot be null") : "fleet1_mob_fleet2_boss");
 
     private static FleetPlan Plan(JsonObject? input)
     {
