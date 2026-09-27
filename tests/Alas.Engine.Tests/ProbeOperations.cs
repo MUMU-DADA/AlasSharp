@@ -7,7 +7,7 @@ internal sealed record Scenario(string Rule, string Operation = "dispatch", int 
     bool Poor = false, bool ClearAll = false, bool Movable = false, string Cells = "empty",
     string? TrueOperation = null, bool CombatReturn = true, bool HandleError = false,
     bool AutoSearch = false, string? Signal = null, int SignalCount = 1, string SignalOperation = "clear_enemy",
-    bool Advance = false, bool Accessible = true);
+    bool Advance = false, bool Accessible = true, string? BossCells = null);
 internal sealed record ProbeResult(string[] Calls, object? Value, string? Exception, int BattleCount);
 
 /// <summary>Synthetic terminal actions only; the compiled rule and native oracle each own their control flow.</summary>

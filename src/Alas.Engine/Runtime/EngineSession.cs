@@ -98,7 +98,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         IMapEncounterHandler? handler = null, Func<CancellationToken, ValueTask>? recoverAfterCombat = null,
         Func<MapEncounterProbe, IMapEncounterHandler>? createHandler = null)
     {
-        var probe = new MapEncounterProbe(Driver, configuration.HasAmbush, _ammoProbe, configuration.MysteryHasCarrier);
+        var probe = new MapEncounterProbe(Driver, configuration.HasAmbush, _ammoProbe, configuration.MysteryHasCarrier,
+            camera.State.Rule?.Overlays);
         handler = createHandler?.Invoke(probe) ?? handler;
         return new(camera, camera.State, token => Driver.AppearsAsync(UiAssets.Handler.IN_MAP, token: token), Driver.Clock,
             probe, new MapAirRaidHandler(Driver, probe,

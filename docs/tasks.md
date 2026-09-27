@@ -2,7 +2,7 @@
 
 产品任务位于 `Alas.Engine/Tasks`。新域实现 ITaskRunner 的 Kind、RequiresActions、Validate、Preconditions 和 RunAsync，由 TaskQueue 注册；Server、CLI 和 UI 不解释域内输入，也不复制状态机。旧 Core 队列已退役，旧任务名与 Python runner 仅留[历史对照](archive/history/core-tasks.md)。
 
-当前可执行战役规则为前三章十二关（1-1 至 3-4），使用各自编译的 Config、MAP 和钩子。第二、三章显式使用逻辑 BOSS 一队，保留原生道路清理、可达性、默认战斗分派及经验页覆写；3-1 至 3-3 启用航母谜题，3-4 保留关闭。二队推进/救援属于公共 Engine 操作，按角色门控执行，不在任务层解释章节步骤。其余 MAP 即使已有类型化声明，也不能越过 RuleCatalog 作为已迁移战役执行；上述十二关的规则/组合离线验证不等于新 Engine 实机通关。
+当前可执行战役规则为前五章二十关（1-1 至 5-4），使用各自编译的 Config、MAP 和钩子。第二、三章显式使用逻辑 BOSS 一队，保留原生道路清理、可达性、默认战斗分派及经验页覆写；3-1 至 3-3 启用航母谜题，3-4 保留关闭。二队推进/救援属于公共 Engine 操作，按角色门控执行，不在任务层解释章节步骤。第四、五章的 BOSS 观察、道路组和覆盖层参数由编译规则执行，不在队列 JSON 中编码步骤。其余 MAP 即使已有类型化声明，也不能越过 RuleCatalog 作为已迁移战役执行；上述二十关的规则/组合离线验证不等于新 Engine 实机通关。
 
 ## 请求与结果
 

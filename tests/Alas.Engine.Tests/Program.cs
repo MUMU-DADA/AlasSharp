@@ -226,6 +226,13 @@ try
         await CampaignMapCombatChecks.SecondFleetChecksAsync(Path.GetFullPath(secondFleetPython), Path.GetFullPath(secondFleetUpstream), folder);
         return 0;
     }
+    if (args is ["--main-chapters", var chapterPython, var chapterUpstream, var chapterArtifacts])
+    {
+        string folder = Path.GetFullPath(chapterArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.MainChapterChecksAsync(Path.GetFullPath(chapterPython), Path.GetFullPath(chapterUpstream), folder);
+        return 0;
+    }
     if (args is ["--carrier", var carrierPython, var carrierUpstream, var carrierArtifacts])
     {
         string folder = Path.GetFullPath(carrierArtifacts);
@@ -468,6 +475,17 @@ try
             cases.Add(new Scenario(id, BattleCount: count, Poor: poor, ClearAll: clear, Movable: movable,
                 Cells: cells, TrueOperation: yes, CombatReturn: returned));
         cases.Add(new Scenario(id, "refocus"));
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ObservedBossRule observedBossRule)
+        {
+            var spawns = new CampaignState(observedBossRule.Map).Cells.Where(cell => cell.MayBoss).Select(cell => cell.Location.ToString()).Reverse().ToArray();
+            foreach (int count in new[] { 0, 3, 4, 5, 12, 13, 14, 15 })
+            foreach (bool accessible in new[] { false, true })
+            foreach (string? yes in new[] { null, "clear_roadblocks", "clear_potential_roadblocks" })
+            foreach (string cells in new[] { "empty", "boss", "boss_enemy" })
+                cases.Add(new Scenario(id, BattleCount: count, Accessible: accessible, TrueOperation: yes, Cells: cells));
+            foreach (bool accessible in new[] { false, true })
+                cases.Add(new Scenario(id, BattleCount: observedBossRule.Map.ExpectedBattles - 1, Accessible: accessible, BossCells: string.Join(',', spawns)));
+        }
         if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterThreeRule)
         {
             foreach (int count in new[] { 0, 1, 2, 3, 4, 12, 13 })
@@ -541,6 +559,8 @@ static async Task<ProbeResult> Execute(Scenario scenario)
     state.Cells[0].IsEnemy = scenario.Cells is "enemy" or "boss_enemy";
     state.Cells[0].IsSiren = scenario.Cells == "siren";
     state.Cells[0].IsFortress = scenario.Cells == "fortress";
+    if (scenario.BossCells is { } bossCells)
+        foreach (var cell in bossCells.Split(',')) state[Cell.Parse(cell)].IsBoss = true;
     object? value = null;
     string? exception = null;
     try

@@ -20,7 +20,15 @@ public static class RuleCatalog
             ["campaign_main/campaign_3_1"] = static () => new Campaign31(),
             ["campaign_main/campaign_3_2"] = static () => new Campaign32(),
             ["campaign_main/campaign_3_3"] = static () => new Campaign33(),
-            ["campaign_main/campaign_3_4"] = static () => new Campaign34()
+            ["campaign_main/campaign_3_4"] = static () => new Campaign34(),
+            ["campaign_main/campaign_4_1"] = static () => new Campaign41(),
+            ["campaign_main/campaign_4_2"] = static () => new Campaign42(),
+            ["campaign_main/campaign_4_3"] = static () => new Campaign43(),
+            ["campaign_main/campaign_4_4"] = static () => new Campaign44(),
+            ["campaign_main/campaign_5_1"] = static () => new Campaign51(),
+            ["campaign_main/campaign_5_2"] = static () => new Campaign52(),
+            ["campaign_main/campaign_5_3"] = static () => new Campaign53(),
+            ["campaign_main/campaign_5_4"] = static () => new Campaign54()
         }.ToFrozenDictionary(StringComparer.Ordinal);
     public static IEnumerable<string> Ids => Factories.Keys.Order(StringComparer.Ordinal);
     public static CampaignRule Create(string id) => Factories.TryGetValue(id, out var factory)

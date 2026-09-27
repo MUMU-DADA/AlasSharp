@@ -13,8 +13,10 @@ public interface IMapEncounterProbe
 }
 
 /// <summary>Read-only upstream interaction priority; CV returns colors and template matches, not decisions.</summary>
-public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe? ammo = null, bool mysteryHasCarrier = false) : IMapEncounterProbe
+public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe? ammo = null, bool mysteryHasCarrier = false,
+    MapOverlayRules? overlays = null) : IMapEncounterProbe
 {
+    private readonly MapOverlayRules _overlays = (overlays ?? new()).Validate();
     public static readonly SourceFile CombatSource = new("module/combat/combat.py",
         "abbe4e2f1017cbdc5b6ca8595bd5411f9a9616b47105066be16b6e7f3910d4b7");
     public static readonly SourceFile AmbushSource = new("module/handler/ambush.py",
@@ -41,9 +43,9 @@ public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe
         {
             if (_airRaidRed is null || _ambushRed is null)
                 throw new InvalidOperationException("Initialize the map encounter probe before clicking a grid");
-            if (Overlay(_airRaidRed.Value, await RedAsync(UiAssets.Handler.MAP_AIR_RAID, frameSequence, token)) > 0.35)
+            if (Overlay(_airRaidRed.Value, await RedAsync(UiAssets.Handler.MAP_AIR_RAID, frameSequence, token)) > _overlays.AirRaid)
                 return MapEncounterKind.AirRaid;
-            if (Overlay(_ambushRed.Value, await RedAsync(UiAssets.Handler.MAP_AMBUSH, frameSequence, token)) > 0.40)
+            if (Overlay(_ambushRed.Value, await RedAsync(UiAssets.Handler.MAP_AMBUSH, frameSequence, token)) > _overlays.Ambush)
             { AmbushFromOverlay = true; return MapEncounterKind.Ambush; }
             if (await ui.AppearsAsync(UiAssets.Handler.MAP_AMBUSH_EVADE, ButtonOffset.Expand(30, 30), token: token))
                 return MapEncounterKind.Ambush;
@@ -59,7 +61,7 @@ public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe
     internal async ValueTask<bool> IsAirRaidAsync(long frameSequence, CancellationToken token)
     {
         if (_airRaidRed is null) throw new InvalidOperationException("Air raid color baseline was not initialized");
-        return Overlay(_airRaidRed.Value, await RedAsync(UiAssets.Handler.MAP_AIR_RAID, frameSequence, token)) > 0.35;
+        return Overlay(_airRaidRed.Value, await RedAsync(UiAssets.Handler.MAP_AIR_RAID, frameSequence, token)) > _overlays.AirRaid;
     }
 
     internal static double Overlay(double initialRed, double currentRed)

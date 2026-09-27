@@ -5,7 +5,7 @@ using Alas.Engine.Runtime;
 
 namespace Alas.Engine.Tests;
 
-internal static class MapEncounterProbeChecks
+internal static partial class MapEncounterProbeChecks
 {
     private static void Check(bool value, string message)
     { if (!value) throw new InvalidOperationException(message); }
@@ -86,7 +86,7 @@ internal static class MapEncounterProbeChecks
     private sealed class Ui : IUiDriver
     {
         private readonly ClockSource _clock = new();
-        public GameServer Server => GameServer.Cn;
+        public GameServer Server { get; init; } = GameServer.Cn;
         public bool HasFrame => true;
         public TimeProvider Clock => _clock;
         public long Sequence { get; set; } = 1;

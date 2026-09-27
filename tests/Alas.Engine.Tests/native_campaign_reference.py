@@ -113,6 +113,10 @@ def main():
             grid.is_enemy = scenario["cells"] in ("enemy", "boss_enemy")
             grid.is_siren = scenario["cells"] == "siren"
             grid.is_fortress = scenario["cells"] == "fortress"
+            if scenario.get('bossCells'):
+                from module.base.utils import node2location
+                for cell in scenario['bossCells'].split(','):
+                    probe.map[node2location(cell)].is_boss = True
             probe.ENTRANCE = SimpleNamespace(area=None, button=(0, 0, 0, 0))
             probe.emotion = SimpleNamespace(check_reduce=lambda amount: probe.record(f"check_emotion:{amount}"))
             probe.fleet_show_index = 1
