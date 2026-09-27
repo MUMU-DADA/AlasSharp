@@ -10,9 +10,10 @@ if (args.Length == 0 || args is ["--help"])
     Console.WriteLine("Alas.Engine.Cli <observe|navigate|run|campaign> --adb <executable> --serial <device> --server <cn|en|jp|tw> --assets <directory> --python <executable> --artifacts <directory>");
     Console.WriteLine("observe: capture and identify one frame, with device actions disabled.");
     Console.WriteLine("navigate: additionally requires --package <Android package> --page <destination>; --timeout <seconds> defaults to 120. Performs game clicks and recovery.");
-    Console.WriteLine("run: --queue <JSON task array> [--models <ONNX directory>] [--allow-actions --package <Android package>] [--dry-run] [--continue-on-failure] [--resume <run directory>]. Task kinds: observe, navigate, data_key, map_observe, campaign_stages (read-only OCR; optional entrances array), campaign_select (input: campaign; stops at map preparation), campaign_fleet_prepare (input: campaign; stops at fleet preparation), campaign_run (input: campaign, fleet1, fleet2, submarine, emotionMode=ignore; performs the independent entry and map graph), campaign_resume (input: campaign; requires a freshly entered map and never records cleared).");
+    Console.WriteLine("run: --queue <JSON task array> [--models <ONNX directory>] [--allow-actions --package <Android package>] [--dry-run] [--continue-on-failure] [--resume <run directory>]. Task kinds: observe, navigate, data_key, map_observe, campaign_stages (read-only OCR; optional entrances array), campaign_select (input: campaign; stops at map preparation), campaign_fleet_prepare (input: campaign; stops at fleet preparation), campaign_run (input: campaign, fleet1, fleet2, submarine; default emotionMode=calculate), campaign_resume (input: campaign; default emotionMode=ignore; requires a freshly entered map and never records cleared).");
     Console.WriteLine("campaign: --chapter <rule[,rule...]> --models <OCR model directory>; defaults to dry-run. Add --run --allow-actions --package <Android package> to execute; optional --fleet1/--fleet2/--submarine/--timeout/--continue-on-failure/--resume. --fleet1-formation/--fleet2-formation accept line_ahead, double_line (default), diamond.");
     Console.WriteLine("--fleet-order: fleet1_mob_fleet2_boss (default), fleet1_boss_fleet2_mob, fleet1_all_fleet2_standby, fleet1_standby_fleet2_all; current campaign rules may disable fleet 2.");
+    Console.WriteLine("run/campaign: --config-root <data root containing config/template.json> --instance <config name> bind persistent emotion to the same device. campaign: --emotion-mode <calculate|calculate_ignore|ignore|nothing> (default ignore), --config-task <task name> (default Main). Calculated modes require a configuration binding; a recovery delay records NextRun and skips this task, without automatic rescheduling.");
     return 0;
 }
 try
@@ -23,8 +24,8 @@ try
     bool campaign = args[0] == "campaign";
     string[] required = ["--adb", "--serial", "--server", "--assets", "--python", "--artifacts",
         .. navigate ? new[] { "--package", "--page" } : run ? new[] { "--queue" } : campaign ? new[] { "--chapter", "--models" } : []];
-    var allowed = required.Concat(navigate ? ["--timeout"] : run ? ["--models", "--package", "--resume"] : campaign
-        ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--timeout", "--fleet1-formation", "--fleet2-formation", "--fleet-order"]
+    var allowed = required.Concat(navigate ? ["--timeout"] : run ? ["--models", "--package", "--resume", "--config-root", "--instance"] : campaign
+        ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--timeout", "--fleet1-formation", "--fleet2-formation", "--fleet-order", "--config-root", "--instance", "--emotion-mode", "--config-task"]
         : Array.Empty<string>()).ToHashSet(StringComparer.Ordinal);
     var switches = (run ? new[] { "--allow-actions", "--dry-run", "--continue-on-failure" } : campaign
         ? new[] { "--run", "--allow-actions", "--continue-on-failure" } : []).ToHashSet(StringComparer.Ordinal);
@@ -75,7 +76,10 @@ try
                 Submarine: ParseFleet("--submarine", 0), TimeoutSeconds: timeout.TotalSeconds,
                 Fleet1Formation: CampaignStrategy.ParseFormation(values.GetValueOrDefault("--fleet1-formation", "double_line")),
                 Fleet2Formation: CampaignStrategy.ParseFormation(values.GetValueOrDefault("--fleet2-formation", "double_line")),
-                FleetOrder: FleetRoles.Parse(values.GetValueOrDefault("--fleet-order", "fleet1_mob_fleet2_boss")));
+                FleetOrder: FleetRoles.Parse(values.GetValueOrDefault("--fleet-order", "fleet1_mob_fleet2_boss")),
+                EmotionMode: EmotionRules.ParseMode(values.GetValueOrDefault("--emotion-mode", "ignore")),
+                ConfigTask: values.GetValueOrDefault("--config-task", "Main"),
+                ConfigRoot: values.GetValueOrDefault("--config-root"), ConfigInstance: values.GetValueOrDefault("--instance"));
             var campaignResult = await CampaignCommand.RunAsync(options, cancellation.Token);
             Console.WriteLine(CampaignCommand.Serialize(campaignResult));
             return campaignResult.Failed || cancellation.IsCancellationRequested ? 1 : 0;
@@ -84,7 +88,8 @@ try
         {
             var tasks = await TaskQueue.ReadAsync(values["--queue"], cancellation.Token);
             var session = new EngineSessionOptions(values["--adb"], values["--serial"], server, values["--assets"], values["--python"],
-                values.GetValueOrDefault("--package"), values.GetValueOrDefault("--models"), flags.Contains("--allow-actions"));
+                values.GetValueOrDefault("--package"), values.GetValueOrDefault("--models"), flags.Contains("--allow-actions"),
+                values.GetValueOrDefault("--config-root"), values.GetValueOrDefault("--instance"));
             var queue = await new TaskQueue().RunAsync(tasks, session,
                 new TaskQueueOptions(values["--artifacts"], flags.Contains("--dry-run"), flags.Contains("--continue-on-failure"), values.GetValueOrDefault("--resume")), cancellation.Token);
             Console.WriteLine(JsonSerializer.Serialize(queue, TaskQueue.Json));

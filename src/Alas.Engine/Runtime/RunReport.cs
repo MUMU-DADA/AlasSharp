@@ -122,6 +122,19 @@ public sealed class RunReport
         }
         if (boundary.ActionAttempts != actionAttempts)
             throw new InvalidDataException("任务边界动作次数与动作工件不同");
+        if (boundary.EmotionFile is { } emotionFile)
+        {
+            if (emotionFile != "emotion.json") throw new InvalidDataException("心情工件必须位于当前任务目录");
+            string emotionPath = Path.Combine(taskRoot, emotionFile);
+            if ((File.GetAttributes(emotionPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("心情工件必须是普通文件");
+            var events = JsonSerializer.Deserialize<EmotionEvent[]>(ArtifactReader.ReadAllText(emotionPath), TaskQueue.Json);
+            if (events is null || events.Length == 0 || events.Any(e => e is null || e.Values.IsDefault || e.Values.Length != 2 ||
+                    e.Operation is not ("entry" or "wait" or "reduce") ||
+                    (e.Operation == "entry" ? e.Fleet is not null : e.Fleet is not (1 or 2)) ||
+                    (e.Operation == "reduce" && e.BattleSequence is null or <= 0)))
+                throw new InvalidDataException("心情工件缺少有效记录或战斗帧");
+        }
         if (boundary.Image is not { } image)
         {
             if (boundary.Sha256 is not null || boundary.FrameSequence is not null || frames.Length != 0)

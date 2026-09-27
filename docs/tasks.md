@@ -4,6 +4,14 @@
 
 ## 请求与结果
 
+心情控制由 Engine 的 C# 规则、会话和配置事务执行。campaign_run 缺省 calculate；campaign_resume 与 campaign 命令保留 ignore 缺省值。支持 calculate、calculate_ignore、ignore、nothing；前两者估算并写回两队心情，包含 ignore 的模式确认低心情提示。值是原生算法估算，不是 OCR 实测。
+
+计算模式要求会话绑定配置数据根目录与实例：CLI run/campaign 使用 --config-root 和 --instance；Server/桌面直接传入选定实例。campaign 使用 --emotion-mode 与 --config-task，队列输入使用 emotionMode 与 configTask（缺省 Main）。恢复策略、誓约、控制阈值、当前值和记录时间读取实例配置，不在任务 JSON 复制初值。每次读写核对实例串号、游戏包与素材服务器；不同实例的队列请求、配置冲突和非法字段均拒绝。配置目录只提供数据，不加载 Python 业务。
+
+进图前按两队预期战斗次数计算恢复时间，不足则保存两队记录及该配置任务的 Scheduler.NextRun，返回 Skipped / emotion_recovery_required；没有设备动作，也不计完成。required 任务仍按队列合同使本次批次失败，默认停止后续任务。当前不会自动重调度；再次运行或断点续跑会重做该任务。已入图的 resume 不重复执行入图延后判断。战前按六十秒轮询恢复，确认战斗已加载后扣减并原子写回；后续战果异常、取消或失败不撤销已经发生的扣减。
+
+emotion.json 保存入图、等待、扣减的时间、两队估算值、舰队、战斗帧及写回状态，写入失败也保留尝试；缺失或无效工件使报告不完整。非法“船坞恢复 + 保持快乐经验”组合提前拒绝，不沿用原生先写记录再报错的副作用；两队记录与 NextRun 在同一事务提交，避免半更新。长期客户端心情 bug 的随机阈值/重启任务、双倍书选择和观测、完整周期调度仍未迁移；算法对拍含双倍消耗不表示产品已支持双倍书。
+
 CLI `Alas.Engine.Cli run --queue <文件>` 读取任务数组；控制 API 的 queue.tasks 使用同一数组：
 
 ```json
@@ -39,7 +47,7 @@ required 的前置条件缺失计为队列失败；正常边界停止不计业�
 | campaign_run | 同一 C# 会话完成选关、舰队、进图与地图执行；仅经结果合同确认才计 cleared |
 | campaign_resume | 从新进入的图中执行，因未验证选关身份永不记 cleared |
 
-具体输入由各 runner.Validate 定义。已编译地图声明不代表对应章节钩子和配置已迁完；可执行 RuleCatalog 仍只有已迁移的规则。战役 fleet1/fleet2/submarine 必须明确；情绪计算未迁完，当前须明确 emotionMode=ignore。campaign_run 的可选 fleet1Formation/fleet2Formation 为 line_ahead、double_line（默认）或 diamond，非法值在操作设备前拒绝；章节配置覆盖保留并传入地图执行。fleetOrder 接收 fleet1_mob_fleet2_boss（默认）、fleet1_boss_fleet2_mob、fleet1_all_fleet2_standby、fleet1_standby_fleet2_all。初始舰队选择/反转和对应阵型已接入，章节覆盖禁用二队时不反转；战中双舰队调度与潜艇实战仍有缺口。禁止按地图/页面补特例来绕过缺失语义。
+具体输入由各 runner.Validate 定义。已编译地图声明不代表对应章节钩子和配置已迁完；可执行 RuleCatalog 仍只有已迁移的规则。战役 fleet1/fleet2/submarine 必须明确；campaign_run 缺省 emotionMode=calculate；持久化绑定和其他模式见上方心情控制说明。campaign_run 的可选 fleet1Formation/fleet2Formation 为 line_ahead、double_line（默认）或 diamond，非法值在操作设备前拒绝；章节配置覆盖保留并传入地图执行。fleetOrder 接收 fleet1_mob_fleet2_boss（默认）、fleet1_boss_fleet2_mob、fleet1_all_fleet2_standby、fleet1_standby_fleet2_all。初始舰队选择/反转和对应阵型已接入，章节覆盖禁用二队时不反转；战中双舰队调度与潜艇实战仍有缺口。禁止按地图/页面补特例来绕过缺失语义。
 
 `campaign_run` / `campaign_resume` 的队列输入可设置 `hpControl: { "lowHpRetreat": true, "threshold": 0.3, "balanceWeight": "1000, 1000, 1000" }`。缺省遵循原生配置：关闭低血量撤退、阈值 0.3、等权重。权重支持中文逗号和单个整数的广播；拒绝负权重、全零、错误数量及非整数。阈值在 0–1 之间；这是加权血量，首次确认的有船槽位不会因战损归零而变为空槽。进图和战后返回地图时均读取六槽血量；工件的 `health` 保存原始值、加权值、首次槽位掩码和帧号。低血量触发撤退后须有退出动作和新帧的章节页确认，才输出 `withdrawal` 与 `sortie.outcome=withdrawn`，任务仍非成功。换位和维修须分别通过下述开关启用。
 
@@ -49,7 +57,7 @@ required 的前置条件缺失计为队列失败；正常边界停止不计业�
 
 两个战役任务的队列输入可带 `retirement` 对象：`mode` 为 `one_click_retire`（缺省）、`old_retire` 或 `disabled`；`keepLimitBreak` 缺省 true；`rarities` 缺省 `["N","R"]`，只允许 N/R/SR/SSR 且不得为空或重复；`amount` 为 `retire_all`（缺省，原生上限 3000）或 `retire_10`。稀有度与数量仅控制 old 模式，一键模式按游戏的一键选择结果操作；`keepLimitBreak` 控制一键失败后的最后设置回退，不会覆盖首次尝试时已有的游戏设置。`enhance` 和其他未迁模式明确拒绝。禁用退役时遇容量提示或退役页失败，不自动整理。`campaign_fleet_prepare` 不启用自动退役。
 
-退役由 Engine 的通用船坞筛选、排序/收藏开关、一键设置和船/装备/奖励确认流程执行，进图与战斗准备共用同一会话处理器；`emotionMode=ignore` 的低心情确认已接入。`retirement.json` 保存开始/返回帧、确认动作及未完成尝试；`NativeSelectionEstimate` 是原生选择估算，不是实测退役数。未确认设置、缺少实际确认动作或最后动作后的新帧、超时无奖励证据均失败；只见离开船坞不证明返回特定页面，更不证明通关。强化、GemsFarming 保留航母/退役旗舰与完整心情计算仍未迁移，没有新增实机退役证据。
+退役由 Engine 的通用船坞筛选、排序/收藏开关、一键设置和船/装备/奖励确认流程执行，进图与战斗准备共用同一会话处理器；`emotionMode=ignore` / `calculate_ignore` 的低心情确认已接入。`retirement.json` 保存开始/返回帧、确认动作及未完成尝试；`NativeSelectionEstimate` 是原生选择估算，不是实测退役数。未确认设置、缺少实际确认动作或最后动作后的新帧、超时无奖励证据均失败；只见离开船坞不证明返回特定页面，更不证明通关。强化、GemsFarming 保留航母/退役旗舰与长期心情重启调度仍未迁移，没有新增实机退役证据。
 
 CLI 公共参数为 --adb、--serial、--server、--assets、--python、--artifacts；OCR 任务使用 --models，动作另需 --allow-actions 和 --package。`campaign --chapter <规则列表>` 默认 dry-run，使用 --run --allow-actions 才执行；--fleet1-formation/--fleet2-formation 选择上述阵型，--fleet-order 指定舰队顺序。自定义退役选项使用队列输入；直接 campaign 命令沿用缺省选项。运行前读取 --help 核对参数。
 

@@ -9,7 +9,7 @@ public sealed record MapVisionOverrides(PeakParameters InternalPeaks, PeakParame
     int InternalHough, int EdgeHough, int HomographyEdgeHough);
 
 public enum EnemyScalePriority { Default, StrongestFirst, WeakestFirst }
-public enum CampaignEmotionMode { Calculate, Ignore }
+public enum CampaignEmotionMode { Calculate, Ignore, CalculateIgnore, Nothing }
 public enum FleetFormation { LineAhead, DoubleLine, Diamond }
 public enum SubmarineMode { DoNotUse, HuntOnly, BossOnly, HuntAndBoss, EveryCombat }
 public enum FleetOrder { Fleet1MobFleet2Boss, Fleet1BossFleet2Mob, Fleet1AllFleet2Standby, Fleet1StandbyFleet2All }
@@ -43,6 +43,7 @@ public sealed record CampaignConfiguration
     public FleetLevelOptions Levels { get; init; } = new();
     public RetirementOptions Retirement { get; init; } = new();
     public CampaignEmotionMode EmotionMode { get; init; } = CampaignEmotionMode.Calculate;
+    public string ConfigTask { get; init; } = "Main";
     public MapVisionOverrides? Vision { get; init; }
 }
 

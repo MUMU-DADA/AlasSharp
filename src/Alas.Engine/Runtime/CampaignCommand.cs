@@ -27,7 +27,11 @@ public sealed record CampaignCommandOptions(
     double TimeoutSeconds = 1500,
     FleetFormation Fleet1Formation = FleetFormation.DoubleLine,
     FleetFormation Fleet2Formation = FleetFormation.DoubleLine,
-    FleetOrder FleetOrder = FleetOrder.Fleet1MobFleet2Boss);
+    FleetOrder FleetOrder = FleetOrder.Fleet1MobFleet2Boss,
+    CampaignEmotionMode EmotionMode = CampaignEmotionMode.Ignore,
+    string ConfigTask = "Main",
+    string? ConfigRoot = null,
+    string? ConfigInstance = null);
 
 /// <summary>Translates CLI chapter arguments into typed C# task requests.</summary>
 public static class CampaignCommand
@@ -39,6 +43,8 @@ public static class CampaignCommand
             throw new ArgumentException("舰队编号无效", nameof(options));
         if (!double.IsFinite(options.TimeoutSeconds) || options.TimeoutSeconds <= 0)
             throw new ArgumentException("时间上限必须为正数", nameof(options));
+        _ = options.EmotionMode.Name();
+        _ = ConfigWorkspace.ValidateTask(options.ConfigTask);
 
         return options.Chapters.Select((chapter, index) => new TaskRequest(
             Id: $"campaign-{index + 1:D4}",
@@ -49,7 +55,8 @@ public static class CampaignCommand
                 ["fleet1"] = options.Fleet1,
                 ["fleet2"] = options.Fleet2,
                 ["submarine"] = options.Submarine,
-                ["emotionMode"] = "ignore",
+                ["emotionMode"] = options.EmotionMode.Name(),
+                ["configTask"] = options.ConfigTask,
                 ["fleetLock"] = options.FleetLock,
                 ["fleet1Formation"] = CampaignStrategy.FormationName(options.Fleet1Formation),
                 ["fleet2Formation"] = CampaignStrategy.FormationName(options.Fleet2Formation),
@@ -66,7 +73,7 @@ public static class CampaignCommand
         var session = new EngineSessionOptions(options.Adb, options.Serial, options.Server,
             Path.GetFullPath(options.Assets), options.Python,
             options.ApplicationPackage, options.ModelDirectory is null ? null : Path.GetFullPath(options.ModelDirectory),
-            options.AllowActions);
+            options.AllowActions, options.ConfigRoot, options.ConfigInstance);
         return await new TaskQueue().RunAsync(requests, session,
             new TaskQueueOptions(Path.GetFullPath(options.Artifacts), options.DryRun,
                 options.ContinueOnFailure, options.ResumeDirectory), token);

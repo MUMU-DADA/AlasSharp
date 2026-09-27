@@ -85,10 +85,54 @@ internal static class CombatFlowChecks
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();
         await Rejects<OperationCanceledException>(() => Flow(new Ui()).RunAutoAsync(Options, cancelled.Token).AsTask());
+        await EmotionChecksAsync();
         Console.WriteLine("Independent combat flow: preparation, result, stage/map return, conflict, timeout and cancellation passed; synthetic frames only.");
     }
 
-    private static CombatFlow Flow(Ui ui) => new(ui, new NoStory(), new NoPopup(), new Stage(ui));
+    private static async Task EmotionChecksAsync()
+    {
+        foreach (string ending in new[] { "win", "conflict", "cancel", "save_failure", "start_failure" })
+        {
+            using var cancellation = new CancellationTokenSource();
+            var ui = new Ui(UiAssets.Combat.BATTLE_PREPARATION);
+            ui.Enqueue(UiAssets.CombatUi.PAUSE);
+            ui.Enqueue(UiAssets.Combat.BATTLE_STATUS_S);
+            ui.Enqueue(ending == "conflict" ? UiAssets.Combat.EXP_INFO_C : UiAssets.Combat.EXP_INFO_S);
+            for (int i = 0; i < 4; i++) ui.Enqueue(UiAssets.Ui.CAMPAIGN_CHECK);
+            var emotion = new Emotion(ui, cancellation) { Ending = ending };
+            ui.FailClick = ending == "start_failure";
+            var flow = Flow(ui, emotion);
+            if (ending == "win") await flow.RunAutoAsync(Options);
+            else if (ending == "conflict") await Rejects<InvalidDataException>(() => flow.RunAutoAsync(Options).AsTask());
+            else if (ending == "cancel") await Rejects<OperationCanceledException>(() => flow.RunAutoAsync(Options, cancellation.Token).AsTask());
+            else await Rejects<IOException>(() => flow.RunAutoAsync(Options).AsTask());
+            Check(emotion.Waits == 1 && emotion.Reductions == (ending == "start_failure" ? 0 : 1),
+                "Combat charged before loading, duplicated cost, or lost observed cost on a later failure");
+        }
+        Console.WriteLine("Combat emotion: long wait before preparation, observed-loading charge, later rank conflict/cancellation, write failure and start failure passed.");
+    }
+    private sealed class Emotion(Ui ui, CancellationTokenSource cancellation) : ICombatEmotion
+    {
+        public required string Ending { get; init; }
+        public int Waits { get; private set; }
+        public int Reductions { get; private set; }
+        public async ValueTask WaitAsync(CancellationToken token)
+        {
+            Check(ui.Clicks.Count == 0, "Emotion wait happened after preparation input");
+            Waits++;
+            await ui.DelayAsync(TimeSpan.FromMinutes(20), token);
+        }
+        public ValueTask ReduceAsync(CancellationToken token)
+        {
+            Check(Waits == 1 && ui.Visible.Contains(UiAssets.CombatUi.PAUSE.Id), "Emotion reduction did not follow observed loading");
+            Check(!token.CanBeCanceled, "Observed battle cost was given a cancellable save token");
+            Reductions++;
+            if (Ending == "cancel") cancellation.Cancel();
+            if (Ending == "save_failure") throw new IOException("Synthetic emotion save failure");
+            return ValueTask.CompletedTask;
+        }
+    }
+    private static CombatFlow Flow(Ui ui, ICombatEmotion? emotion = null) => new(ui, new NoStory(), new NoPopup(), new Stage(ui), emotion: emotion);
     private static CombatFlowOptions Options => new(TimeSpan.FromSeconds(12), TimeSpan.FromSeconds(12), TimeSpan.FromSeconds(15));
     private static void Check(bool value, string message)
     { if (!value) throw new InvalidOperationException(message); }
@@ -128,6 +172,7 @@ internal static class CombatFlowChecks
         public TimeProvider Clock => _clock;
         public HashSet<string> Visible { get; private set; }
         public bool StageEntranceVisible { get; set; } = true;
+        public bool FailClick { get; set; }
         public List<string> Clicks { get; } = [];
         public void Enqueue(params AssetRule[] assets)
             => _frames.Enqueue(assets.Select(a => a.Id).ToHashSet(StringComparer.Ordinal));
@@ -143,7 +188,7 @@ internal static class CombatFlowChecks
             CancellationToken token = default)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(Visible.Contains(asset.Id)); }
         public ValueTask ClickAsync(AssetRule asset, CancellationToken token)
-        { token.ThrowIfCancellationRequested(); Clicks.Add(asset.Name); return ValueTask.CompletedTask; }
+        { token.ThrowIfCancellationRequested(); if (FailClick) throw new IOException("Synthetic combat start failure"); Clicks.Add(asset.Name); return ValueTask.CompletedTask; }
         public ValueTask ClickAreaAsync(Rectangle area, CancellationToken token) => throw new NotSupportedException();
         public ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token) => throw new NotSupportedException();
         public ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token) => throw new NotSupportedException();

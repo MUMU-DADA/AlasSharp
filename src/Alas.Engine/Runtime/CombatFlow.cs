@@ -15,7 +15,7 @@ public sealed record CombatFlowOptions(TimeSpan PreparationTimeout, TimeSpan Exe
 /// <summary>Independent C# automatic combat phases. The caller still owns map state and sortie adjudication.</summary>
 public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler popups, IMapUiObservations mapUi,
     CombatHealthPreparation? healthPreparation = null, IntervalTimer? automationSetTimer = null,
-    ICampaignInterruptions? interruptions = null)
+    ICampaignInterruptions? interruptions = null, ICombatEmotion? emotion = null)
 {
     public static readonly SourceFile Source = MapEncounterProbe.CombatSource;
     private static readonly (AssetRule Asset, TemplatePreprocessing Processing)[] PauseVariants =
@@ -56,6 +56,8 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
         if (Interlocked.Exchange(ref _started, 1) != 0)
             throw new InvalidOperationException("A combat flow belongs to one battle");
         var rank = new CombatRankProbe(ui);
+        // Recovery may take minutes; the enclosing task deadline, not the animation timeout, bounds this wait.
+        if (emotion is not null) await emotion.WaitAsync(token);
         await PhaseAsync("preparation", options.PreparationTimeout, PrepareAsync, token);
         await PhaseAsync("execution", options.ExecutionTimeout, (time, ct) => ExecuteAsync(rank, time, ct), token);
         var (returned, newShip, searching) = await PhaseAsync("status", options.StatusTimeout,
@@ -144,7 +146,11 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
             { await ui.ClickAsync(UiAssets.Combat.BATTLE_PREPARATION, token); continue; }
             if (await AutomationConfirmAsync(token)) continue;
             if (await story.StorySkipAsync(token)) continue;
-            if (await IsExecutingAsync(token)) return true;
+            if (await IsExecutingAsync(token))
+            {
+                if (emotion is not null) await emotion.ReduceAsync(CancellationToken.None);
+                return true;
+            }
         }
     }
 

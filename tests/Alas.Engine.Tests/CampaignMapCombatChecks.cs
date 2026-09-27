@@ -28,7 +28,7 @@ internal static class CampaignMapCombatChecks
         state[new(3, 2)].IsEnemy = true;
         state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
         var camera = new Camera(state);
-        var combat = Create(state, new(), camera);
+        var combat = Create(state, new() { EmotionMode = CampaignEmotionMode.Ignore }, camera);
         Check(await combat.ClearEnemyAsync() && camera.Taps == 2 && camera.Scans == 1 &&
             state.BattleCount == 1 && state.AmmoCount == 3 && state.FleetAmmo == 4 && state.Fleet1Location == new Cell(3, 2) &&
             !state[new(3, 2)].IsEnemy && combat.StageReturn is null,
@@ -42,7 +42,7 @@ internal static class CampaignMapCombatChecks
         state[new(2, 1)].IsMystery = state[new(3, 1)].IsMystery = true;
         state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
         camera = new Camera(state);
-        combat = Create(state, new(), camera);
+        combat = Create(state, new() { EmotionMode = CampaignEmotionMode.Ignore }, camera);
         Check(!await combat.ClearMysteriesAsync() && camera.Taps == 2 && state.MysteryCount == 2 &&
             state.Fleet1Location == new Cell(3, 1) && !state.Cells.Any(grid => grid.IsMystery) &&
             state.BattleCount == 0 && state.AmmoCount == 3 && state.FleetAmmo == 5 && !await combat.ClearMysteriesAsync(),
@@ -61,7 +61,7 @@ internal static class CampaignMapCombatChecks
             state[new(1, 2)].EnemyScale = 1;
             state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
             camera = new Camera(state);
-            combat = Create(state, new() { EnemyPriority = priority }, camera);
+            combat = Create(state, new() { EnemyPriority = priority, EmotionMode = CampaignEmotionMode.Ignore }, camera);
             Check(await combat.ClearEnemyAsync() && state.Fleet1Location == target && camera.Taps == 1,
                 "Enemy-scale priority did not select the upstream scale group");
         }
@@ -73,7 +73,7 @@ internal static class CampaignMapCombatChecks
             state[new(2, 1)].IsBoss = true;
             state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
             camera = new Camera(state) { ReturnStage = true, Rank = rank };
-            combat = Create(state, new(), camera);
+            combat = Create(state, new() { EmotionMode = CampaignEmotionMode.Ignore }, camera);
             bool ended = false, rejected = false;
             try { await combat.ClearBossAsync(); }
             catch (CampaignEndedException) { ended = true; }
@@ -87,7 +87,7 @@ internal static class CampaignMapCombatChecks
         state[new(2, 1)].IsBoss = true;
         state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
         camera = new Camera(state);
-        combat = Create(state, new(), camera);
+        combat = Create(state, new() { EmotionMode = CampaignEmotionMode.Ignore }, camera);
         Check(!await combat.ClearBossAsync() && combat.StageReturn is null && state.BattleCount == 1 &&
             camera.Scans == 1 && state.Fleet1Location == new Cell(2, 1),
             "Boss return to map did not continue the upstream potential-spawn search");
@@ -95,7 +95,7 @@ internal static class CampaignMapCombatChecks
         state = Prepare(map);
         state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
         camera = new Camera(state);
-        combat = Create(state, new(), camera);
+        combat = Create(state, new() { EmotionMode = CampaignEmotionMode.Ignore }, camera);
         Check(!await combat.ClearBossAsync() && camera.Taps == 1 && state.BattleCount == 0 &&
             state.Fleet1Location == new Cell(2, 1),
             "Empty potential-boss spawn was misclassified as observed combat");
@@ -104,7 +104,7 @@ internal static class CampaignMapCombatChecks
         state = Prepare(map);
         state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
         camera = new Camera(state) { PotentialBossCombat = new(3, 1), ReturnStage = true };
-        combat = Create(state, new(), camera);
+        combat = Create(state, new() { EmotionMode = CampaignEmotionMode.Ignore }, camera);
         bool potentialEnded = false;
         try { await combat.ClearBossAsync(); }
         catch (CampaignEndedException) { potentialEnded = true; }
@@ -116,7 +116,7 @@ internal static class CampaignMapCombatChecks
         state = Prepare(map);
         state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
         camera = new Camera(state) { PotentialBossCombat = new(3, 1) };
-        combat = Create(state, new(), camera);
+        combat = Create(state, new() { EmotionMode = CampaignEmotionMode.Ignore }, camera);
         Check(await combat.ClearBossAsync() && camera.Taps == 2 && camera.Scans == 1 &&
             state.BattleCount == 1 && state.Fleet1Location == new Cell(3, 1),
             "Winning potential-boss combat returning to map was not scanned and reported");
@@ -125,13 +125,31 @@ internal static class CampaignMapCombatChecks
         state = Prepare(map);
         state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
         camera = new Camera(state);
-        combat = Create(state, new(), camera);
+        combat = Create(state, new() { EmotionMode = CampaignEmotionMode.Ignore }, camera);
         bool roadblockRequired = false;
         try { await combat.ClearBossAsync(); }
         catch (NotSupportedException) { roadblockRequired = true; }
         Check(roadblockRequired && camera.Taps == 0 && state.BattleCount == 0,
             "Unported potential-boss roadblock logic clicked an inaccessible spawn");
 
+        foreach (var mode in Enum.GetValues<CampaignEmotionMode>())
+        foreach (bool locked in new[] { false, true })
+        {
+            var emotionMap = new MapDefinition("B1", "SP ME", ["A1"], [], [new SpawnWave(0, Enemy: 1)]);
+            state = Prepare(emotionMap);
+            state[new(2, 1)].IsEnemy = true;
+            state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
+            camera = new Camera(state);
+            int waits = 0;
+            combat = Create(state, new() { EmotionMode = mode, UseFleetLock = locked,
+                Fleet2 = 2, FleetOrder = FleetOrder.Fleet1BossFleet2Mob }, camera, (fleet, token) =>
+            {
+                Check(fleet == 1 && camera.Taps == 0, "Map emotion wait lost logical fleet index or happened after movement");
+                waits++; return ValueTask.CompletedTask;
+            });
+            Check(await combat.ClearEnemyAsync() && waits == (locked && mode.Calculates() ? 1 : 0),
+                "On-map emotion wait ignored native mode/fleet-lock gating");
+        }
         await ExecutionChecksAsync(python);
         Console.WriteLine("Campaign map combat: route, priority, mystery, potential-boss search, scan and stage-return evidence passed offline; no entry or settlement verification.");
     }
@@ -372,12 +390,13 @@ internal static class CampaignMapCombatChecks
         return state;
     }
 
-    private static CampaignMapCombat Create(CampaignState state, CampaignConfiguration config, Camera camera)
+    private static CampaignMapCombat Create(CampaignState state, CampaignConfiguration config, Camera camera,
+        Func<int, CancellationToken, ValueTask>? waitEmotion = null)
     {
         var movement = new MapMovement(state, config, camera, () =>
             new MapArrivalCheck(camera, state, camera.InMapAsync, camera.Clock,
                 new Probe(camera), new Handler(camera)));
-        return new(state, config, movement, new MapScanner(state, camera, camera.Clock));
+        return new(state, config, movement, new MapScanner(state, camera, camera.Clock), waitEmotion);
     }
 
     private sealed class Clock : TimeProvider

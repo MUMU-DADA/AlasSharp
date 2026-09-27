@@ -19,6 +19,9 @@ internal static class CampaignCommandChecks
             Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead,
             FleetOrder: FleetOrder.Fleet1BossFleet2Mob);
         var requests = CampaignCommand.BuildRequests(options);
+        var calculated = CampaignCommand.BuildRequests(options with { EmotionMode = CampaignEmotionMode.CalculateIgnore, ConfigTask = "EventA" });
+        Check(calculated.All(request => request.Input!["emotionMode"]!.GetValue<string>() == "calculate_ignore" &&
+            request.Input["configTask"]!.GetValue<string>() == "EventA"), "Command lost persistent emotion options");
         Check(requests.Count == 3 && requests[0].Input!["campaign"]!.GetValue<string>() == "campaign_main/campaign_1_1");
         Check(requests.All(request => request.Input!["fleet1Formation"]!.GetValue<string>() == "diamond" &&
             request.Input["fleet2Formation"]!.GetValue<string>() == "line_ahead" &&

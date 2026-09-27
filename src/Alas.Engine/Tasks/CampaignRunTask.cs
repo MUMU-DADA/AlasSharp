@@ -14,14 +14,14 @@ public sealed class CampaignRunTask : ITaskRunner
     public void Validate(JsonObject? input)
     {
         TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
-            "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement");
+            "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement", "configTask");
         var id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign run requires a compiled campaign rule");
         if (RuleCatalog.Create(id).StageName is null)
             throw new NotSupportedException("Compiled campaign has no selectable stage");
         _ = Plan(input);
-        if (input?["emotionMode"]?.GetValue<string>() != "ignore")
-            throw new NotSupportedException("Automatic campaign run requires explicit ignore emotion mode until calculation is ported");
+        _ = EmotionInput.Mode(input!);
+        _ = EmotionInput.ConfigTask(input!);
         if (input.ContainsKey("fleetLock") && input["fleetLock"] is null)
             throw new ArgumentException("Fleet lock setting cannot be null");
         if (input["fleetLock"] is not null) _ = input["fleetLock"]!.GetValue<bool>();
@@ -34,7 +34,8 @@ public sealed class CampaignRunTask : ITaskRunner
     }
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
-        => capabilities.HasOcrModels ? [] : ["ocr_models"];
+        => [.. capabilities.HasOcrModels ? Array.Empty<string>() : ["ocr_models"],
+            .. !EmotionInput.Mode(request.Input!).Calculates() || capabilities.HasEmotionStore ? Array.Empty<string>() : ["emotion_config"]];
 
     public async ValueTask<TaskResult> RunAsync(TaskRequest request, TaskContext context, CancellationToken token)
     {
@@ -48,7 +49,8 @@ public sealed class CampaignRunTask : ITaskRunner
         var requestedPlan = Plan(request.Input);
         var requestedConfiguration = new CampaignConfiguration
         {
-            EmotionMode = CampaignEmotionMode.Ignore,
+            EmotionMode = EmotionInput.Mode(request.Input),
+            ConfigTask = EmotionInput.ConfigTask(request.Input),
             Fleet2 = requestedPlan.Second,
             Submarine = requestedPlan.Submarine,
             Fleet1Formation = Formation(request.Input, "fleet1Formation"),
@@ -76,15 +78,25 @@ public sealed class CampaignRunTask : ITaskRunner
             ["campaign"] = rule.Id,
             ["requestedFleetPlan"] = JsonSerializer.SerializeToNode(requestedPlan, TaskQueue.Json),
             ["fleetPlan"] = JsonSerializer.SerializeToNode(plan, TaskQueue.Json),
-            ["emotionMode"] = "ignore",
+            ["emotionMode"] = configuration.EmotionMode.Name(),
             ["fleetLockRequested"] = configuration.UseFleetLock
         };
         evidence["fleet1Formation"] = CampaignStrategy.FormationName(configuration.Fleet1Formation);
         evidence["fleet2Formation"] = CampaignStrategy.FormationName(configuration.Fleet2Formation);
         evidence["fleetOrder"] = FleetRoles.Name(configuration.FleetOrder);
-        string phase = "navigation";
+        string phase = "emotion";
         try
         {
+            if (configuration.EmotionMode.Calculates())
+            {
+                var emotion = context.Emotion ?? throw new NotSupportedException("Emotion persistence is unavailable");
+                var check = await emotion.PrepareAsync(configuration, rule.Map.ExpectedBattles, false, token)
+                    ?? throw new InvalidDataException("Emotion entry check returned no evidence");
+                evidence["emotion"] = JsonSerializer.SerializeToNode(check, TaskQueue.Json);
+                if (check.DeferredUntil is not null)
+                    return new(request.Id, Kind, TaskOutcome.Skipped, "emotion_recovery_required", evidence);
+            }
+            phase = "navigation";
             await context.Navigator.EnsureAsync("page_campaign", context.Timeout, token: token);
             phase = "stage_selection";
             var selection = await new CampaignStageSelector(context.Driver, stages).SelectAsync(rule.StageName!, token);

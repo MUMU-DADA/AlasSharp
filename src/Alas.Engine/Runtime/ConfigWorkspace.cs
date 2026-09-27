@@ -16,7 +16,7 @@ namespace Alas.Engine.Runtime;
 /// not maintain a second task or field table. Execution consumes explicit
 /// Engine task inputs; reading or editing an instance does not start Python.
 /// </summary>
-public sealed class ConfigWorkspace
+public sealed partial class ConfigWorkspace
 {
     private static readonly Regex NamePattern = new(
         @"^[\p{L}\p{N}][\p{L}\p{N}_. \-]{0,63}$",

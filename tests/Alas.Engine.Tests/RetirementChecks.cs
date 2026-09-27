@@ -133,10 +133,13 @@ internal static class RetirementChecks
                 "Template+color interval was not gated");
         }
         foreach (var sample in native["low"]!.AsArray())
+        foreach (bool calculate in new[] { false, true })
         {
             var ui = new Replay(GameServer.Cn, [Strings(sample!["visible"]!)]);
             var interruptions = new CampaignInterruptions(ui, new UiVisuals(vision, () => throw new InvalidOperationException()), Handler(ui));
-            interruptions.Configure(new(), sample["ignore"]!.GetValue<bool>() ? CampaignEmotionMode.Ignore : CampaignEmotionMode.Calculate);
+            interruptions.Configure(new(), sample["ignore"]!.GetValue<bool>()
+                ? calculate ? CampaignEmotionMode.CalculateIgnore : CampaignEmotionMode.Ignore
+                : calculate ? CampaignEmotionMode.Calculate : CampaignEmotionMode.Nothing);
             bool handled = await interruptions.LowEmotionAsync(default);
             var expected = sample["clicks"]!.DeepClone();
             foreach (var item in expected!.AsArray()) item!["asset"] = item["asset"]!.GetValue<string>().Replace("_IGNORE_LOW_EMOTION", "", StringComparison.Ordinal);
@@ -150,7 +153,7 @@ internal static class RetirementChecks
         await ProductChecksAsync(python, upstream, artifacts);
         Console.WriteLine($"Retirement: {same} exact native confirmation traces, {stricter} rejected native timeout assumptions, " +
             "48 native fallback routes, dock/quick declarations, 4 setting traces, 64 actual-CV rarity selections, " +
-            "16 pixel thresholds, 24 four-server template+color cases, 6 low-emotion traces and session failure evidence passed; no real device actions.");
+            "16 pixel thresholds, 24 four-server template+color cases, 6 low-emotion traces across four modes and session failure evidence passed; no real device actions.");
     }
 
     private static async Task FailureChecksAsync()

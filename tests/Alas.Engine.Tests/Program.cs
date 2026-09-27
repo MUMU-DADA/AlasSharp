@@ -263,6 +263,14 @@ try
         return 0;
     }
 
+    if (args is ["--emotion", var emotionPython, var emotionUpstream, var emotionArtifacts])
+    {
+        string folder = Path.GetFullPath(emotionArtifacts);
+        Directory.CreateDirectory(folder);
+        await EmotionChecks.RunAsync(Path.GetFullPath(emotionPython), Path.GetFullPath(emotionUpstream), folder);
+        await CombatFlowChecks.RunAsync();
+        return 0;
+    }
     if (args is ["--retirement", var retirementPython, var retirementUpstream, var retirementArtifacts])
     {
         string folder = Path.GetFullPath(retirementArtifacts);

@@ -4,7 +4,7 @@ namespace Alas.Engine.Runtime;
 
 /// <summary>On-map target selection and movement. Stage return is evidence, not a sortie verdict.</summary>
 public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration configuration,
-    MapMovement movement, MapScanner scanner)
+    MapMovement movement, MapScanner scanner, Func<int, CancellationToken, ValueTask>? waitEmotion = null)
 {
     public static readonly SourceFile Source = new("module/map/map.py",
         "187a5ee7d8fbde3c944681216fd2ac75f68036716b17db5a8bb43fdd42de5365");
@@ -140,6 +140,12 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
     private async ValueTask<bool> FightAsync(CellState target, CancellationToken token)
     {
         if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before selecting a combat target");
+        if (configuration.EmotionMode.Calculates() && configuration.UseFleetLock)
+        {
+            if (waitEmotion is null) throw new NotSupportedException("Fleet-locked combat requires emotion state");
+            // Native clear_chosen_enemy uses the logical index here; combat_preparation uses the displayed index.
+            await waitEmotion(state.FleetIndex, token);
+        }
         var route = state.Paths.FindRoute(target.Location, turningOptimize: configuration.HasAmbush);
         if (!route.IsReachable || route.Waypoints.Count == 0)
             throw new InvalidOperationException("Selected combat target has no confirmed fleet route");

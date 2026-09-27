@@ -15,7 +15,7 @@ public sealed record TaskContext(IUiDriver Driver, IPageNavigator Navigator, IPo
     IMapObservationService? Map = null, ICampaignExecutionService? Campaign = null,
     ICampaignStageObservationService? Stages = null, ICampaignFleetPreparationService? Fleets = null,
     ICampaignEntryService? Entry = null, ICampaignAutoSearchService? AutoSearch = null,
-    ICampaignInterruptions? Interruptions = null);
+    ICampaignInterruptions? Interruptions = null, ICampaignEmotionService? Emotion = null);
 
 /// <summary>Each business domain owns its input schema and completion evidence.</summary>
 public interface ITaskRunner
@@ -26,7 +26,7 @@ public interface ITaskRunner
     IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities);
     ValueTask<TaskResult> RunAsync(TaskRequest request, TaskContext context, CancellationToken token);
 }
-public sealed record TaskCapabilities(bool AllowActions, bool HasOcrModels);
+public sealed record TaskCapabilities(bool AllowActions, bool HasOcrModels, bool HasEmotionStore = false);
 
 internal static class TaskInput
 {

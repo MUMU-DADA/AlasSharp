@@ -10,6 +10,7 @@ internal static class ControlWorkspaceChecks
 {
     public static async Task RunAsync(string artifacts)
     {
+        await LiveSnapshotChecksAsync(artifacts);
         string root = Path.Combine(artifacts, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(root, "config"));
         await File.WriteAllTextAsync(Path.Combine(root, "config", "template.json"), "{}");
@@ -23,7 +24,7 @@ internal static class ControlWorkspaceChecks
         workspace.StartRun(request);
         await Finished(workspace);
         var state = workspace.State();
-        Check(state["active"]!["status"]!.GetValue<string>() == "completed", "Dry-run did not finish");
+        Check(state["active"]!["status"]!.GetValue<string>() == "completed", "Dry-run did not finish: " + state["active"]);
         var report = state["report"]!.AsObject();
         Check(report["queue_outcome"]!.GetValue<string>() == "dry_run" && report["evidence_complete"]!.GetValue<bool>(), "Engine report could not read Engine artifacts");
         Check(report["totals"]!["tasks_dry_run"]!.GetValue<int>() == 2 &&
@@ -102,6 +103,21 @@ internal static class ControlWorkspaceChecks
         Reject<EngineControlWorkspaceUnavailableException>(() => workspace.SaveQueueRequest(request));
         Check(!workspace.RequestStop(), "Idle shutdown accepted a stop");
         Check(AppDomain.CurrentDomain.GetAssemblies().All(a => a.GetName().Name != "Alas.Core"), "Control path loaded Core");
+    }
+
+    private static async Task LiveSnapshotChecksAsync(string artifacts)
+    {
+        FileStream? reader = null;
+        try
+        {
+            var options = new EngineSessionOptions("missing-adb", "offline", GameServer.Cn, "missing-assets", "missing-python");
+            var result = await new TaskQueue().RunAsync([new("first", "observe"), new("second", "observe")], options,
+                new(artifacts, DryRun: true, OnStarted: directory => reader = new FileStream(Path.Combine(directory, "run.json"),
+                    FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)));
+            Check(!result.Failed && result.Tasks.All(task => task.Outcome == TaskOutcome.DryRun),
+                "A live report reader prevented queue snapshot replacement");
+        }
+        finally { reader?.Dispose(); }
     }
 
     private static async Task Finished(EngineControlWorkspace workspace)

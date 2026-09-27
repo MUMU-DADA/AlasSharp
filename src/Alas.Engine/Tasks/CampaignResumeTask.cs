@@ -12,24 +12,33 @@ public sealed class CampaignResumeTask : ITaskRunner
     public bool RequiresActions => true;
     public void Validate(JsonObject? input)
     {
-        TaskInput.Fields(input, "campaign", "hpControl", "reachLevel", "retirement");
+        TaskInput.Fields(input, "campaign", "hpControl", "reachLevel", "retirement", "emotionMode", "configTask");
         string id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign resume requires a compiled rule");
         _ = RuleCatalog.Create(id);
         _ = FleetHealthInput.Read(input!);
         _ = FleetLevelInput.Read(input!);
         _ = RetirementInput.Read(input!);
+        _ = EmotionInput.Mode(input!, CampaignEmotionMode.Ignore);
+        _ = EmotionInput.ConfigTask(input!);
     }
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
-        => FleetLevelInput.Read(request.Input!).Enabled && !capabilities.HasOcrModels ? ["ocr_models"] : [];
+        => [.. FleetLevelInput.Read(request.Input!).Enabled && !capabilities.HasOcrModels ? new[] { "ocr_models" } : [],
+            .. EmotionInput.Mode(request.Input!, CampaignEmotionMode.Ignore).Calculates() && !capabilities.HasEmotionStore ? new[] { "emotion_config" } : []];
     public async ValueTask<TaskResult> RunAsync(TaskRequest request, TaskContext context, CancellationToken token)
     {
         Validate(request.Input);
         var service = context.Campaign ?? throw new NotSupportedException("C# campaign execution service is unavailable");
         var rule = RuleCatalog.Create(request.Input!["campaign"]!.GetValue<string>());
-        var result = await service.ResumeInMapAsync(rule,
-            new CampaignConfiguration { EmotionMode = CampaignEmotionMode.Ignore, Health = FleetHealthInput.Read(request.Input),
-                Levels = FleetLevelInput.Read(request.Input), Retirement = RetirementInput.Read(request.Input) }, token);
+        var configuration = rule.Configure(new CampaignConfiguration
+        {
+            EmotionMode = EmotionInput.Mode(request.Input, CampaignEmotionMode.Ignore), ConfigTask = EmotionInput.ConfigTask(request.Input),
+            Health = FleetHealthInput.Read(request.Input), Levels = FleetLevelInput.Read(request.Input), Retirement = RetirementInput.Read(request.Input)
+        });
+        if (configuration.EmotionMode.Calculates())
+            await (context.Emotion ?? throw new NotSupportedException("Emotion persistence is unavailable"))
+                .PrepareAsync(configuration, rule.Map.ExpectedBattles, true, token);
+        var result = await service.ResumeInMapAsync(rule, configuration, token);
         return Describe(request.Id, Kind, rule, result, false);
     }
 

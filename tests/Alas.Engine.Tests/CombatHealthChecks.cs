@@ -226,7 +226,7 @@ internal static class CombatHealthChecks
             await session.Driver.ScreenshotAsync(default);
             var state = new CampaignState(RuleCatalog.Create("campaign_main/campaign_1_1").Map);
             state.Health.Commit(1, 1, [.9, 0, 0, .2, .8, .5], Enabled);
-            var flow = session.CreateCampaignCombatFlow(state, new() { UseFleetLock = false, Health = Enabled });
+            var flow = session.CreateCampaignCombatFlow(state, new() { UseFleetLock = false, Health = Enabled, EmotionMode = CampaignEmotionMode.Ignore });
             await Rejects<IOException>(async () => await flow.RunAutoAsync());
             var saved = await session.SaveEvidenceAsync(folder, true);
             var actions = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(folder, "actions.json")))!.AsArray();

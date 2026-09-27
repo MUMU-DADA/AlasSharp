@@ -211,11 +211,9 @@ internal static class CampaignStageSelectorChecks
             catch (Exception error) when (error is ArgumentException or InvalidOperationException) { rejected = true; }
             Check(rejected, "Campaign accepted invalid formation/order before device entry");
         }
-        await Throws<NotSupportedException>(() =>
-        {
-            runTask.Validate(configured.Input);
-            return Task.CompletedTask;
-        }, "Campaign run accepted implicit emotion calculation without an implementation");
+        runTask.Validate(configured.Input);
+        Check(runTask.Preconditions(configured, new(true, true)).SequenceEqual(["emotion_config"]),
+            "Default emotion calculation bypassed persistent configuration precondition");
         driver = new Driver { Chapter = 1 };
         var runFleet = new FleetService();
         var interruptions = new Interruptions();

@@ -30,7 +30,7 @@ public sealed class CampaignInterruptions(IUiDriver ui, UiVisuals visuals, Retir
     public async ValueTask<bool> LowEmotionAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        if (_emotion != CampaignEmotionMode.Ignore) return false;
+        if (!_emotion.Ignores()) return false;
         bool handled = await RetirementUi.ConfirmAsync(ui, ButtonOffset.Expand(3, 30), token);
         if (handled) ui.ResetInterval(UiAssets.Handler.AUTO_SEARCH_MAP_OPTION_OFF);
         return handled;

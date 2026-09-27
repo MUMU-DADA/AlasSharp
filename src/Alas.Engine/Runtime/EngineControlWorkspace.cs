@@ -217,7 +217,8 @@ public sealed class EngineControlWorkspace
         return new EngineSessionOptions(
             Environment.GetEnvironmentVariable("ALAS_ADB") ?? "adb", actualSerial, server,
             Path.Combine(_repo, "assets"), Environment.GetEnvironmentVariable("ALAS_PYTHON") ?? "python",
-            package, string.IsNullOrWhiteSpace(models) ? null : Path.GetFullPath(models), allowActions);
+            package, string.IsNullOrWhiteSpace(models) ? null : Path.GetFullPath(models), allowActions,
+            config is null ? null : _repo, config?.Instance);
     }
 
     public void StartTask(JsonObject body)

@@ -53,6 +53,7 @@ public sealed class TaskQueue
         TaskQueueOptions options, CancellationToken token = default)
     {
         ValidateRequests(requests);
+        sessionOptions.ValidateConfigBinding();
         // Snapshot mutable JSON inputs before execution and hash the session identity, without storing private paths/serial in state.
         string queueJson = JsonSerializer.Serialize(requests, Json);
         requests = JsonSerializer.Deserialize<TaskRequest[]>(queueJson, Json)!;
@@ -95,7 +96,7 @@ public sealed class TaskQueue
             }
         }
         else await File.WriteAllTextAsync(Path.Combine(directory, "queue.json"), queueJson);
-        var capabilities = new TaskCapabilities(sessionOptions.AllowActions, sessionOptions.ModelDirectory is not null);
+        var capabilities = new TaskCapabilities(sessionOptions.AllowActions, sessionOptions.ModelDirectory is not null, sessionOptions.HasEmotionStore);
         string attempt = "attempt-" + Guid.NewGuid().ToString("N");
         var results = new List<TaskResult>();
         var satisfied = new HashSet<string>(completed.Keys, StringComparer.Ordinal);
@@ -135,6 +136,8 @@ public sealed class TaskQueue
                     try
                     {
                         runner.Validate(request.Input);
+                        if (request.Instance is not null && request.Instance != sessionOptions.ConfigInstance)
+                            throw new ArgumentException("Task instance does not match the bound session configuration");
                         var missing = runner.Preconditions(request, capabilities);
                         if (missing.Count > 0)
                             result = new(request.Id, request.Kind, TaskOutcome.Skipped, "preconditions_unmet",
@@ -225,7 +228,10 @@ public sealed class TaskQueue
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string temporary = path + ".tmp";
         await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(value, Json));
-        File.Move(temporary, path, overwrite: true);
+        // Reports may hold the current snapshot open with delete sharing. On Windows,
+        // MoveFileEx(overwrite) still fails in that case; ReplaceFile preserves those readers.
+        if (File.Exists(path)) File.Replace(temporary, path, null);
+        else File.Move(temporary, path);
     }
     private sealed record CompletedTask(string Artifact, string Sha256, Dictionary<string, string> Files);
     private sealed record QueueState(string Fingerprint, Dictionary<string, CompletedTask> Completed);

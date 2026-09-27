@@ -9,12 +9,21 @@ using Alas.Engine.Tasks;
 namespace Alas.Engine.Runtime;
 
 public sealed record EngineSessionOptions(string Adb, string Serial, GameServer Server, string Assets, string Python,
-    string? ApplicationPackage = null, string? ModelDirectory = null, bool AllowActions = false);
+    string? ApplicationPackage = null, string? ModelDirectory = null, bool AllowActions = false,
+    string? ConfigRoot = null, string? ConfigInstance = null)
+{
+    public bool HasEmotionStore => !string.IsNullOrWhiteSpace(ConfigRoot) && !string.IsNullOrWhiteSpace(ConfigInstance);
+    public void ValidateConfigBinding()
+    {
+        if ((ConfigRoot is not null || ConfigInstance is not null) && !HasEmotionStore)
+            throw new ArgumentException("Configuration root and instance must be supplied together");
+    }
+}
 
 /// <summary>One device and one pure-vision process for the entire new execution graph.</summary>
-public sealed class EngineSession : IAsyncDisposable, IMapObservationService, ICampaignInMapHost,
+public sealed partial class EngineSession : IAsyncDisposable, IMapObservationService, ICampaignInMapHost,
     ICampaignExecutionService, ICampaignStageObservationService, ICampaignFleetPreparationService,
-    ICampaignEntryService, ICampaignAutoSearchService
+    ICampaignEntryService, ICampaignAutoSearchService, ICampaignEmotionService
 {
     private readonly PythonTemplateVision _vision;
     private readonly JournalDevice _device;
@@ -31,9 +40,11 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     public TaskCapabilities Capabilities { get; }
     public EngineSession(EngineSessionOptions options)
     {
+        options.ValidateConfigBinding();
+        _options = options;
         if (options.AllowActions && string.IsNullOrWhiteSpace(options.ApplicationPackage))
             throw new ArgumentException("Device actions require an explicit game application package");
-        Capabilities = new(options.AllowActions, options.ModelDirectory is not null);
+        Capabilities = new(options.AllowActions, options.ModelDirectory is not null, options.HasEmotionStore);
         _device = new JournalDevice(new AdbDevice(options.Adb, options.Serial, options.AllowActions));
         _application = options.ApplicationPackage is null ? new UnconfiguredApplication() :
             new JournalApplication(new AdbApplication(options.Adb, options.Serial, options.ApplicationPackage, options.AllowActions), _device);
@@ -150,7 +161,8 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     public CampaignMapCombat CreateCampaignMapCombat(MapCamera camera, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances),
-            new MapScanner(camera.State, camera, Driver.Clock));
+            new MapScanner(camera.State, camera, Driver.Clock),
+            waitEmotion: (fleet, token) => RequireEmotion(configuration).WaitAsync(fleet, token));
     public CampaignExecution CreateInMapCampaignExecution(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token = default)
         => new(rule, configuration, (state, effective) => new InMapCampaignOperations(this, state, effective, token));
@@ -213,15 +225,19 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
             _imageStability, () => state.Health.Get(state.FleetIndex), configuration.Health, configuration.UseFleetLock,
             new AdbFleetDrag(_device, Driver).DragAsync);
         _combatHealth.Add(preparation);
-        return CreateCombatFlow(entrances, preparation);
+        var emotion = configuration.EmotionMode.Calculates()
+            ? RequireEmotion(configuration).ForBattle(
+                FleetRoles.Reversed(configuration) ? 3 - state.FleetIndex : state.FleetIndex,
+                () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No battle loading frame")) : null;
+        return CreateCombatFlow(entrances, preparation, emotion);
     }
     public CombatFlow CreateCombatFlow(StageEntranceKind entrances = StageEntranceKind.Normal,
-        CombatHealthPreparation? healthPreparation = null)
+        CombatHealthPreparation? healthPreparation = null, ICombatEmotion? emotion = null)
     {
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
         var observations = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No combat screenshot"),
             _vision, _assets, Driver.Server, entrances);
-        return new(Driver, recovery, recovery, observations, healthPreparation, _automationSet, _interruptions);
+        return new(Driver, recovery, recovery, observations, healthPreparation, _automationSet, _interruptions, emotion);
     }
     public async ValueTask<MapVisualObservation> ObserveMapAsync(CampaignRule rule, CancellationToken token)
     {
@@ -259,11 +275,13 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     {
         _device.Actions.Clear();
         _combatHealth.Clear();
+        _emotion = null;
+        _emotionConfiguration = null;
         _retirement.ResetEvidence();
         _interruptions.Configure(new() { Mode = RetirementMode.Disabled }, CampaignEmotionMode.Calculate);
         Driver.ResetTask();
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
-        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this, this, this, this, _interruptions);
+        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this, this, this, this, _interruptions, this);
     }
     public async Task<JsonObjectEvidence> SaveEvidenceAsync(string directory, bool failed)
     {
@@ -283,6 +301,12 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
             retirementFile = "retirement.json";
             await File.WriteAllTextAsync(Path.Combine(directory, retirementFile), JsonSerializer.Serialize(_retirement.Evidence, json));
         }
+        string? emotionFile = null;
+        if (_emotion?.Evidence.Count > 0)
+        {
+            emotionFile = "emotion.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, emotionFile), JsonSerializer.Serialize(_emotion.Evidence, json));
+        }
         string? image = null, hash = null;
         long? sequence = null;
         if (Driver.Frame is { } frame)
@@ -292,11 +316,11 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
             hash = Convert.ToHexStringLower(SHA256.HashData(frame.Png.Span));
             sequence = frame.Sequence;
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile);
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
-        string? CombatHealthFile = null, string? RetirementFile = null);
+        string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

@@ -5,6 +5,8 @@ namespace Alas.Engine.Runtime;
 /// <summary>Device/vision composition for an already-entered map; business decisions remain in C#.</summary>
 public interface ICampaignInMapHost
 {
+    ValueTask EnsureEmotionAsync(CampaignConfiguration configuration, CancellationToken token)
+        => configuration.EmotionMode.Calculates() ? throw new NotSupportedException("Emotion state is unavailable") : ValueTask.CompletedTask;
     ValueTask<bool> VerifyInMapAsync(CancellationToken token);
     ValueTask EnsureFleetLockAsync(bool enabled, CancellationToken token);
     ValueTask<FleetSelection> PrepareInitialFleetAsync(CampaignConfiguration configuration, CancellationToken token);
@@ -41,9 +43,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
         _ = configuration.Health.Weights();
         configuration.Levels.Validate();
         if (battles < 0) throw new ArgumentOutOfRangeException(nameof(battles));
-        if (configuration.EmotionMode != CampaignEmotionMode.Ignore)
-            throw Missing("emotion calculation before map entry");
-        return ValueTask.CompletedTask;
+        return host.EnsureEmotionAsync(configuration, token);
     }
 
     public async ValueTask EnterMapAsync()
