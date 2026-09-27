@@ -77,14 +77,12 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask<bool> ClearEnemyAsync() => Combat.ClearEnemyAsync(token);
     public ValueTask<bool> ClearBossAsync() => Combat.ClearBossAsync(token);
     public ValueTask<bool> BruteClearBossAsync() => Combat.BruteClearBossAsync(token);
-    public ValueTask<bool> BreakSirenCaughtAsync() => state.Cells.Any(grid => grid.IsCaughtBySiren)
-        ? throw Missing("fleet siren rescue") : ValueTask.FromResult(false);
+    public ValueTask<bool> BreakSirenCaughtAsync() => Combat.BreakSirenCaughtAsync(token);
     public ValueTask<bool> ClearMysteriesAsync() => Combat.ClearMysteriesAsync(token);
     public ValueTask<bool> PickUpAmmoAsync() => Combat.PickUpAmmoAsync(token);
     public ValueTask<bool> ClearSirenAsync() => Combat.ClearSirenAsync(token);
     public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync() => Combat.ClearAnyEnemyBySecondFleetCostAsync(token);
-    public ValueTask<bool> ClearBouncingEnemyAsync() => state.Cells.Any(grid => grid.MayBouncingEnemy)
-        ? throw Missing("bouncing enemy movement") : ValueTask.FromResult(false);
+    public ValueTask<bool> ClearBouncingEnemyAsync() => Combat.ClearBouncingEnemyAsync(token);
     public ValueTask<bool> ClearMechanismAsync(IReadOnlyList<Cell>? grids = null) => Combat.ClearMechanismAsync(grids, token);
     public ValueTask RefocusBossAsync((int X, int Y)? preset) => throw Missing("boss camera refocus");
     public ValueTask ResetLevelsAsync() => throw Missing("auto-search level reset");

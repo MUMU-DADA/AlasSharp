@@ -15,7 +15,7 @@ public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arri
     public AmmoPickupEvidence? AmmoPickup { get; init; }
     public MechanismReleaseEvidence? MechanismRelease { get; init; }
 }
-internal enum MapAction { Move, Fight, Mystery, ProbeBoss, Ammo }
+internal enum MapAction { Move, Fight, Mystery, ProbeBoss, ProbeBouncing, Ammo }
 
 /// <summary>Commits a fleet move only after fresh visual arrival and complete interaction accounting.</summary>
 public sealed class MapMovement(CampaignState state, CampaignConfiguration configuration,
@@ -24,6 +24,12 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
     Func<CancellationToken, ValueTask<CampaignWithdrawalEvidence>>? withdraw = null,
     MapMovableScan? movableScan = null)
 {
+    internal void Invalidate()
+    {
+        state.MovementInvalidated = true;
+        camera.Invalidate();
+    }
+
     public ValueTask<MapMoveResult> MoveAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
         => MoveCoreAsync(destination, MapAction.Move, options, token);
@@ -39,6 +45,9 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
     public ValueTask<MapMoveResult> ProbeBossAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
         => MoveCoreAsync(destination, MapAction.ProbeBoss, options, token);
+
+    public ValueTask<MapMoveResult> ProbeBouncingAsync(Cell destination, CancellationToken token = default)
+        => MoveCoreAsync(destination, MapAction.ProbeBouncing, null, token);
 
     public ValueTask<MapMoveResult> CollectAmmoAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
@@ -97,7 +106,9 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             throw new InvalidOperationException("Ammo pickup requires supply stock and an information-bar wait");
         var target = state[destination];
         bool mechanism = target.IsMechanismTrigger;
-        if (destination == origin && !ammo && !(mechanism && action == MapAction.Move))
+        bool caughtCombat = action == MapAction.Fight && target.IsCaughtBySiren;
+        bool probeBouncing = action == MapAction.ProbeBouncing;
+        if (destination == origin && !ammo && !caughtCombat && !probeBouncing && !(mechanism && action == MapAction.Move))
             throw new ArgumentException("Destination is the current fleet location", nameof(destination));
         if (target.IsLand) throw new ArgumentException("Destination is land", nameof(destination));
         bool fight = action == MapAction.Fight;
@@ -110,12 +121,18 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             throw new ArgumentException("Mystery destination must have an observed mystery", nameof(destination));
         if (probeBoss && (!target.MayBoss || target.IsPortal))
             throw new ArgumentException("Potential boss destination must be a declared boss spawn", nameof(destination));
+        // A cleared overlapping route can unset this cell while another route
+        // remains active. Native still visits every member of the selected route.
+        if (probeBouncing && (!configuration.HasBouncingEnemy || target.IsPortal ||
+            !state.Mechanisms.BouncingRoutes.Any(route => route.Contains(destination) &&
+                route.Any(cell => state[cell].MayBouncingEnemy))))
+            throw new ArgumentException("Bouncing destination must belong to an enabled uncleared route", nameof(destination));
         if (ammo && (!target.MayAmmo || enemy || target.IsPortal))
             throw new ArgumentException("Supply destination must be a declared ammo tile without an enemy", nameof(destination));
         if (target.IsMechanismBlock ||
             (action is MapAction.Move or MapAction.Mystery && enemy) ||
-            (target.IsMystery && !mystery) || (target.IsAmmo && !ammo && !mechanism && mazeWaitFor is null) || target.IsCarrier ||
-            (target.IsFleet && !((ammo || mechanism && action == MapAction.Move) && destination == origin)))
+            (target.IsMystery && !mystery) || (target.IsAmmo && !ammo && !probeBouncing && !mechanism && mazeWaitFor is null) || target.IsCarrier ||
+            (target.IsFleet && !((ammo || caughtCombat || probeBouncing || mechanism && action == MapAction.Move) && destination == origin)))
             throw new NotSupportedException("Destination requires a map interaction that is not committed by ordinary movement");
         Cell landing = target.IsPortal
             ? target.PortalLink ?? throw new InvalidDataException("Portal has no linked exit") : destination;
@@ -150,7 +167,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         // Native removes the enemy animation wait after combat but keeps mechanism and base delays.
         var before = dynamic ? MovableEnemySnapshot.Capture(state) : null;
         options ??= MapArrivalOptions.Default;
-        bool expectedBoss = mazeWaitFor is null && (probeBoss || fight && (target.IsBoss || target.MayBoss));
+        bool expectedBoss = mazeWaitFor is null && (probeBoss || (fight || probeBouncing) && (target.IsBoss || target.MayBoss));
         options = options with { AllowCurrentMarker = !expectedBoss && (options.AllowCurrentMarker || configuration.WalkUseCurrentFleet) };
         if (state.Rounds.Initialized)
         {
@@ -177,7 +194,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         if (result.Outcome == MapArrivalOutcome.Unconfirmed) return new(MapMoveOutcome.Unconfirmed, result);
         if (result.Outcome == MapArrivalOutcome.MapInterrupted) return new(MapMoveOutcome.Interrupted, result);
         if (result.Outcome == MapArrivalOutcome.StageReturned)
-            return new((fight || probeBoss) &&
+            return new((fight || probeBoss || probeBouncing) &&
                 result.Combats is [ { Return: CombatReturn.InStage, Rank.IsWinningRank: true } ] &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
                 result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid)
@@ -196,7 +213,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
                 (result.HandledEncounters.Contains(MapEncounterKind.ItemPopup) || !result.AmmoNotificationFrames.IsEmpty) &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) <= 1 &&
                 result.HandledEncounters.All(kind => kind is MapEncounterKind.ItemPopup or MapEncounterKind.AirRaid),
-            MapAction.ProbeBoss => (result.Combats.IsEmpty &&
+            MapAction.ProbeBoss or MapAction.ProbeBouncing => (result.Combats.IsEmpty &&
                     result.HandledEncounters.All(kind => kind == MapEncounterKind.AirRaid) ||
                 combatConfirmed && result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
                     result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid)),
@@ -219,10 +236,11 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
                 if (camera.FrameSequence <= result.FrameSequence)
                     throw new InvalidDataException("Supply acknowledgement reused the arrival frame");
             }
-            bool battled = fight || probeBoss && combatConfirmed;
+            bool battled = fight || (probeBoss || probeBouncing) && combatConfirmed;
             // A maze detour is native _goto(expected=''). Native attributes its
             // unplanned battle to sirens only when movable sirens are enabled.
-            bool siren = battled && (mazeWaitFor is not null ? configuration.HasMovableEnemy : target.IsSiren);
+            bool siren = battled && (mazeWaitFor is not null ? configuration.HasMovableEnemy :
+                !probeBouncing && !caughtCombat && target.IsSiren);
             bool cleared = battled && !siren && target.MayEnemy;
             int mysteryCount = checked(state.MysteryCount + result.AmmoNotificationFrames.Length +
                 (mystery ? result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) : 0));

@@ -205,6 +205,13 @@ try
         await CampaignFleetSwitcherChecks.RunAsync();
         return 0;
     }
+    if (args is ["--special-enemies", var specialPython, var specialUpstream, var specialArtifacts])
+    {
+        string folder = Path.GetFullPath(specialArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.SpecialEnemyChecksAsync(Path.GetFullPath(specialPython), Path.GetFullPath(specialUpstream), folder);
+        return 0;
+    }
     if (args is ["--maze", var mazePython, var mazeUpstream, var mazeArtifacts])
     {
         string folder = Path.GetFullPath(mazeArtifacts);

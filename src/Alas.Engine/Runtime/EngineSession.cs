@@ -166,7 +166,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         => new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances),
             new MapScanner(camera.State, camera, Driver.Clock),
             waitEmotion: (fleet, token) => RequireEmotion(configuration).WaitAsync(fleet, token, configuration.IsDoubleBook),
-            switchFleet: CreateFleetSwitcher(camera, configuration).SwitchAsync);
+            switchFleet: CreateFleetSwitcher(camera, configuration).SwitchAsync,
+            ensureEdges: token => camera.EnsureEdgesAsync(skipFirstUpdate: true, token));
     public CampaignExecution CreateInMapCampaignExecution(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token = default)
         => new(rule, configuration, (state, effective) => new InMapCampaignOperations(this, state, effective, token));

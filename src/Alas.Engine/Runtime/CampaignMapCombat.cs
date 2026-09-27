@@ -5,7 +5,8 @@ namespace Alas.Engine.Runtime;
 /// <summary>On-map target selection and movement. Stage return is evidence, not a sortie verdict.</summary>
 public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration configuration,
     MapMovement movement, MapScanner scanner, Func<int, CancellationToken, ValueTask>? waitEmotion = null,
-    Func<int, CancellationToken, ValueTask>? switchFleet = null)
+    Func<int, CancellationToken, ValueTask>? switchFleet = null,
+    Func<CancellationToken, ValueTask>? ensureEdges = null)
 {
     public static readonly SourceFile Source = new("module/map/map.py",
         "187a5ee7d8fbde3c944681216fd2ac75f68036716b17db5a8bb43fdd42de5365");
@@ -129,6 +130,64 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         return selected is null ? ValueTask.FromResult(false) : FightAsync(selected, token);
     }
 
+    public async ValueTask<bool> BreakSirenCaughtAsync(CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        if (FleetRoles.BossIndex(configuration) != 2 || !configuration.HasSiren || !configuration.HasMovableEnemy ||
+            !state.Cells.Any(grid => grid.IsCaughtBySiren)) return false;
+        if (state.Fleet2Location is not { } second || !state[second].IsCaughtBySiren)
+        {
+            foreach (var grid in state.Cells) grid.IsCaughtBySiren = false;
+            return false;
+        }
+        if (ensureEdges is null) throw new NotSupportedException("Siren rescue requires camera edge localization");
+        await SwitchFleetAsync(2, token);
+        await ensureEdges(token);
+        await FightAsync(state[second], token);
+        // Native does not restore fleet 1 if combat/round change exits the call.
+        await SwitchFleetAsync(1, token);
+        foreach (var grid in state.Cells) grid.IsCaughtBySiren = false;
+        return true;
+    }
+
+    public async ValueTask<bool> ClearBouncingEnemyAsync(CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!configuration.HasBouncingEnemy) return false;
+        var route = state.Mechanisms.BouncingRoutes.FirstOrDefault(cells =>
+            cells.Any(cell => state[cell].MayBouncingEnemy && state[cell].IsAccessible));
+        if (route.IsDefaultOrEmpty) return false;
+        int before = state.BattleCount;
+        // Native enumerate(cycle(route)) checks n >= 12 after the action: 13 visits.
+        for (int trial = 0; trial <= 12; trial++)
+        {
+            await WaitEmotionAsync(token);
+            var target = route[trial % route.Length];
+            var path = state.Paths.FindRoute(target, FleetRoles.Step(state.FleetIndex, configuration), configuration.HasAmbush);
+            if (!path.IsReachable || path.Waypoints.Count == 0)
+                throw new CampaignScriptException("Bouncing route visit has no confirmed fleet path");
+            for (int index = 0; index < path.Waypoints.Count; index++)
+            {
+                var cell = path.Waypoints[index];
+                await WaitForMazeAsync(cell, token);
+                var result = index == path.Waypoints.Count - 1
+                    ? await movement.ProbeBouncingAsync(cell, token) : await movement.MoveAsync(cell, token: token);
+                if (result.Outcome == MapMoveOutcome.StageReturned)
+                {
+                    StageReturn = result.Arrival;
+                    throw new CampaignEndedException("Bouncing encounter returned to stage");
+                }
+                if (result.Outcome != MapMoveOutcome.Committed)
+                    throw new CampaignScriptException($"Bouncing route to {cell} ended as {result.Outcome}");
+            }
+            if (state.BattleCount <= before) continue;
+            foreach (var cell in route) state[cell].MayBouncingEnemy = false;
+            await ScanAfterCombatAsync(token);
+            return true;
+        }
+        return false;
+    }
+
     public async ValueTask<bool> BruteClearBossAsync(CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
@@ -151,8 +210,11 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
             await SwitchFleetAsync(fleet, token);
             return await ClearBossAsync(token);
         }
-        if (state.Cells.Any(grid => grid.MayBoss && grid.IsCaughtBySiren))
-            throw new NotSupportedException("Boss on a siren-caught fleet requires own-grid encounter recovery");
+        if (state.Cells.FirstOrDefault(grid => grid.MayBoss && grid.IsCaughtBySiren) is { } caught)
+        {
+            await SwitchFleetAsync(2, token);
+            return await FightAsync(caught, token);
+        }
         return await ClearPotentialBossAsync(token);
     }
 
@@ -241,12 +303,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
     private async ValueTask<bool> FightAsync(CellState target, CancellationToken token)
     {
         if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before selecting a combat target");
-        if (configuration.EmotionMode.Calculates() && configuration.UseFleetLock)
-        {
-            if (waitEmotion is null) throw new NotSupportedException("Fleet-locked combat requires emotion state");
-            // Native clear_chosen_enemy uses the logical index here; combat_preparation uses the displayed index.
-            await waitEmotion(state.FleetIndex, token);
-        }
+        await WaitEmotionAsync(token);
         var route = state.Paths.FindRoute(target.Location, FleetRoles.Step(state.FleetIndex, configuration), turningOptimize: configuration.HasAmbush);
         if (!route.IsReachable || route.Waypoints.Count == 0)
             throw new InvalidOperationException("Selected combat target has no confirmed fleet route");
@@ -270,11 +327,31 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         return true;
     }
 
+    private async ValueTask WaitEmotionAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (configuration.EmotionMode.Calculates() && configuration.UseFleetLock)
+        {
+            if (waitEmotion is null) throw new NotSupportedException("Fleet-locked combat requires emotion state");
+            // Native clear_chosen_enemy uses the logical index here; combat_preparation uses the displayed index.
+            await waitEmotion(state.FleetIndex, token);
+        }
+    }
+
     private async ValueTask ScanAfterCombatAsync(CancellationToken token)
     {
-        await scanner.ScanAsync(state.Progress, TimeSpan.FromMinutes(2),
-            fleet: new FleetScanOptions(Fleet2Enabled: configuration.Fleet2 != 0), token: token);
-        state.RefreshFleetPaths(configuration);
+        try
+        {
+            await scanner.ScanAsync(state.Progress, TimeSpan.FromMinutes(2),
+                fleet: new FleetScanOptions(Fleet2Enabled: configuration.Fleet2 != 0), token: token);
+            state.RefreshFleetPaths(configuration);
+        }
+        catch
+        {
+            // Keep confirmed combat accounting, but never reuse a partial rescan.
+            movement.Invalidate();
+            throw;
+        }
     }
 
     private async ValueTask WaitForMazeAsync(Cell waypoint, CancellationToken token)

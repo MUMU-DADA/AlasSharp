@@ -22,6 +22,7 @@
     <None Include="native_mechanism_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_movable_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_maze_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_special_enemy_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_level_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_recovery_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_ocr_reference.py" CopyToOutputDirectory="PreserveNewest" />

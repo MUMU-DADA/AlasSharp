@@ -414,6 +414,7 @@ internal static partial class CampaignMapCombatChecks
         public ValueTask<CampaignWithdrawalEvidence> WithdrawAsync(string reason, CancellationToken token) => throw new InvalidOperationException();
         public bool InMap { get; init; } = true;
         public bool HasMystery { get; init; }
+        public bool SimulateFleetSwitch { get; init; }
         public Func<int, Cell, MapScanMode, MapObservation>? ObservationFactory { get; init; }
         public int FleetLockCalls { get; private set; }
         public int StrategyCalls { get; private set; }
@@ -452,7 +453,13 @@ internal static partial class CampaignMapCombatChecks
             return ValueTask.FromResult<IMapScanCamera>(Camera);
         }
         public CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration)
-            => Camera == camera ? Create(Camera.State, configuration, Camera) :
+            => Camera == camera ? Create(Camera.State, configuration, Camera, switchFleet: SimulateFleetSwitch ? (fleet, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                Camera.State.FleetIndex = fleet;
+                Camera.State.RefreshFleetPaths(configuration);
+                return ValueTask.CompletedTask;
+            } : null) :
                 throw new InvalidOperationException("Wrong camera instance");
     }
 
@@ -473,7 +480,8 @@ internal static partial class CampaignMapCombatChecks
             new MapArrivalCheck(camera, state, camera.InMapAsync, camera.Clock,
                 new Probe(camera), new Handler(camera)),
             movableScan: new(state, config, new(state, camera, camera.Clock)));
-        return new(state, config, movement, new MapScanner(state, camera, camera.Clock), waitEmotion, switchFleet);
+        return new(state, config, movement, new MapScanner(state, camera, camera.Clock), waitEmotion, switchFleet,
+            token => camera.EnsureEdgesAsync(true, token));
     }
 
     private sealed class Clock : TimeProvider
@@ -493,6 +501,10 @@ internal static partial class CampaignMapCombatChecks
         public bool ReturnStage { get; init; }
         public bool StageForBoss { get; init; }
         public Cell? PotentialBossCombat { get; init; }
+        public Func<bool>? CombatWhen { get; init; }
+        public Action<string>? Trace { get; init; }
+        public string? Failure { get; init; }
+        public CancellationTokenSource? Cancellation { get; init; }
         public Func<int, Cell, MapScanMode, MapObservation>? ObservationFactory { get; init; }
         public bool ReturningToStage => ReturnStage || StageForBoss && Destination is { } cell && state[cell].IsBoss;
         public CombatRank? Rank { get; init; } = CombatRank.S;
@@ -509,20 +521,36 @@ internal static partial class CampaignMapCombatChecks
         { token.ThrowIfCancellationRequested(); return ValueTask.CompletedTask; }
         public ValueTask<MapObservation> ObserveAsync(MapScanMode mode, CancellationToken token)
         {
-            token.ThrowIfCancellationRequested(); Scans++;
+            token.ThrowIfCancellationRequested();
+            Trace?.Invoke("scan");
+            if (Failure == "scan") throw new IOException("Synthetic scan failure");
+            Scans++;
             return ValueTask.FromResult(ObservationFactory?.Invoke(Scans, Position, mode) ??
                 new MapObservation([], Position, new(0, 0), mode));
         }
         public ValueTask EnsureEdgesAsync(bool skipFirstUpdate, CancellationToken token)
-        { token.ThrowIfCancellationRequested(); return ValueTask.CompletedTask; }
+        {
+            token.ThrowIfCancellationRequested();
+            Trace?.Invoke(skipFirstUpdate ? "edges" : "edges:refresh");
+            if (Failure == "edges") throw new IOException("Synthetic edge failure");
+            return ValueTask.CompletedTask;
+        }
         public ValueTask PrepareTapAsync(Cell destination, CancellationToken token = default)
         { token.ThrowIfCancellationRequested(); if (Invalidated || Suspended) throw new InvalidOperationException(); return ValueTask.CompletedTask; }
         public ValueTask TapCellAsync(Cell destination, CancellationToken token = default)
-        { token.ThrowIfCancellationRequested(); Destination = destination; Taps++; return ValueTask.CompletedTask; }
+        {
+            token.ThrowIfCancellationRequested();
+            if (Failure == "tap") throw new IOException("Synthetic tap failure");
+            Destination = destination; Taps++; Trace?.Invoke("tap:" + destination); return ValueTask.CompletedTask;
+        }
         public ValueTask RefreshImageAsync(CancellationToken token = default)
-        { token.ThrowIfCancellationRequested(); FrameSequence++; Clock.Advance(); return ValueTask.CompletedTask; }
+        {
+            token.ThrowIfCancellationRequested(); if (Failure != "stale") FrameSequence++; Clock.Advance();
+            if (Failure == "cancel") Cancellation!.Cancel();
+            return ValueTask.CompletedTask;
+        }
         public ValueTask<FleetMarker> ReadFleetMarkerAsync(Cell destination, CancellationToken token = default)
-        { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(new FleetMarker(true, true)); }
+        { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(new FleetMarker(Failure != "timeout", Failure != "timeout")); }
         public ValueTask<FleetMarker> ReadCenterMarkerAsync(CancellationToken token = default)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(new FleetMarker(true, true)); }
         public ValueTask RelocalizeAsync(CancellationToken token = default)
@@ -531,9 +559,9 @@ internal static partial class CampaignMapCombatChecks
         { token.ThrowIfCancellationRequested(); Position = location; return ValueTask.CompletedTask; }
         public ValueTask<bool> InMapAsync(CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(true); }
-        public bool IsCombatDestination => Destination is { } cell &&
-            (state[cell].IsEnemy || state[cell].IsBoss || state[cell].IsSiren || state[cell].IsFortress ||
-             PotentialBossCombat == cell && state[cell].MayBoss);
+        public bool IsCombatDestination => CombatWhen?.Invoke() ?? (Destination is { } cell &&
+            (state[cell].IsEnemy || state[cell].IsBoss || state[cell].IsSiren || state[cell].IsFortress || state[cell].IsCaughtBySiren ||
+             PotentialBossCombat == cell && state[cell].MayBoss));
     }
 
     private sealed class Probe(Camera camera) : IMapEncounterProbe
