@@ -30,6 +30,7 @@ public sealed record MapArrivalResult(MapArrivalOutcome Outcome, long FrameSeque
 public sealed record MapArrivalOptions(TimeSpan ConfirmDelay, TimeSpan WalkTimeout, bool AllowCurrentMarker = false)
 {
     public TimeSpan? AfterCombatConfirmDelay { get; init; }
+    public bool ExpectCombat { get; init; }
     public static MapArrivalOptions Default { get; } = new(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(20));
 }
 
@@ -60,6 +61,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
             options.ConfirmDelay >= options.WalkTimeout || options.WalkTimeout.TotalMilliseconds > int.MaxValue ||
             options.AfterCombatConfirmDelay is { } afterCombat && (afterCombat < TimeSpan.Zero || afterCombat >= options.WalkTimeout))
             throw new ArgumentOutOfRangeException(nameof(options));
+        if (options.ExpectCombat && options.ConfirmDelay + TimeSpan.FromSeconds(1) >= options.WalkTimeout)
+            throw new ArgumentOutOfRangeException(nameof(options), "Unexpected-arrival confirmation must fit the walk deadline");
         if (Interlocked.Exchange(ref _started, 1) != 0)
             throw new InvalidOperationException("An arrival check belongs to one grid tap");
         bool portal = state[destination].IsPortal;
@@ -68,6 +71,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
         bool submarineAbove = destination.Row > 1 && state.SubmarineLocation == new Cell(destination.Column, destination.Row - 1);
         var walk = new IntervalTimer(_clock, options.WalkTimeout.TotalSeconds);
         var confirm = new IntervalTimer(_clock, options.ConfirmDelay.TotalSeconds, count: 2);
+        var unexpected = new IntervalTimer(_clock, options.ConfirmDelay.TotalSeconds + 1, count: 6);
         long sequence = camera.FrameSequence;
         int frames = 0;
         bool confirmed = false;
@@ -91,6 +95,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                 MapEncounterKind encounter = MapEncounterKind.None;
                 walk.Reset();
                 confirm.Clear();
+                unexpected.Clear();
                 using (var deadline = new CancellationTokenSource(options.WalkTimeout, _clock))
                 using (var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token))
                 {
@@ -123,8 +128,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                                 options.AllowCurrentMarker && (marker.Fleet || marker.Current);
                             if (present)
                             {
-                                if (!confirm.Started) confirm.Reset();
-                                if (confirm.Reached())
+                                if (!confirm.Started) { confirm.Reset(); unexpected.Reset(); }
+                                if (confirm.Reached() && (!options.ExpectCombat || combats.Count > 0 || unexpected.Reached()))
                                 {
                                     if (portal) await camera.AnchorAtAsync(portalExit!.Value, linked.Token);
                                     var arrivedCell = portalExit ?? destination;
@@ -137,7 +142,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                                     return Result(MapArrivalOutcome.MarkerConfirmed);
                                 }
                             }
-                            else if (confirm.Started) confirm.Clear();
+                            else if (confirm.Started) { confirm.Clear(); unexpected.Clear(); }
                             if (walk.Reached()) return Result(MapArrivalOutcome.Unconfirmed);
                         }
                     }

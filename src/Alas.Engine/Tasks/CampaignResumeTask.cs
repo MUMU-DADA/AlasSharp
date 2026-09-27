@@ -73,6 +73,7 @@ public sealed class CampaignResumeTask : ITaskRunner
             result.MechanismReleases,
             result.MovableScans,
             result.MazeWaits,
+            result.DecoyArrivals,
             stageReturn = result.StageReturn, settlementVerified = cleared, cleared,
             sortie = new
             {

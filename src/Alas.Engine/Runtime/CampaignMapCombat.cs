@@ -32,7 +32,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
             var grid = state[cell];
             // Native goto also handles an enemy or mystery occupying the trigger.
             var result = grid.IsEnemy || grid.IsSiren || grid.IsBoss || grid.IsFortress
-                ? await movement.FightAsync(cell, token: token) : grid.IsMystery
+                ? await movement.FightAsync(cell, token: token, expectation: MapCombatExpectation.None) : grid.IsMystery
                 ? await movement.CollectMysteryAsync(cell, token: token) : await movement.MoveAsync(cell, token: token);
             if (result.Outcome == MapMoveOutcome.StageReturned)
             {
@@ -104,7 +104,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         if (strongest) candidates = FirstPresentScale(candidates, [3, 2, 1, 0]);
         else if (configuration.EnemyPriority == EnemyScalePriority.WeakestFirst)
             candidates = FirstPresentScale(candidates, [1, 2, 3, 0]);
-        return candidates.Length == 0 ? ValueTask.FromResult(false) : FightAsync(Order(candidates)[0], token);
+        return candidates.Length == 0 ? ValueTask.FromResult(false) : FightAsync(Order(candidates)[0], token, MapCombatExpectation.Enemy);
     }
 
     public async ValueTask<bool> ClearBossAsync(CancellationToken token = default)
@@ -113,21 +113,23 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
             grid.MayBoss && grid.IsCaughtBySiren).Distinct().ToArray();
         if (candidates.Length == 0)
             candidates = state.Cells.Where(grid => grid.MayBoss && grid.IsEnemy && grid.IsAccessible).ToArray();
-        if (candidates.Length > 0) await FightAsync(Order(candidates)[0], token);
+        if (candidates.Length > 0) await FightAsync(Order(candidates)[0], token, MapCombatExpectation.Boss);
         return await ClearPotentialBossAsync(token);
     }
 
     public ValueTask<bool> ClearSirenAsync(CancellationToken token = default)
     {
         var selected = CampaignTargeting.Siren(state, configuration);
-        return selected is null ? ValueTask.FromResult(false) : FightAsync(selected, token);
+        return selected is null ? ValueTask.FromResult(false) : FightAsync(selected, token,
+            selected.IsFortress ? MapCombatExpectation.Fortress : MapCombatExpectation.Siren);
     }
 
     public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync(CancellationToken token = default)
     {
         // CampaignBase's full-clear movable-normal branch passes sort=('cost_2',), without weight.
         var selected = CampaignTargeting.AnyEnemyBySecondFleetCost(state, configuration);
-        return selected is null ? ValueTask.FromResult(false) : FightAsync(selected, token);
+        return selected is null ? ValueTask.FromResult(false) : FightAsync(selected, token,
+            selected.IsFortress ? MapCombatExpectation.Fortress : selected.IsSiren ? MapCombatExpectation.Siren : MapCombatExpectation.Enemy);
     }
 
     public async ValueTask<bool> BreakSirenCaughtAsync(CancellationToken token = default)
@@ -143,7 +145,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         if (ensureEdges is null) throw new NotSupportedException("Siren rescue requires camera edge localization");
         await SwitchFleetAsync(2, token);
         await ensureEdges(token);
-        await FightAsync(state[second], token);
+        await FightAsync(state[second], token, MapCombatExpectation.Enemy);
         // Native does not restore fleet 1 if combat/round change exits the call.
         await SwitchFleetAsync(1, token);
         foreach (var grid in state.Cells) grid.IsCaughtBySiren = false;
@@ -213,7 +215,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         if (state.Cells.FirstOrDefault(grid => grid.MayBoss && grid.IsCaughtBySiren) is { } caught)
         {
             await SwitchFleetAsync(2, token);
-            return await FightAsync(caught, token);
+            return await FightAsync(caught, token, MapCombatExpectation.Enemy);
         }
         return await ClearPotentialBossAsync(token);
     }
@@ -233,7 +235,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         // actually reachable member of the same minimal set can be the next physical battle.
         var target = Order(plan.Enemies.Select(cell => state[cell]).Where(grid => grid.IsAccessible)).FirstOrDefault()
             ?? throw new CampaignScriptException("No roadblock in the minimum removal set is reachable by the active fleet");
-        return FightAsync(target, token);
+        return FightAsync(target, token, MapCombatExpectation.Enemy);
     }
 
     private async ValueTask<bool> ClearPotentialBossAsync(CancellationToken token)
@@ -300,7 +302,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
     private static CellState[] Order(IEnumerable<CellState> candidates)
         => candidates.OrderBy(grid => grid.Weight).ThenBy(grid => grid.Cost).ToArray();
 
-    private async ValueTask<bool> FightAsync(CellState target, CancellationToken token)
+    private async ValueTask<bool> FightAsync(CellState target, CancellationToken token, MapCombatExpectation expectation)
     {
         if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before selecting a combat target");
         await WaitEmotionAsync(token);
@@ -313,7 +315,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
             var cell = route.Waypoints[index];
             await WaitForMazeAsync(cell, token);
             bool final = index == route.Waypoints.Count - 1;
-            var result = final ? await movement.FightAsync(cell, token: token) :
+            var result = final ? await movement.FightAsync(cell, token: token, expectation: expectation) :
                 await movement.MoveAsync(cell, token: token);
             if (result.Outcome == MapMoveOutcome.StageReturned)
             {
@@ -343,7 +345,7 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         try
         {
             await scanner.ScanAsync(state.Progress, TimeSpan.FromMinutes(2),
-                fleet: new FleetScanOptions(Fleet2Enabled: configuration.Fleet2 != 0), token: token);
+                fleet: new FleetScanOptions(configuration.HasDecoyEnemy, configuration.Fleet2 != 0), token: token);
             state.RefreshFleetPaths(configuration);
         }
         catch

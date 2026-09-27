@@ -417,6 +417,7 @@ internal static partial class CampaignMapCombatChecks
         public bool InMap { get; init; } = true;
         public bool HasMystery { get; init; }
         public bool SimulateFleetSwitch { get; init; }
+        public Func<Camera, bool>? CombatWhen { get; init; }
         public Func<int, Cell, MapScanMode, MapObservation>? ObservationFactory { get; init; }
         public int FleetLockCalls { get; private set; }
         public int StrategyCalls { get; private set; }
@@ -441,6 +442,7 @@ internal static partial class CampaignMapCombatChecks
             Camera = new Camera(state)
             {
                 StageForBoss = true,
+                CombatWhen = CombatWhen is null ? null : () => CombatWhen(Camera!),
                 ObservationFactory = ObservationFactory ?? ((scan, position, mode) => new MapObservation(scan == 1
                     ? HasMystery
                         ? [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true)),
@@ -516,6 +518,7 @@ internal static partial class CampaignMapCombatChecks
         public bool StageForBoss { get; init; }
         public Cell? PotentialBossCombat { get; init; }
         public Func<bool>? CombatWhen { get; init; }
+        public Func<long, FleetMarker>? MarkerAtFrame { get; init; }
         public Action<string>? Trace { get; init; }
         public string? Failure { get; init; }
         public CancellationTokenSource? Cancellation { get; init; }
@@ -564,7 +567,8 @@ internal static partial class CampaignMapCombatChecks
             return ValueTask.CompletedTask;
         }
         public ValueTask<FleetMarker> ReadFleetMarkerAsync(Cell destination, CancellationToken token = default)
-        { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(new FleetMarker(Failure != "timeout", Failure != "timeout")); }
+        { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(MarkerAtFrame?.Invoke(FrameSequence) ??
+            new FleetMarker(Failure != "timeout", Failure != "timeout")); }
         public ValueTask<FleetMarker> ReadCenterMarkerAsync(CancellationToken token = default)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(new FleetMarker(true, true)); }
         public ValueTask RelocalizeAsync(CancellationToken token = default)

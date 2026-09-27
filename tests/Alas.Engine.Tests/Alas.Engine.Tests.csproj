@@ -24,6 +24,7 @@
     <None Include="native_maze_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_special_enemy_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_boss_refocus_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_decoy_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_level_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_recovery_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_ocr_reference.py" CopyToOutputDirectory="PreserveNewest" />

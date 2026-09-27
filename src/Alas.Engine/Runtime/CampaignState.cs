@@ -26,6 +26,9 @@ public sealed partial class CampaignState
     private readonly List<MazeWaitEvidence> _mazeWaits = [];
     public IReadOnlyList<MazeWaitEvidence> MazeWaits => _mazeWaits.AsReadOnly();
     internal void RecordMazeWait(MazeWaitEvidence evidence) => _mazeWaits.Add(evidence);
+    private readonly List<DecoyArrivalEvidence> _decoyArrivals = [];
+    public IReadOnlyList<DecoyArrivalEvidence> DecoyArrivals => _decoyArrivals.AsReadOnly();
+    internal void RecordDecoyArrival(DecoyArrivalEvidence evidence) => _decoyArrivals.Add(evidence);
     public CampaignState(MapDefinition map)
     {
         Map = map;

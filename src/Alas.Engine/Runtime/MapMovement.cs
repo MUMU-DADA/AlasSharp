@@ -4,11 +4,14 @@ using Alas.Engine.Rules;
 namespace Alas.Engine.Runtime;
 
 public enum MapMoveOutcome { Committed, Unconfirmed, Interrupted, UnsupportedEncounter, StageReturned }
+public enum MapCombatExpectation { None, Enemy, Siren, Boss, Fortress }
 public sealed record AmmoPickupEvidence(Cell Location, int ExpectedRecovered, int StockBefore, int StockAfter,
     int FleetBefore, int FleetAfter, long ArrivalSequence, long SettledSequence);
 public sealed record MechanismReleaseEvidence(Cell Location, ImmutableArray<Cell> Triggers, ImmutableArray<Cell> Blocks,
     double ConfirmSeconds, long ArrivalSequence);
 public sealed record MazeWaitEvidence(Cell WaitingFor, Cell From, Cell To, int RoundBefore, int RoundAfter,
+    double ConfirmSeconds, long ArrivalSequence);
+public sealed record DecoyArrivalEvidence(int Fleet, Cell From, Cell To, int BattleCount,
     double ConfirmSeconds, long ArrivalSequence);
 public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arrival)
 {
@@ -35,8 +38,8 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         => MoveCoreAsync(destination, MapAction.Move, options, token);
 
     public ValueTask<MapMoveResult> FightAsync(Cell destination, MapArrivalOptions? options = null,
-        CancellationToken token = default)
-        => MoveCoreAsync(destination, MapAction.Fight, options, token);
+        CancellationToken token = default, MapCombatExpectation? expectation = null)
+        => MoveCoreAsync(destination, MapAction.Fight, options, token, expectation: expectation);
 
     public ValueTask<MapMoveResult> CollectMysteryAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
@@ -86,7 +89,8 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
     }
 
     private async ValueTask<MapMoveResult> MoveCoreAsync(Cell destination, MapAction action,
-        MapArrivalOptions? options, CancellationToken token, Cell? mazeWaitFor = null)
+        MapArrivalOptions? options, CancellationToken token, Cell? mazeWaitFor = null,
+        MapCombatExpectation? expectation = null)
     {
         if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before moving a fleet");
         if (state.MovementInvalidated) throw new InvalidOperationException("Map movement state was invalidated; this sortie cannot be reused");
@@ -112,6 +116,13 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             throw new ArgumentException("Destination is the current fleet location", nameof(destination));
         if (target.IsLand) throw new ArgumentException("Destination is land", nameof(destination));
         bool fight = action == MapAction.Fight;
+        expectation ??= target.IsBoss ? MapCombatExpectation.Boss : target.IsFortress ? MapCombatExpectation.Fortress :
+            target.IsSiren ? MapCombatExpectation.Siren : MapCombatExpectation.Enemy;
+        if (!Enum.IsDefined(expectation.Value)) throw new ArgumentOutOfRangeException(nameof(expectation));
+        // Native only redispatches an empty result for expected == 'combat'.
+        // Boss/siren/fortress calls and raw maze detours retain their own contracts.
+        bool decoyCandidate = fight && configuration.HasDecoyEnemy &&
+            expectation == MapCombatExpectation.Enemy && mazeWaitFor is null;
         bool mystery = action == MapAction.Mystery;
         bool probeBoss = action == MapAction.ProbeBoss;
         bool enemy = target.IsEnemy || target.IsSiren || target.IsBoss || target.IsFortress || target.IsCaughtBySiren;
@@ -167,7 +178,8 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         // Native removes the enemy animation wait after combat but keeps mechanism and base delays.
         var before = dynamic ? MovableEnemySnapshot.Capture(state) : null;
         options ??= MapArrivalOptions.Default;
-        bool expectedBoss = mazeWaitFor is null && (probeBoss || (fight || probeBouncing) && (target.IsBoss || target.MayBoss));
+        bool expectedBoss = mazeWaitFor is null && (probeBoss || fight && expectation == MapCombatExpectation.Boss ||
+            (fight && expectation != MapCombatExpectation.None || probeBouncing) && target.MayBoss);
         options = options with { AllowCurrentMarker = !expectedBoss && (options.AllowCurrentMarker || configuration.WalkUseCurrentFleet) };
         if (state.Rounds.Initialized)
         {
@@ -178,6 +190,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
                 throw new InvalidDataException("Round confirmation delay must fit the movement deadline");
             options = options with { ConfirmDelay = TimeSpan.FromSeconds(seconds), AfterCombatConfirmDelay = options.ConfirmDelay };
         }
+        if (decoyCandidate) options = options with { ExpectCombat = true };
 
         token.ThrowIfCancellationRequested();
         if (state.Health.RetreatTriggered(state.FleetIndex, configuration.Health))
@@ -202,11 +215,13 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
                 MapMoveOutcome.UnsupportedEncounter, result);
         bool combatConfirmed = result.Combats.Length == 1 &&
             result.Combats[0] is { Return: CombatReturn.InMap, Rank.IsWinningRank: true };
+        bool decoyConfirmed = decoyCandidate && result.Combats.IsEmpty && result.AmmoNotificationFrames.IsEmpty &&
+            result.HandledEncounters.All(kind => kind == MapEncounterKind.AirRaid);
         bool interactionsConfirmed = action switch
         {
             MapAction.Move or MapAction.Ammo => result.HandledEncounters.All(kind => kind == MapEncounterKind.AirRaid) &&
                 result.Combats.IsEmpty,
-            MapAction.Fight => combatConfirmed &&
+            MapAction.Fight => decoyConfirmed || combatConfirmed &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
                 result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid),
             MapAction.Mystery => result.Combats.IsEmpty &&
@@ -236,11 +251,11 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
                 if (camera.FrameSequence <= result.FrameSequence)
                     throw new InvalidDataException("Supply acknowledgement reused the arrival frame");
             }
-            bool battled = fight || (probeBoss || probeBouncing) && combatConfirmed;
+            bool battled = (fight || probeBoss || probeBouncing) && combatConfirmed;
             // A maze detour is native _goto(expected=''). Native attributes its
             // unplanned battle to sirens only when movable sirens are enabled.
-            bool siren = battled && (mazeWaitFor is not null ? configuration.HasMovableEnemy :
-                !probeBouncing && !caughtCombat && target.IsSiren);
+            bool siren = battled && (mazeWaitFor is not null || fight && expectation == MapCombatExpectation.None
+                ? configuration.HasMovableEnemy : fight && expectation == MapCombatExpectation.Siren);
             bool cleared = battled && !siren && target.MayEnemy;
             int mysteryCount = checked(state.MysteryCount + result.AmmoNotificationFrames.Length +
                 (mystery ? result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) : 0));
@@ -254,6 +269,9 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             if (state.FleetIndex == 1) state.Fleet1Location = landing;
             else state.Fleet2Location = landing;
             state.RefreshFleetPaths(configuration);
+            if (decoyConfirmed)
+                state.RecordDecoyArrival(new(state.FleetIndex, origin, landing, state.BattleCount,
+                    options.ConfirmDelay.TotalSeconds + 1, result.FrameSequence));
             if (release is not null)
             {
                 release = release with { ArrivalSequence = result.FrameSequence,
@@ -298,7 +316,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             camera.Invalidate();
             throw;
         }
-        if (redispatch) throw new MapEnemyMovedException();
+        if (redispatch || decoyConfirmed) throw new MapEnemyMovedException();
         return committed;
     }
 }

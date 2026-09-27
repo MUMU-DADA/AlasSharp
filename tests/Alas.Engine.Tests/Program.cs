@@ -212,6 +212,13 @@ try
         await MapViewChecks.BossRefocusChecksAsync(Path.GetFullPath(refocusPython), Path.GetFullPath(refocusUpstream), folder);
         return 0;
     }
+    if (args is ["--decoy", var decoyPython, var decoyUpstream, var decoyArtifacts])
+    {
+        string folder = Path.GetFullPath(decoyArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.DecoyChecksAsync(Path.GetFullPath(decoyPython), Path.GetFullPath(decoyUpstream), folder);
+        return 0;
+    }
     if (args is ["--special-enemies", var specialPython, var specialUpstream, var specialArtifacts])
     {
         string folder = Path.GetFullPath(specialArtifacts);

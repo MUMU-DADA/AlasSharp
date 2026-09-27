@@ -16,6 +16,8 @@ BOSS 路障和战中舰队切换现由 MapRoadblocks、CampaignMapCombat 与 Cam
 
 ## 目标与边界
 
+诱饵流程已直接接入 CampaignMapCombat / MapMovement：战后普通扫描使用原生 decoy 模式，调用方用 C# 枚举保留战斗预期，普通 combat 的空目标在延迟确认后清除并重新选敌，不计战斗或弹药消耗。BOSS/塞壬/堡垒及无战果异常仍各按原合同处理，回合重扫和十次分派上界保持；没有逐地图假目标表或 Python 执行转发。80 条上游到达轨迹、扫描模式门控和完整 C# 合成战役的验证边界见[路线](architecture-roadmap.md)。
+
 BOSS 出生恢复现由 MapCombatRecovery 调用当前编译 CampaignRule 的 RefocusBossAsync，MapCamera 直接完成原生刷新、必要预设滑动、边缘恢复和返回原机位；空 HP 重读仍由 C# 会话处理。所有规则与动作均在 Engine 内执行，新增 Python 仅为测试项目的原生对照。只有胜方战斗返回地图触发，地图计数在到达确认后提交；原始出生表门控、失败边界、112 条相机轨迹与实际章节钩子验证见[路线](architecture-roadmap.md)，不构成实机结算验收。
 
 塞壬同格救援与弹跳敌人探查已由 CampaignMapCombat 直接执行，使用现有舰队切换、相机、路径、到达、战斗和重扫组件。保持原生角色门控、整条路线访问、重叠标志、13 次上限及回合异常顺序；救援须有胜方战斗，战后扫描失败不得复用部分状态。新增 Python 只在测试项目运行原生方法作离线对照，没有产品 Python 业务或中间规则转换。188 条原生轨迹、两个合成战役及明确拒绝的移动恢复边界见[路线](architecture-roadmap.md)，不扩大可执行章节或实机结论。
