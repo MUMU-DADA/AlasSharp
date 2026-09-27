@@ -158,6 +158,16 @@ internal static partial class CampaignMapCombatChecks
                 actual["MAP_SWIPE_MULTIPLY_MINITOUCH"] = JsonSerializer.SerializeToNode(new[] { camera.MultiplyMinitouch.X, camera.MultiplyMinitouch.Y });
                 actual["MAP_SWIPE_MULTIPLY_MAATOUCH"] = JsonSerializer.SerializeToNode(new[] { camera.MultiplyMaaTouch.X, camera.MultiplyMaaTouch.Y });
             }
+            if (expected.AsObject().ContainsKey("HOMO_STORAGE"))
+            {
+                var storage = detector.Storage;
+                actual!["HOMO_STORAGE"] = storage is null ? null : JsonSerializer.SerializeToNode(new object[] {
+                    new[] { storage.GridSize.X, storage.GridSize.Y },
+                    new[] { storage.Corners.TopLeft, storage.Corners.TopRight, storage.Corners.BottomLeft, storage.Corners.BottomRight }
+                        .Select(point => new[] { point.X, point.Y }).ToArray() });
+                actual["MAP_ENSURE_EDGE_INSIGHT_CORNER"] = new MapCameraRules().WithChapter(config.SwipeMultipliers, config.MapEdgeCorner).EdgeCorner;
+                actual["MAP_HAS_MYSTERY"] = config.HasMystery;
+            }
             Check(JsonNode.DeepEquals(actual, expected), "Inherited chapter config differs: " + rule.Id + ": " + actual);
         }
     }
@@ -187,7 +197,7 @@ internal static partial class CampaignMapCombatChecks
                     new(new(target.Location.Column - position.Column, target.Location.Row - position.Row),
                         boss && mode != MapScanMode.Carrier ? new(IsBoss: true) : new(IsEnemy: true, EnemyScale: 1)) };
                 int pendingMysteries = rule.Map.Waves.Where(wave => wave.Battle <= state.BattleCount).Sum(wave => wave.Mystery) - state.MysteryCount;
-                if ((carrier || rule is Alas.Engine.Rules.Main.ChapterSevenRule or Alas.Engine.Rules.Main.ChapterEightRule) && pendingMysteries > 0)
+                if ((carrier || rule is Alas.Engine.Rules.Main.ChapterSevenRule or Alas.Engine.Rules.Main.ChapterEightRule or Alas.Engine.Rules.Main.ChapterNineRule) && pendingMysteries > 0)
                 {
                     foreach (var mystery in shadow.Cells.Where(cell => cell.MayMystery && cell.Location != start).Take(pendingMysteries))
                         observations.Add(new(new(mystery.Location.Column - position.Column, mystery.Location.Row - position.Row), new(IsMystery: true)));
@@ -233,6 +243,12 @@ internal static partial class CampaignMapCombatChecks
             if (rule is Alas.Engine.Rules.Main.Campaign74)
                 Check(operations.AmmoPickups.Count > 0 && operations.AmmoPickups[0].ExpectedRecovered == 3,
                     "Compiled 7-4 omitted third-battle supply pickup");
+            if (rule is Alas.Engine.Rules.Main.Campaign94)
+                Check(operations.AmmoPickups.Count == 1 && operations.AmmoPickups[0].ExpectedRecovered == 3,
+                    "Compiled 9-4 omitted boss-fleet supply pickup");
+            if (rule is Alas.Engine.Rules.Main.Campaign92)
+                Check(execution.Context.State.MysteryCount == 0 && execution.Context.State.Cells.Any(cell => cell.IsMystery),
+                    "Compiled 9-2 added mystery collection absent from its native hooks");
         }
     }
 }

@@ -223,7 +223,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         if (state.Map.Cameras.IsEmpty) throw new InvalidDataException("Campaign map has no initial camera declaration");
         return await CreateMapCameraAsync(state, state.Map.Cameras[0],
             new MapDetectionRules().WithChapter(configuration.Vision),
-            new GridRecognitionRules { HasSiren = configuration.HasSiren }, new MapCameraRules().WithChapter(configuration.SwipeMultipliers),
+            new GridRecognitionRules { HasSiren = configuration.HasSiren, HasMystery = configuration.HasMystery },
+            new MapCameraRules().WithChapter(configuration.SwipeMultipliers, configuration.MapEdgeCorner),
             TimeSpan.FromSeconds(30), token);
     }
     CampaignMapCombat ICampaignInMapHost.CreateCombat(IMapScanCamera camera,
@@ -266,7 +267,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         var detector = new GridDetector(_vision, _assets, new MapDetectionRules().WithChapter(configuration.Vision));
         await Driver.ScreenshotAsync(token);
         var view = await detector.DetectAsync(Driver.Frame!, token);
-        var recognition = new GridRecognition(_vision, _assets, Driver.Server, new());
+        var recognition = new GridRecognition(_vision, _assets, Driver.Server,
+            new() { HasSiren = configuration.HasSiren, HasMystery = configuration.HasMystery });
         // This task reports local geometry only; a screenshot alone does not establish global map position.
         var cells = await recognition.ObserveAsync(view, new(1, 1), token: token);
         return new(view, cells.Cells);

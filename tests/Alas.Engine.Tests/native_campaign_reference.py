@@ -192,7 +192,8 @@ def main():
                 error = "IOError"
             finally:
                 Fleet.handle_boss_appear_refocus = original_refocus
-            results.append(dict(calls=probe.calls, value=value, exception=error, battleCount=probe.battle_count))
+            results.append(dict(calls=probe.calls, value=value, exception=error, battleCount=probe.battle_count,
+                weights=[grid.weight for grid in probe.map] if scenario['rule'] == 'campaign_main/campaign_9_2' else None))
     output_file.write_text(json.dumps(results, ensure_ascii=False), encoding="utf-8")
 
 

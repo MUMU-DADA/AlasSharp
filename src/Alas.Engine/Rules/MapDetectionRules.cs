@@ -58,7 +58,8 @@ public sealed record MapDetectionRules
             EdgeHoughThreshold = overrides.HomographyEdgeHough,
             CoincidentEncourage = overrides.CoincidentEncourage ?? CoincidentEncourage,
             MidHorizontal = overrides.MidHorizontal ?? MidHorizontal,
-            MidVertical = overrides.MidVertical ?? MidVertical };
+            MidVertical = overrides.MidVertical ?? MidVertical,
+            Storage = overrides.Storage ?? Storage };
     }
 
     public void Validate()

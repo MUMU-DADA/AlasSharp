@@ -16,6 +16,7 @@ public sealed record MapVisionOverrides(PeakParameters InternalPeaks, PeakParame
     public double? CoincidentEncourage { get; init; }
     public NumberRange? MidHorizontal { get; init; }
     public NumberRange? MidVertical { get; init; }
+    public HomographyStorage? Storage { get; init; }
 }
 
 public enum EnemyScalePriority { Default, StrongestFirst, WeakestFirst }
@@ -50,6 +51,7 @@ public sealed record CampaignConfiguration
     public bool HasFortress { get; init; }
     public bool HasBouncingEnemy { get; init; }
     public bool HasSiren { get; init; }
+    public bool HasMystery { get; init; } = true;
     public bool IsClearMode { get; init; }
     public bool UseClearMode { get; init; } = true;
     public bool UseDoubleBook { get; init; }
@@ -82,6 +84,7 @@ public sealed record CampaignConfiguration
     public string ConfigTask { get; init; } = "Main";
     public MapVisionOverrides? Vision { get; init; }
     public MapSwipeMultipliers? SwipeMultipliers { get; init; }
+    public string? MapEdgeCorner { get; init; }
 }
 
 /// <summary>Port of campaign_main/campaign_1_1.py Config, also imported by 1-2/1-3/1-4.</summary>

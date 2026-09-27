@@ -233,6 +233,13 @@ try
         await CampaignMapCombatChecks.MainChapterChecksAsync(Path.GetFullPath(chapterPython), Path.GetFullPath(chapterUpstream), folder);
         return 0;
     }
+    if (args is ["--chapter-nine", var ninePython, var nineUpstream, var nineArtifacts])
+    {
+        string folder = Path.GetFullPath(nineArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.ChapterNineChecksAsync(Path.GetFullPath(ninePython), Path.GetFullPath(nineUpstream), folder);
+        return 0;
+    }
     if (args is ["--target-selection", var targetPython, var targetUpstream, var targetArtifacts])
     {
         string folder = Path.GetFullPath(targetArtifacts);
@@ -530,6 +537,19 @@ try
             foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
                 cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation));
         }
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterNineRule)
+        {
+            foreach (int count in new[] { 0, 3, 5, 12, 14, 15 })
+            foreach (int fleet2 in new[] { 0, 2 })
+            foreach (int bossFleet in new[] { 1, 2 })
+            foreach (string? secondLocation9 in new[] { null, "D5", "F4", "F5", "G5" })
+            foreach (string? yes in new[] { null, "fleet_2_step_on", "clear_roadblocks", "clear_potential_roadblocks" })
+                cases.Add(new Scenario(id, BattleCount: count, Fleet2: fleet2, BossFleet: bossFleet, SecondFleet: secondLocation9, TrueOperation: yes));
+            foreach (string operation in new[] { "fleet_2_step_on", "clear_roadblocks", "clear_potential_roadblocks", "pick_up_ammo", "clear_boss" })
+            foreach (int count in new[] { 0, 5 })
+            foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
+                cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation, SecondFleet: "D5"));
+        }
         if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.Campaign72)
             foreach (int count in new[] { 0, 4, 5, 6 })
             foreach (string secondLocation in new[] { "A3", "G3", "C3" })
@@ -640,7 +660,8 @@ static async Task<ProbeResult> Execute(Scenario scenario)
     catch (CampaignEndedException) { exception = "CampaignEnd"; }
     catch (CampaignScriptException) { exception = "ScriptError"; }
     catch (IOException) { exception = "IOError"; }
-    return new ProbeResult(operations.Calls.ToArray(), value, exception, state.BattleCount);
+    return new ProbeResult(operations.Calls.ToArray(), value, exception, state.BattleCount,
+        rule is Alas.Engine.Rules.Main.Campaign92 ? state.Cells.Select(cell => cell.Weight).ToArray() : null);
 }
 
 internal sealed class FakeProcess : IProcessRunner

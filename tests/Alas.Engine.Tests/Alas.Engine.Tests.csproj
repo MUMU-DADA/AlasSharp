@@ -31,6 +31,7 @@
     <None Include="native_fleet_position_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_target_selection_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_main_chapter_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_chapter_nine_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_carrier_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_level_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_recovery_reference.py" CopyToOutputDirectory="PreserveNewest" />

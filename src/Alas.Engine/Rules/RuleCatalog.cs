@@ -40,7 +40,11 @@ public static class RuleCatalog
             ["campaign_main/campaign_8_1"] = static () => new Campaign81(),
             ["campaign_main/campaign_8_2"] = static () => new Campaign82(),
             ["campaign_main/campaign_8_3"] = static () => new Campaign83(),
-            ["campaign_main/campaign_8_4"] = static () => new Campaign84()
+            ["campaign_main/campaign_8_4"] = static () => new Campaign84(),
+            ["campaign_main/campaign_9_1"] = static () => new Campaign91(),
+            ["campaign_main/campaign_9_2"] = static () => new Campaign92(),
+            ["campaign_main/campaign_9_3"] = static () => new Campaign93(),
+            ["campaign_main/campaign_9_4"] = static () => new Campaign94()
         }.ToFrozenDictionary(StringComparer.Ordinal);
     public static IEnumerable<string> Ids => Factories.Keys.Order(StringComparer.Ordinal);
     public static CampaignRule Create(string id) => Factories.TryGetValue(id, out var factory)

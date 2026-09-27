@@ -342,7 +342,7 @@ internal static class DetectorChecks
             }
             Check(success.Tasks[1].Evidence!["frame"]!.GetValue<long>() > success.Tasks[0].Evidence!["frame"]!.GetValue<long>(), "Map tasks did not share one session");
             Check(!File.Exists(fixture + ".actions"), "Read-only observation attempted a gesture");
-            var invalid = await queue.RunAsync([new("missing", "map_observe", new JsonObject { ["campaign"] = "campaign_main/campaign_9_1" })],
+            var invalid = await queue.RunAsync([new("missing", "map_observe", new JsonObject { ["campaign"] = "campaign_main/campaign_10_1" })],
                 options with { Python = "missing", Adb = "missing" }, new(artifacts));
             Check(invalid.Failed && invalid.Tasks[0] is { Outcome: TaskOutcome.Refused, Reason: "NotSupportedException" }, "Unported campaign was executed");
             Environment.SetEnvironmentVariable("ALAS_TEST_MAP_FIXTURE", Path.Combine(artifacts, "frame-1.png"));

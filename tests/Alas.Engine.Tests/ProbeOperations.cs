@@ -10,7 +10,7 @@ internal sealed record Scenario(string Rule, string Operation = "dispatch", int 
     bool Advance = false, bool Accessible = true, string? BossCells = null,
     int Fleet2 = 0, int? BossFleet = null, string? FirstFleet = null, string? SecondFleet = null, int FirstScale = 0, string? Mysteries = null,
     int MysteryCount = 0, int CollectedMysteries = 0);
-internal sealed record ProbeResult(string[] Calls, object? Value, string? Exception, int BattleCount);
+internal sealed record ProbeResult(string[] Calls, object? Value, string? Exception, int BattleCount, double[]? Weights);
 
 /// <summary>Synthetic terminal actions only; the compiled rule and native oracle each own their control flow.</summary>
 internal sealed class ProbeOperations(Scenario scenario) : ICampaignOperations

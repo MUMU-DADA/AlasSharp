@@ -59,6 +59,13 @@ public sealed partial class CampaignState
     public CellState this[Cell cell] => Cells[Map.IndexOf(cell)];
     public bool HasBoss => Cells.Any(c => c.IsBoss);
     public bool HasNonBossEnemy => Cells.Any(c => !c.IsBoss && (c.IsEnemy || c.IsSiren || c.IsFortress));
+    /// <summary>Native weight_data changes this sortie's selection priority, not topology or shared MAP declarations.</summary>
+    public void SetWeights(System.Collections.Immutable.ImmutableArray<double> weights)
+    {
+        if (weights.IsDefault || weights.Length != Cells.Count || weights.Any(weight => !double.IsFinite(weight)))
+            throw new ArgumentException("Map weights must be finite and cover every cell", nameof(weights));
+        for (int index = 0; index < Cells.Count; index++) Cells[index].Weight = weights[index];
+    }
     public void ResetMap() { foreach (var cell in Cells) cell.Reset(); }
     public void ResetCurrentFleet() { foreach (var cell in Cells) cell.IsCurrentFleet = false; }
     public void RefreshFleetPaths(CampaignConfiguration configuration)
