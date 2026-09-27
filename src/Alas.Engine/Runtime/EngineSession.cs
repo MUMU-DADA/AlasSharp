@@ -163,7 +163,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances),
             new MapScanner(camera.State, camera, Driver.Clock),
-            waitEmotion: (fleet, token) => RequireEmotion(configuration).WaitAsync(fleet, token, configuration.IsDoubleBook));
+            waitEmotion: (fleet, token) => RequireEmotion(configuration).WaitAsync(fleet, token, configuration.IsDoubleBook),
+            switchFleet: CreateFleetSwitcher(camera, configuration).SwitchAsync);
     public CampaignExecution CreateInMapCampaignExecution(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token = default)
         => new(rule, configuration, (state, effective) => new InMapCampaignOperations(this, state, effective, token));
@@ -299,6 +300,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     {
         _device.Actions.Clear();
         _combatHealth.Clear();
+        _fleetSwitchers.Clear();
         _emotion = null;
         _emotionConfiguration = null;
         _mapPreparation = null;
@@ -339,6 +341,13 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             await File.WriteAllTextAsync(Path.Combine(directory, preparationFile), JsonSerializer.Serialize(_mapPreparation.Evidence, json));
         }
         string? image = null, hash = null;
+        string? fleetSwitchFile = null;
+        var switches = _fleetSwitchers.SelectMany(switcher => switcher.Evidence).ToArray();
+        if (switches.Length > 0)
+        {
+            fleetSwitchFile = "fleet-switch.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, fleetSwitchFile), JsonSerializer.Serialize(switches, json));
+        }
         long? sequence = null;
         if (Driver.Frame is { } frame)
         {
@@ -347,11 +356,12 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             hash = Convert.ToHexStringLower(SHA256.HashData(frame.Png.Span));
             sequence = frame.Sequence;
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile);
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
-        string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null, string? MapPreparationFile = null);
+        string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null, string? MapPreparationFile = null,
+        string? FleetSwitchFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

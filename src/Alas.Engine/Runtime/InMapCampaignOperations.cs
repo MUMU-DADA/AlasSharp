@@ -75,7 +75,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
         throw new InvalidOperationException("Campaign map has not been initialized");
     public ValueTask<bool> ClearEnemyAsync() => Combat.ClearEnemyAsync(token);
     public ValueTask<bool> ClearBossAsync() => Combat.ClearBossAsync(token);
-    public ValueTask<bool> BruteClearBossAsync() => throw Missing("brute boss search");
+    public ValueTask<bool> BruteClearBossAsync() => Combat.BruteClearBossAsync(token);
     public ValueTask<bool> BreakSirenCaughtAsync() => state.Cells.Any(grid => grid.IsCaughtBySiren)
         ? throw Missing("fleet siren rescue") : ValueTask.FromResult(false);
     public ValueTask<bool> ClearMysteriesAsync() => Combat.ClearMysteriesAsync(token);

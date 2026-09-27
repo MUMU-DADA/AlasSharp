@@ -79,6 +79,21 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
     public void Invalidate() => Volatile.Write(ref _faulted, true);
     public void Suspend() => Volatile.Write(ref _suspended, true);
     public ValueTask RelocalizeAsync(CancellationToken token = default) => RefreshAsync(token: token);
+    /// <summary>A fleet switch recenters the game camera; discard swipe history and detect a new view at that fleet.</summary>
+    public async ValueTask RelocalizeAtAsync(Cell location, long selectedFrame, CancellationToken token = default)
+    {
+        if (!_map.Contains(location) || selectedFrame <= 0) throw new ArgumentOutOfRangeException(nameof(location));
+        await RunAsync(async ct =>
+        {
+            _camera.Anchor(location);
+            _observation = null;
+            await UpdateCoreAsync(false, ct);
+            if (FrameSequence <= selectedFrame) throw new InvalidDataException("Fleet camera predates the observed fleet selection");
+            _requiresRefresh = false;
+            Volatile.Write(ref _suspended, false);
+            return true;
+        }, token, allowSuspended: true);
+    }
     public async ValueTask AnchorAtAsync(Cell location, CancellationToken token = default)
     {
         if (!_map.Contains(location)) throw new ArgumentOutOfRangeException(nameof(location));

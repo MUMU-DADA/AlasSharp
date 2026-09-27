@@ -126,11 +126,8 @@ internal static class CampaignMapCombatChecks
         state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], state.Fleet1Location!.Value, true);
         camera = new Camera(state);
         combat = Create(state, new() { EmotionMode = CampaignEmotionMode.Ignore }, camera);
-        bool roadblockRequired = false;
-        try { await combat.ClearBossAsync(); }
-        catch (NotSupportedException) { roadblockRequired = true; }
-        Check(roadblockRequired && camera.Taps == 0 && state.BattleCount == 0,
-            "Unported potential-boss roadblock logic clicked an inaccessible spawn");
+        Check(!await combat.ClearBossAsync() && camera.Taps == 0 && state.BattleCount == 0,
+            "Potential-boss roadblock search clicked a spawn behind permanent land");
 
         foreach (var mode in Enum.GetValues<CampaignEmotionMode>())
         foreach (bool locked in new[] { false, true })
@@ -150,8 +147,58 @@ internal static class CampaignMapCombatChecks
             Check(await combat.ClearEnemyAsync() && waits == (locked && mode.Calculates() ? 1 : 0),
                 "On-map emotion wait ignored native mode/fleet-lock gating");
         }
+        await RoadblockActionsAsync();
         await ExecutionChecksAsync(python);
         Console.WriteLine("Campaign map combat: route, priority, mystery, potential-boss search, scan and stage-return evidence passed offline; no entry or settlement verification.");
+    }
+
+    private static async Task RoadblockActionsAsync()
+    {
+        foreach (bool observed in new[] { false, true })
+        {
+            var map = new MapDefinition("D1", "SP ME ME MB", [], [], [], weights: [10, 20, 1, 10]);
+            var state = Prepare(map);
+            state[new(2, 1)].IsEnemy = state[new(3, 1)].IsEnemy = true;
+            state[new(4, 1)].IsBoss = observed;
+            state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location)], new(1, 1), false);
+            var camera = new Camera(state) { StageForBoss = true };
+            var combat = Create(state, new() { EmotionMode = CampaignEmotionMode.Ignore }, camera);
+            Check(await combat.BruteClearBossAsync() && state.Fleet1Location == new Cell(2, 1) &&
+                state[new(3, 1)].IsEnemy && state.BattleCount == 1 && camera.Taps == 1,
+                "Lower-weight blocked enemy was clicked through a real blocker");
+            Check(await combat.BruteClearBossAsync() && state.Fleet1Location == new Cell(3, 1) &&
+                state.BattleCount == 2 && camera.Taps == 2, "Second blocker was not selected after confirmed first combat");
+        }
+        foreach (bool meet in new[] { false, true })
+        {
+            var map = new MapDefinition("E1", "SP ME SP ME MB", [], [], []);
+            var state = Prepare(map); state.Fleet2Location = new(3, 1); state[new(3, 1)].IsFleet = true;
+            state[new(2, 1)].IsEnemy = meet; state[new(5, 1)].IsBoss = true;
+            state[new(4, 1)].IsEnemy = meet;
+            var config = new CampaignConfiguration { Fleet2 = 2, EmotionMode = CampaignEmotionMode.Ignore };
+            state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location), new(2, state.Fleet2Location)], new(1, 1), false);
+            var camera = new Camera(state) { StageForBoss = true };
+            int switches = 0;
+            var combat = Create(state, config, camera, switchFleet: (fleet, token) =>
+            {
+                Check(fleet == 2 && camera.Taps == 0, "Boss fleet switched after a grid action");
+                switches++; state.FleetIndex = fleet;
+                state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location), new(2, state.Fleet2Location)], state.Fleet2Location.Value, false);
+                return ValueTask.CompletedTask;
+            });
+            bool ended = false, cleared = false;
+            try { cleared = await combat.BruteClearBossAsync(); } catch (CampaignEndedException) { ended = true; }
+            Check(meet ? cleared && !ended && switches == 0 && state.Fleet1Location == new Cell(2, 1) :
+                ended && !cleared && switches == 1 && combat.StageReturn is not null,
+                "Boss dispatch did not clear between fleets first or switch to reachable boss");
+        }
+        var blocked = Prepare(new MapDefinition("C1", "SP ++ MB", [], [], []));
+        blocked[new(3, 1)].IsBoss = true; blocked.Paths.ComputeCosts(new(1, 1));
+        var blockedCamera = new Camera(blocked);
+        bool refused = false;
+        try { await Create(blocked, new(), blockedCamera).BruteClearBossAsync(); }
+        catch (CampaignScriptException) { refused = true; }
+        Check(refused && blockedCamera.Taps == 0, "Unreachable observed boss was clicked");
     }
 
     private static async Task ExecutionChecksAsync(string python)
@@ -391,12 +438,13 @@ internal static class CampaignMapCombatChecks
     }
 
     private static CampaignMapCombat Create(CampaignState state, CampaignConfiguration config, Camera camera,
-        Func<int, CancellationToken, ValueTask>? waitEmotion = null)
+        Func<int, CancellationToken, ValueTask>? waitEmotion = null,
+        Func<int, CancellationToken, ValueTask>? switchFleet = null)
     {
         var movement = new MapMovement(state, config, camera, () =>
             new MapArrivalCheck(camera, state, camera.InMapAsync, camera.Clock,
                 new Probe(camera), new Handler(camera)));
-        return new(state, config, movement, new MapScanner(state, camera, camera.Clock), waitEmotion);
+        return new(state, config, movement, new MapScanner(state, camera, camera.Clock), waitEmotion, switchFleet);
     }
 
     private sealed class Clock : TimeProvider

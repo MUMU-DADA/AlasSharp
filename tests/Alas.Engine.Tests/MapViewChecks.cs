@@ -142,6 +142,7 @@ internal static class MapViewChecks
         var recognition = new GridRecognition(new EmptyPatches(), files, GameServer.Cn, new());
         await ImageRefreshAsync(blank, files);
         await GridTapAsync(blank, recognition);
+        await FleetRelocalizationAsync(blank, recognition);
         await MapArrivalChecks.RunAsync(upstream);
         await CampaignMapCombatChecks.RunAsync(python, upstream);
         await CampaignMapInitializerChecks.RunAsync();
@@ -342,6 +343,50 @@ internal static class MapViewChecks
         Check(resumed.Position == new Cell(7, 4) && await resumed.ReadCenterMarkerAsync() == default,
             "Portal anchor did not relocate the concrete camera and expose its center marker");
     }
+    private static async Task FleetRelocalizationAsync(ScreenFrame frame, GridRecognition recognition)
+    {
+        var initial = new MapViewFrame(frame, Regular(new(262, 227.5)));
+        var clock = new FakeClock();
+        foreach (bool edges in new[] { false, true })
+        {
+            var next = Regular(new(262, 227.5), edges ? new(Left: true, Lower: true) : default);
+            var source = new Source(_ => new(frame with { Sequence = 10 }, next), clock);
+            var predictor = new FixedEvidence(new(1, 0)); var taps = new TapInput();
+            var camera = new MapCamera(Map(), new(5, 4), initial, source, new Input(), recognition, new(predictor),
+                new() { Optimize = false }, clock: clock, gridInput: taps);
+            camera.Suspend();
+            await camera.RelocalizeAtAsync(new(7, 5), 9);
+            var expected = edges ? new Cell(1 + next.Center.X, 1 + next.Center.Y) : new(7, 5);
+            Check(camera.Position == expected && camera.FrameSequence == 10 && predictor.Calls == 0,
+                "Fleet switch predicted a displacement against the old fleet or ignored fresh edges");
+            await camera.TapCellAsync(expected);
+            Check(taps.Areas.Count == 1, "Relocalized fleet camera remained suspended");
+        }
+        var staleSource = new Source(_ => initial with { Frame = frame with { Sequence = 8 } }, clock);
+        var stale = new MapCamera(Map(), new(5, 4), initial, staleSource, new Input(), recognition,
+            new(new FixedEvidence(null)), new(), clock: clock);
+        stale.Suspend();
+        bool rejected = false;
+        try { await stale.RelocalizeAtAsync(new(7, 5), 9); } catch (InvalidDataException) { rejected = true; }
+        Check(rejected, "Fleet camera accepted a frame older than fleet selection");
+        rejected = false;
+        try { await stale.ObserveAsync(MapScanMode.Normal, default); } catch (InvalidOperationException) { rejected = true; }
+        Check(rejected, "Stale fleet relocalization left a usable camera");
+        var sourceBlocked = new BlockingSource();
+        var cancelled = new MapCamera(Map(), new(5, 4), initial, sourceBlocked, new Input(), recognition,
+            new(new FixedEvidence(null)), new());
+        cancelled.Suspend();
+        using var cancel = new CancellationTokenSource();
+        var action = cancelled.RelocalizeAtAsync(new(7, 5), 9, cancel.Token).AsTask();
+        await sourceBlocked.Entered.Task;
+        cancel.Cancel(); rejected = false;
+        try { await action; } catch (OperationCanceledException) { rejected = true; }
+        Check(rejected, "Fleet relocalization ignored cancellation during capture");
+        rejected = false;
+        try { await cancelled.ReadCenterMarkerAsync(); } catch (InvalidOperationException) { rejected = true; }
+        Check(rejected, "Cancelled fleet relocalization exposed old camera pixels");
+    }
+
     private sealed class TapInput : IMapGridInput
     {
         public List<PixelArea> Areas { get; } = [];

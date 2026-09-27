@@ -122,6 +122,21 @@ public sealed class RunReport
         }
         if (boundary.ActionAttempts != actionAttempts)
             throw new InvalidDataException("任务边界动作次数与动作工件不同");
+        if (boundary.FleetSwitchFile is { } switchFile)
+        {
+            if (switchFile != "fleet-switch.json") throw new InvalidDataException("舰队切换工件必须位于当前任务目录");
+            string switchPath = Path.Combine(taskRoot, switchFile);
+            if ((File.GetAttributes(switchPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("舰队切换工件必须是普通文件");
+            var switches = JsonSerializer.Deserialize<FleetSwitchEvidence[]>(ArtifactReader.ReadAllText(switchPath), TaskQueue.Json);
+            if (switches is null || switches.Length == 0 || switches.Any(e => e is null || e.From is not (1 or 2) ||
+                    e.To is not (1 or 2) || e.From == e.To || e.Location.Column < 1 || e.Location.Row < 1 ||
+                    e.Selection is { } selection && (selection.LogicalIndex != e.To || selection.DisplayedIndex is not (1 or 2) ||
+                        selection.Clicks < 0 || selection.FrameSequence <= 0) ||
+                    e.CameraFrame is { } frame && (e.Selection is null || frame <= e.Selection.FrameSequence) ||
+                    e.Ready && (e.Selection is null || e.CameraFrame is null)))
+                throw new InvalidDataException("舰队切换记录缺少一致的身份或新定位帧");
+        }
         if (boundary.MapPreparationFile is { } preparationFile)
         {
             if (preparationFile != "map-preparation.json") throw new InvalidDataException("地图准备工件必须位于当前任务目录");

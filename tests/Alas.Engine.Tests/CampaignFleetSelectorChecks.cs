@@ -108,6 +108,7 @@ internal static class CampaignFleetSelectorChecks
         await CampaignMapInitializerChecks.RunAsync();
         await CampaignMapCombatChecks.RunAsync(python, upstream);
         await SessionReplayAsync(python, upstream, artifacts);
+        await CampaignFleetSwitchSessionChecks.RunAsync(python, upstream, artifacts);
         Console.WriteLine($"Initial fleet selection: {equal} exact native traces, {stricter} explicit unknown/timeout corrections, identity/path integration and 2 real-CV session replays passed; synthetic ADB, no game actions.");
     }
 

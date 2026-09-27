@@ -4,7 +4,8 @@ namespace Alas.Engine.Runtime;
 
 /// <summary>On-map target selection and movement. Stage return is evidence, not a sortie verdict.</summary>
 public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration configuration,
-    MapMovement movement, MapScanner scanner, Func<int, CancellationToken, ValueTask>? waitEmotion = null)
+    MapMovement movement, MapScanner scanner, Func<int, CancellationToken, ValueTask>? waitEmotion = null,
+    Func<int, CancellationToken, ValueTask>? switchFleet = null)
 {
     public static readonly SourceFile Source = new("module/map/map.py",
         "187a5ee7d8fbde3c944681216fd2ac75f68036716b17db5a8bb43fdd42de5365");
@@ -80,8 +81,54 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         return await ClearPotentialBossAsync(token);
     }
 
+    public async ValueTask<bool> BruteClearBossAsync(CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        var boss = state.Cells.FirstOrDefault(grid => grid.IsBoss);
+        if (boss is not null)
+        {
+            int fleet = FleetRoles.BossIndex(configuration);
+            var plan = MapRoadblocks.Find(state, boss.Location, fleet, token);
+            if (!plan.Reachable) throw new CampaignScriptException("Boss is separated by non-removable map obstacles");
+            if (plan.Enemies.Count > 0)
+            {
+                if (fleet == 2 && state.Fleet2Location is { } second)
+                {
+                    var meet = MapRoadblocks.Find(state, second, 1, token);
+                    if (meet.Reachable && meet.Enemies.Count > 0)
+                        return await ClearRoadblockAsync(meet, token);
+                }
+                return await ClearRoadblockAsync(plan, token);
+            }
+            await SwitchFleetAsync(fleet, token);
+            return await ClearBossAsync(token);
+        }
+        if (state.Cells.Any(grid => grid.MayBoss && grid.IsCaughtBySiren))
+            throw new NotSupportedException("Boss on a siren-caught fleet requires own-grid encounter recovery");
+        return await ClearPotentialBossAsync(token);
+    }
+
+    private async ValueTask SwitchFleetAsync(int fleet, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (state.FleetIndex == fleet) return;
+        if (switchFleet is null) throw new NotSupportedException("Campaign fleet switching is unavailable");
+        await switchFleet(fleet, token);
+        if (state.FleetIndex != fleet) throw new InvalidDataException("Campaign fleet switch did not commit its observed identity");
+    }
+
+    private ValueTask<bool> ClearRoadblockAsync(MapRoadblockPlan plan, CancellationToken token)
+    {
+        // Native temporarily removes enemies and can leave hypothetical costs active. Only an
+        // actually reachable member of the same minimal set can be the next physical battle.
+        var target = Order(plan.Enemies.Select(cell => state[cell]).Where(grid => grid.IsAccessible)).FirstOrDefault()
+            ?? throw new CampaignScriptException("No roadblock in the minimum removal set is reachable by the active fleet");
+        return FightAsync(target, token);
+    }
+
     private async ValueTask<bool> ClearPotentialBossAsync(CancellationToken token)
     {
+        await SwitchFleetAsync(FleetRoles.BossIndex(configuration), token);
         var potential = state.Cells.Where(grid => grid.MayBoss).ToArray();
         var tried = new HashSet<Cell>();
         while (true)
@@ -118,9 +165,14 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
                 return true;
             }
         }
-        if (potential.Any(grid => !grid.IsAccessible && grid.Location !=
-            (state.FleetIndex == 1 ? state.Fleet1Location : state.Fleet2Location)))
-            throw new NotSupportedException("Potential boss roadblock clearing is not yet ported");
+        foreach (var grid in Order(potential.Where(grid => !grid.IsAccessible)))
+        {
+            var plan = MapRoadblocks.Find(state, grid.Location, FleetRoles.BossIndex(configuration), token);
+            if (!plan.Reachable) continue;
+            if (plan.Enemies.Count == 0) throw new InvalidDataException("Boss accessibility differs from roadblock search");
+            await SwitchFleetAsync(1, token);
+            return await ClearRoadblockAsync(plan, token);
+        }
         return false;
     }
 

@@ -8,6 +8,14 @@ public sealed record FleetSelection(int LogicalIndex, int DisplayedIndex, int Cl
 /// <summary>MapOperation's physical fleet number and logical mob/boss role mapping.</summary>
 public static class FleetRoles
 {
+    public static readonly SourceFile BossSource = new("module/config/config.py",
+        "fdaba7e77c5ffdca9e71a2ded80095a9ce061335d44a30861df9f9cd1963b854");
+    public static int BossIndex(CampaignConfiguration configuration)
+    {
+        _ = Reversed(configuration);
+        return configuration.Fleet2 != 0 && configuration.FleetOrder is
+            FleetOrder.Fleet1MobFleet2Boss or FleetOrder.Fleet1BossFleet2Mob ? 2 : 1;
+    }
     public static bool Reversed(CampaignConfiguration configuration)
     {
         if (!Enum.IsDefined(configuration.FleetOrder) || configuration.Fleet2 < 0)

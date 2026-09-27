@@ -196,6 +196,15 @@ try
         await PathChecks.RunAsync(Path.GetFullPath(pathPython), Path.GetFullPath(pathUpstream), folder);
         return 0;
     }
+    if (args is ["--roadblocks", var roadPython, var roadUpstream, var roadArtifacts])
+    {
+        string folder = Path.GetFullPath(roadArtifacts);
+        Directory.CreateDirectory(folder);
+        await RoadblockChecks.RunAsync(Path.GetFullPath(roadPython), Path.GetFullPath(roadUpstream), folder);
+        await CampaignMapCombatChecks.RunAsync(Path.GetFullPath(roadPython), Path.GetFullPath(roadUpstream));
+        await CampaignFleetSwitcherChecks.RunAsync();
+        return 0;
+    }
     if (args is ["--grid", var gridPython, var gridUpstream, var gridArtifacts])
     {
         string folder = Path.GetFullPath(gridArtifacts);
