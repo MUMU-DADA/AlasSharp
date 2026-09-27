@@ -24,6 +24,9 @@ internal static class CampaignCommandChecks
         Check(CampaignCommand.BuildRequests(options with { ClearMode = false, DoubleBook = true })
             .All(request => !request.Input!["clearMode"]!.GetValue<bool>() && request.Input["doubleBook"]!.GetValue<bool>()),
             "Command lost requested preparation settings");
+        Check(CampaignCommand.BuildRequests(options with { MapAchievement = MapAchievement.ThreatSafe, StageIncrease = true })
+            .All(request => request.Input!["mapAchievement"]!.GetValue<string>() == "threat_safe" &&
+                request.Input["stageIncrease"]!.GetValue<bool>()), "Command lost achievement stop settings");
         var calculated = CampaignCommand.BuildRequests(options with { EmotionMode = CampaignEmotionMode.CalculateIgnore, ConfigTask = "EventA" });
         Check(calculated.All(request => request.Input!["emotionMode"]!.GetValue<string>() == "calculate_ignore" &&
             request.Input["configTask"]!.GetValue<string>() == "EventA"), "Command lost persistent emotion options");

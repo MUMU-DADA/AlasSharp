@@ -145,8 +145,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             state.MysteryCount = mysteryCount;
             if (state.FleetIndex == 1) state.Fleet1Location = landing;
             else state.Fleet2Location = landing;
-            state.Paths.ComputeFleetCosts(
-                [new(1, state.Fleet1Location), new(2, state.Fleet2Location)], landing, configuration.HasAmbush);
+            state.RefreshFleetPaths(configuration);
             AmmoPickupEvidence? pickup = null;
             if (ammo)
             {

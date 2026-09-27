@@ -33,7 +33,9 @@ public sealed record CampaignCommandOptions(
     string? ConfigRoot = null,
     string? ConfigInstance = null,
     bool ClearMode = true,
-    bool DoubleBook = false);
+    bool DoubleBook = false,
+    MapAchievement MapAchievement = MapAchievement.NonStop,
+    bool StageIncrease = false);
 
 /// <summary>Translates CLI chapter arguments into typed C# task requests.</summary>
 public static class CampaignCommand
@@ -46,6 +48,7 @@ public static class CampaignCommand
         if (!double.IsFinite(options.TimeoutSeconds) || options.TimeoutSeconds <= 0)
             throw new ArgumentException("时间上限必须为正数", nameof(options));
         _ = options.EmotionMode.Name();
+        _ = options.MapAchievement.Name();
         _ = ConfigWorkspace.ValidateTask(options.ConfigTask);
 
         return options.Chapters.Select((chapter, index) => new TaskRequest(
@@ -62,6 +65,8 @@ public static class CampaignCommand
                 ["fleetLock"] = options.FleetLock,
                 ["clearMode"] = options.ClearMode,
                 ["doubleBook"] = options.DoubleBook,
+                ["mapAchievement"] = options.MapAchievement.Name(),
+                ["stageIncrease"] = options.StageIncrease,
                 ["fleet1Formation"] = CampaignStrategy.FormationName(options.Fleet1Formation),
                 ["fleet2Formation"] = CampaignStrategy.FormationName(options.Fleet2Formation),
                 ["fleetOrder"] = FleetRoles.Name(options.FleetOrder)

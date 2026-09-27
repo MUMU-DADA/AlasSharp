@@ -8,7 +8,7 @@ using Alas.Engine.Tasks;
 
 namespace Alas.Engine.Tests;
 
-internal static class CampaignStageSelectorChecks
+internal static partial class CampaignStageSelectorChecks
 {
     public static async Task RunAsync(string upstream)
     {
@@ -372,6 +372,7 @@ internal static class CampaignStageSelectorChecks
     }
     private sealed class PreparationService : ICampaignMapPreparationService
     {
+        public CampaignMapInfo Info { get; init; } = new(1, .99, true, false, false, false, true);
         public bool ClearMode { get; init; }
         public bool DoubleBook { get; init; }
         public bool FailBook { get; init; }
@@ -379,7 +380,7 @@ internal static class CampaignStageSelectorChecks
         public ValueTask<CampaignMapPreparationResult> PrepareMapAsync(CampaignConfiguration configuration,
             TimeSpan timeout, CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(new CampaignMapPreparationResult(
-            new(1, .99, true, false, false, false, true), ClearMode, false, new(false, false, false))); }
+            Info, ClearMode, false, new(false, false, false))); }
         public ValueTask<DoubleBookObservation> PrepareDoubleBookAsync(CampaignConfiguration configuration,
             TimeSpan timeout, CancellationToken token)
         {

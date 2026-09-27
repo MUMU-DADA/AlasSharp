@@ -51,7 +51,7 @@ public sealed class CampaignFleetSwitcher(CampaignState state, CampaignConfigura
             if (frame <= selected.FrameSequence) throw new InvalidDataException("Fleet switch reused the selection image");
             _evidence[entry] = _evidence[entry] with { CameraFrame = frame };
             state[location].IsFleet = state[location].IsCurrentFleet = true;
-            state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location), new(2, state.Fleet2Location)], location, configuration.HasAmbush);
+            state.RefreshFleetPaths(configuration);
             await host.ReadHealthAsync(fleet, token);
             await host.ReadLevelsAsync(fleet, token);
             await host.ConfigureStrategyAsync(selected.DisplayedIndex, token);

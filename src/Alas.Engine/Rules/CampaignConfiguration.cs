@@ -18,6 +18,13 @@ public sealed record CampaignConfiguration
 {
     public bool PoorMapData { get; init; }
     public bool ClearAllThisTime { get; init; }
+    public MapAchievement MapAchievement { get; init; }
+    public bool StageIncrease { get; init; }
+    public bool StageIncreaseAcrossAB { get; init; }
+    public System.Collections.Immutable.ImmutableArray<string> StageIncreaseCustom { get; init; } = [];
+    public int AllEnemiesStar { get; init; } = 3;
+    public bool HasMapStory { get; init; }
+    public Alas.Engine.Runtime.CampaignMapInfo? PreparationInfo { get; init; }
     public bool HasMovableNormalEnemy { get; init; }
     public bool HasMovableEnemy { get; init; }
     public bool HasMaze { get; init; }

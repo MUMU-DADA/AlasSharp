@@ -34,6 +34,16 @@ public sealed partial class CampaignState
     public bool HasNonBossEnemy => Cells.Any(c => !c.IsBoss && (c.IsEnemy || c.IsSiren || c.IsFortress));
     public void ResetMap() { foreach (var cell in Cells) cell.Reset(); }
     public void ResetCurrentFleet() { foreach (var cell in Cells) cell.IsCurrentFleet = false; }
+    public void RefreshFleetPaths(CampaignConfiguration configuration)
+    {
+        Cell current = (FleetIndex == 1 ? Fleet1Location : FleetIndex == 2 ? Fleet2Location : null)
+            ?? throw new InvalidDataException("Fleet path update requires a known current fleet");
+        if (Fleet1Location is { } first) this[first].IsFleet = true;
+        if (Fleet2Location is { } second) this[second].IsFleet = true;
+        if (configuration.HasFortress && !Cells.Any(cell => cell.IsFortress))
+            foreach (var cell in Cells) cell.IsMechanismBlock = false;
+        Paths.ComputeFleetCosts([new(1, Fleet1Location), new(2, Fleet2Location)], current, configuration.HasAmbush);
+    }
     public void LoadMapData(bool useLoop = false)
     {
         var tiles = useLoop && !Map.LoopTiles.IsEmpty ? Map.LoopTiles : Map.Tiles;

@@ -55,7 +55,7 @@ public static class CampaignMapInitializer
         state.FleetIndex = selected.LogicalIndex;
         state.Fleet1Location = fleet1;
         state.Fleet2Location = fleet2;
-        state.Paths.ComputeFleetCosts([new(1, fleet1), new(2, fleet2)], active, configuration.HasAmbush);
+        state.RefreshFleetPaths(configuration);
         return new(camera, scan, fleet1, fleet2);
     }
 }

@@ -15,6 +15,7 @@ if (args.Length == 0 || args is ["--help"])
     Console.WriteLine("--fleet-order: fleet1_mob_fleet2_boss (default), fleet1_boss_fleet2_mob, fleet1_all_fleet2_standby, fleet1_standby_fleet2_all; current campaign rules may disable fleet 2.");
     Console.WriteLine("run/campaign: --config-root <data root containing config/template.json> --instance <config name> bind persistent emotion to the same device. campaign: --emotion-mode <calculate|calculate_ignore|ignore|nothing> (default ignore), --config-task <task name> (default Main). Calculated modes require a configuration binding; a recovery delay records NextRun and skips this task, without automatic rescheduling.");
     Console.WriteLine("campaign: --clear-mode <true|false> (default true), --double-book <true|false> (default false). Effective settings are observed on map/fleet preparation before entry.");
+    Console.WriteLine("campaign: --map-achievement <non_stop|100_percent_clear|map_3_stars|threat_safe|threat_safe_without_3_stars>, --stage-increase <true|false>. Achievement stops require --config-root and --instance to update the bound task.");
     return 0;
 }
 try
@@ -26,7 +27,7 @@ try
     string[] required = ["--adb", "--serial", "--server", "--assets", "--python", "--artifacts",
         .. navigate ? new[] { "--package", "--page" } : run ? new[] { "--queue" } : campaign ? new[] { "--chapter", "--models" } : []];
     var allowed = required.Concat(navigate ? ["--timeout"] : run ? ["--models", "--package", "--resume", "--config-root", "--instance"] : campaign
-        ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--timeout", "--fleet1-formation", "--fleet2-formation", "--fleet-order", "--config-root", "--instance", "--emotion-mode", "--config-task", "--clear-mode", "--double-book"]
+        ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--timeout", "--fleet1-formation", "--fleet2-formation", "--fleet-order", "--config-root", "--instance", "--emotion-mode", "--config-task", "--clear-mode", "--double-book", "--map-achievement", "--stage-increase"]
         : Array.Empty<string>()).ToHashSet(StringComparer.Ordinal);
     var switches = (run ? new[] { "--allow-actions", "--dry-run", "--continue-on-failure" } : campaign
         ? new[] { "--run", "--allow-actions", "--continue-on-failure" } : []).ToHashSet(StringComparer.Ordinal);
@@ -82,7 +83,9 @@ try
                 ConfigTask: values.GetValueOrDefault("--config-task", "Main"),
                 ConfigRoot: values.GetValueOrDefault("--config-root"), ConfigInstance: values.GetValueOrDefault("--instance"),
                 ClearMode: bool.Parse(values.GetValueOrDefault("--clear-mode", "true")),
-                DoubleBook: bool.Parse(values.GetValueOrDefault("--double-book", "false")));
+                DoubleBook: bool.Parse(values.GetValueOrDefault("--double-book", "false")),
+                MapAchievement: CampaignObjectives.Parse(values.GetValueOrDefault("--map-achievement", "non_stop")),
+                StageIncrease: bool.Parse(values.GetValueOrDefault("--stage-increase", "false")));
             var campaignResult = await CampaignCommand.RunAsync(options, cancellation.Token);
             Console.WriteLine(CampaignCommand.Serialize(campaignResult));
             return campaignResult.Failed || cancellation.IsCancellationRequested ? 1 : 0;

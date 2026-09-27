@@ -23,20 +23,7 @@ public sealed partial class ConfigWorkspace
     private sealed record BoundEmotion(EmotionSnapshot Snapshot, Dictionary<string, string> Owners);
     private BoundEmotion ReadEmotion(JsonObject merged, string task)
     {
-        if (merged[task] is not JsonObject) throw new ArgumentException("Emotion configuration task is absent");
-        // AzurLaneConfig.bind visits General, Alas, task-general groups, then the task; first occurrence wins.
-        var tasks = new List<string> { "General", "Alas" };
-        if (task.StartsWith("Opsi", StringComparison.Ordinal)) tasks.Add("OpsiGeneral");
-        if (task.StartsWith("Event", StringComparison.Ordinal) || task.StartsWith("Raid", StringComparison.Ordinal) ||
-            task.StartsWith("Coalition", StringComparison.Ordinal) || task is "MaritimeEscort" or "GemsFarming")
-            tasks.AddRange(["TaskBalancer", "EventGeneral"]);
-        tasks.Add(task);
-        var values = new JsonObject();
-        var owners = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (string name in tasks)
-            if (merged[name]?["Emotion"] is JsonObject group)
-                foreach (var field in group)
-                    if (owners.TryAdd(field.Key, name)) values[field.Key] = field.Value?.DeepClone();
+        var (values, owners) = BindTaskGroup(merged, task, "Emotion");
         T Required<T>(string key) => values[key] is JsonValue value && value.TryGetValue<T>(out var result)
             ? result : throw new InvalidDataException("Missing or invalid emotion field: " + key);
         FleetEmotionRecord Read(int fleet)

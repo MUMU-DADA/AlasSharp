@@ -80,9 +80,8 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
         ? throw Missing("fleet siren rescue") : ValueTask.FromResult(false);
     public ValueTask<bool> ClearMysteriesAsync() => Combat.ClearMysteriesAsync(token);
     public ValueTask<bool> PickUpAmmoAsync() => Combat.PickUpAmmoAsync(token);
-    public ValueTask<bool> ClearSirenAsync() => state.Cells.Any(grid => grid.IsSiren || grid.IsFortress)
-        ? throw Missing("siren and fortress targeting") : ValueTask.FromResult(false);
-    public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync() => throw Missing("movable enemy second-fleet targeting");
+    public ValueTask<bool> ClearSirenAsync() => Combat.ClearSirenAsync(token);
+    public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync() => Combat.ClearAnyEnemyBySecondFleetCostAsync(token);
     public ValueTask<bool> ClearBouncingEnemyAsync() => state.Cells.Any(grid => grid.MayBouncingEnemy)
         ? throw Missing("bouncing enemy movement") : ValueTask.FromResult(false);
     public ValueTask<bool> ClearMechanismAsync() => state.Cells.Any(grid => grid.IsMechanismTrigger)

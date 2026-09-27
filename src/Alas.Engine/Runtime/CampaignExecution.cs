@@ -29,12 +29,13 @@ public sealed class CampaignExecution
     }
 
     private static CampaignConfiguration Configure(CampaignRule rule, CampaignConfiguration input, CampaignState state)
-        => CampaignPreparationRules.Apply(rule.Configure(input) with
+        => CampaignPreparationRules.Apply(CampaignObjectives.Apply(rule.Configure(input) with
         {
             // These are sortie observations, never chapter defaults.
             IsClearMode = input.IsClearMode,
-            IsDoubleBook = input.IsDoubleBook
-        }, state);
+            IsDoubleBook = input.IsDoubleBook,
+            PreparationInfo = input.PreparationInfo
+        }), state);
 
     public async ValueTask<bool> ExecuteBattleAsync()
     {

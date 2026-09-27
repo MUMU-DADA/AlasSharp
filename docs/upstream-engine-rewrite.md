@@ -16,6 +16,8 @@ BOSS 路障和战中舰队切换现由 MapRoadblocks、CampaignMapCombat 与 Cam
 
 ## 目标与边界
 
+地图目标判断与停止现由 CampaignObjectives / CampaignAchievement 执行，星级覆盖传入 C# 战役分派，取消进图并观察返章节页后才更新绑定任务的关卡或启用状态。全清的塞壬/堡垒选择、第二舰队成本选敌及最终堡垒释放机关阻挡进入通用地图链，不调用 Python 业务或静态 JSON 计划。规则对拍、真实会话合成回放和失败工件范围见[路线](architecture-roadmap.md)；写回下一关不表示该关已迁移，跳过不等于通关，完整调度与动态地图仍未交付。
+
 船坞容量处理已直接迁为 `RetirementRules`、`RetirementDock`、`RetirementHandler` 与 `CampaignInterruptions`。一键和旧式退役、排序/收藏开关、完整筛选选项、一键设置回退、稀有确认、装备/奖励确认与退出均由 C# 编排；复用纯视觉像素计数、均色与模板匹配，没有新增 Python 产品操作。战役入口和战斗准备共用处理器，战斗保持自动化 → 退役 → 忽略低心情 → 维修的原生顺序；长期心情重启调度、强化和 GemsFarming 尚未迁移。设置超时假定正确与退役超时无条件假定成功是明确收紧的原生行为：前者失败，后者须有船确认、奖励或装备确认以及最后动作后的新帧返回；不满足就失败并留证据。`retirement.json` 保存部分尝试，选择估算不当作实测数量；离线对拍不能替代实机结果，详见路线。
 
 战役、地图、战斗调度、导航、任务、统计、配置和设备控制均迁到 C#，完整保留上游 Config、MAP、Campaign、页面与素材规则的语义。上游方法是离线对照来源；`CampaignRun.load_campaign()` / `Campaign.run()` 不参与当前产品执行，也不作为未迁移域的兼容路径。

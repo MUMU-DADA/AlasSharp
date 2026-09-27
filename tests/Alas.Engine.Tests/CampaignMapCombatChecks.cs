@@ -147,9 +147,36 @@ internal static class CampaignMapCombatChecks
             Check(await combat.ClearEnemyAsync() && waits == (locked && mode.Calculates() ? 1 : 0),
                 "On-map emotion wait ignored native mode/fleet-lock gating");
         }
+        await FullClearActionsAsync();
         await RoadblockActionsAsync();
         await ExecutionChecksAsync(python);
         Console.WriteLine("Campaign map combat: route, priority, mystery, potential-boss search, scan and stage-return evidence passed offline; no entry or settlement verification.");
+    }
+
+    private static async Task FullClearActionsAsync()
+    {
+        var state = Prepare(new("D1", "SP -- -- --", ["A1"], [], []));
+        var config = new CampaignConfiguration { HasFortress = true, EmotionMode = CampaignEmotionMode.Ignore };
+        state[new(2, 1)].IsFortress = state[new(3, 1)].IsFortress = true;
+        state[new(4, 1)].IsMechanismBlock = true;
+        state.RefreshFleetPaths(config);
+        var camera = new Camera(state); var combat = Create(state, config, camera);
+        Check(await combat.ClearSirenAsync() && state.BattleCount == 1 && state.Fleet1Location == new Cell(2, 1) &&
+            state[new(4, 1)].IsMechanismBlock, "First fortress fight released the final-fortress roadblock");
+        Check(await combat.ClearSirenAsync() && state.BattleCount == 2 && state.Fleet1Location == new Cell(3, 1) &&
+            !state[new(4, 1)].IsMechanismBlock && state[new(4, 1)].IsAccessible,
+            "Final fortress fight did not reopen the shared path graph");
+        Check(!await combat.ClearSirenAsync() && camera.Taps == 2, "Full-clear fought an already cleared fortress");
+
+        state = Prepare(new("C2", "SP -- --\nME -- ME", ["A1"], [], []));
+        config = new() { EmotionMode = CampaignEmotionMode.Ignore, Fleet2 = 2 };
+        state.Fleet2Location = new(3, 1);
+        state[new(1, 2)].IsEnemy = state[new(3, 2)].IsEnemy = true;
+        state[new(1, 2)].Weight = 1; state[new(3, 2)].Weight = 100;
+        state.RefreshFleetPaths(config);
+        camera = new Camera(state); combat = Create(state, config, camera);
+        Check(await combat.ClearAnyEnemyBySecondFleetCostAsync() && state.Fleet1Location == new Cell(3, 2) &&
+            state[new(1, 2)].IsEnemy && state.BattleCount == 1, "Moving normal enemy dispatch mixed weight into cost_2 order");
     }
 
     private static async Task RoadblockActionsAsync()
@@ -503,7 +530,7 @@ internal static class CampaignMapCombatChecks
         public ValueTask<bool> InMapAsync(CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(true); }
         public bool IsCombatDestination => Destination is { } cell &&
-            (state[cell].IsEnemy || state[cell].IsBoss || state[cell].IsSiren ||
+            (state[cell].IsEnemy || state[cell].IsBoss || state[cell].IsSiren || state[cell].IsFortress ||
              PotentialBossCombat == cell && state[cell].MayBoss);
     }
 

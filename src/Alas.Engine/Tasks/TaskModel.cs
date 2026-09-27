@@ -15,7 +15,8 @@ public sealed record TaskContext(IUiDriver Driver, IPageNavigator Navigator, IPo
     IMapObservationService? Map = null, ICampaignExecutionService? Campaign = null,
     ICampaignStageObservationService? Stages = null, ICampaignFleetPreparationService? Fleets = null,
     ICampaignEntryService? Entry = null, ICampaignMapPreparationService? MapPreparation = null,
-    ICampaignInterruptions? Interruptions = null, ICampaignEmotionService? Emotion = null);
+    ICampaignInterruptions? Interruptions = null, ICampaignEmotionService? Emotion = null,
+    ICampaignAchievementService? Achievement = null);
 
 /// <summary>Each business domain owns its input schema and completion evidence.</summary>
 public interface ITaskRunner

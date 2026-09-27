@@ -304,11 +304,12 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         _emotion = null;
         _emotionConfiguration = null;
         _mapPreparation = null;
+        _achievement = null;
         _retirement.ResetEvidence();
         _interruptions.Configure(new() { Mode = RetirementMode.Disabled }, CampaignEmotionMode.Calculate);
         Driver.ResetTask();
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
-        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this, this, this, this, _interruptions, this);
+        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this, this, this, this, _interruptions, this, this);
     }
     public async Task<JsonObjectEvidence> SaveEvidenceAsync(string directory, bool failed)
     {
@@ -341,6 +342,12 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             await File.WriteAllTextAsync(Path.Combine(directory, preparationFile), JsonSerializer.Serialize(_mapPreparation.Evidence, json));
         }
         string? image = null, hash = null;
+        string? mapStopFile = null;
+        if (_achievement?.Evidence is { Info: not null } stop)
+        {
+            mapStopFile = "map-stop.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, mapStopFile), JsonSerializer.Serialize(stop, json));
+        }
         string? fleetSwitchFile = null;
         var switches = _fleetSwitchers.SelectMany(switcher => switcher.Evidence).ToArray();
         if (switches.Length > 0)
@@ -356,12 +363,12 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             hash = Convert.ToHexStringLower(SHA256.HashData(frame.Png.Span));
             sequence = frame.Sequence;
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile);
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
         string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null, string? MapPreparationFile = null,
-        string? FleetSwitchFile = null);
+        string? FleetSwitchFile = null, string? MapStopFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

@@ -122,6 +122,20 @@ public sealed class RunReport
         }
         if (boundary.ActionAttempts != actionAttempts)
             throw new InvalidDataException("任务边界动作次数与动作工件不同");
+        if (boundary.MapStopFile is { } stopFile)
+        {
+            if (stopFile != "map-stop.json") throw new InvalidDataException("成就停止工件必须位于当前任务目录");
+            string stopPath = Path.Combine(taskRoot, stopFile);
+            if ((File.GetAttributes(stopPath) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("成就工件必须是普通文件");
+            var stop = JsonSerializer.Deserialize<CampaignStopEvidence>(ArtifactReader.ReadAllText(stopPath), TaskQueue.Json);
+            if (stop is null || string.IsNullOrWhiteSpace(stop.RuleId) || stop.CancelClicks < 0 || stop.Info is not { FrameSequence: > 0 } info ||
+                !double.IsFinite(info.ClearPercentage) || info.ClearPercentage is < 0 or >= 1.4 ||
+                !Rules.CampaignObjectives.Reached(Rules.CampaignObjectives.Parse(stop.Achievement), info) ||
+                stop.ReturnedFrame is { } frame && frame <= info.FrameSequence ||
+                stop.Disabled is not null && (stop.ReturnedFrame is null || stop.Disabled.Value != (stop.NextStage is null)) ||
+                stop.Persisted && (stop.ReturnedFrame is null || stop.Disabled is null))
+                throw new InvalidDataException("成就停止缺少一致的观测、返页或写回记录");
+        }
         if (boundary.FleetSwitchFile is { } switchFile)
         {
             if (switchFile != "fleet-switch.json") throw new InvalidDataException("舰队切换工件必须位于当前任务目录");

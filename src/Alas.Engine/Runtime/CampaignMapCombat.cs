@@ -81,6 +81,19 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         return await ClearPotentialBossAsync(token);
     }
 
+    public ValueTask<bool> ClearSirenAsync(CancellationToken token = default)
+    {
+        var selected = CampaignTargeting.Siren(state, configuration);
+        return selected is null ? ValueTask.FromResult(false) : FightAsync(selected, token);
+    }
+
+    public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync(CancellationToken token = default)
+    {
+        // CampaignBase's full-clear movable-normal branch passes sort=('cost_2',), without weight.
+        var selected = CampaignTargeting.AnyEnemyBySecondFleetCost(state, configuration);
+        return selected is null ? ValueTask.FromResult(false) : FightAsync(selected, token);
+    }
+
     public async ValueTask<bool> BruteClearBossAsync(CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
@@ -224,9 +237,6 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
     {
         await scanner.ScanAsync(state.Progress, TimeSpan.FromMinutes(2),
             fleet: new FleetScanOptions(Fleet2Enabled: configuration.Fleet2 != 0), token: token);
-        var current = state.FleetIndex == 1 ? state.Fleet1Location : state.Fleet2Location;
-        if (current is not { } location) throw new InvalidDataException("Combat completed without a fleet location");
-        state.Paths.ComputeFleetCosts([new(1, state.Fleet1Location), new(2, state.Fleet2Location)],
-            location, configuration.HasAmbush);
+        state.RefreshFleetPaths(configuration);
     }
 }

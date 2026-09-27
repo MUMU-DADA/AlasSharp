@@ -12,7 +12,11 @@
 
 emotion.json 保存入图、等待、扣减的时间、两队估算值、舰队、战斗帧及写回状态，写入失败也保留尝试；缺失或无效工件使报告不完整。非法“船坞恢复 + 保持快乐经验”组合提前拒绝，不沿用原生先写记录再报错的副作用；两队记录与 NextRun 在同一事务提交，避免半更新。长期客户端心情 bug 的随机阈值/重启任务和完整周期调度仍未迁移；campaign_run 的双倍书观测现已连接实际战前等待及加载后的扣减。
 
-campaign_run 新增布尔输入 clearMode（默认 true）和 doubleBook（默认 false）；campaign 命令对应 --clear-mode / --double-book，值为 true 或 false。选关后先按原生进度条动画与信息条遮挡规则等待，读取百分比、三星和安全状态，再设置周回并确认自动寻敌关闭；周回的地图/出生波次及机制覆盖在章节 Config 之后应用。星级和安全状态目前用于观测，不等于外层成就停止、剧情覆盖或完整调度已经迁移。
+campaign_run 支持布尔输入 clearMode（默认 true）和 doubleBook（默认 false）；campaign 命令对应 --clear-mode / --double-book，值为 true 或 false。选关后先按原生进度条动画与信息条遮挡规则等待，读取百分比、三星和安全状态，再设置周回并确认自动寻敌关闭；周回的地图/出生波次及机制覆盖在章节 Config 之后应用。星级也参与全清和地图剧情标记覆盖；这些观测不证明本次出击通关。
+
+mapAchievement（默认 non_stop）接受 non_stop、100_percent_clear、map_3_stars、threat_safe、threat_safe_without_3_stars；stageIncrease（默认 false）控制达成后的递增。CLI 对应 --map-achievement / --stage-increase。启用成就停止必须绑定 config-root、instance 和 configTask，配置里的 Campaign.Event/Name 须匹配本次规则，否则设备动作前拒绝。进度须严格大于 .95，三星/安全目标再要求对应状态；未取得全敌星时按上游要求选择全清。达成后取消准备页、观察新章节页帧，再禁用 Scheduler.Enable，或在递增有下一项时更新 Campaign.Name。相关配置被同时修改或设备身份变化均拒绝写回，不覆盖用户修改。
+
+成就停止返回 Skipped / map_achievement_reached，不产生 sortie 成功结论；required 任务仍使批次失败并按默认策略停止，非 required 可用于允许跳过的队列。map-stop.json 记录进度观察、取消次数、新返页帧、停止决策及 Persisted；写回失败仍保存部分记录。下一关仅写入配置，不自动再次排队；主线原生递增不检查可执行规则，可运行范围仍由 RuleCatalog 验证。
 
 舰队页使用原生素材偏移、颜色判据和三秒点击间隔设置双倍书；未出现选项时按原生确认等待判为不可用，点击后无法确认则失败，最多四次点击。map-preparation.json 保存地图观察、已确认开关及双倍书部分尝试；Enabled=null 表示动作后尚未确认，不能按关闭处理。只有已确认倍率传入战前等待与每战扣减（2 或 4）；入图预估按原生同时考虑请求双倍书。此选项仅支持完整 campaign_run 入口，图内 resume 无法重建先前周回/双倍书状态，也不生成通关结论。所有状态仍需实际成功结算合同，星级、进度条和开关成功不能证明本次通关。
 

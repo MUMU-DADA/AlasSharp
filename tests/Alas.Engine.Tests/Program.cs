@@ -205,6 +205,14 @@ try
         await CampaignFleetSwitcherChecks.RunAsync();
         return 0;
     }
+    if (args is ["--objectives", var goalPython, var goalUpstream, var goalArtifacts])
+    {
+        string folder = Path.GetFullPath(goalArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignObjectiveChecks.RunAsync(Path.GetFullPath(goalPython), Path.GetFullPath(goalUpstream), folder);
+        await CampaignMapCombatChecks.RunAsync(Path.GetFullPath(goalPython), Path.GetFullPath(goalUpstream));
+        return 0;
+    }
     if (args is ["--grid", var gridPython, var gridUpstream, var gridArtifacts])
     {
         string folder = Path.GetFullPath(gridArtifacts);

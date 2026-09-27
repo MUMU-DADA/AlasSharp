@@ -15,7 +15,7 @@ public sealed class CampaignRunTask : ITaskRunner
     {
         TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
             "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement", "configTask",
-            "clearMode", "doubleBook");
+            "clearMode", "doubleBook", "mapAchievement", "stageIncrease");
         var id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign run requires a compiled campaign rule");
         if (RuleCatalog.Create(id).StageName is null)
@@ -34,11 +34,14 @@ public sealed class CampaignRunTask : ITaskRunner
         _ = RetirementInput.Read(input);
         _ = Option(input, "clearMode", true);
         _ = Option(input, "doubleBook", false);
+        _ = Achievement(input);
+        _ = Option(input, "stageIncrease", false);
     }
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
         => [.. capabilities.HasOcrModels ? Array.Empty<string>() : ["ocr_models"],
-            .. !EmotionInput.Mode(request.Input!).Calculates() || capabilities.HasEmotionStore ? Array.Empty<string>() : ["emotion_config"]];
+            .. !EmotionInput.Mode(request.Input!).Calculates() || capabilities.HasEmotionStore ? Array.Empty<string>() : ["emotion_config"],
+            .. Achievement(request.Input!) == MapAchievement.NonStop || capabilities.HasEmotionStore ? Array.Empty<string>() : ["achievement_config"]];
 
     public async ValueTask<TaskResult> RunAsync(TaskRequest request, TaskContext context, CancellationToken token)
     {
@@ -64,11 +67,13 @@ public sealed class CampaignRunTask : ITaskRunner
             Retirement = RetirementInput.Read(request.Input),
             UseClearMode = Option(request.Input, "clearMode", true),
             UseDoubleBook = Option(request.Input, "doubleBook", false),
+            MapAchievement = Achievement(request.Input),
+            StageIncrease = Option(request.Input, "stageIncrease", false),
             UseFleetLock = request.Input["fleetLock"]?.GetValue<bool>() ?? true
         };
         // Config inheritance is authoritative. Apply it before touching the
         // fleet page so the device selection and map state use identical values.
-        var effectiveConfiguration = rule.Configure(requestedConfiguration);
+        var effectiveConfiguration = CampaignObjectives.Apply(rule.Configure(requestedConfiguration));
         var plan = requestedPlan with
         {
             Second = effectiveConfiguration.Fleet2,
@@ -91,9 +96,15 @@ public sealed class CampaignRunTask : ITaskRunner
         evidence["fleet1Formation"] = CampaignStrategy.FormationName(configuration.Fleet1Formation);
         evidence["fleet2Formation"] = CampaignStrategy.FormationName(configuration.Fleet2Formation);
         evidence["fleetOrder"] = FleetRoles.Name(configuration.FleetOrder);
-        string phase = "emotion";
+        evidence["mapAchievement"] = configuration.MapAchievement.Name();
+        evidence["stageIncrease"] = configuration.StageIncrease;
+        string phase = "achievement_binding";
         try
         {
+            if (configuration.MapAchievement != MapAchievement.NonStop)
+                await (context.Achievement ?? throw new NotSupportedException("Achievement persistence is unavailable"))
+                    .PrepareAchievementAsync(rule, configuration, token);
+            phase = "emotion";
             if (configuration.EmotionMode.Calculates())
             {
                 var emotion = context.Emotion ?? throw new NotSupportedException("Emotion persistence is unavailable");
@@ -112,7 +123,16 @@ public sealed class CampaignRunTask : ITaskRunner
             var prepared = await mapPreparation.PrepareMapAsync(configuration, context.Timeout, token);
             evidence["mapPreparation"] = JsonSerializer.SerializeToNode(prepared, TaskQueue.Json);
             evidence["autoSearch"] = JsonSerializer.SerializeToNode(prepared.AutoSearch, TaskQueue.Json);
-            configuration = configuration with { IsClearMode = prepared.ClearMode };
+            configuration = CampaignObjectives.Apply(configuration with { IsClearMode = prepared.ClearMode, PreparationInfo = prepared.Info });
+            evidence["clearAllThisTime"] = configuration.ClearAllThisTime;
+            evidence["hasMapStory"] = configuration.HasMapStory;
+            if (CampaignObjectives.Reached(configuration.MapAchievement, prepared.Info))
+            {
+                phase = "achievement_stop";
+                var stopped = await context.Achievement!.StopForAchievementAsync(prepared.Info, context.Timeout, token);
+                evidence["mapStop"] = JsonSerializer.SerializeToNode(stopped, TaskQueue.Json);
+                return new(request.Id, Kind, TaskOutcome.Skipped, "map_achievement_reached", evidence);
+            }
             phase = "map_preparation";
             await new CampaignPreparation(context.Driver, context.Interruptions).OpenFleetAsync(selection.Preparation, token);
             phase = "double_book";
@@ -150,6 +170,8 @@ public sealed class CampaignRunTask : ITaskRunner
 
     private static bool Option(JsonObject input, string name, bool fallback) => input.TryGetPropertyValue(name, out var value)
         ? value?.GetValue<bool>() ?? throw new ArgumentException(name + " cannot be null") : fallback;
+    private static MapAchievement Achievement(JsonObject input) => CampaignObjectives.Parse(input.TryGetPropertyValue("mapAchievement", out var value)
+        ? value?.GetValue<string>() ?? throw new ArgumentException("mapAchievement cannot be null") : "non_stop");
 
     private static FleetOrder Order(JsonObject input) => FleetRoles.Parse(input.TryGetPropertyValue("fleetOrder", out var value)
         ? value?.GetValue<string>() ?? throw new ArgumentException("fleetOrder cannot be null") : "fleet1_mob_fleet2_boss");
