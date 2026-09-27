@@ -119,6 +119,8 @@ internal static class QueueChecks
             await Fixture(false);
             var success = await queue.RunAsync(chain, options, new(artifacts));
             Check(!success.Failed && success.Tasks.All(t => t.Outcome == TaskOutcome.Succeeded), "Real-CV queue replay failed");
+            Check(RunReport.Build(success.Directory).ToJson()["evidence_complete"]!.GetValue<bool>(),
+                "Report rejected real-CV success artifacts");
             Check(success.Tasks[0].Evidence!["boundary"]!["actionAttempts"]!.GetValue<int>() > 0 &&
                 success.Tasks[1].Evidence!["boundary"]!["actionAttempts"]!.GetValue<int>() == 0 &&
                 success.Tasks[1].Evidence!["boundary"]!["frameSequence"]!.GetValue<long>() > success.Tasks[0].Evidence!["boundary"]!["frameSequence"]!.GetValue<long>(),
@@ -157,6 +159,47 @@ internal static class QueueChecks
             Check(failure.Failed && failure.Tasks[0].Outcome == TaskOutcome.Failed && failure.Tasks[1].Reason == "previous_failure", "Device failure became queue success");
             Check(failure.Tasks[0].Error?.Contains("synthetic tap failure", StringComparison.Ordinal) == true &&
                 failure.Tasks[0].FailureFrames is ["failure.png"], "Failure lost cause or registered frame");
+            var failureReport = RunReport.Build(failure.Directory).ToJson();
+            Check(failureReport["has_failures"]!.GetValue<bool>() && failureReport["evidence_complete"]!.GetValue<bool>(),
+                "Report resolved a registered failure frame relative to the process instead of its task");
+            string failureTask = failureReport["items"]![0]!["artifact"]!.GetValue<string>();
+            string failureImage = Path.Combine(Path.GetDirectoryName(failureTask)!, "failure.png");
+            byte[] failureBytes = await File.ReadAllBytesAsync(failureImage);
+            try
+            {
+                await File.AppendAllTextAsync(failureImage, "changed");
+                Check(!RunReport.Build(failure.Directory).ToJson()["evidence_complete"]!.GetValue<bool>(),
+                    "Report accepted a changed failure screenshot");
+                File.Delete(failureImage);
+                var missingReport = RunReport.Build(failure.Directory).ToJson();
+                Check(!missingReport["evidence_complete"]!.GetValue<bool>() &&
+                    missingReport["findings"]!.AsArray().Any(f => f?["code"]?.GetValue<string>() == "missing_artifact"),
+                    "Report accepted a missing failure screenshot");
+            }
+            finally { await File.WriteAllBytesAsync(failureImage, failureBytes); }
+
+            string failureSnapshot = Path.Combine(failure.Directory, "run.json");
+            string originalSnapshot = await File.ReadAllTextAsync(failureSnapshot);
+            string originalTask = await File.ReadAllTextAsync(failureTask);
+            foreach (string[] references in new[] { Array.Empty<string>(), new[] { "../failure.png" }, new[] { failureImage } })
+            {
+                var changedTask = JsonNode.Parse(originalTask)!;
+                changedTask["failureFrames"] = JsonSerializer.SerializeToNode(references);
+                var changedSnapshot = JsonNode.Parse(originalSnapshot)!;
+                changedSnapshot["tasks"]![0] = changedTask.DeepClone();
+                await File.WriteAllTextAsync(failureTask, changedTask.ToJsonString());
+                await File.WriteAllTextAsync(failureSnapshot, changedSnapshot.ToJsonString());
+                try
+                {
+                    Check(!RunReport.Build(failure.Directory).ToJson()["evidence_complete"]!.GetValue<bool>(),
+                        "Report accepted unregistered or redirected failure evidence");
+                }
+                finally
+                {
+                    await File.WriteAllTextAsync(failureTask, originalTask);
+                    await File.WriteAllTextAsync(failureSnapshot, originalSnapshot);
+                }
+            }
             await Fixture(true);
             var keepGoing = await queue.RunAsync([chain[0], new("independent", "observe")], options, new(artifacts, ContinueOnFailure: true));
             Check(keepGoing.Failed && keepGoing.Tasks[1].Outcome == TaskOutcome.Succeeded, "ContinueOnFailure could not execute an independent observation");

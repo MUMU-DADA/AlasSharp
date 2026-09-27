@@ -65,10 +65,9 @@ public sealed class RunReport
                     var input = JsonNode.Parse(ArtifactReader.ReadAllText(Path.Combine(taskRoot, "request.json")));
                     if (!JsonNode.DeepEquals(input, JsonSerializer.SerializeToNode(request, TaskQueue.Json)))
                         throw new InvalidDataException("任务工件输入与队列不同");
-                    if (JsonNode.Parse(ArtifactReader.ReadAllText(Path.Combine(taskRoot, "actions.json"))) is not JsonArray)
+                    if (JsonNode.Parse(ArtifactReader.ReadAllText(Path.Combine(taskRoot, "actions.json"))) is not JsonArray actions)
                         throw new InvalidDataException("动作工件不是数组");
-                    foreach (string frame in result.FailureFrames ?? [])
-                        if (!File.Exists(frame)) Finding("missing_artifact", "登记的失败帧不存在", frame);
+                    ValidateBoundary(taskRoot, result, actions.Count);
                     if (result.Reason == "previously_completed")
                     {
                         string source = result.Evidence?["sourceArtifact"]?.GetValue<string>() ?? "";
@@ -110,6 +109,39 @@ public sealed class RunReport
         catch (Exception error) when (IsArtifactError(error))
         { Finding(error is FileNotFoundException or DirectoryNotFoundException ? "missing_artifact" : "unreadable_artifact", error.Message); }
         return new RunReport(report);
+    }
+
+    private static void ValidateBoundary(string taskRoot, TaskResult result, int actionAttempts)
+    {
+        var boundary = result.Evidence?["boundary"]?.Deserialize<EngineSession.JsonObjectEvidence>(TaskQueue.Json);
+        string[] frames = result.FailureFrames ?? [];
+        if (boundary is null)
+        {
+            if (frames.Length != 0) throw new InvalidDataException("登记的失败帧缺少任务边界证据");
+            return;
+        }
+        if (boundary.ActionAttempts != actionAttempts)
+            throw new InvalidDataException("任务边界动作次数与动作工件不同");
+        if (boundary.Image is not { } image)
+        {
+            if (boundary.Sha256 is not null || boundary.FrameSequence is not null || frames.Length != 0)
+                throw new InvalidDataException("无截图的任务边界含有图像证据");
+            return;
+        }
+        // EngineSession stores a file name relative to this task, never to the
+        // process working directory. Do not let an artifact redirect the reader.
+        if (image is not ("frame.png" or "failure.png"))
+            throw new InvalidDataException("任务边界图像必须是任务目录内的截图文件");
+        if (boundary.FrameSequence is null or <= 0 || boundary.Sha256 is null ||
+            !Regex.IsMatch(boundary.Sha256, @"\A[0-9a-f]{64}\z"))
+            throw new InvalidDataException("任务边界缺少有效帧编号或图像哈希");
+        if (result.Outcome == TaskOutcome.Failed ? !frames.SequenceEqual(new[] { image }) : frames.Length != 0)
+            throw new InvalidDataException("失败帧登记与任务边界图像不同");
+        string path = Path.Combine(taskRoot, image);
+        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("任务边界图像必须是普通文件");
+        string hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)));
+        if (hash != boundary.Sha256) throw new InvalidDataException("任务边界图像哈希不同");
     }
 
     private static bool IsArtifactError(Exception error)

@@ -37,7 +37,7 @@
     summary.json             本次尝试最终结果
 ```
 
-run.json 原子替换，报告只展示当前尝试；断点跳过项指向以前的成功工件，不把多次尝试重复统计。报告检查请求、任务快照、动作文件及登记的失败帧；dry-run 与 succeeded 分开计数。未完成快照显示 running，缺失/损坏证据保留 findings，不能据工作线程结束判断业务成功。战役结果直接保留 runner 的 sortie-result/1 证据，报告不从单字段推断通关。
+run.json 原子替换，报告只展示当前尝试；断点跳过项指向以前的成功工件，不把多次尝试重复统计。报告检查请求、任务快照、动作文件及登记的失败帧；截图文件名相对于该任务目录解析，并核对任务边界中的帧编号、图像哈希、动作次数和失败帧登记。缺失或被修改的截图不计为完整证据。dry-run 与 succeeded 分开计数。未完成快照显示 running，缺失/损坏证据保留 findings，不能据工作线程结束判断业务成功。战役结果直接保留 runner 的 sortie-result/1 证据，报告不从单字段推断通关。
 
 运行 id 为随机值，最近运行按快照修改时间排序。`GET /api/report?stamp=` 返回报告，`GET /api/state` 包含 active、report、live_tasks、recent_logs 和 runs；当前 recent_logs 尚无新引擎实时日志接线。原始账号、设备、日志和截图只留忽略目录，入库证据须脱敏。
 
