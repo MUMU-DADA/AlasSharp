@@ -386,7 +386,45 @@ def profile_measure(request):
     return dict(size=size,points=points)
 
 
+def color_bars(request):
+    # Generic pixel measurement from base.utils.color_bar_percentage. No fleet,
+    # slot, server, threshold decision or device state is owned by this worker.
+    if set(request)!={'protocol','id','frame','operation','image','bars'}:raise ValueError('request_fields')
+    if request['protocol']!='alas-cv/1' or any(type(request[k]) is not int or request[k]<1 for k in ('id','frame')):raise ValueError('request_identity')
+    bars=request['bars']
+    if not isinstance(bars,list) or not 1<=len(bars)<=128:raise ValueError('bar_count')
+    image=decode(request['image'])
+    values=[]
+    for item in bars:
+        if not isinstance(item,dict) or set(item)!={'area','color','reverse','starter','threshold'}:raise ValueError('bar_fields')
+        area=item['area'];color=item['color'];starter=item['starter'];threshold=item['threshold']
+        if not isinstance(area,list) or len(area)!=4 or any(type(v) is not int for v in area) or area[2]<1 or area[3]<1 or area[2]*area[3]>30000:raise ValueError('bar_area')
+        if not isinstance(color,list) or len(color)!=3 or any(type(v) is not int or not 0<=v<=255 for v in color):raise ValueError('bar_color')
+        if type(item['reverse']) is not bool or type(starter) is not int or not 0<=starter<area[2] or type(threshold) is not int or not 1<=threshold<=255:raise ValueError('bar_parameters')
+        patch=crop(image,*area)
+        if item['reverse']:patch=patch[:,::-1,:]
+        previous=starter;value=0.
+        for _ in range(1280):
+            positive=cv2.subtract(patch,(*color,0)).max(axis=2)
+            negative=cv2.subtract((*color,0),patch).max(axis=2)
+            similarity=cv2.bitwise_not(cv2.add(positive,negative))
+            indices=np.where(np.any(similarity>255-threshold,axis=0))[0]
+            if not indices.size:
+                value=previous/area[2];break
+            index=int(indices[-1])
+            if index<=previous:
+                value=index/area[2];break
+            previous=index
+            left=max(index-5,0)
+            mask=np.where(similarity[:,left:index+1]>255-threshold)
+            color=np.mean(patch[:,left:index+1][mask],axis=0)
+        values.append(value)
+    return dict(values=values)
+
+
 def match(request):
+    if request.get('operation')=='color_bars':
+        return color_bars(request)
     if request.get('operation') in ('color_profile_peaks','template_points','letter_column_means'):
         return profile_measure(request)
     if request.get('operation') in ('image_mask','line_features','warp_features','correlation_features','contour_features'):

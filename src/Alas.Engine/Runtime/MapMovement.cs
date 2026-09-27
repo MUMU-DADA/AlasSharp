@@ -14,7 +14,8 @@ internal enum MapAction { Move, Fight, Mystery, ProbeBoss, Ammo }
 /// <summary>Commits a fleet move only after fresh visual arrival and complete interaction accounting.</summary>
 public sealed class MapMovement(CampaignState state, CampaignConfiguration configuration,
     IMapArrivalCamera camera, Func<MapArrivalCheck> createArrival,
-    Func<CancellationToken, ValueTask>? waitForInfoBar = null)
+    Func<CancellationToken, ValueTask>? waitForInfoBar = null,
+    Func<CancellationToken, ValueTask<CampaignWithdrawalEvidence>>? withdraw = null)
 {
     public ValueTask<MapMoveResult> MoveAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
@@ -79,6 +80,14 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
              landingGrid.IsBoss || landingGrid.IsFortress || landingGrid.IsMystery || landingGrid.IsAmmo))
             throw new NotSupportedException("Portal exit requires an interaction that is not committed by ordinary movement");
 
+        token.ThrowIfCancellationRequested();
+        if (state.Health.RetreatTriggered(state.FleetIndex, configuration.Health))
+        {
+            if (withdraw is null) throw new InvalidOperationException("Low HP retreat requires a withdrawal handler");
+            try { state.Withdrawal = await withdraw(token); }
+            finally { camera.Invalidate(); }
+            throw new CampaignEndedException("Withdraw: low HP");
+        }
         var result = await createArrival().TapAndCheckAsync(destination, options, token);
         if (result.Outcome == MapArrivalOutcome.Unconfirmed) return new(MapMoveOutcome.Unconfirmed, result);
         if (result.Outcome == MapArrivalOutcome.MapInterrupted) return new(MapMoveOutcome.Interrupted, result);

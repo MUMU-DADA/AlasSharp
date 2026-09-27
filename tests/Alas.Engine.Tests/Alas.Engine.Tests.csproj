@@ -13,6 +13,7 @@
     <None Include="native_strategy_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_fleet_selection_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_ammo_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_health_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_recovery_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_ocr_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_data_key_reference.py" CopyToOutputDirectory="PreserveNewest" />

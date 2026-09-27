@@ -14,7 +14,7 @@ public sealed class CampaignRunTask : ITaskRunner
     public void Validate(JsonObject? input)
     {
         TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
-            "fleet1Formation", "fleet2Formation", "fleetOrder");
+            "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl");
         var id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign run requires a compiled campaign rule");
         if (RuleCatalog.Create(id).StageName is null)
@@ -28,6 +28,7 @@ public sealed class CampaignRunTask : ITaskRunner
         _ = Formation(input, "fleet1Formation");
         _ = Formation(input, "fleet2Formation");
         _ = Order(input);
+        _ = FleetHealthInput.Read(input);
     }
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
@@ -51,6 +52,7 @@ public sealed class CampaignRunTask : ITaskRunner
             Fleet1Formation = Formation(request.Input, "fleet1Formation"),
             Fleet2Formation = Formation(request.Input, "fleet2Formation"),
             FleetOrder = Order(request.Input),
+            Health = FleetHealthInput.Read(request.Input),
             UseFleetLock = request.Input["fleetLock"]?.GetValue<bool>() ?? true
         };
         // Config inheritance is authoritative. Apply it before touching the

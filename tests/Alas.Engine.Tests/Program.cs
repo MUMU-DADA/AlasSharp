@@ -254,6 +254,15 @@ try
         return 0;
     }
 
+    if (args is ["--health", var healthPython, var healthUpstream, var healthArtifacts])
+    {
+        string folder = Path.GetFullPath(healthArtifacts);
+        Directory.CreateDirectory(folder);
+        await FleetHealthChecks.RunAsync(Path.GetFullPath(healthPython), Path.GetFullPath(healthUpstream), folder);
+        await CampaignMapCombatChecks.RunAsync(Path.GetFullPath(healthPython), Path.GetFullPath(healthUpstream));
+        return 0;
+    }
+
     if (args is ["--ammo-state", var ammoPython, var ammoUpstream, var ammoArtifacts])
     {
         string folder = Path.GetFullPath(ammoArtifacts);

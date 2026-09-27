@@ -142,6 +142,10 @@ internal static class CampaignFleetSelectorChecks
                 }, limit.Token);
                 Check(selected is { LogicalIndex: 1, Clicks: 1, FrameSequence: > 1 } &&
                     selected.DisplayedIndex == (reversed ? 2 : 1), "Session did not preserve observed fleet roles");
+                var healthState = new CampaignState(new MapDefinition("A1", "SP", ["A1"], ["A1"], []));
+                await host.InitializeHealthAsync(healthState, selected.LogicalIndex, new(), limit.Token);
+                Check(healthState.Health.Get(selected.LogicalIndex) is { Raw.Length: 6, FrameSequence: > 0 } &&
+                    healthState.Health.Get(2) is null, "Session did not initialize HP for the selected logical fleet");
                 var boundary = await session.SaveEvidenceAsync(folder, false);
                 Check(boundary.ActionAttempts == 1, "Session used the wrong fleet's formation or repeated the switch");
                 var actions = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(folder, "actions.json")))!.AsArray();

@@ -12,6 +12,8 @@ public sealed partial class CampaignState
     public int BattleCount { get; set; }
     public bool AutoSearch { get; set; }
     public int FleetIndex { get; set; } = 1;
+    public FleetHealthState Health { get; } = new();
+    public CampaignWithdrawalEvidence? Withdrawal { get; internal set; }
     public CampaignState(MapDefinition map)
     {
         Map = map;

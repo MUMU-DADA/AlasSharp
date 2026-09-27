@@ -79,12 +79,38 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
                 () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No air raid screenshot"), handler));
     }
     public MapMovement CreateMapMovement(MapCamera camera, CampaignConfiguration configuration)
-        => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration), EnsureNoMapInfoBarAsync);
+        => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration), EnsureNoMapInfoBarAsync,
+            token => WithdrawCampaignAsync("low_hp", token));
     public MapMovement CreateMapCombatMovement(MapCamera camera, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal)
         => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration,
             new MapCombatHandler(token => CreateCombatFlow(entrances).RunAutoAsync(token: token),
-                new MapMysteryItemHandler(Driver))), EnsureNoMapInfoBarAsync);
+                new MapMysteryItemHandler(Driver), token => ReadFleetHealthAsync(camera.State,
+                    camera.State.FleetIndex, configuration, token))), EnsureNoMapInfoBarAsync,
+            token => WithdrawCampaignAsync("low_hp", token));
+    private async ValueTask ReadFleetHealthAsync(CampaignState state, int fleet,
+        CampaignConfiguration configuration, CancellationToken token)
+        => _ = await new FleetHealthReader(Driver, _vision,
+            () => Driver.Frame ?? throw new InvalidOperationException("No fleet health screenshot"))
+            .ReadAsync(state.Health, fleet, configuration.Health, token);
+    async ValueTask ICampaignInMapHost.InitializeHealthAsync(CampaignState state, int fleet,
+        CampaignConfiguration configuration, CancellationToken token)
+    {
+        state.Health.Reset();
+        await ReadFleetHealthAsync(state, fleet, configuration, token);
+    }
+    ValueTask<CampaignWithdrawalEvidence> ICampaignInMapHost.WithdrawAsync(string reason, CancellationToken token)
+        => WithdrawCampaignAsync(reason, token);
+    private ValueTask<CampaignWithdrawalEvidence> WithdrawCampaignAsync(string reason, CancellationToken token)
+    {
+        var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
+        var observations = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No withdrawal screenshot"),
+            _vision, _assets, Driver.Server);
+        var guard = new MapUiRecovery(Driver, observations, _application, recovery, recovery);
+        return new CampaignWithdrawal(Driver, recovery, guard,
+            () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No withdrawal screenshot"))
+            .RunAsync(reason, TimeSpan.FromMinutes(1), token);
+    }
     private ValueTask EnsureNoMapInfoBarAsync(CancellationToken token)
     {
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
@@ -106,7 +132,8 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         var execution = CreateInMapCampaignExecution(rule, configuration, token);
         var exit = await execution.RunAsync();
         var operations = (InMapCampaignOperations)execution.Context.Operations;
-        return new(exit, execution.Context.State.BattleCount, operations.StageReturn, operations.InitialFleet, operations.AmmoPickups);
+        return new(exit, execution.Context.State.BattleCount, operations.StageReturn, operations.InitialFleet, operations.AmmoPickups,
+            execution.Context.State.Health.Observations, execution.Context.State.Withdrawal);
     }
     async ValueTask<bool> ICampaignInMapHost.VerifyInMapAsync(CancellationToken token)
     {

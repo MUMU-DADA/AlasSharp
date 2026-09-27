@@ -41,6 +41,8 @@ required 的前置条件缺失计为队列失败；正常边界停止不计业�
 
 具体输入由各 runner.Validate 定义。已编译地图声明不代表对应章节钩子和配置已迁完；可执行 RuleCatalog 仍只有已迁移的规则。战役 fleet1/fleet2/submarine 必须明确；情绪计算未迁完，当前须明确 emotionMode=ignore。campaign_run 的可选 fleet1Formation/fleet2Formation 为 line_ahead、double_line（默认）或 diamond，非法值在操作设备前拒绝；章节配置覆盖保留并传入地图执行。fleetOrder 接收 fleet1_mob_fleet2_boss（默认）、fleet1_boss_fleet2_mob、fleet1_all_fleet2_standby、fleet1_standby_fleet2_all。初始舰队选择/反转和对应阵型已接入，章节覆盖禁用二队时不反转；战中双舰队调度与潜艇实战仍有缺口。禁止按地图/页面补特例来绕过缺失语义。
 
+`campaign_run` / `campaign_resume` 的队列输入可设置 `hpControl: { "lowHpRetreat": true, "threshold": 0.3, "balanceWeight": "1000, 1000, 1000" }`。缺省遵循原生配置：关闭低血量撤退、阈值 0.3、等权重。权重支持中文逗号和单个整数的广播；拒绝负权重、全零、错误数量及非整数。阈值在 0–1 之间；这是加权血量，首次确认的有船槽位不会因战损归零而变为空槽。进图和战后返回地图时均读取六槽血量；工件的 `health` 保存原始值、加权值、首次槽位掩码和帧号。低血量触发撤退后须有退出动作和新帧的章节页确认，才输出 `withdrawal` 与 `sortie.outcome=withdrawn`，任务仍非成功。此输入不启用前排拖动换位或维修。
+
 CLI 公共参数为 --adb、--serial、--server、--assets、--python、--artifacts；OCR 任务使用 --models，动作另需 --allow-actions 和 --package。`campaign --chapter <规则列表>` 默认 dry-run，使用 --run --allow-actions 才执行；--fleet1-formation/--fleet2-formation 选择上述阵型，--fleet-order 指定舰队顺序。运行前读取 --help 核对参数。
 
 ## 待完成能力与验证

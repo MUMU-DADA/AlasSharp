@@ -13,7 +13,7 @@
 
 用法：
     python tools/diagnostics/verify_result_contract.py
-未构建 Release 的 Alas.Server 时，只跳过跨语言那一半并**显式说明**（不静默通过）。
+脚本构建独立离线 C# 参考程序；不调用产品 Server，也不因未构建而跳过跨语言验收。
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ from s3_campaign_execution import run_native_campaign       # noqa: E402
 from s3_campaign_outcome import finalize_sortie_result      # noqa: E402
 from s3_stub_campaign import FakeScreenCampaign, NativeRunCampaign, RecoveringNativeRunCampaign  # noqa: E402
 
-EXE = ROOT / 'src' / 'Alas.Server' / 'bin' / 'Release' / 'net10.0' / 'Alas.Server.exe'
+REFERENCE = HERE / 'result_contract_reference' / 'ResultContract.Reference.csproj'
 # 规则词表里的"真跑过一仗"步骤：手工正例要按生产形态带上它。
 BATTLE_STEP = {'step': 'execute_a_battle', 'round': 1, 'ms': 12.0}
 
@@ -312,23 +312,17 @@ def main() -> int:
         fixture.write_text(json.dumps({'contract': CONTRACT, 'cases': [
             {'name': i['name'], 'document': i['document'], 'expect': i['expect']}
             for i in cases]}, ensure_ascii=False, indent=1), encoding='utf-8')
-        if not EXE.is_file():
-            print()
-            print(f'[跳过] 未构建 {EXE.relative_to(ROOT)}；跨语言对拍未跑'
-                  f'（构建: dotnet build src\\Alas.Server\\Alas.Server.csproj -c Release）')
-            return 1 if failures else 0
-
         verdicts = tmpdir / 'verdicts.json'
-        proc = subprocess.run([str(EXE), 'contract', '--fixture', str(fixture),
-                               '--artifacts', str(artifact_dir), '--json', str(verdicts)],
+        proc = subprocess.run(['dotnet', 'run', '--project', str(REFERENCE), '-c', 'Release', '--',
+                               str(fixture), str(artifact_dir), str(verdicts)],
                               capture_output=True, text=True, encoding='utf-8',
                               errors='replace', timeout=120)
         print()
-        print('--- C# 侧（Alas.Server contract）---')
+        print('--- C# 侧（独立离线 ResultContract.Reference）---')
         for line in (proc.stdout or '').strip().splitlines():
             print('  ' + line)
         if proc.returncode != 0:
-            failures.append(f'Alas.Server contract 退出码 {proc.returncode}')
+            failures.append(f'ResultContract.Reference 退出码 {proc.returncode}')
         if proc.stderr:
             print(f'  stderr: {proc.stderr.strip()[:400]}')
 
@@ -338,6 +332,7 @@ def main() -> int:
             for item in cases:
                 got = actual.get(item['name'])
                 if got is None:
+                    mismatched += 1
                     failures.append(f"{item['name']}: C# 没给裁决")
                     continue
                 mine = item['python']
@@ -352,6 +347,8 @@ def main() -> int:
                         f"C#(outcome={got['outcome']},cleared={got['cleared']},"
                         f"违例={sorted(got['violations'])})")
             print(f'  跨语言逐例一致: {len(cases) - mismatched}/{len(cases)}')
+        else:
+            failures.append('C# 参考程序没有生成裁决文件')
 
     print()
     if failures:

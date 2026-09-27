@@ -1,8 +1,11 @@
 # 结果合同 sortie-result/1（R0）
 
-一次出击的结论只有一份定义，就是这份合同。生产方是 **Python 宿主**（跑上游 `Campaign.run()`），
-消费方是 **C# 运行时**（`Alas.Campaign.SortieContract`），两侧各实现一遍同一张规则表，
+一次出击的结论只有一份定义，就是这份合同。新产品由 **Alas.Engine** 产生结果，
+`CampaignResumeTask` 在完整结算证据成立时才判通关；已确认撤退为 `withdrawn`，不算任务成功。
+旧 Python 宿主和 `Alas.Campaign.SortieContract` 保留为离线合同参考，
 由 `tools/diagnostics/verify_result_contract.py` **逐例对拍**，不一致就算失败。
+脚本构建 `tools/diagnostics/result_contract_reference`，仅链接旧合同及其检查器源码，
+不加载 Core 程序集或调用产品 Server。缺少裁决文件或参考程序构建失败均不能通过。
 
 > 为什么值得单独做一层合同：`CampaignEnd` 只表示"本次出击结束"——上游**撤退也抛它**。
 > 早期只要有人写 `cleared = campaign_end`，撤退就会被记成通关，而且事后从日志里看不出来。

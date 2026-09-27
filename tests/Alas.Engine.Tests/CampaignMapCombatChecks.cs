@@ -298,6 +298,13 @@ internal static class CampaignMapCombatChecks
 
     private sealed class Host : ICampaignInMapHost
     {
+        public ValueTask InitializeHealthAsync(CampaignState state, int fleet, CampaignConfiguration config, CancellationToken token)
+        {
+            Check(StrategyCalls == 1 && Camera is null, "Health initialization did not run after strategy and before scanning");
+            state.Health.Commit(fleet, 1, [.9, 0, 0, .9, 0, 0], config.Health);
+            return ValueTask.CompletedTask;
+        }
+        public ValueTask<CampaignWithdrawalEvidence> WithdrawAsync(string reason, CancellationToken token) => throw new InvalidOperationException();
         public bool InMap { get; init; } = true;
         public bool HasMystery { get; init; }
         public int FleetLockCalls { get; private set; }

@@ -8,13 +8,16 @@ public interface ICampaignInMapHost
     ValueTask<bool> VerifyInMapAsync(CancellationToken token);
     ValueTask EnsureFleetLockAsync(bool enabled, CancellationToken token);
     ValueTask<FleetSelection> PrepareInitialFleetAsync(CampaignConfiguration configuration, CancellationToken token);
+    ValueTask InitializeHealthAsync(CampaignState state, int fleet, CampaignConfiguration configuration, CancellationToken token);
+    ValueTask<CampaignWithdrawalEvidence> WithdrawAsync(string reason, CancellationToken token);
     ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state,
         CampaignConfiguration configuration, CancellationToken token);
     CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration);
 }
 
 public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount, MapArrivalResult? StageReturn,
-    FleetSelection? InitialFleet = null, IReadOnlyList<AmmoPickupEvidence>? AmmoPickups = null);
+    FleetSelection? InitialFleet = null, IReadOnlyList<AmmoPickupEvidence>? AmmoPickups = null,
+    IReadOnlyList<FleetHealthSnapshot>? Health = null, CampaignWithdrawalEvidence? Withdrawal = null);
 public interface ICampaignExecutionService
 {
     ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
@@ -33,6 +36,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
 
     public ValueTask CheckEmotionAsync(int battles)
     {
+        _ = configuration.Health.Weights();
         if (battles < 0) throw new ArgumentOutOfRangeException(nameof(battles));
         if (configuration.EmotionMode != CampaignEmotionMode.Ignore)
             throw Missing("emotion calculation before map entry");
@@ -57,6 +61,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
         if (!_entered || !ReferenceEquals(state.Map, definition))
             throw new InvalidOperationException("Map initialization requires the verified campaign declaration");
         InitialFleet = await host.PrepareInitialFleetAsync(configuration, token);
+        await host.InitializeHealthAsync(state, InitialFleet.LogicalIndex, configuration, token);
         var ready = await CampaignMapInitializer.InitializeAsync(state, configuration, InitialFleet,
             (map, ct) => host.CreateCameraAsync(map, configuration, ct), TimeSpan.FromMinutes(2), token);
         _combat = host.CreateCombat(ready.Camera, configuration);
@@ -83,7 +88,11 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask ReadLevelsAsync() => throw Missing("auto-search level read");
     public ValueTask AutoSearchMoveAsync() => throw Missing("auto-search movement");
     public ValueTask AutoSearchCombatAsync(int fleetIndex) => throw Missing("auto-search combat");
-    public ValueTask WithdrawAsync() => throw Missing("campaign withdrawal");
+    public async ValueTask WithdrawAsync()
+    {
+        state.Withdrawal = await host.WithdrawAsync("campaign_error", token);
+        throw new CampaignEndedException("Withdraw: campaign error");
+    }
 
     private static NotSupportedException Missing(string operation)
         => new($"C# campaign resume has not ported {operation}");
