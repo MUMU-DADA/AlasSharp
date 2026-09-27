@@ -749,7 +749,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
     private string? _logStream;
     private long _instanceGeneration;
     private long _nativeLogCursor;
-    private long _coreLogCursor;
+    private long _engineLogCursor;
     private JsonObject? _observation;
     public IReadOnlyList<RailTaskViewModel> NativeTasks { get; private set; } = [];
     public event EventHandler? ObservationChanged;
@@ -1000,7 +1000,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         if (!_previewData)
         {
             _logStream = null;
-            _nativeLogCursor = _coreLogCursor = 0;
+            _nativeLogCursor = _engineLogCursor = 0;
             _observation = null;
             NativeTasks = [];
             ClearLogs();
@@ -1019,10 +1019,15 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         _otherInstanceRunning = status == "running" && !selected;
         IsSchedulerRunning = status == "running" && selected;
         _stopRequested = IsSchedulerRunning && active["stop_requested"]?.GetValue<bool>() == true;
-        _schedulerPhase = selected ? active["scheduler"]?["phase"]?.GetValue<string>() ?? status : "idle";
+        var engine = selected ? active["engine"] as JsonObject : null;
+        // The scheduler field is accepted only as a transport compatibility
+        // fallback for older servers and UI fixtures.  Engine-produced state
+        // always takes the typed engine activity above.
+        var activity = engine ?? (selected ? active["scheduler"] as JsonObject : null);
+        _schedulerPhase = activity?["phase"]?.GetValue<string>() ?? (selected ? status : "idle");
         var configured = state["overview"] as JsonObject;
         if (configured?["instance"]?.GetValue<string>() != InstanceName) configured = null;
-        _observation = IsSchedulerRunning && active["scheduler"] is JsonObject native ? native : configured;
+        _observation = IsSchedulerRunning && activity is not null ? activity : configured;
         NativeTasks = SchedulerObservation.Tasks(_observation, IsSchedulerRunning);
         if (!_previewData)
         {
@@ -1039,7 +1044,7 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
         if (_logStream != stream)
         {
             _logStream = stream;
-            _nativeLogCursor = _coreLogCursor = 0;
+            _nativeLogCursor = _engineLogCursor = 0;
             ClearLogs();
         }
         var additions = new List<JsonObject>();
@@ -1052,8 +1057,9 @@ public sealed class OverviewViewModel : INotifyPropertyChanged
                     cursor = sequence;
                 }
         }
-        Collect(state["recent_logs"] as JsonArray, ref _coreLogCursor);
-        Collect(active["scheduler"]?["logs"]?["entries"] as JsonArray, ref _nativeLogCursor);
+        Collect(state["recent_logs"] as JsonArray, ref _engineLogCursor);
+        var activity = active["engine"] as JsonObject ?? active["scheduler"] as JsonObject;
+        Collect(activity?["logs"]?["entries"] as JsonArray, ref _nativeLogCursor);
         foreach (var entry in additions.OrderBy(entry => DateTimeOffset.TryParse(entry["time"]?.GetValue<string>(),
                      CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var timestamp) ? timestamp : DateTimeOffset.MinValue))
         {

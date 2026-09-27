@@ -43,18 +43,24 @@ public sealed class EngineControlWorkspace
             started = _startedAt; finished = _finishedAt; error = _error;
             stopRequested = _stopRequested;
         }
+        JsonObject queue = LoadQueue();
+        string status = running ? "running" : started is null ? "idle" : error is null ? "completed" : "failed";
         JsonObject? report = runDirectory is not null && RunReport.IsRunDirectory(runDirectory)
             ? RunReport.Build(runDirectory).ToJson() : null;
         var active = new JsonObject
         {
-            ["status"] = running ? "running" : started is null ? "idle" : error is null ? "completed" : "failed",
+            ["status"] = status,
             ["mode"] = mode, ["kind"] = kind, ["instance"] = instance,
-            ["scheduler"] = null, ["started_at"] = started, ["finished_at"] = finished,
+            // The control plane exposes the Engine queue as a typed activity.
+            // Keep the legacy scheduler slot empty so clients cannot mistake
+            // configuration task names for an upstream scheduler process.
+            ["engine"] = EngineActivity(queue, status, kind), ["scheduler"] = null,
+            ["started_at"] = started, ["finished_at"] = finished,
             ["stop_requested"] = stopRequested, ["error"] = error, ["run_directory"] = runDirectory,
         };
         var state = new JsonObject
         {
-            ["queue"] = LoadQueue(), ["active"] = active, ["report"] = report,
+            ["queue"] = queue, ["active"] = active, ["report"] = report,
             ["live_tasks"] = report?["items"]?.DeepClone() ?? new JsonArray(), ["recent_logs"] = new JsonArray(),
             ["runs"] = RunReport.Summarize(_artifacts, 20),
         };
@@ -66,6 +72,33 @@ public sealed class EngineControlWorkspace
             state["overview"] = overview;
         }
         return state;
+    }
+
+    private static JsonObject? EngineActivity(JsonObject queue, string status, string? currentKind)
+    {
+        if (currentKind is null && status == "idle") return null;
+        var tasks = new JsonArray();
+        if (queue["tasks"] is JsonArray entries)
+            foreach (var entry in entries.OfType<JsonObject>())
+            {
+                string? id = entry["id"]?.GetValue<string>();
+                string? kind = entry["kind"]?.GetValue<string>();
+                if (id is null || kind is null) continue;
+                tasks.Add(new JsonObject
+                {
+                    ["id"] = id, ["kind"] = kind,
+                    ["state"] = status == "running" && kind == currentKind ? "running" :
+                        status == "completed" ? "completed" : status == "failed" ? "failed" : "pending"
+                });
+            }
+        return new JsonObject
+        {
+            ["contract"] = "engine-activity/1",
+            ["source"] = "engine-queue",
+            ["phase"] = status,
+            ["task"] = currentKind,
+            ["tasks"] = tasks
+        };
     }
 
     public IReadOnlyList<ConfigInstance> Instances(ConfigWorkspace configs)

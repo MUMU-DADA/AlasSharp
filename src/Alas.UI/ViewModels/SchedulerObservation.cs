@@ -3,34 +3,59 @@ using System.Text.Json.Nodes;
 
 namespace Alas.UI.ViewModels;
 
-/// <summary>Display native observations verbatim; this model never schedules tasks.</summary>
+/// <summary>Display Engine activity observations verbatim; this model never schedules tasks.</summary>
 public static class SchedulerObservation
 {
     public static IReadOnlyList<RailTaskViewModel> Tasks(JsonObject? snapshot, bool running)
     {
         var result = new List<RailTaskViewModel>();
-        string? current = running && Text(snapshot?["phase"]) == "running" ? Text(snapshot?["task"]) : null;
+        bool engineActivity = Text(snapshot?["source"]) == "engine-queue";
+        string? current = running && Text(snapshot?["phase"]) == "running"
+            ? Text(snapshot?["task"]) : null;
         if (!string.IsNullOrEmpty(current))
-            result.Add(Task(current, Text(snapshot?["next_run"]), "running"));
+            result.Add(Task(current, Text(snapshot?["next_run"]), "running", engineActivity));
+        if (snapshot?["tasks"] is JsonArray engineTasks)
+            foreach (var item in engineTasks.OfType<JsonObject>())
+            {
+                string? name = Text(item["kind"]);
+                string? state = Text(item["state"]);
+                if (name is null || name == current || state is null || state == "completed") continue;
+                result.Add(Task(name, Text(item["next_run"]), state == "failed" ? "failed" : "pending", engineActivity));
+            }
         foreach (string state in new[] { "pending", "waiting" })
             if (snapshot?[state] is JsonArray tasks)
                 foreach (var item in tasks.OfType<JsonObject>())
                     if (Text(item["name"]) is { Length: > 0 } name && name != current)
-                        result.Add(Task(name, Text(item["next_run"]), state));
+                        result.Add(Task(name, Text(item["next_run"]), state, engineActivity));
         return result;
     }
 
-    private static RailTaskViewModel Task(string key, string? nextRun, string state)
+    private static RailTaskViewModel Task(string key, string? nextRun, string state, bool engineActivity)
     {
-        string name = key;
+        string name = engineActivity ? EngineTaskLabels.GetValueOrDefault(key, key) : LegacyTaskLabel(key);
+        return new RailTaskViewModel(name, nextRun ?? "", state,
+            state == "running" ? "运行中" : state == "pending" ? "待运行" : state == "failed" ? "失败" : "等待中");
+    }
+
+    private static string LegacyTaskLabel(string key)
+    {
         foreach (var (_, _, _, tasks, labels) in TaskCatalog.Groups)
         {
             int index = Array.IndexOf(tasks, key);
-            if (index >= 0) { name = labels[index]; break; }
+            if (index >= 0) return labels[index];
         }
-        return new RailTaskViewModel(name, nextRun ?? "", state,
-            state == "running" ? "运行中" : state == "pending" ? "待运行" : "等待中");
+        return key;
     }
+
+    private static readonly IReadOnlyDictionary<string, string> EngineTaskLabels =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["observe"] = "读取页面状态", ["navigate"] = "页面导航",
+            ["data_key"] = "领取数据", ["map_observe"] = "读取地图状态",
+            ["campaign_stages"] = "读取关卡", ["campaign_select"] = "选择关卡",
+            ["campaign_fleet_prepare"] = "准备舰队", ["campaign_run"] = "执行战役",
+            ["campaign_resume"] = "继续战役"
+        };
 
     // Labels and image mapping follow ResourceCards.tsx; unknown keys remain visible.
     private static readonly Dictionary<string, (string Label, string? Image)> ResourceNames = new()

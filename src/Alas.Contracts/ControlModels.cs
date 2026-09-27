@@ -40,6 +40,9 @@ public sealed record ControlActivity
     public string? Mode { get; init; }
     public string? Kind { get; init; }
     public string? Instance { get; init; }
+    /// <summary>Typed activity emitted by Alas.Engine's queue executor.</summary>
+    public JsonObject? Engine { get; init; }
+    /// <summary>Compatibility projection for older control snapshots.</summary>
     public JsonObject? Scheduler { get; init; }
     public string? StartedAt { get; init; }
     public string? FinishedAt { get; init; }

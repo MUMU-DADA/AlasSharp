@@ -6,7 +6,7 @@ using Alas.UI.ViewModels;
 namespace Alas.UI.Simulation;
 
 /// <summary>
-/// Session-local display fixtures. No Core, transport, timers, files, Python or devices.
+/// Session-local display fixtures. No Engine, transport, timers, files, Python or devices.
 /// Requests exercise the same UI adapters, but only mutate these in-memory samples.
 /// This deliberately does not model or validate the game's business rules.
 /// </summary>

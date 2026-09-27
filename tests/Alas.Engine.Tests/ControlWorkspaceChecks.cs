@@ -25,6 +25,10 @@ internal static class ControlWorkspaceChecks
         await Finished(workspace);
         var state = workspace.State();
         Check(state["active"]!["status"]!.GetValue<string>() == "completed", "Dry-run did not finish: " + state["active"]);
+        Check(state["active"]!["engine"]!["contract"]!.GetValue<string>() == "engine-activity/1" &&
+            state["active"]!["engine"]!["source"]!.GetValue<string>() == "engine-queue" &&
+            state["active"]!["engine"]!["tasks"]!.AsArray().Count == 2,
+            "Engine activity snapshot did not describe the completed queue");
         var report = state["report"]!.AsObject();
         Check(report["queue_outcome"]!.GetValue<string>() == "dry_run" && report["evidence_complete"]!.GetValue<bool>(), "Engine report could not read Engine artifacts");
         Check(report["totals"]!["tasks_dry_run"]!.GetValue<int>() == 2 &&

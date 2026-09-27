@@ -51,7 +51,7 @@ public interface IConfigInstancesBackend
     Task DeleteInstanceAsync(string instance, string revision, CancellationToken cancellationToken = default);
 }
 
-/// <summary>未接入 Core 时的实现：**如实抛错**，由页面显示真实错误，不伪造实例列表。</summary>
+/// <summary>未接入 Engine 时的实现：**如实抛错**，由页面显示真实错误，不伪造实例列表。</summary>
 public sealed class DisconnectedConfigInstancesBackend : IConfigInstancesBackend
 {
     public static DisconnectedConfigInstancesBackend Instance { get; } = new();
