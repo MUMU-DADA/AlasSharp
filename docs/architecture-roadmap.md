@@ -147,7 +147,7 @@ MovableEnemyMatcher 用矩形 Hungarian 分配替代上游指数级排列，保�
 
 `CampaignObjectives` 直接迁移 `FastForwardHandler.map_get_info / triggered_map_stop / campaign_name_increase`：严格大于 .95 的进度、三星与安全状态共同决定停止；缺少对应全敌星且目标为三星/安全时启用全清，第一星已达成则关闭地图剧情标记。章节 Config 二次应用后仍保留本局观测。关卡递增保留自定义链、A/B 连贯开关、默认链及活动文件存在性判据；主线按原生不检查下一关文件，因此写入下一关不代表该关已具备可执行 C# 规则。
 
-`CampaignAchievement` 在确认目标达成后按原生普通/困难/舰队准备页取消，取得晚于进度观察的章节页帧才写回配置。`ConfigWorkspace` 按原生字段来源更新 Campaign.Name 或 Scheduler.Enable，校验设备身份与相关字段版本，保留同时发生的无关修改。部分取消、返页和写回尝试保存为 `map-stop.json`；失败不进入出击，也不假定配置已保存。任务返回 Skipped / map_achievement_reached，required 任务仍按队列合同使批次失败；没有自动继续下一关的调度器。
+`CampaignAchievement` 在确认目标达成后按原生普通/困难/舰队准备页取消，取得晚于进度观察的章节页帧才写回 profile。`EngineProfileStore` 按 Engine typed 状态更新 `campaign.achievement.stage` 或 `enabled`，校验设备身份与 profile 版本，保留同时发生的无关修改。部分取消、返页和写回尝试保存为 `map-stop.json`；失败不进入出击，也不假定 profile 已保存。任务返回 Skipped / map_achievement_reached，required 任务仍按队列合同使批次失败；没有自动继续下一关的调度器。
 
 全清分派现接通塞壬/堡垒选敌与移动普通敌人的第二舰队成本优先；后者不混入权重。最后一个堡垒清除后，通用舰队路网刷新按原生释放机关阻挡。上游候选合并使用对象哈希集合，同优先级无跨进程固定顺序；C# 在允许的最小候选内保留声明顺序，未新增地图特例。
 
@@ -177,7 +177,7 @@ Engine 原先只关闭自动寻敌，没有读取地图准备状态和设置周�
 
 ### 独立心情控制
 
-EmotionRules / CampaignEmotion 已直接迁移原生六分钟分段恢复、誓约与宿舍速度、上限、负值下次更新归零、四种舰队顺序的入图预估、严格恢复时刻和战斗加载后的消耗。ConfigWorkspace 按 General → Alas → 任务公共组 → 当前任务的原生字段优先级绑定；两队记录按各自字段来源写回，保留无关配置，采用锁、版本核对和原子文件替换。EngineSession 绑定实例与设备身份，地图舰队锁的等待使用逻辑舰队，战斗准备等待/扣减使用画面舰队；任务边界清除控制器和证据。没有新增 Python 产品业务操作、JSON 执行计划或 Core 调用。
+EmotionRules / CampaignEmotion 已直接迁移原生六分钟分段恢复、誓约与宿舍速度、上限、负值下次更新归零、四种舰队顺序的入图预估、严格恢复时刻和战斗加载后的消耗。EngineProfileStore 直接读写 `campaign.emotion.fleets` 与 `nextRun`，保留无关 profile 字段，采用锁、版本核对和原子文件替换。EngineSession 绑定实例与设备身份，地图舰队锁的等待使用逻辑舰队，战斗准备等待/扣减使用画面舰队；任务边界清除控制器和证据。没有新增 Python 产品业务操作、JSON 执行计划或 Core 调用。
 
 入口门控、战斗准备、CLI、Server/桌面组合均已接线；图内 resume 缺少倍率证据，计算模式现已明确拒绝；计算策略与缺省值见[任务文档](tasks.md)。心情不足先写两队记录及 NextRun，再返回跳过；required 任务仍使批次失败，不伪造自动重试或完成。错误组合提前拒绝、记录与延后原子写入是明确收紧的原生副作用；已确认开战的扣减不接受取消撤销，保存失败停止执行并保存未写入的尝试。
 

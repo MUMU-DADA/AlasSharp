@@ -10,13 +10,13 @@ namespace Alas.Engine.Runtime;
 
 public sealed record EngineSessionOptions(string Adb, string Serial, GameServer Server, string Assets, string Python,
     string? ApplicationPackage = null, string? ModelDirectory = null, bool AllowActions = false,
-    string? ConfigRoot = null, string? ConfigInstance = null)
+    string? ProfileRoot = null, string? ProfileInstance = null)
 {
-    public bool HasEmotionStore => !string.IsNullOrWhiteSpace(ConfigRoot) && !string.IsNullOrWhiteSpace(ConfigInstance);
-    public void ValidateConfigBinding()
+    public bool HasProfileStore => !string.IsNullOrWhiteSpace(ProfileRoot) && !string.IsNullOrWhiteSpace(ProfileInstance);
+    public void ValidateProfileBinding()
     {
-        if ((ConfigRoot is not null || ConfigInstance is not null) && !HasEmotionStore)
-            throw new ArgumentException("Configuration root and instance must be supplied together");
+        if ((ProfileRoot is not null || ProfileInstance is not null) && !HasProfileStore)
+            throw new ArgumentException("Engine profile root and instance must be supplied together");
     }
 }
 
@@ -41,11 +41,11 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     public TaskCapabilities Capabilities { get; }
     public EngineSession(EngineSessionOptions options)
     {
-        options.ValidateConfigBinding();
+        options.ValidateProfileBinding();
         _options = options;
         if (options.AllowActions && string.IsNullOrWhiteSpace(options.ApplicationPackage))
             throw new ArgumentException("Device actions require an explicit game application package");
-        Capabilities = new(options.AllowActions, options.ModelDirectory is not null, options.HasEmotionStore);
+        Capabilities = new(options.AllowActions, options.ModelDirectory is not null, options.HasProfileStore);
         _device = new JournalDevice(new AdbDevice(options.Adb, options.Serial, options.AllowActions));
         _application = options.ApplicationPackage is null ? new UnconfiguredApplication() :
             new JournalApplication(new AdbApplication(options.Adb, options.Serial, options.ApplicationPackage, options.AllowActions), _device);

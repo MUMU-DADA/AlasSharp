@@ -26,7 +26,7 @@ internal static partial class EmotionChecks
         Check(native.ExitCode == 0, "Native emotion oracle failed: " + native.Error);
         var data = JsonNode.Parse(await File.ReadAllTextAsync(output))!;
         Check(data["source"]!.GetValue<string>() == EmotionRules.Source.Sha256, "Native emotion source drifted");
-        Check(data["configSource"]!.GetValue<string>() == ConfigWorkspace.EmotionBindingSource.Sha256, "Native config binding source drifted");
+        Check(data["configSource"]!.GetValue<string>() == EngineProfileStore.EmotionBindingSource.Sha256, "Native config binding source drifted");
         foreach (var sample in data["arithmetic"]!.AsArray())
         {
             var settings = new FleetEmotionSettings(sample!["control"]!.GetValue<string>() switch
@@ -125,27 +125,31 @@ internal static partial class EmotionChecks
 
     private static JsonObject Defaults(int value = 119, DateTimeOffset? at = null)
     {
-        var emotion = new JsonObject();
-        for (int i = 1; i <= 2; i++)
-        {
-            string p = "Fleet" + i;
-            emotion[p + "Value"] = value; emotion[p + "Record"] = Local(at ?? Instant(1700000040));
-            emotion[p + "Control"] = "prevent_green_face"; emotion[p + "Recover"] = "not_in_dormitory"; emotion[p + "Oath"] = false;
-        }
+        string recorded = Local(at ?? Instant(1700000040));
         return new JsonObject
         {
-            ["Alas"] = new JsonObject { ["Emulator"] = new JsonObject { ["Serial"] = "offline-replay", ["PackageName"] = "org.example.game" } },
-            ["Main"] = new JsonObject { ["Emotion"] = emotion,
-                ["Scheduler"] = new JsonObject { ["NextRun"] = "2020-01-01 00:00:00" }, ["Unrelated"] = new JsonObject { ["Keep"] = 7 } }
+            ["device"] = new JsonObject { ["serial"] = "offline-replay", ["package"] = "org.example.game", ["server"] = "cn" },
+            ["dashboard"] = new JsonObject { ["oil"] = new JsonObject { ["value"] = 100, ["limit"] = 200 } },
+            ["campaign"] = new JsonObject
+            {
+                ["emotion"] = new JsonObject
+                {
+                    ["fleets"] = new JsonArray(
+                        new JsonObject { ["value"] = value, ["recordedAt"] = recorded, ["control"] = "prevent_green_face", ["recovery"] = "not_in_dormitory", ["oath"] = false },
+                        new JsonObject { ["value"] = value, ["recordedAt"] = recorded, ["control"] = "prevent_green_face", ["recovery"] = "not_in_dormitory", ["oath"] = false }),
+                    ["nextRun"] = "2020-01-01 00:00:00"
+                },
+                ["achievement"] = new JsonObject { ["event"] = "campaign_main", ["stage"] = "1-1", ["enabled"] = true }
+            },
+            ["extra"] = new JsonObject { ["keep"] = 7 }
         };
     }
     private static string Local(DateTimeOffset time) => time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
-    private static async Task<(ConfigWorkspace Workspace, string Root)> FixtureAsync(string artifacts, JsonObject template, JsonObject? raw = null)
+    private static async Task<(EngineProfileStore Workspace, string Root)> FixtureAsync(string artifacts, JsonObject template, JsonObject? raw = null)
     {
         string root = Path.Combine(artifacts, "config-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(Path.Combine(root, "config"));
-        await File.WriteAllTextAsync(Path.Combine(root, "config/template.json"), template.ToJsonString());
-        await File.WriteAllTextAsync(Path.Combine(root, "config/fixture.json"), (raw ?? new JsonObject { ["Alas"] = new JsonObject() }).ToJsonString());
+        Directory.CreateDirectory(Path.Combine(root, "profiles"));
+        await File.WriteAllTextAsync(Path.Combine(root, "profiles/fixture.json"), (raw ?? template).ToJsonString());
         return (new(root), root);
     }
 
@@ -153,51 +157,45 @@ internal static partial class EmotionChecks
     {
         foreach (var sample in bindings)
         {
-            var template = sample!["data"]!.DeepClone().AsObject();
-            string task = sample["task"]!.GetValue<string>();
-            var defaults = Defaults();
-            var fields = template[task]!["Emotion"]!.AsObject();
-            foreach (var pair in defaults["Main"]!["Emotion"]!.AsObject())
-                if (!fields.ContainsKey(pair.Key)) fields[pair.Key] = pair.Value!.DeepClone();
-            template[task]!["Scheduler"] = defaults["Main"]!["Scheduler"]!.DeepClone();
-            var (workspace, root) = await FixtureAsync(artifacts, template);
-            var store = workspace.EmotionStore("fixture", task);
+            int[] expected = Numbers(sample!["values"]!);
+            var defaults = Defaults(expected[0]);
+            defaults["campaign"]!["emotion"]!["fleets"]![1]!["value"] = expected[1];
+            var (workspace, root) = await FixtureAsync(artifacts, defaults);
+            var store = workspace.EmotionStore("fixture");
             var state = await store.ReadAsync(default);
-            Check(state.Fleets.Select(f => f.Value).SequenceEqual(Numbers(sample["values"]!)), "Native field owner read differs");
+            Check(state.Fleets.Select(f => f.Value).SequenceEqual(expected), "Engine profile emotion read differs");
             var now = Instant(1700000040.75);
             var saved = await store.SaveAsync(state, [17, 23], now, now.AddHours(2), default);
-            var raw = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(root, "config/fixture.json")))!;
-            for (int i = 0; i < 2; i++)
-                Check(raw[sample["owners"]![i]!.GetValue<string>()]!["Emotion"]!["Fleet" + (i + 1) + "Value"]!.GetValue<int>() == (i == 0 ? 17 : 23),
-                    "Emotion was saved to task instead of its native field owner");
-            Check(saved.Fleets.All(f => f.RecordedAt == Instant(1700000040)) &&
-                raw[task]!["Scheduler"]!["NextRun"]!.GetValue<string>() == Local(now.AddHours(2)), "Local second-level records or NextRun differ");
+            var raw = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(root, "profiles/fixture.json")))!;
+            Check(raw["campaign"]!["emotion"]!["fleets"]![0]!["value"]!.GetValue<int>() == 17 &&
+                raw["campaign"]!["emotion"]!["fleets"]![1]!["value"]!.GetValue<int>() == 23 &&
+                saved.Fleets.All(f => f.RecordedAt == Instant(1700000040)), "Engine profile emotion persistence differs");
+            Check(raw["campaign"]!["emotion"]!["nextRun"]!.GetValue<string>() == now.AddHours(2).ToLocalTime().ToString("O", CultureInfo.InvariantCulture), "Engine profile nextRun differs");
         }
         var setup = await FixtureAsync(artifacts, Defaults());
         var identity = new EmotionDeviceIdentity("offline-replay", "org.example.game", GameServer.Cn);
-        var first = setup.Workspace.EmotionStore("fixture", "Main", identity);
-        var other = new ConfigWorkspace(setup.Root).EmotionStore("fixture", "Main", identity);
-        var expected = await first.ReadAsync(default);
-        string path = Path.Combine(setup.Root, "config/fixture.json");
+        var first = setup.Workspace.EmotionStore("fixture", identity);
+        var other = new EngineProfileStore(setup.Root).EmotionStore("fixture", identity);
+        var expectedState = await first.ReadAsync(default);
+        string path = Path.Combine(setup.Root, "profiles/fixture.json");
         var rawData = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
-        rawData["Extra"] = new JsonObject { ["Keep"] = 91 };
+        rawData["extra"] = new JsonObject { ["Keep"] = 91 };
         await File.WriteAllTextAsync(path, rawData.ToJsonString());
-        var savedState = await first.SaveAsync(expected, [100, 98], Instant(1700000041.999), null, default);
-        Check(setup.Workspace.Get("fixture").Values["Extra"]!["Keep"]!.GetValue<int>() == 91 &&
-            setup.Workspace.Get("fixture").Values["Main"]!["Unrelated"]!["Keep"]!.GetValue<int>() == 7, "Emotion save erased unrelated edits/defaults");
-        await Rejects<ConfigWorkspaceException>(() => other.SaveAsync(expected, [80, 80], Instant(1700000042), null, default).AsTask());
-        File.Copy(path, Path.Combine(setup.Root, "config/second.json"));
-        var second = setup.Workspace.EmotionStore("second", "Main", identity);
+        var savedState = await first.SaveAsync(expectedState, [100, 98], Instant(1700000041.999), null, default);
+        Check(setup.Workspace.Get("fixture").Values["extra"]!["Keep"]!.GetValue<int>() == 91, "Emotion save erased unrelated profile values");
+        await Rejects<EngineProfileException>(() => other.SaveAsync(expectedState, [80, 80], Instant(1700000042), null, default).AsTask());
+        File.Copy(path, Path.Combine(setup.Root, "profiles/second.json"));
+        var second = setup.Workspace.EmotionStore("second", identity);
         await second.SaveAsync(await second.ReadAsync(default), [75, 76], Instant(1700000043), null, default);
         Check((await first.ReadAsync(default)).Fleets.Select(f => f.Value).SequenceEqual([100, 98]), "Another instance changed emotion state");
-        await Rejects<ConfigWorkspaceException>(() => setup.Workspace.EmotionStore("fixture", "Main", identity with { Serial = "different-device" }).ReadAsync(default).AsTask());
+        await Rejects<EngineProfileException>(() => setup.Workspace.EmotionStore("fixture", identity with { Serial = "different-device" }).ReadAsync(default).AsTask());
         rawData = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
-        rawData["Alas"]!["Emulator"] = new JsonObject { ["Serial"] = "changed-device", ["PackageName"] = identity.Package };
+        rawData["device"]!["serial"] = "changed-device";
         await File.WriteAllTextAsync(path, rawData.ToJsonString());
-        await Rejects<ConfigWorkspaceException>(() => first.SaveAsync(savedState, [90, 90], Instant(1700000044), null, default).AsTask());
-        Check(JsonNode.Parse(await File.ReadAllTextAsync(path))!["Main"]!["Emotion"]!["Fleet1Value"]!.GetValue<int>() == 100,
+        await Rejects<EngineProfileException>(() => first.SaveAsync(savedState, [90, 90], Instant(1700000044), null, default).AsTask());
+        Check(JsonNode.Parse(await File.ReadAllTextAsync(path))!["campaign"]!["emotion"]!["fleets"]![0]!["value"]!.GetValue<int>() == 100,
             "Device identity conflict partially wrote records");
-        await Rejects<ArgumentException>(() => Task.FromResult(setup.Workspace.EmotionStore("fixture", "../Main")));
+        await Rejects<ArgumentException>(() => Task.FromResult(setup.Workspace.EmotionStore("../Main")));
         using var cancel = new CancellationTokenSource(); cancel.Cancel();
         var beforeCancel = await second.ReadAsync(default);
         await Rejects<OperationCanceledException>(() => second.SaveAsync(beforeCancel, [1, 1], Instant(1), null, cancel.Token).AsTask());

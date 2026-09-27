@@ -18,16 +18,17 @@ public sealed class DeploySettingsWorkspace
     private static readonly Dictionary<string, JsonObject> Fields = Definition["groups"]!.AsArray()
         .SelectMany(group => group!["fields"]!.AsArray()).Concat(Definition["legacy"]!.AsArray())
         .ToDictionary(field => field!["key"]!.GetValue<string>(), field => field!.AsObject(), StringComparer.Ordinal);
-    private readonly ConfigWorkspace _configs;
+    private readonly EngineProfileStore _configs;
     private readonly string _path;
     private readonly string _platform;
     private readonly Func<bool> _demo;
     private readonly object _gate = new();
 
-    public DeploySettingsWorkspace(string repo, ConfigWorkspace? configs = null, Func<bool>? demo = null)
+    public DeploySettingsWorkspace(string repo, EngineProfileStore? configs = null, Func<bool>? demo = null)
     {
-        _configs = configs ?? new ConfigWorkspace(repo);
+        _configs = configs ?? new EngineProfileStore(repo);
         _path = Path.Combine(Path.GetFullPath(repo), "config", "deploy.yaml");
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
         _platform = OperatingSystem.IsWindows() ? "windows" : "unix";
         _demo = demo ?? (() => Environment.GetEnvironmentVariable("DEMO") == "1");
         _configs.RejectLink(_path);
@@ -115,7 +116,7 @@ public sealed class DeploySettingsWorkspace
 
     private string ValidateInstance(string instance, bool mustExist)
     {
-        string name = ConfigWorkspace.ValidateName(instance);
+        string name = EngineProfileStore.ValidateName(instance);
         if (name.Length == 0 || name.IndexOfAny(".\\/:*?\"'<>|".ToCharArray()) >= 0 ||
             name.StartsWith("template", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("实例名无效");
         _configs.RejectLink(Path.Combine(Path.GetDirectoryName(_path)!, name + ".json"));
@@ -152,7 +153,7 @@ public sealed class DeploySettingsWorkspace
 
     private void EnsureWritable()
     {
-        if (_demo()) throw new ConfigWorkspaceException("FORBIDDEN", "演示模式下不能修改部署设置");
+        if (_demo()) throw new EngineProfileException("FORBIDDEN", "演示模式下不能修改部署设置");
     }
 
     private JsonObject ReadValues()
@@ -166,7 +167,7 @@ public sealed class DeploySettingsWorkspace
     {
         _configs.RejectLink(_path);
         if (!File.Exists(_path)) return "";
-        if (new FileInfo(_path).Length > 2_000_000) throw new ConfigWorkspaceException("CONFIG_INVALID", "部署配置文件过大");
+        if (new FileInfo(_path).Length > 2_000_000) throw new EngineProfileException("CONFIG_INVALID", "部署配置文件过大");
         using var stream = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         return reader.ReadToEnd();

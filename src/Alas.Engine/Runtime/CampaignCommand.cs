@@ -29,9 +29,8 @@ public sealed record CampaignCommandOptions(
     FleetFormation Fleet2Formation = FleetFormation.DoubleLine,
     FleetOrder FleetOrder = FleetOrder.Fleet1MobFleet2Boss,
     CampaignEmotionMode EmotionMode = CampaignEmotionMode.Ignore,
-    string ConfigTask = "Main",
-    string? ConfigRoot = null,
-    string? ConfigInstance = null,
+    string? ProfileRoot = null,
+    string? ProfileInstance = null,
     bool ClearMode = true,
     bool DoubleBook = false,
     MapAchievement MapAchievement = MapAchievement.NonStop,
@@ -49,8 +48,6 @@ public static class CampaignCommand
             throw new ArgumentException("时间上限必须为正数", nameof(options));
         _ = options.EmotionMode.Name();
         _ = options.MapAchievement.Name();
-        _ = ConfigWorkspace.ValidateTask(options.ConfigTask);
-
         return options.Chapters.Select((chapter, index) => new TaskRequest(
             Id: $"campaign-{index + 1:D4}",
             Kind: "campaign_run",
@@ -61,7 +58,6 @@ public static class CampaignCommand
                 ["fleet2"] = options.Fleet2,
                 ["submarine"] = options.Submarine,
                 ["emotionMode"] = options.EmotionMode.Name(),
-                ["configTask"] = options.ConfigTask,
                 ["fleetLock"] = options.FleetLock,
                 ["clearMode"] = options.ClearMode,
                 ["doubleBook"] = options.DoubleBook,
@@ -82,7 +78,7 @@ public static class CampaignCommand
         var session = new EngineSessionOptions(options.Adb, options.Serial, options.Server,
             Path.GetFullPath(options.Assets), options.Python,
             options.ApplicationPackage, options.ModelDirectory is null ? null : Path.GetFullPath(options.ModelDirectory),
-            options.AllowActions, options.ConfigRoot, options.ConfigInstance);
+            options.AllowActions, options.ProfileRoot, options.ProfileInstance);
         return await new TaskQueue().RunAsync(requests, session,
             new TaskQueueOptions(Path.GetFullPath(options.Artifacts), options.DryRun,
                 options.ContinueOnFailure, options.ResumeDirectory), token);

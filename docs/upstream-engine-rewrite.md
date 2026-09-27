@@ -10,7 +10,7 @@
 
 第四、五章保留已观察 BOSS 的可达性判断、道路短路与候选出生格搜索；没有 BOSS 观察时不伪造目标。Campaign 类属性以 Overlays 独立于 Config 迁移，第四章的伏击/空袭阈值由 EngineSession 传入统一探测及等待；其寻敌透明度字段在上游已不参与判断，只保留声明，识别仍用 luma 模板。四服真实纯 CV 颜色、原生判断/计时和八关合成战役验证见路线；产品不依赖新增的测试 Python oracle。
 
-心情恢复与消耗现由 Engine 的 EmotionRules / CampaignEmotion 执行，ConfigWorkspace 直接绑定并写回实例字段，EngineSession 连接入口门控、地图等待与战斗加载扣减；Python 仅在离线 oracle 中执行原生心情代码以核对语义。规则源码与配置绑定源码记录来源哈希，不引入导出计划或解释器。计算模式不再被强制替换为 ignore；持久化、零动作延后与失败工件的行为见[任务文档](tasks.md)，已验证范围及长期重启/周期调度缺口见[路线](architecture-roadmap.md)。
+心情恢复与消耗现由 Engine 的 EmotionRules / CampaignEmotion 执行，EngineProfileStore 读写独立的 device/campaign 状态，EngineSession 连接入口门控、地图等待与战斗加载扣减；Python 仅在离线 oracle 中执行原生心情代码以核对语义。规则源码和状态合同记录来源哈希，不引入导出计划或解释器。计算模式不再被强制替换为 ignore；持久化、零动作延后与失败工件的行为见[任务文档](tasks.md)，已验证范围及长期重启/周期调度缺口见[路线](architecture-roadmap.md)。
 
 地图准备、周回与双倍书现由 CampaignMapPreparation 和 CampaignPreparationRules 管理，复用既有纯 CV 测量及通用 Switch，不新增 Python 业务或 JSON 解释。章节 Config 与本次出击观测分离，周回覆盖在配置之后应用，控制 loop 地图/出生及机制；已确认双倍书连接心情等待和扣减，未知状态不能假定单倍。图内 resume 缺少先前倍率观察，计算模式拒绝，完整 campaign_run 通过准备页取得证据。完整成就/剧情覆盖、自动寻敌调度和全部章节尚未迁完；原生轨迹、四服 CV 与模拟 ADB 验证范围见路线，无新增真机通关结论。
 

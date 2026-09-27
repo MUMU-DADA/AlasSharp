@@ -13,7 +13,7 @@ namespace Alas.UI.Desktop;
 /// </summary>
 internal sealed partial class DirectEngineBackend : IAlasUiBackend
 {
-    private readonly ConfigWorkspace? _configs;
+    private readonly EngineProfileStore? _configs;
     private readonly DeploySettingsWorkspace? _deploy;
     private readonly EngineControlWorkspace? _workspace;
     private readonly List<InstanceCardViewModel> _instances = [];
@@ -30,7 +30,7 @@ internal sealed partial class DirectEngineBackend : IAlasUiBackend
 
         try
         {
-            _configs = new ConfigWorkspace(engineRoot);
+            _configs = new EngineProfileStore(engineRoot);
             _deploy = new DeploySettingsWorkspace(engineRoot, _configs);
             _workspace = new EngineControlWorkspace(root, engineRoot, Path.Combine(root, "data"),
                 Path.Combine(root, "assets"), Path.Combine(root, ".runtime", "control", "runs"),
@@ -156,10 +156,10 @@ internal sealed partial class DirectEngineBackend : IAlasUiBackend
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException) { }
     }
 
-    private ConfigWorkspace ConfigsOrThrow() => _configs ?? throw new InvalidOperationException("Alas.Engine 配置工作区不可用");
+    private EngineProfileStore ConfigsOrThrow() => _configs ?? throw new InvalidOperationException("Alas.Engine 配置工作区不可用");
     private EngineControlWorkspace WorkspaceOrThrow() => _workspace ?? throw new InvalidOperationException("Alas.Engine 控制工作区不可用");
 
-    private static ConfigResponse ToResponse(ConfigSnapshot snapshot) => new()
+    private static ConfigResponse ToResponse(EngineProfileSnapshot snapshot) => new()
     {
         Instance = snapshot.Instance,
         Revision = snapshot.Revision,

@@ -19,7 +19,7 @@ public sealed class ControlServer
 {
     private const int BodyLimit = ControlProtocol.MaxRequestBodyBytes;
     private readonly EngineControlWorkspace _workspace;
-    private readonly ConfigWorkspace _config;
+    private readonly EngineProfileStore _config;
     private readonly DeploySettingsWorkspace _deploy;
     private readonly StaticUiFiles? _ui;
     private readonly int _port;
@@ -32,7 +32,7 @@ public sealed class ControlServer
         _port = port;
         _ui = uiRoot is null ? null : new StaticUiFiles(uiRoot);
         _workspace = new EngineControlWorkspace(root, engineRoot, instanceStore, assets, artifacts, workspace);
-        _config = new ConfigWorkspace(engineRoot);
+        _config = new EngineProfileStore(engineRoot);
         _deploy = new DeploySettingsWorkspace(engineRoot, _config);
     }
 
@@ -246,7 +246,7 @@ public sealed class ControlServer
         catch (BadHttpRequestException error) { await Reply(context, error.StatusCode, Error("无效的 HTTP 请求")); }
         catch (EngineControlWorkspaceUnavailableException error) { await Reply(context, 409, Error(error.Message)); }
         catch (EngineCapabilityUnavailableException error) { await Reply(context, 501, Error(error.Message)); }
-        catch (ConfigWorkspaceException error)
+        catch (EngineProfileException error)
         {
             int status = error.Code switch { "FORBIDDEN" => 403, "CONFLICT" => 409, "NOT_FOUND" => 404, _ => 400 };
             await Reply(context, status, Error(error.Message));
@@ -343,7 +343,7 @@ public sealed class ControlServer
     private void RequireToken(HttpRequest request)
     {
         if (request.Headers[ControlProtocol.TokenHeader] != _token)
-            throw new ConfigWorkspaceException("FORBIDDEN", "请求令牌无效");
+            throw new EngineProfileException("FORBIDDEN", "请求令牌无效");
     }
 
     private static bool TryInstancePath(string path, string prefix, out string instance)
@@ -358,7 +358,7 @@ public sealed class ControlServer
         return false;
     }
 
-    private static JsonObject Instances(IReadOnlyList<ConfigInstance> instances) => new()
+    private static JsonObject Instances(IReadOnlyList<EngineInstance> instances) => new()
     {
         ["instances"] = new JsonArray(instances.Select(item => new JsonObject
         {
@@ -371,7 +371,7 @@ public sealed class ControlServer
         }).ToArray()),
     };
 
-    private static JsonObject Config(ConfigSnapshot config) => new()
+    private static JsonObject Config(EngineProfileSnapshot config) => new()
     {
         ["instance"] = config.Instance,
         ["revision"] = config.Revision,

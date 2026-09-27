@@ -12,12 +12,12 @@ public sealed partial class EngineSession
         bool alreadyInMap, CancellationToken token)
     {
         if (!configuration.EmotionMode.Calculates()) return null;
-        if (!_options.HasEmotionStore || string.IsNullOrWhiteSpace(_options.ApplicationPackage))
+        if (!_options.HasProfileStore || string.IsNullOrWhiteSpace(_options.ApplicationPackage))
             throw new NotSupportedException("Calculated emotion requires a bound configuration instance and game package");
         if (_emotion is null)
         {
-            var workspace = new ConfigWorkspace(_options.ConfigRoot!);
-            _emotion = new(workspace.EmotionStore(_options.ConfigInstance!, configuration.ConfigTask,
+            var workspace = new EngineProfileStore(_options.ProfileRoot!);
+            _emotion = new(workspace.EmotionStore(_options.ProfileInstance!,
                 new(_options.Serial, _options.ApplicationPackage, _options.Server)), Driver.Clock);
             _emotionConfiguration = configuration;
         }
@@ -33,7 +33,6 @@ public sealed partial class EngineSession
     {
         if (_emotion is null || _emotionConfiguration is null ||
             _emotionConfiguration.EmotionMode != configuration.EmotionMode ||
-            _emotionConfiguration.ConfigTask != configuration.ConfigTask ||
             _emotionConfiguration.FleetOrder != configuration.FleetOrder)
             throw new InvalidOperationException("Prepare the matching campaign emotion configuration before device actions");
         return _emotion;

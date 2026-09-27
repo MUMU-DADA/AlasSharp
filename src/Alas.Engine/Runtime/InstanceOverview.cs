@@ -10,26 +10,26 @@ namespace Alas.Engine.Runtime;
 /// </summary>
 public static class InstanceOverview
 {
-    public static JsonObject FromConfig(ConfigSnapshot config, DateTime now)
+    public static JsonObject FromProfile(EngineProfileSnapshot profile, DateTime now)
     {
         var resources = new JsonArray();
-        if (config.Values["Dashboard"] is JsonObject dashboard)
+        if (profile.Values["dashboard"] is JsonObject dashboard)
             foreach (var (name, node) in dashboard)
-                if (node is JsonObject values && values.ContainsKey("Value"))
+                if (node is JsonObject values && values.ContainsKey("value"))
                     resources.Add(new JsonObject
                     {
-                        ["name"] = name, ["value"] = values["Value"]?.DeepClone(),
-                        ["limit"] = values["Limit"]?.DeepClone(), ["total"] = values["Total"]?.DeepClone(),
-                        ["record"] = values["Record"]?.DeepClone(),
+                        ["name"] = name, ["value"] = values["value"]?.DeepClone(),
+                        ["limit"] = values["limit"]?.DeepClone(), ["total"] = values["total"]?.DeepClone(),
+                        ["record"] = values["record"]?.DeepClone(),
                     });
         return new JsonObject
         {
-            ["instance"] = config.Instance, ["revision"] = config.Revision,
+            ["instance"] = profile.Instance, ["revision"] = profile.Revision,
             ["source"] = "configuration", ["observed_at"] = now.ToString("O", CultureInfo.InvariantCulture),
             ["pending"] = new JsonArray(),
             ["waiting"] = new JsonArray(),
             ["resources"] = resources,
-            ["emulator"] = config.Values["Alas"]?["Emulator"]?.DeepClone(),
+            ["device"] = profile.Values["device"]?.DeepClone(),
         };
     }
 

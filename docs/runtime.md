@@ -9,7 +9,7 @@
 | EngineSession | 同一队列惰性创建一套 C# 设备、页面/地图状态与纯视觉进程 |
 | TaskQueue | 类型化 runner、输入验证、依赖、任务期限、失败即停、工件和断点 |
 | EngineControlWorkspace | 单个活动队列、实例绑定、状态快照、边界停止与关闭 |
-| ConfigWorkspace / DeploySettingsWorkspace | C# 配置事务、部署 schema 和启动列表存储，不启动 Python |
+| EngineProfileStore / DeploySettingsWorkspace | Engine profile 事务、部署 schema 和启动列表存储，不启动 Python |
 | RunReport | 只读消费 Engine 队列快照及证据，不另行裁决通关 |
 | Alas.Server / DirectEngineBackend | HTTP 传输或桌面进程内调用，业务仍在 Engine |
 

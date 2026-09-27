@@ -9,6 +9,4 @@ internal static class EmotionInput
     public static CampaignEmotionMode Mode(JsonObject input, CampaignEmotionMode fallback = CampaignEmotionMode.Calculate)
         => !input.ContainsKey("emotionMode") ? fallback : EmotionRules.ParseMode(
             input["emotionMode"]?.GetValue<string>() ?? throw new ArgumentException("emotionMode cannot be null"));
-    public static string ConfigTask(JsonObject input) => ConfigWorkspace.ValidateTask(input.ContainsKey("configTask")
-        ? input["configTask"]?.GetValue<string>() ?? throw new ArgumentException("configTask cannot be null") : "Main");
 }

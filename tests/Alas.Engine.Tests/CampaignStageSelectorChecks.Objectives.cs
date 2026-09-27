@@ -80,8 +80,9 @@ internal static partial class CampaignStageSelectorChecks
     }
     private sealed class ObjectiveRule : CampaignRule
     {
+        private static readonly MapDefinition MapValue = new("A1", "SP", [], [], []);
         public override string Id => "test/objective";
-        public override MapDefinition Map => new("A1", "SP", [], [], []);
+        public override MapDefinition Map => MapValue;
         public override ImmutableArray<SourceFile> Sources => [];
         protected override IReadOnlyDictionary<int, BattleHook> Hooks { get; } = new Dictionary<int, BattleHook>();
         public override CampaignConfiguration Configure(CampaignConfiguration input) => input with { HasMapStory = true, ClearAllThisTime = false, PreparationInfo = null };

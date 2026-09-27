@@ -406,7 +406,7 @@ public sealed class DevToolsView : UserControl
                     TypeSample("卡片标题", "实例运行状态", 14, FontWeight.SemiBold, false),
                     TypeSample("正文", "用于检查正文文字的颜色、字重、行高和中英文混排效果。The quick brown fox jumps over the lazy dog.", 13, FontWeight.Normal, false),
                     TypeSample("弱化 / 次要文字", "这是弱化说明文本，用来观察背景变化时的可读性。", 12, FontWeight.Normal, true),
-                    TypeSample("代码", "Scheduler.Enable = true", 12, FontWeight.Normal, false, monospace: true),
+                    TypeSample("代码", "engineProfile.campaign.achievement.enabled = true", 12, FontWeight.Normal, false, monospace: true),
                     TypeSample("数字", "12,345.67 / 99.8%", 14, FontWeight.SemiBold, false),
                     TypeSample("省略", "这是一段故意非常非常非常非常非常长的文本，用于观察单行溢出、省略号和窄容器表现", 12, FontWeight.Normal, true, ellipsis: true)),
                 Panel("DevToolsButtonsPanel", "按钮与操作",

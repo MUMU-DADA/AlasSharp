@@ -12,8 +12,7 @@ internal static class ControlWorkspaceChecks
     {
         await LiveSnapshotChecksAsync(artifacts);
         string root = Path.Combine(artifacts, Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(Path.Combine(root, "config"));
-        await File.WriteAllTextAsync(Path.Combine(root, "config", "template.json"), "{}");
+        Directory.CreateDirectory(Path.Combine(root, "profiles"));
         var workspace = new EngineControlWorkspace(root, root, "missing-data", "missing-tools", null, null);
         JsonObject Request(params TaskRequest[] requests) => new()
         {
@@ -91,13 +90,26 @@ internal static class ControlWorkspaceChecks
         var mixed = Request(new TaskRequest("a", "observe", Instance: "second"));
         mixed["instance"] = "first";
         Reject<EngineCapabilityUnavailableException>(() => workspace.StartRun(mixed));
-        var config = new JsonObject { ["Alas"] = new JsonObject { ["Emulator"] = new JsonObject
-        { ["Serial"] = "offline-device", ["ServerName"] = "login-shard", ["PackageName"] = "com.YoStarEN.AzurLane" } } };
-        await File.WriteAllTextAsync(Path.Combine(root, "config", "sample.json"), config.ToJsonString());
+        var config = new JsonObject
+        {
+            ["device"] = new JsonObject { ["serial"] = "offline-device", ["package"] = "com.YoStarEN.AzurLane", ["server"] = "en" },
+            ["dashboard"] = new JsonObject(),
+            ["campaign"] = new JsonObject
+            {
+                ["emotion"] = new JsonObject
+                {
+                    ["fleets"] = new JsonArray(
+                        new JsonObject { ["value"] = 100, ["recordedAt"] = "2026-01-01 00:00:00", ["control"] = "keep_exp_bonus", ["recovery"] = "not_in_dormitory", ["oath"] = false },
+                        new JsonObject { ["value"] = 100, ["recordedAt"] = "2026-01-01 00:00:00", ["control"] = "keep_exp_bonus", ["recovery"] = "not_in_dormitory", ["oath"] = false })
+                },
+                ["achievement"] = new JsonObject { ["event"] = "campaign_main", ["stage"] = "1-1", ["enabled"] = true }
+            }
+        };
+        await File.WriteAllTextAsync(Path.Combine(root, "profiles", "sample.json"), config.ToJsonString());
         var mismatched = Request(new TaskRequest("a", "observe"));
         mismatched["instance"] = "sample"; mismatched["serial"] = "different-device";
         Reject<ArgumentException>(() => workspace.StartRun(mismatched));
-        var before = await File.ReadAllBytesAsync(Path.Combine(root, "config", "sample.json"));
+        var before = await File.ReadAllBytesAsync(Path.Combine(root, "profiles", "sample.json"));
         workspace.StartRun(Request(new TaskRequest("direct", "engine_task_that_is_not_registered")));
         await Finished(workspace);
         var directTaskReport = workspace.State()["report"]!.AsObject();
@@ -107,7 +119,7 @@ internal static class ControlWorkspaceChecks
         workspace.StartRun(validInstance);
         await Finished(workspace);
         Check(workspace.State("sample")["overview"]!["instance"]!.GetValue<string>() == "sample", "Selected instance lost");
-        var after = await File.ReadAllBytesAsync(Path.Combine(root, "config", "sample.json"));
+        var after = await File.ReadAllBytesAsync(Path.Combine(root, "profiles", "sample.json"));
         Check(before.SequenceEqual(after), "Dry-run changed configuration");
         Check(GameServerRules.FromPackage("com.YoStarEN.AzurLane") == GameServer.En &&
             GameServerRules.FromPackage("com.YoStarJP.AzurLane") == GameServer.Jp &&

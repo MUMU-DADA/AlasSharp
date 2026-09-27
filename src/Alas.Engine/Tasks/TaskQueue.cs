@@ -55,7 +55,7 @@ public sealed class TaskQueue
         TaskQueueOptions options, CancellationToken token = default)
     {
         ValidateRequests(requests);
-        sessionOptions.ValidateConfigBinding();
+        sessionOptions.ValidateProfileBinding();
         // Snapshot mutable JSON inputs before execution and hash the session identity, without storing private paths/serial in state.
         string queueJson = JsonSerializer.Serialize(requests, Json);
         requests = JsonSerializer.Deserialize<TaskRequest[]>(queueJson, Json)!;
@@ -98,7 +98,7 @@ public sealed class TaskQueue
             }
         }
         else await File.WriteAllTextAsync(Path.Combine(directory, "queue.json"), queueJson);
-        var capabilities = new TaskCapabilities(sessionOptions.AllowActions, sessionOptions.ModelDirectory is not null, sessionOptions.HasEmotionStore);
+        var capabilities = new TaskCapabilities(sessionOptions.AllowActions, sessionOptions.ModelDirectory is not null, sessionOptions.HasProfileStore);
         string attempt = "attempt-" + Guid.NewGuid().ToString("N");
         var results = new List<TaskResult>();
         var satisfied = new HashSet<string>(completed.Keys, StringComparer.Ordinal);
@@ -138,8 +138,8 @@ public sealed class TaskQueue
                     try
                     {
                         runner.Validate(request.Input);
-                        if (request.Instance is not null && request.Instance != sessionOptions.ConfigInstance)
-                            throw new ArgumentException("Task instance does not match the bound session configuration");
+                        if (request.Instance is not null && request.Instance != sessionOptions.ProfileInstance)
+                            throw new ArgumentException("Task instance does not match the bound Engine profile");
                         var missing = runner.Preconditions(request, capabilities);
                         if (missing.Count > 0)
                             result = new(request.Id, request.Kind, TaskOutcome.Skipped, "preconditions_unmet",

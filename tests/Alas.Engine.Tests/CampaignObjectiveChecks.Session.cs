@@ -16,12 +16,12 @@ internal static partial class CampaignObjectiveChecks
             foreach (string scenario in new[] { "disable", "increase", "input-failure", "conflict" })
             {
                 string root = Path.Combine(artifacts, scenario + "-" + Guid.NewGuid().ToString("N"));
-                Directory.CreateDirectory(Path.Combine(root, "config"));
-                string configFile = Path.Combine(root, "config/fixture.json");
-                await File.WriteAllTextAsync(Path.Combine(root, "config/template.json"), "{}");
+                Directory.CreateDirectory(Path.Combine(root, "profiles"));
+                string configFile = Path.Combine(root, "profiles/fixture.json");
                 await File.WriteAllTextAsync(configFile, """
-                    {"Alas":{"Emulator":{"Serial":"offline-replay","PackageName":"org.example.game"}},
-                     "Main":{"Campaign":{"Event":"campaign_main","Name":"1-1"},"Scheduler":{"Enable":true}}}
+                    {"device":{"serial":"offline-replay","package":"org.example.game","server":"cn"},
+                     "dashboard":{},
+                     "campaign":{"emotion":{"fleets":[{"value":100,"recordedAt":"2026-01-01 00:00:00","control":"keep_exp_bonus","recovery":"not_in_dormitory","oath":false},{"value":100,"recordedAt":"2026-01-01 00:00:00","control":"keep_exp_bonus","recovery":"not_in_dormitory","oath":false}]},"achievement":{"event":"campaign_main","stage":"1-1","enabled":true}}}
                     """);
                 string fixture = Path.Combine(root, "adb.json");
                 await File.WriteAllTextAsync(fixture, JsonSerializer.Serialize(new
@@ -32,7 +32,7 @@ internal static partial class CampaignObjectiveChecks
                 Environment.SetEnvironmentVariable("ALAS_TEST_ADB_FIXTURE", fixture);
                 string executable = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Alas.Engine.Tests.exe" : "Alas.Engine.Tests");
                 var options = new EngineSessionOptions(executable, "offline-replay", GameServer.Cn, Path.Combine(upstream, "assets"),
-                    python, "org.example.game", AllowActions: true, ConfigRoot: root, ConfigInstance: "fixture");
+                    python, "org.example.game", AllowActions: true, ProfileRoot: root, ProfileInstance: "fixture");
                 var result = await new TaskQueue([new AchievementProbe(configFile, scenario)]).RunAsync(
                     [new("stop", "objective_probe", new(), Required: false, TimeoutSeconds: 30)], options, new(root));
                 bool success = scenario is "disable" or "increase";
@@ -44,8 +44,8 @@ internal static partial class CampaignObjectiveChecks
                 Check(record.Persisted == success && (record.ReturnedFrame is not null) == (scenario != "input-failure") && record.CancelClicks == 1,
                     "Actual session lost cancellation/return/persistence evidence");
                 var saved = JsonNode.Parse(await File.ReadAllTextAsync(configFile))!;
-                Check(saved["Main"]!["Scheduler"]!["Enable"]!.GetValue<bool>() == (scenario != "disable") &&
-                    saved["Main"]!["Campaign"]!["Name"]!.GetValue<string>() == (scenario == "increase" ? "1-2" : scenario == "conflict" ? "1-3" : "1-1"),
+                Check(saved["campaign"]!["achievement"]!["enabled"]!.GetValue<bool>() == (scenario != "disable") &&
+                    saved["campaign"]!["achievement"]!["stage"]!.GetValue<string>() == (scenario == "increase" ? "1-2" : scenario == "conflict" ? "1-3" : "1-1"),
                     "Actual session wrote wrong task state or overwrote conflicting user edits");
                 Check(RunReport.Build(result.Directory).ToJson()["evidence_complete"]!.GetValue<bool>(), "Stop boundary failed report validation");
                 File.Delete(evidenceFile);
@@ -85,7 +85,7 @@ internal static partial class CampaignObjectiveChecks
             if (scenario == "conflict")
             {
                 var changed = JsonNode.Parse(await File.ReadAllTextAsync(configFile, token))!;
-                changed["Main"]!["Campaign"]!["Name"] = "1-3";
+                changed["campaign"]!["achievement"]!["stage"] = "1-3";
                 await File.WriteAllTextAsync(configFile, changed.ToJsonString(), token);
             }
             var evidence = await service.StopForAchievementAsync(map.Info, context.Timeout, token);

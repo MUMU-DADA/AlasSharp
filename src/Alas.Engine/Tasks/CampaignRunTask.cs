@@ -14,7 +14,7 @@ public sealed class CampaignRunTask : ITaskRunner
     public void Validate(JsonObject? input)
     {
         TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
-            "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement", "configTask",
+            "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement",
             "clearMode", "doubleBook", "mapAchievement", "stageIncrease", "ambushEvade");
         var id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign run requires a compiled campaign rule");
@@ -22,7 +22,6 @@ public sealed class CampaignRunTask : ITaskRunner
             throw new NotSupportedException("Compiled campaign has no selectable stage");
         _ = Plan(input);
         _ = EmotionInput.Mode(input!);
-        _ = EmotionInput.ConfigTask(input!);
         if (input.ContainsKey("fleetLock") && input["fleetLock"] is null)
             throw new ArgumentException("Fleet lock setting cannot be null");
         if (input["fleetLock"] is not null) _ = input["fleetLock"]!.GetValue<bool>();
@@ -41,8 +40,8 @@ public sealed class CampaignRunTask : ITaskRunner
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
         => [.. capabilities.HasOcrModels ? Array.Empty<string>() : ["ocr_models"],
-            .. !EmotionInput.Mode(request.Input!).Calculates() || capabilities.HasEmotionStore ? Array.Empty<string>() : ["emotion_config"],
-            .. Achievement(request.Input!) == MapAchievement.NonStop || capabilities.HasEmotionStore ? Array.Empty<string>() : ["achievement_config"]];
+            .. !EmotionInput.Mode(request.Input!).Calculates() || capabilities.HasProfileStore ? Array.Empty<string>() : ["emotion_config"],
+            .. Achievement(request.Input!) == MapAchievement.NonStop || capabilities.HasProfileStore ? Array.Empty<string>() : ["achievement_config"]];
 
     public async ValueTask<TaskResult> RunAsync(TaskRequest request, TaskContext context, CancellationToken token)
     {
@@ -57,7 +56,6 @@ public sealed class CampaignRunTask : ITaskRunner
         var requestedConfiguration = new CampaignConfiguration
         {
             EmotionMode = EmotionInput.Mode(request.Input),
-            ConfigTask = EmotionInput.ConfigTask(request.Input),
             Fleet2 = requestedPlan.Second,
             Submarine = requestedPlan.Submarine,
             Fleet1Formation = Formation(request.Input, "fleet1Formation"),

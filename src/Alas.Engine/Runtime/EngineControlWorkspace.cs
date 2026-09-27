@@ -11,7 +11,7 @@ public sealed class EngineControlWorkspace
     private readonly string _engineRoot;
     private readonly string _control;
     private readonly string _artifacts;
-    private readonly ConfigWorkspace _configs;
+    private readonly EngineProfileStore _profiles;
     private readonly object _gate = new();
     private Task? _worker;
     private string? _mode, _kind, _instance, _startedAt, _finishedAt, _error, _runDirectory;
@@ -29,7 +29,7 @@ public sealed class EngineControlWorkspace
         _artifacts = Path.GetFullPath(artifacts ?? Path.Combine(_control, "runs"));
         Directory.CreateDirectory(_control);
         Directory.CreateDirectory(_artifacts);
-        _configs = new ConfigWorkspace(_engineRoot);
+        _profiles = new EngineProfileStore(_engineRoot);
     }
 
     public JsonObject State(string? selectedInstance = null)
@@ -68,12 +68,12 @@ public sealed class EngineControlWorkspace
         };
         if (selectedInstance is not null)
         {
-            var config = _configs.Get(selectedInstance);
-            var overview = InstanceOverview.FromConfig(config, DateTime.Now);
+            var profile = _profiles.Get(selectedInstance);
+            var overview = InstanceOverview.FromProfile(profile, DateTime.Now);
             if (status != "running" && queue["tasks"] is JsonArray queued)
                 overview["pending"] = new JsonArray(queued.OfType<JsonObject>().Select(entry =>
                     (JsonNode)new JsonObject { ["name"] = entry["kind"]?.DeepClone(), ["next_run"] = "" }).ToArray());
-            overview["status"] = InstanceOverview.Status(config.Instance, active, report);
+            overview["status"] = InstanceOverview.Status(profile.Instance, active, report);
             state["overview"] = overview;
         }
         return state;
@@ -111,11 +111,11 @@ public sealed class EngineControlWorkspace
         };
     }
 
-    public IReadOnlyList<ConfigInstance> Instances(ConfigWorkspace configs)
+    public IReadOnlyList<EngineInstance> Instances(EngineProfileStore profiles)
     {
         var state = State();
         var active = state["active"]!.AsObject();
-        return configs.List().Select(item => item with
+        return profiles.List().Select(item => item with
         {
             Status = InstanceOverview.Status(item.Instance, active, state["report"] as JsonObject),
             CurrentTask = active["instance"]?.GetValue<string>() == item.Instance &&
@@ -200,11 +200,11 @@ public sealed class EngineControlWorkspace
             .Distinct(StringComparer.Ordinal).Skip(1).Any())
             throw new EngineCapabilityUnavailableException("一个队列只能连接一个实例；请拆分为多个 Engine 队列");
         string? serial = body["serial"]?.GetValue<string>();
-        ConfigSnapshot? config = ResolveConfig(instance, serial);
-        if (config is not null && serial is not null &&
-            serial != config.Values["Alas"]?["Emulator"]?["Serial"]?.GetValue<string>())
+        EngineProfileSnapshot? profile = ResolveProfile(instance, serial);
+        if (profile is not null && serial is not null &&
+            serial != profile.Values["device"]?["serial"]?.GetValue<string>())
             throw new ArgumentException("serial 与所选实例不一致");
-        var session = BuildSession(config, serial, mode == "actions");
+        var session = BuildSession(profile, serial, mode == "actions");
         bool dryRun = mode == "dry_run";
         bool continueOnFailure = body["continue_on_error"]?.GetValue<bool>() ?? false;
         bool resume = body["resume"]?.GetValue<bool>() ?? false;
@@ -217,7 +217,7 @@ public sealed class EngineControlWorkspace
             EnsureAccepting();
             if (_worker is { IsCompleted: false }) throw new EngineControlWorkspaceUnavailableException("已有任务队列正在运行");
             SaveQueue(queue);
-            _mode = mode; _instance = config?.Instance ?? instance;
+            _mode = mode; _instance = profile?.Instance ?? instance;
             _kind = tasks.Length == 1 ? tasks[0].Kind : "queue";
             _activities = tasks.ToDictionary(task => task.Id,
                 task => new TaskActivity(task.Id, task.Kind, "pending"), StringComparer.Ordinal);
@@ -239,32 +239,34 @@ public sealed class EngineControlWorkspace
         }
     }
 
-    private ConfigSnapshot? ResolveConfig(string? instance, string? serial)
+    private EngineProfileSnapshot? ResolveProfile(string? instance, string? serial)
     {
-        if (instance is not null) return _configs.Get(instance);
+        if (instance is not null) return _profiles.Get(instance);
         if (!string.IsNullOrWhiteSpace(serial))
         {
-            var match = _configs.List().FirstOrDefault(item => item.Serial == serial);
-            if (match is not null) return _configs.Get(match.Instance);
+            var match = _profiles.List().FirstOrDefault(item => item.Serial == serial);
+            if (match is not null) return _profiles.Get(match.Instance);
         }
-        return _configs.List().Count == 1 ? _configs.Get(_configs.List()[0].Instance) : null;
+        var profiles = _profiles.List();
+        return profiles.Count == 1 ? _profiles.Get(profiles[0].Instance) : null;
     }
 
-    private EngineSessionOptions BuildSession(ConfigSnapshot? config, string? serial, bool allowActions)
+    private EngineSessionOptions BuildSession(EngineProfileSnapshot? profile, string? serial, bool allowActions)
     {
-        JsonObject? emulator = config?.Values["Alas"]?["Emulator"] as JsonObject;
-        string actualSerial = serial ?? emulator?["Serial"]?.GetValue<string>() ?? "";
+        JsonObject? device = profile?.Values["device"] as JsonObject;
+        string actualSerial = serial ?? device?["serial"]?.GetValue<string>() ?? "";
         if (allowActions && string.IsNullOrWhiteSpace(actualSerial))
             throw new ArgumentException("动作运行需要实例串号或 serial");
-        string? package = emulator?["PackageName"]?.GetValue<string>();
-        // ServerName selects an account region/shard; the package determines asset variants.
-        GameServer server = GameServerRules.FromPackage(package ?? Environment.GetEnvironmentVariable("ALAS_SERVER") ?? "cn");
+        string? package = device?["package"]?.GetValue<string>();
+        GameServer server = profile is not null
+            ? EngineProfileStore.ParseServer(device?["server"]?.GetValue<string>() ?? "")
+            : GameServerRules.FromPackage(Environment.GetEnvironmentVariable("ALAS_SERVER") ?? "cn");
         string? models = Environment.GetEnvironmentVariable("ALAS_OCR_MODELS");
         return new EngineSessionOptions(
             Environment.GetEnvironmentVariable("ALAS_ADB") ?? "adb", actualSerial, server,
             Path.Combine(_engineRoot, "assets"), Environment.GetEnvironmentVariable("ALAS_PYTHON") ?? "python",
             package, string.IsNullOrWhiteSpace(models) ? null : Path.GetFullPath(models), allowActions,
-            config is null ? null : _engineRoot, config?.Instance);
+            profile is null ? null : _engineRoot, profile?.Instance);
     }
 
     // These are deliberately typed Engine capability seams.  They do not

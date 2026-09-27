@@ -13,7 +13,7 @@ public sealed class CampaignResumeTask : ITaskRunner
     public bool RequiresActions => true;
     public void Validate(JsonObject? input)
     {
-        TaskInput.Fields(input, "campaign", "hpControl", "reachLevel", "retirement", "emotionMode", "configTask", "ambushEvade");
+        TaskInput.Fields(input, "campaign", "hpControl", "reachLevel", "retirement", "emotionMode", "ambushEvade");
         string id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign resume requires a compiled rule");
         _ = RuleCatalog.Create(id);
@@ -22,7 +22,6 @@ public sealed class CampaignResumeTask : ITaskRunner
         _ = RetirementInput.Read(input!);
         if (EmotionInput.Mode(input!, CampaignEmotionMode.Ignore).Calculates())
             throw new NotSupportedException("Calculated emotion requires campaign_run to observe double-book state before entry");
-        _ = EmotionInput.ConfigTask(input!);
         _ = CampaignRunTask.Option(input!, "ambushEvade", true);
     }
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
@@ -34,7 +33,7 @@ public sealed class CampaignResumeTask : ITaskRunner
         var rule = RuleCatalog.Create(request.Input!["campaign"]!.GetValue<string>());
         var configuration = rule.Configure(new CampaignConfiguration
         {
-            EmotionMode = EmotionInput.Mode(request.Input, CampaignEmotionMode.Ignore), ConfigTask = EmotionInput.ConfigTask(request.Input),
+            EmotionMode = EmotionInput.Mode(request.Input, CampaignEmotionMode.Ignore),
             Health = FleetHealthInput.Read(request.Input), Levels = FleetLevelInput.Read(request.Input), Retirement = RetirementInput.Read(request.Input),
             AmbushEvade = CampaignRunTask.Option(request.Input, "ambushEvade", true)
         });

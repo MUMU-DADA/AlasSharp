@@ -33,10 +33,10 @@ internal static partial class EmotionChecks
         await File.WriteAllTextAsync(emotionFile, "[]");
         Check(!RunReport.Build(result.Directory).ToJson()["evidence_complete"]!.GetValue<bool>(), "Empty emotion evidence was reported complete");
         await File.WriteAllTextAsync(emotionFile, originalEvidence);
-        Check(workspace.Get("fixture").Values["Main"]!["Scheduler"]!["NextRun"]!.GetValue<string>() != "2020-01-01 00:00:00", "Entry failed to persist the next run");
+        Check(workspace.Get("fixture").Values["campaign"]!["emotion"]!["nextRun"]!.GetValue<string>() != "2020-01-01 00:00:00", "Entry failed to persist the next run");
         var resumed = await new TaskQueue().RunAsync([Request()], options, new(artifacts, ResumeDirectory: result.Directory));
         Check(resumed.Tasks[0].Reason == "emotion_recovery_required", "Deferred task was marked previously completed");
-        var missing = await new TaskQueue().RunAsync([Request()], options with { ConfigRoot = null, ConfigInstance = null }, new(artifacts));
+        var missing = await new TaskQueue().RunAsync([Request()], options with { ProfileRoot = null, ProfileInstance = null }, new(artifacts));
         Check(missing.Tasks[0].Reason == "preconditions_unmet", "Calculated entry ran without configuration");
         var runner = new CampaignRunTask();
         foreach (var mode in new[] { "calculate", "calculate_ignore", "ignore", "nothing" })
@@ -45,7 +45,7 @@ internal static partial class EmotionChecks
             Check(runner.Preconditions(request, new(true, true)).Contains("emotion_config") == mode.Contains("calculate", StringComparison.Ordinal),
                 "Emotion mode has incorrect persistence preconditions");
         }
-        foreach (string field in new[] { "emotionMode", "configTask" })
+        foreach (string field in new[] { "emotionMode" })
         {
             var invalid = Request().Input!; invalid[field] = null;
             await Rejects<ArgumentException>(() => { runner.Validate(invalid); return Task.CompletedTask; });
@@ -61,13 +61,13 @@ internal static partial class EmotionChecks
             Check(await session.PrepareAsync(new(), 8, true, default) is null, "Resume applied an entry delay");
             Check((await session.SaveEvidenceAsync(Path.Combine(artifacts, "resume-no-entry"), false)).EmotionFile is null, "Resume wrote entry records");
             await ((ICampaignInMapHost)session).EnsureEmotionAsync(new(), default);
-            await Rejects<InvalidOperationException>(() => ((ICampaignInMapHost)session).EnsureEmotionAsync(new() { ConfigTask = "EventA" }, default).AsTask());
+            await ((ICampaignInMapHost)session).EnsureEmotionAsync(new(), default);
             session.BeginTask(TimeSpan.FromSeconds(5));
             await Rejects<InvalidOperationException>(() => ((ICampaignInMapHost)session).EnsureEmotionAsync(new(), default).AsTask());
         }
         foreach (var mode in new[] { CampaignEmotionMode.Ignore, CampaignEmotionMode.Nothing })
         {
-            await using var session = new EngineSession(options with { ConfigRoot = null, ConfigInstance = null });
+            await using var session = new EngineSession(options with { ProfileRoot = null, ProfileInstance = null });
             session.BeginTask(TimeSpan.FromSeconds(1));
             Check(await session.PrepareAsync(new() { EmotionMode = mode }, 8, false, default) is null, "Non-calculated mode read persistence");
         }
@@ -85,7 +85,7 @@ internal static partial class EmotionChecks
         {
             string executable = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Alas.Engine.Tests.exe" : "Alas.Engine.Tests");
             await using var session = new EngineSession(options with { Adb = executable, Python = python, Assets = Path.Combine(upstream, "assets"),
-                ModelDirectory = null, ConfigRoot = high.Root });
+                ModelDirectory = null, ProfileRoot = high.Root });
             session.BeginTask(TimeSpan.FromSeconds(10));
             var configuration = new CampaignConfiguration { Fleet2 = 2, FleetOrder = FleetOrder.Fleet1BossFleet2Mob };
             await session.PrepareAsync(configuration, 4, true, default);

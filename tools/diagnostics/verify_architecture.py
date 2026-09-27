@@ -147,6 +147,21 @@ def product_boundary() -> list[str]:
             if re.search(r"(?:alas_vision|s3_campaign|native_campaign_runtime|RunCampaignPlan|InProcessVisionEngine)", text, re.I):
                 problems.append(f"产品源码保留 Python/旧计划业务入口: {source.relative_to(ROOT)}")
 
+    # Engine profiles replaced the retired Core/upstream configuration tree.
+    # These names must not return as runtime compatibility shims.
+    retired_profile_markers = (
+        "ConfigWorkspace", "ConfigTask", "Scheduler.NextRun", "Scheduler.Enable",
+        "Alas.Emulator", "template.json", "--config-root", "--config-task",
+    )
+    for source_root in source_roots:
+        for source in source_root.rglob("*.cs"):
+            if any(part in {"bin", "obj"} for part in source.parts):
+                continue
+            text = source.read_text(encoding="utf-8-sig")
+            for marker in retired_profile_markers:
+                if marker in text:
+                    problems.append(f"产品源码保留退役配置语义 {marker}: {source.relative_to(ROOT)}")
+
     # The retired UI task schema and script/config editor must not return as a
     # compatibility layer. DeploySchema belongs to deployment settings and is
     # intentionally outside this list; Engine task input is one JSON document.

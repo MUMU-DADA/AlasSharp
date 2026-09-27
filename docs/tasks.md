@@ -12,15 +12,15 @@ campaign_run 与 campaign_resume 支持 ambushEvade（布尔，默认 true；nul
 
 心情控制由 Engine 的 C# 规则、会话和配置事务执行。campaign_run 缺省 calculate；campaign_resume 与 campaign 命令保留 ignore 缺省值。campaign_run 支持 calculate、calculate_ignore、ignore、nothing；前两者估算并写回两队心情，包含 ignore 的模式确认低心情提示。campaign_resume 没有进图前的双倍书观测，仅支持 ignore / nothing；计算模式在设备动作前拒绝，不能把未知消耗倍率当作单倍。值是原生算法估算，不是 OCR 实测。
 
-计算模式要求会话绑定配置数据根目录与实例：CLI run/campaign 使用 --config-root 和 --instance；Server/桌面直接传入选定实例。campaign 使用 --emotion-mode 与 --config-task，队列输入使用 emotionMode 与 configTask（缺省 Main）。恢复策略、誓约、控制阈值、当前值和记录时间读取实例配置，不在任务 JSON 复制初值。每次读写核对实例串号、游戏包与素材服务器；不同实例的队列请求、配置冲突和非法字段均拒绝。配置目录只提供数据，不加载 Python 业务。
+计算模式要求会话绑定 Engine profile 根目录与实例：CLI run/campaign 使用 --profile-root 和 --instance；Server/桌面直接传入选定实例。campaign 使用 --emotion-mode，队列输入只携带规则与运行选项。恢复策略、誓约、控制阈值、当前值和记录时间读取 profile 的 typed campaign 状态，不在任务 JSON 复制初值。每次读写核对实例串号、游戏包与素材服务器；不同实例的队列请求、profile 冲突和非法字段均拒绝。profile 目录只提供 Engine 数据，不加载 Python 业务。
 
-进图前按两队预期战斗次数计算恢复时间，不足则保存两队记录及该配置任务的 Scheduler.NextRun，返回 Skipped / emotion_recovery_required；没有设备动作，也不计完成。required 任务仍按队列合同使本次批次失败，默认停止后续任务。当前不会自动重调度；再次运行或断点续跑会重做该任务。已入图的 resume 不重复执行入图延后判断。战前按六十秒轮询恢复，确认战斗已加载后扣减并原子写回；后续战果异常、取消或失败不撤销已经发生的扣减。
+进图前按两队预期战斗次数计算恢复时间，不足则保存两队记录及 profile 的 campaign.emotion.nextRun，返回 Skipped / emotion_recovery_required；没有设备动作，也不计完成。required 任务仍按队列合同使本次批次失败，默认停止后续任务。当前不会自动重调度；再次运行或断点续跑会重做该任务。已入图的 resume 不重复执行入图延后判断。战前按六十秒轮询恢复，确认战斗已加载后扣减并原子写回；后续战果异常、取消或失败不撤销已经发生的扣减。
 
 emotion.json 保存入图、等待、扣减的时间、两队估算值、舰队、战斗帧及写回状态，写入失败也保留尝试；缺失或无效工件使报告不完整。非法“船坞恢复 + 保持快乐经验”组合提前拒绝，不沿用原生先写记录再报错的副作用；两队记录与 NextRun 在同一事务提交，避免半更新。长期客户端心情 bug 的随机阈值/重启任务和完整周期调度仍未迁移；campaign_run 的双倍书观测现已连接实际战前等待及加载后的扣减。
 
 campaign_run 支持布尔输入 clearMode（默认 true）和 doubleBook（默认 false）；campaign 命令对应 --clear-mode / --double-book，值为 true 或 false。选关后先按原生进度条动画与信息条遮挡规则等待，读取百分比、三星和安全状态，再设置周回并确认自动寻敌关闭；周回的地图/出生波次及机制覆盖在章节 Config 之后应用。星级也参与全清和地图剧情标记覆盖；这些观测不证明本次出击通关。
 
-mapAchievement（默认 non_stop）接受 non_stop、100_percent_clear、map_3_stars、threat_safe、threat_safe_without_3_stars；stageIncrease（默认 false）控制达成后的递增。CLI 对应 --map-achievement / --stage-increase。启用成就停止必须绑定 config-root、instance 和 configTask，配置里的 Campaign.Event/Name 须匹配本次规则，否则设备动作前拒绝。进度须严格大于 .95，三星/安全目标再要求对应状态；未取得全敌星时按上游要求选择全清。达成后取消准备页、观察新章节页帧，再禁用 Scheduler.Enable，或在递增有下一项时更新 Campaign.Name。相关配置被同时修改或设备身份变化均拒绝写回，不覆盖用户修改。
+mapAchievement（默认 non_stop）接受 non_stop、100_percent_clear、map_3_stars、threat_safe、threat_safe_without_3_stars；stageIncrease（默认 false）控制达成后的递增。CLI 对应 --map-achievement / --stage-increase。启用成就停止必须绑定 profile-root、instance，profile 的 campaign.achievement.event/stage 须匹配本次规则，否则设备动作前拒绝。进度须严格大于 .95，三星/安全目标再要求对应状态；未取得全敌星时按上游要求选择全清。达成后取消准备页、观察新章节页帧，再禁用 profile 的 campaign.achievement.enabled，或在递增有下一项时更新 stage。profile 被同时修改或设备身份变化均拒绝写回，不覆盖用户修改。
 
 成就停止返回 Skipped / map_achievement_reached，不产生 sortie 成功结论；required 任务仍使批次失败并按默认策略停止，非 required 可用于允许跳过的队列。map-stop.json 记录进度观察、取消次数、新返页帧、停止决策及 Persisted；写回失败仍保存部分记录。下一关仅写入配置，不自动再次排队；主线原生递增不检查可执行规则，可运行范围仍由 RuleCatalog 验证。
 

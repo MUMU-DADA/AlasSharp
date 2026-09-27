@@ -27,7 +27,7 @@ public interface ITaskRunner
     IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities);
     ValueTask<TaskResult> RunAsync(TaskRequest request, TaskContext context, CancellationToken token);
 }
-public sealed record TaskCapabilities(bool AllowActions, bool HasOcrModels, bool HasEmotionStore = false);
+public sealed record TaskCapabilities(bool AllowActions, bool HasOcrModels, bool HasProfileStore = false);
 
 internal static class TaskInput
 {

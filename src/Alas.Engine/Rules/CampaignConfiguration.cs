@@ -85,7 +85,6 @@ public sealed record CampaignConfiguration
     public FleetLevelOptions Levels { get; init; } = new();
     public RetirementOptions Retirement { get; init; } = new();
     public CampaignEmotionMode EmotionMode { get; init; } = CampaignEmotionMode.Calculate;
-    public string ConfigTask { get; init; } = "Main";
     public MapVisionOverrides? Vision { get; init; }
     public MapSwipeMultipliers? SwipeMultipliers { get; init; }
     public string? MapEdgeCorner { get; init; }

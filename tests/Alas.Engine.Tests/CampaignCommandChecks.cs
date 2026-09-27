@@ -27,9 +27,9 @@ internal static class CampaignCommandChecks
         Check(CampaignCommand.BuildRequests(options with { MapAchievement = MapAchievement.ThreatSafe, StageIncrease = true })
             .All(request => request.Input!["mapAchievement"]!.GetValue<string>() == "threat_safe" &&
                 request.Input["stageIncrease"]!.GetValue<bool>()), "Command lost achievement stop settings");
-        var calculated = CampaignCommand.BuildRequests(options with { EmotionMode = CampaignEmotionMode.CalculateIgnore, ConfigTask = "EventA" });
+        var calculated = CampaignCommand.BuildRequests(options with { EmotionMode = CampaignEmotionMode.CalculateIgnore });
         Check(calculated.All(request => request.Input!["emotionMode"]!.GetValue<string>() == "calculate_ignore" &&
-            request.Input["configTask"]!.GetValue<string>() == "EventA"), "Command lost persistent emotion options");
+            !request.Input!.ContainsKey("configTask")), "Command retained retired task configuration state");
         Check(requests.Count == 3 && requests[0].Input!["campaign"]!.GetValue<string>() == "campaign_main/campaign_13_1");
         Check(requests.All(request => request.Input!["fleet1Formation"]!.GetValue<string>() == "diamond" &&
             request.Input["fleet2Formation"]!.GetValue<string>() == "line_ahead" &&
