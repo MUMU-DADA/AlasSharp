@@ -219,6 +219,13 @@ try
         await CampaignMapCombatChecks.DeclaredRoadChecksAsync(Path.GetFullPath(declaredRoadPython), Path.GetFullPath(declaredRoadUpstream), folder);
         return 0;
     }
+    if (args is ["--carrier", var carrierPython, var carrierUpstream, var carrierArtifacts])
+    {
+        string folder = Path.GetFullPath(carrierArtifacts);
+        Directory.CreateDirectory(folder);
+        await CarrierChecks.RunAsync(Path.GetFullPath(carrierPython), Path.GetFullPath(carrierUpstream), folder);
+        return 0;
+    }
     if (args is ["--ambush", var ambushPython, var ambushUpstream, var ambushArtifacts])
     {
         string folder = Path.GetFullPath(ambushArtifacts);

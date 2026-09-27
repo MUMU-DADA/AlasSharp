@@ -25,7 +25,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
     IMapArrivalCamera camera, Func<MapArrivalCheck> createArrival,
     Func<CancellationToken, ValueTask>? waitForInfoBar = null,
     Func<CancellationToken, ValueTask<CampaignWithdrawalEvidence>>? withdraw = null,
-    MapMovableScan? movableScan = null)
+    MapMovableScan? movableScan = null, MapScanner? carrierScanner = null)
 {
     internal void Invalidate()
     {
@@ -94,6 +94,8 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
     {
         if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before moving a fleet");
         if (state.MovementInvalidated) throw new InvalidOperationException("Map movement state was invalidated; this sortie cannot be reused");
+        if (configuration.MysteryHasCarrier && carrierScanner is null)
+            throw new NotSupportedException("Carrier mystery movement requires carrier scanning");
         _ = state.Paths.Connections;
         if (!configuration.HasMaze && state.Cells.Any(cell => cell.IsMaze))
             throw new InvalidDataException("Maze map state requires its maze configuration");
@@ -142,7 +144,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             throw new ArgumentException("Supply destination must be a declared ammo tile without an enemy", nameof(destination));
         if (target.IsMechanismBlock ||
             (action is MapAction.Move or MapAction.Mystery && enemy) ||
-            (target.IsMystery && !mystery) || (target.IsAmmo && !ammo && !probeBouncing && !mechanism && mazeWaitFor is null) || target.IsCarrier ||
+            (target.IsMystery && !mystery) || (target.IsAmmo && !ammo && !probeBouncing && !mechanism && mazeWaitFor is null) || target.IsCarrier && !fight ||
             (target.IsFleet && !((ammo || caughtCombat || probeBouncing || mechanism && action == MapAction.Move) && destination == origin)))
             throw new NotSupportedException("Destination requires a map interaction that is not committed by ordinary movement");
         Cell landing = target.IsPortal
@@ -210,7 +212,8 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             return new((fight || probeBoss || probeBouncing) && result.AmbushesConfirmed &&
                 result.Combats is [ { Return: CombatReturn.InStage, Rank.IsWinningRank: true } ] &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
-                result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush)
+                result.CarriersConfirmed && (result.Carriers.IsEmpty || configuration.MysteryHasCarrier) &&
+                result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn)
                 ? MapMoveOutcome.StageReturned :
                 MapMoveOutcome.UnsupportedEncounter, result);
         bool combatConfirmed = result.Combats.Length == 1 &&
@@ -219,22 +222,23 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             result.HandledEncounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush);
         bool interactionsConfirmed = action switch
         {
-            MapAction.Move or MapAction.Ammo => result.HandledEncounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush) &&
+            MapAction.Move or MapAction.Ammo => result.HandledEncounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn) &&
                 result.Combats.IsEmpty,
             MapAction.Fight => decoyConfirmed || combatConfirmed &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
-                result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush),
+                result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn),
             MapAction.Mystery => result.Combats.IsEmpty &&
-                (result.HandledEncounters.Contains(MapEncounterKind.ItemPopup) || !result.AmmoNotificationFrames.IsEmpty) &&
+                (result.HandledEncounters.Contains(MapEncounterKind.ItemPopup) || !result.AmmoNotificationFrames.IsEmpty || !result.Carriers.IsEmpty) &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) <= 1 &&
-                result.HandledEncounters.All(kind => kind is MapEncounterKind.ItemPopup or MapEncounterKind.AirRaid or MapEncounterKind.Ambush),
+                result.HandledEncounters.All(kind => kind is MapEncounterKind.ItemPopup or MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn),
             MapAction.ProbeBoss or MapAction.ProbeBouncing => (result.Combats.IsEmpty &&
-                    result.HandledEncounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush) ||
+                    result.HandledEncounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn) ||
                 combatConfirmed && result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&
-                    result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush)),
+                    result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn)),
             _ => false
         };
-        if (!interactionsConfirmed || !result.AmbushesConfirmed || landingGrid.MayAmmo && !result.SupplyClickCompleted)
+        if (!interactionsConfirmed || !result.AmbushesConfirmed || !result.CarriersConfirmed ||
+            !result.Carriers.IsEmpty && !configuration.MysteryHasCarrier || landingGrid.MayAmmo && !result.SupplyClickCompleted)
         {
             state.MovementInvalidated = true;
             camera.Invalidate();
@@ -257,7 +261,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             bool siren = battled && (mazeWaitFor is not null || fight && expectation == MapCombatExpectation.None
                 ? configuration.HasMovableEnemy : fight && expectation == MapCombatExpectation.Siren);
             bool cleared = battled && !siren && target.MayEnemy;
-            int mysteryCount = checked(state.MysteryCount + result.AmmoNotificationFrames.Length +
+            int mysteryCount = checked(state.MysteryCount + result.AmmoNotificationFrames.Length + result.Carriers.Length +
                 (mystery ? result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) : 0));
             if (battled) state.CommitBattle(siren);
             state[origin].IsFleet = false;
@@ -277,6 +281,16 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
                 release = release with { ArrivalSequence = result.FrameSequence,
                     ConfirmSeconds = (battled ? options!.AfterCombatConfirmDelay ?? options.ConfirmDelay : options!.ConfirmDelay).TotalSeconds };
                 state.RecordMechanismRelease(release);
+            }
+            if (result.LastMysteryWasCarrier)
+            {
+                // Native full_scan_carrier runs after committing arrival, before round updates.
+                var previous = state.Cells.Where(cell => cell.IsEnemy).Select(cell => cell.Location).ToHashSet();
+                var scan = await carrierScanner!.ScanAsync(state.Progress, TimeSpan.FromMinutes(2), mode: MapScanMode.Carrier,
+                    fleet: new FleetScanOptions(configuration.HasDecoyEnemy, configuration.Fleet2 != 0), token: token);
+                var added = state.Cells.Where(cell => cell.IsEnemy && !previous.Contains(cell.Location)).Select(cell => cell.Location).ToImmutableArray();
+                state.RecordCarrierScan(new(state.CarrierCount, added, scan));
+                state.RefreshFleetPaths(configuration);
             }
             if (state.Rounds.Initialized)
             {

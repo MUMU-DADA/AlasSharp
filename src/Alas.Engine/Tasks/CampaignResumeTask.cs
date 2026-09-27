@@ -61,8 +61,8 @@ public sealed class CampaignResumeTask : ITaskRunner
                 CapturedFrames: > 0 } ]
         } arrival && terminalCombat?.Rank is { } winningRank && CombatRankProbe.IsRecognized(winningRank) &&
             arrival.HandledEncounters.Count(encounter => encounter == MapEncounterKind.Combat) == 1 &&
-            arrival.AmbushesConfirmed &&
-            arrival.HandledEncounters.All(encounter => encounter is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush);
+            arrival.AmbushesConfirmed && arrival.CarriersConfirmed &&
+            arrival.HandledEncounters.All(encounter => encounter is MapEncounterKind.Combat or MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn);
         string outcome = cleared ? "cleared" : withdrawn ? "withdrawn" : ended ? "ended_unknown" : "incomplete";
         var evidence = JsonSerializer.SerializeToNode(new
         {
@@ -78,6 +78,8 @@ public sealed class CampaignResumeTask : ITaskRunner
             result.MazeWaits,
             result.DecoyArrivals,
             result.AmbushEncounters,
+            result.CarrierEncounters,
+            result.CarrierScans,
             stageReturn = result.StageReturn, settlementVerified = cleared, cleared,
             sortie = new
             {

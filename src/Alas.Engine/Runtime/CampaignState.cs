@@ -33,6 +33,12 @@ public sealed partial class CampaignState
     private readonly List<AmbushEncounterEvidence> _ambushEncounters = [];
     public IReadOnlyList<AmbushEncounterEvidence> AmbushEncounters => _ambushEncounters.AsReadOnly();
     internal void RecordAmbushEncounter(AmbushEncounterEvidence evidence) => _ambushEncounters.Add(evidence);
+    private readonly List<CarrierEncounterEvidence> _carrierEncounters = [];
+    public IReadOnlyList<CarrierEncounterEvidence> CarrierEncounters => _carrierEncounters.AsReadOnly();
+    internal void RecordCarrierEncounter(CarrierEncounterEvidence evidence) => _carrierEncounters.Add(evidence);
+    private readonly List<CarrierScanEvidence> _carrierScans = [];
+    public IReadOnlyList<CarrierScanEvidence> CarrierScans => _carrierScans.AsReadOnly();
+    internal void RecordCarrierScan(CarrierScanEvidence evidence) => _carrierScans.Add(evidence);
     public CampaignState(MapDefinition map, CampaignRule? rule = null)
     {
         if (rule is not null && !ReferenceEquals(map, rule.Map)) throw new ArgumentException("Rule and map must belong to the same campaign");

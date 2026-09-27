@@ -417,6 +417,7 @@ internal static partial class CampaignMapCombatChecks
         public bool InMap { get; init; } = true;
         public bool HasMystery { get; init; }
         public bool SimulateFleetSwitch { get; init; }
+        public Func<Camera, CampaignConfiguration, Func<CancellationToken, ValueTask>, CampaignMapCombat>? CombatFactory { get; init; }
         public Func<Camera, bool>? CombatWhen { get; init; }
         public Func<int, Cell, MapScanMode, MapObservation>? ObservationFactory { get; init; }
         public int FleetLockCalls { get; private set; }
@@ -467,7 +468,7 @@ internal static partial class CampaignMapCombatChecks
         }
         public CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration,
             Func<CancellationToken, ValueTask> refocusBoss)
-            => Camera == camera ? Create(Camera.State, configuration, Camera, switchFleet: SimulateFleetSwitch ? (fleet, token) =>
+            => Camera == camera ? CombatFactory?.Invoke(Camera, configuration, refocusBoss) ?? Create(Camera.State, configuration, Camera, switchFleet: SimulateFleetSwitch ? (fleet, token) =>
             {
                 token.ThrowIfCancellationRequested();
                 Camera.State.FleetIndex = fleet;

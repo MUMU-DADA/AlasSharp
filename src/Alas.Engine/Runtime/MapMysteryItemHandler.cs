@@ -3,7 +3,7 @@ using Alas.Engine.Rules;
 
 namespace Alas.Engine.Runtime;
 
-/// <summary>Handles the upstream item-popup branch of a mystery; other mystery rewards remain unported.</summary>
+/// <summary>Handles the upstream item-popup branch; ammo observations and carrier spawning have their own handlers.</summary>
 public sealed class MapMysteryItemHandler(IUiDriver ui) : IMapEncounterHandler
 {
     public static readonly SourceFile Source = new("module/handler/mystery.py",

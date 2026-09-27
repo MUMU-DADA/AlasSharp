@@ -26,6 +26,11 @@ public sealed record MapArrivalResult(MapArrivalOutcome Outcome, long FrameSeque
     public ImmutableArray<CombatFlowResult> Combats { get; init; } = [];
     public ImmutableArray<long> AmmoNotificationFrames { get; init; } = [];
     public ImmutableArray<MapAmbushResult> Ambushes { get; init; } = [];
+    public ImmutableArray<MapCarrierResult> Carriers { get; init; } = [];
+    public bool LastMysteryWasCarrier { get; init; }
+    public bool CarriersConfirmed => (!LastMysteryWasCarrier || !Carriers.IsEmpty) &&
+        Carriers.Length == HandledEncounters.Count(kind => kind == MapEncounterKind.CarrierSpawn) &&
+        Carriers.All(carrier => carrier.IsConsistent);
     public int RetryTaps { get; init; }
     public bool AmbushesConfirmed => Ambushes.Length == HandledEncounters.Count(kind => kind == MapEncounterKind.Ambush) &&
         Ambushes.All(ambush => ambush.CanContinue);
@@ -40,7 +45,7 @@ public sealed record MapArrivalOptions(TimeSpan ConfirmDelay, TimeSpan WalkTimeo
 
 public enum MapEncounterContinuation { Unhandled, InMap, InStage }
 public sealed record MapEncounterHandling(MapEncounterContinuation Continuation, CombatFlowResult? Combat = null,
-    MapAmbushResult? Ambush = null);
+    MapAmbushResult? Ambush = null, MapCarrierResult? Carrier = null);
 
 public interface IMapEncounterHandler
 {
@@ -86,12 +91,15 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
         var combats = ImmutableArray.CreateBuilder<CombatFlowResult>();
         var ammoFrames = ImmutableArray.CreateBuilder<long>();
         var ambushes = ImmutableArray.CreateBuilder<MapAmbushResult>();
+        var carriers = ImmutableArray.CreateBuilder<MapCarrierResult>();
+        bool lastMysteryWasCarrier = false;
         int retryTaps = 0;
         MapArrivalResult Result(MapArrivalOutcome outcome, MapEncounterKind encounter = MapEncounterKind.None)
             => new(outcome, sequence, frames, encounter)
             { HandledEncounters = handled.ToImmutable(), Combats = combats.ToImmutable(),
                 AmmoNotificationFrames = ammoFrames.ToImmutable(), SupplyClickCompleted = supplyClickCompleted,
-                Ambushes = ambushes.ToImmutable(), RetryTaps = retryTaps };
+                Ambushes = ambushes.ToImmutable(), RetryTaps = retryTaps,
+                Carriers = carriers.ToImmutable(), LastMysteryWasCarrier = lastMysteryWasCarrier };
         try
         {
             await camera.PrepareTapAsync(destination, token);
@@ -127,6 +135,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                             if (encounter == MapEncounterKind.AmmoNotification)
                             {
                                 ammoFrames.Add(sequence);
+                                lastMysteryWasCarrier = false;
                                 encounter = MapEncounterKind.None;
                             }
                             if (encounter == MapEncounterKind.None && !await isInMap(linked.Token))
@@ -181,6 +190,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                     throw new InvalidDataException("Encounter handler returned an unknown continuation");
                 if (resolution.Continuation == MapEncounterContinuation.Unhandled)
                     return Result(MapArrivalOutcome.MapInterrupted, encounter);
+                if (resolution.Carrier is not null && encounter != MapEncounterKind.CarrierSpawn)
+                    throw new InvalidDataException("Unrelated interaction returned carrier evidence");
                 if (encounter == MapEncounterKind.Combat)
                 {
                     if (resolution.Ambush is not null || resolution.Combat is not { } combat ||
@@ -199,8 +210,18 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                     ambushes.Add(ambush);
                     state.RecordAmbushEncounter(new(state.FleetIndex, destination, ambush));
                 }
+                else if (encounter == MapEncounterKind.CarrierSpawn)
+                {
+                    if (resolution.Combat is not null || resolution.Ambush is not null ||
+                        resolution.Continuation != MapEncounterContinuation.InMap || resolution.Carrier is not { IsConsistent: true } carrier)
+                        throw new InvalidDataException("Carrier handler returned inconsistent observation evidence");
+                    carriers.Add(carrier);
+                    lastMysteryWasCarrier = true;
+                    state.RecordCarrierEncounter(new(state.FleetIndex, destination, carrier));
+                }
                 else if (resolution.Ambush is not null || resolution.Combat is not null || resolution.Continuation == MapEncounterContinuation.InStage)
                     throw new InvalidDataException("Noncombat interaction returned battle or stage evidence");
+                if (encounter == MapEncounterKind.ItemPopup) lastMysteryWasCarrier = false;
                 handled.Add(encounter);
                 if (resolution.Continuation == MapEncounterContinuation.InStage)
                     return Result(MapArrivalOutcome.StageReturned, encounter);

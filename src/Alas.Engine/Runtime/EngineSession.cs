@@ -98,7 +98,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         IMapEncounterHandler? handler = null, Func<CancellationToken, ValueTask>? recoverAfterCombat = null,
         Func<MapEncounterProbe, IMapEncounterHandler>? createHandler = null)
     {
-        var probe = new MapEncounterProbe(Driver, configuration.HasAmbush, _ammoProbe);
+        var probe = new MapEncounterProbe(Driver, configuration.HasAmbush, _ammoProbe, configuration.MysteryHasCarrier);
         handler = createHandler?.Invoke(probe) ?? handler;
         return new(camera, camera.State, token => Driver.AppearsAsync(UiAssets.Handler.IN_MAP, token: token), Driver.Clock,
             probe, new MapAirRaidHandler(Driver, probe,
@@ -106,15 +106,19 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     }
     public MapMovement CreateMapMovement(MapCamera camera, CampaignConfiguration configuration)
         => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration), EnsureNoMapInfoBarAsync,
-            token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration));
+            token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration), new MapScanner(camera.State, camera, Driver.Clock));
     public MapMovement CreateMapCombatMovement(MapCamera camera, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal, Func<CancellationToken, ValueTask>? refocusBoss = null)
-        => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration,
+    {
+        // Keep story and urgent-commission timers across grid visits in this sortie.
+        var recovery = new UiRecovery(Driver, _application, Pages, new());
+        return new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration,
             recoverAfterCombat: new MapCombatRecovery(camera.State, camera,
                 refocusBoss ?? (token => camera.RefocusBossAsync(configuration.BossAppearRefocusSwipe, token)),
                 token => ReadFleetHealthAsync(camera.State, camera.State.FleetIndex, configuration, token)).RecoverAsync,
-            createHandler: probe => CreateMapEncounterHandler(camera.State, configuration, entrances, probe)), EnsureNoMapInfoBarAsync,
-            token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration));
+            createHandler: probe => CreateMapEncounterHandler(camera.State, configuration, entrances, probe, recovery)), EnsureNoMapInfoBarAsync,
+            token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration), new MapScanner(camera.State, camera, Driver.Clock));
+    }
     private MapMovableScan CreateMovableScan(MapCamera camera, CampaignConfiguration configuration)
         => new(camera.State, configuration, new MapScanner(camera.State, camera, Driver.Clock), camera.HasEnemyTemplates);
     private async ValueTask ReadFleetStatusAfterCombatAsync(CampaignState state, int fleet,
@@ -184,7 +188,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             execution.Context.State.Health.Observations, execution.Context.State.Withdrawal,
             execution.Context.State.Levels.Evidence(execution.Context.Config.Levels), execution.Context.State.MechanismReleases,
             execution.Context.State.MovableScans, execution.Context.State.MazeWaits, execution.Context.State.DecoyArrivals,
-            execution.Context.State.AmbushEncounters);
+            execution.Context.State.AmbushEncounters, execution.Context.State.CarrierEncounters, execution.Context.State.CarrierScans);
     }
     async ValueTask<bool> ICampaignInMapHost.VerifyInMapAsync(CancellationToken token)
     {

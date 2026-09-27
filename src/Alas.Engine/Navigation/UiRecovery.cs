@@ -70,6 +70,13 @@ public sealed class UiRecovery : IUiRecovery, IPopupHandler, IStoryHandler
         return true;
     }
     public ValueTask<bool> ConfirmAsync(CancellationToken token) => PopupConfirm(token);
+    public ValueTask<bool> UrgentCommissionAsync(CancellationToken token) => UrgentCommission(token);
+    public async ValueTask<bool> GuildPopupCancelAsync(CancellationToken token)
+    {
+        if (!await Appear(GUILD_POPUP_CONFIRM, Popup, 0, token) || !await Appear(GUILD_POPUP_CANCEL, Popup, 2, token)) return false;
+        await _driver.ClickAsync(GUILD_POPUP_CANCEL, token);
+        return true;
+    }
     private async ValueTask<bool> UrgentCommission(CancellationToken token)
     {
         bool appeared = await Appear(GET_MISSION, ButtonOffset.Vertical(_options.ButtonOffset), 2, token);
@@ -116,11 +123,7 @@ public sealed class UiRecovery : IUiRecovery, IPopupHandler, IStoryHandler
     }
     private async ValueTask<bool> MainPopups(bool getShip, CancellationToken token)
     {
-        if (await Appear(GUILD_POPUP_CONFIRM, Popup, 0, token) && await Appear(GUILD_POPUP_CANCEL, Popup, 2, token))
-        {
-            await _driver.ClickAsync(GUILD_POPUP_CANCEL, token);
-            return true;
-        }
+        if (await GuildPopupCancelAsync(token)) return true;
         if (await ClickIf(LOGIN_ANNOUNCE, Wide, 3, token) || await ClickIf(LOGIN_ANNOUNCE_2, Wide, 3, token) ||
             await ClickIf(GET_ITEMS_1, ButtonOffset.Vertical(_options.ButtonOffset), 3, token) ||
             await ClickIf(GET_ITEMS_2, ButtonOffset.Vertical(_options.ButtonOffset), 3, token)) return true;

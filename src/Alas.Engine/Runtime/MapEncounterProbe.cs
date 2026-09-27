@@ -4,7 +4,7 @@ using Alas.Engine.Rules;
 
 namespace Alas.Engine.Runtime;
 
-public enum MapEncounterKind { None, Combat, AirRaid, Ambush, ItemPopup, UnknownPage, AmmoNotification }
+public enum MapEncounterKind { None, Combat, AirRaid, Ambush, ItemPopup, UnknownPage, AmmoNotification, CarrierSpawn }
 
 public interface IMapEncounterProbe
 {
@@ -13,7 +13,7 @@ public interface IMapEncounterProbe
 }
 
 /// <summary>Read-only upstream interaction priority; CV returns colors and template matches, not decisions.</summary>
-public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe? ammo = null) : IMapEncounterProbe
+public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe? ammo = null, bool mysteryHasCarrier = false) : IMapEncounterProbe
 {
     public static readonly SourceFile CombatSource = new("module/combat/combat.py",
         "abbe4e2f1017cbdc5b6ca8595bd5411f9a9616b47105066be16b6e7f3910d4b7");
@@ -52,6 +52,7 @@ public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe
             return MapEncounterKind.ItemPopup;
         if (ammo is not null && await ammo.ObserveAsync(frameSequence, token))
             return MapEncounterKind.AmmoNotification;
+        if (mysteryHasCarrier && await MapEnemySearching.AppearsAsync(ui, token)) return MapEncounterKind.CarrierSpawn;
         return MapEncounterKind.None;
     }
 

@@ -6,6 +6,8 @@
 
 ## 请求与结果
 
+章节规则的 MysteryHasCarrier 开启时，增援动画经 C# 处理，确认到达后按原生最后谜题类型决定 carrier 扫描；这不是任务 JSON 的业务开关。正常战役结果的 carrierEncounters 保存逻辑舰队、目的格、动画等待依据帧和退出原因，carrierScans 保存观测增援计数、新敌人格及扫描记录。扫描预测不证明增援已被击败；等待/扫描失败终止本局，已确认状态不回滚。未确认到达仍可有动画观察，不能据此推断位置或通关；异常退出目前没有这两项独立工件，沿用异常与动作记录。可执行章节范围仍由上述 RuleCatalog 控制。
+
 campaign_run 与 campaign_resume 支持 ambushEvade（布尔，默认 true；null 和其他类型拒绝），false 表示按上游主动迎击。伏击处理使用本次有效配置，与章节差异无关。正常战役返回中的 ambushEncounters 记录途中伏击的逻辑舰队、目的格、帧号、点击数、回避信息、独立战果及是否读取舰队状态；失败结果也保留已观察的伏击，但列表不代表目的格已到达。异常退出目前仍只沿用异常/动作工件。伏击不增加地图战斗数或消耗地图弹药，单独伏击后返回章节页不算通关；成功任务仍要求真实目标战斗的完整结算链。
 
 心情控制由 Engine 的 C# 规则、会话和配置事务执行。campaign_run 缺省 calculate；campaign_resume 与 campaign 命令保留 ignore 缺省值。campaign_run 支持 calculate、calculate_ignore、ignore、nothing；前两者估算并写回两队心情，包含 ignore 的模式确认低心情提示。campaign_resume 没有进图前的双倍书观测，仅支持 ignore / nothing；计算模式在设备动作前拒绝，不能把未知消耗倍率当作单倍。值是原生算法估算，不是 OCR 实测。
