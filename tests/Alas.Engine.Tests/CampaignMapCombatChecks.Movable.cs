@@ -25,7 +25,7 @@ internal static partial class CampaignMapCombatChecks
         var rule = new MovableRule(map);
         var execution = new CampaignExecution(rule, new() { HasMovableEnemy = true, HasSiren = true,
             HasFleetStep = true, Fleet1Step = 2, HasAmbush = false, ClearAllThisTime = true, EmotionMode = CampaignEmotionMode.Ignore },
-            (state, config) => new InMapCampaignOperations(host, state, config, default));
+            (state, config) => new InMapCampaignOperations(host, state, config, default, rule));
         var exit = await execution.RunAsync();
         Check(exit == CampaignLoopExit.Ended && execution.Context.State is { BattleCount: 1, SirenCount: 1 } state &&
             state.MovableScans.Count == 1 && state.Rounds.Round == 4 && host.Camera!.Taps == 5 && state.MovementInvalidated,

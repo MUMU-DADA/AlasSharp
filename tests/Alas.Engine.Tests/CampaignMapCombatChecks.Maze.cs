@@ -21,7 +21,7 @@ internal static partial class CampaignMapCombatChecks
         var rule = new MazeRule(map);
         var execution = new CampaignExecution(rule, new() { HasMaze = true, HasAmbush = false,
             ClearAllThisTime = true, EmotionMode = CampaignEmotionMode.Ignore },
-            (state, config) => new InMapCampaignOperations(host, state, config, default));
+            (state, config) => new InMapCampaignOperations(host, state, config, default, rule));
         var exit = await execution.RunAsync(); var state = execution.Context.State;
         Check(exit == CampaignLoopExit.Ended && state.BattleCount == 1 && state.Rounds.Round == 5 && state.MazeWaits.Count == 3 &&
             host.Camera!.Taps == 6, $"Maze campaign differs: {exit}, battle={state.BattleCount}, round={state.Rounds.Round}, waits={state.MazeWaits.Count}, taps={host.Camera!.Taps}");

@@ -233,8 +233,9 @@ internal static partial class CampaignMapCombatChecks
         var map = new MapDefinition("C1", "SP ME MB", ["B1"], ["B1"],
             [new SpawnWave(0, Enemy: 1), new SpawnWave(1, Boss: 1)]);
         var host = new Host();
-        var execution = new CampaignExecution(new TwoBattleRule(map), new() { EmotionMode = CampaignEmotionMode.Ignore },
-            (state, config) => new InMapCampaignOperations(host, state, config, default));
+        var rule = new TwoBattleRule(map);
+        var execution = new CampaignExecution(rule, new() { EmotionMode = CampaignEmotionMode.Ignore },
+            (state, config) => new InMapCampaignOperations(host, state, config, default, rule));
         Check(await execution.RunAsync() == CampaignLoopExit.Ended && host.Camera is { Taps: 2, Scans: 2 } &&
             execution.Context.State.BattleCount == 1 && host.FleetLockCalls == 1 && host.StrategyCalls == 1 &&
             execution.Context.Operations is InMapCampaignOperations
@@ -244,9 +245,10 @@ internal static partial class CampaignMapCombatChecks
         var mysteryMap = new MapDefinition("D1", "SP MM ME MB", ["B1"], ["B1"],
             [new SpawnWave(0, Enemy: 1, Mystery: 1), new SpawnWave(1, Boss: 1)]);
         var mysteryHost = new Host { HasMystery = true };
-        var mysteryExecution = new CampaignExecution(new MysteryTwoBattleRule(mysteryMap),
+        var mysteryRule = new MysteryTwoBattleRule(mysteryMap);
+        var mysteryExecution = new CampaignExecution(mysteryRule,
             new() { EmotionMode = CampaignEmotionMode.Ignore },
-            (state, config) => new InMapCampaignOperations(mysteryHost, state, config, default));
+            (state, config) => new InMapCampaignOperations(mysteryHost, state, config, default, mysteryRule));
         Check(await mysteryExecution.RunAsync() == CampaignLoopExit.Ended &&
             mysteryHost.Camera is { Taps: 3, Scans: 2 } &&
             mysteryExecution.Context.State is { MysteryCount: 1, BattleCount: 1, AmmoCount: 3, FleetAmmo: 4 } &&
@@ -340,8 +342,8 @@ internal static partial class CampaignMapCombatChecks
             "Round limit was recorded as a completed sortie");
 
         host = new Host { InMap = false };
-        execution = new CampaignExecution(new TwoBattleRule(map), new() { EmotionMode = CampaignEmotionMode.Ignore },
-            (state, config) => new InMapCampaignOperations(host, state, config, default));
+        execution = new CampaignExecution(rule, new() { EmotionMode = CampaignEmotionMode.Ignore },
+            (state, config) => new InMapCampaignOperations(host, state, config, default, rule));
         bool rejected = false;
         try { await execution.RunAsync(); }
         catch (InvalidDataException) { rejected = true; }
@@ -418,6 +420,8 @@ internal static partial class CampaignMapCombatChecks
         public Func<int, Cell, MapScanMode, MapObservation>? ObservationFactory { get; init; }
         public int FleetLockCalls { get; private set; }
         public int StrategyCalls { get; private set; }
+        public List<(int X, int Y)?> RefocusPresets { get; } = [];
+        public List<int> RefocusBattleCounts { get; } = [];
         public Camera? Camera { get; private set; }
         public ValueTask<bool> VerifyInMapAsync(CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(InMap); }
@@ -452,14 +456,22 @@ internal static partial class CampaignMapCombatChecks
             };
             return ValueTask.FromResult<IMapScanCamera>(Camera);
         }
-        public CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration)
+        public ValueTask RefocusBossAsync(IMapScanCamera camera, (int X, int Y)? preset, CancellationToken token)
+        {
+            Check(ReferenceEquals(Camera, camera), "Refocus used another camera");
+            RefocusPresets.Add(preset);
+            RefocusBattleCounts.Add(Camera!.State.BattleCount);
+            return Camera!.RelocalizeAsync(token);
+        }
+        public CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration,
+            Func<CancellationToken, ValueTask> refocusBoss)
             => Camera == camera ? Create(Camera.State, configuration, Camera, switchFleet: SimulateFleetSwitch ? (fleet, token) =>
             {
                 token.ThrowIfCancellationRequested();
                 Camera.State.FleetIndex = fleet;
                 Camera.State.RefreshFleetPaths(configuration);
                 return ValueTask.CompletedTask;
-            } : null) :
+            } : null, refocusBoss: refocusBoss) :
                 throw new InvalidOperationException("Wrong camera instance");
     }
 
@@ -474,11 +486,13 @@ internal static partial class CampaignMapCombatChecks
 
     private static CampaignMapCombat Create(CampaignState state, CampaignConfiguration config, Camera camera,
         Func<int, CancellationToken, ValueTask>? waitEmotion = null,
-        Func<int, CancellationToken, ValueTask>? switchFleet = null)
+        Func<int, CancellationToken, ValueTask>? switchFleet = null,
+        Func<CancellationToken, ValueTask>? refocusBoss = null)
     {
         var movement = new MapMovement(state, config, camera, () =>
             new MapArrivalCheck(camera, state, camera.InMapAsync, camera.Clock,
-                new Probe(camera), new Handler(camera)),
+                new Probe(camera), new Handler(camera), recoverAfterCombat: refocusBoss is null ? null :
+                    new MapCombatRecovery(state, camera, refocusBoss).RecoverAsync),
             movableScan: new(state, config, new(state, camera, camera.Clock)));
         return new(state, config, movement, new MapScanner(state, camera, camera.Clock), waitEmotion, switchFleet,
             token => camera.EnsureEdgesAsync(true, token));

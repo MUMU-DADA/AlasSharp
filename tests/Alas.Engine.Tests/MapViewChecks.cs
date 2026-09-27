@@ -8,7 +8,7 @@ using Alas.Engine.Runtime;
 
 namespace Alas.Engine.Tests;
 
-internal static class MapViewChecks
+internal static partial class MapViewChecks
 {
     private static readonly PixelArea Area = new(0, 0, 1280, 720);
     private static readonly PixelPoint Tile = new(100, 100);

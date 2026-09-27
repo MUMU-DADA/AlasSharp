@@ -277,6 +277,24 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
             return true;
         }, token, allowSuspended: true);
 
+    /// <summary>Native handle_boss_appear_refocus: localize, recover by the rule's preset only on geometry failure,
+    /// find the edges, then focus the camera position saved before the boss animation.</summary>
+    public async ValueTask RefocusBossAsync((int X, int Y)? preset, CancellationToken token = default)
+        => await RunAsync(async ct =>
+        {
+            var previous = Position;
+            try { await UpdateCoreAsync(false, ct); }
+            catch (MapGeometryException) when (preset is { } swipe && (swipe.X != 0 || swipe.Y != 0))
+            {
+                await SwipeCoreAsync(new(preset.Value.X, preset.Value.Y), ct);
+            }
+            await EnsureEdgesCoreAsync(true, false, null, new(3, 2), ct);
+            await FocusCoreAsync(previous, ct);
+            _requiresRefresh = false;
+            Volatile.Write(ref _suspended, false);
+            return true;
+        }, token, allowSuspended: true);
+
     /// <summary>Refresh pixels after a map action while retaining the last localized grid geometry.</summary>
     public async ValueTask RefreshImageAsync(CancellationToken token = default)
         => await RunAsync(async ct =>
@@ -295,36 +313,40 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
         ViewCell? preset, ViewCell swipeLimit, CancellationToken token = default)
     {
         if (swipeLimit.X < 1 || swipeLimit.Y < 1) throw new ArgumentOutOfRangeException(nameof(swipeLimit));
-        return RunAsync<IReadOnlyList<ViewCell>>(async ct =>
+        return RunAsync(ct => EnsureEdgesCoreAsync(skipFirstUpdate, reverse, preset, swipeLimit, ct),
+            token, requiresFreshImage: true);
+    }
+
+    private async ValueTask<IReadOnlyList<ViewCell>> EnsureEdgesCoreAsync(bool skipFirstUpdate, bool reverse,
+        ViewCell? preset, ViewCell swipeLimit, CancellationToken ct)
+    {
+        string corner = _rules.EdgeCorner.ToLowerInvariant();
+        int xSign = _random.NextDouble() > 0.5 ? 1 : -1, ySign = _random.NextDouble() > 0.5 ? 1 : -1;
+        if (corner.Contains("left", StringComparison.Ordinal)) xSign = -1;
+        else if (corner.Contains("right", StringComparison.Ordinal)) xSign = 1;
+        if (corner.Contains("upper", StringComparison.Ordinal)) ySign = -1;
+        else if (corner.Contains("bottom", StringComparison.Ordinal)) ySign = 1;
+        var record = new List<ViewCell>();
+        while (true)
         {
-            string corner = _rules.EdgeCorner.ToLowerInvariant();
-            int xSign = _random.NextDouble() > 0.5 ? 1 : -1, ySign = _random.NextDouble() > 0.5 ? 1 : -1;
-            if (corner.Contains("left", StringComparison.Ordinal)) xSign = -1;
-            else if (corner.Contains("right", StringComparison.Ordinal)) xSign = 1;
-            if (corner.Contains("upper", StringComparison.Ordinal)) ySign = -1;
-            else if (corner.Contains("bottom", StringComparison.Ordinal)) ySign = 1;
-            var record = new List<ViewCell>();
-            while (true)
+            ct.ThrowIfCancellationRequested();
+            if (record.Count == 0)
             {
-                ct.ThrowIfCancellationRequested();
-                if (record.Count == 0)
-                {
-                    if (!skipFirstUpdate) await UpdateCoreAsync(false, ct);
-                    if (preset is { } first) { await SwipeCoreAsync(first, ct); record.Add(first); }
-                }
-                var edge = View.Geometry.Edges;
-                var delta = new ViewCell(edge.Left || edge.Right ? 0 : swipeLimit.X * xSign,
-                    edge.Lower || edge.Upper ? 0 : swipeLimit.Y * ySign);
-                // The first requested direction is recorded without moving unless a preset ran.
-                if (record.Count > 0) await SwipeCoreAsync(delta, ct);
-                record.Add(delta);
-                if (delta == default) break;
+                if (!skipFirstUpdate) await UpdateCoreAsync(false, ct);
+                if (preset is { } first) { await SwipeCoreAsync(first, ct); record.Add(first); }
             }
-            if (reverse)
-                foreach (var delta in record.AsEnumerable().Reverse())
-                    if (delta != default) await SwipeCoreAsync(new(-delta.X, -delta.Y), ct);
-            return record.AsReadOnly();
-        }, token, requiresFreshImage: true);
+            var edge = View.Geometry.Edges;
+            var delta = new ViewCell(edge.Left || edge.Right ? 0 : swipeLimit.X * xSign,
+                edge.Lower || edge.Upper ? 0 : swipeLimit.Y * ySign);
+            // The first requested direction is recorded without moving unless a preset ran.
+            if (record.Count > 0) await SwipeCoreAsync(delta, ct);
+            record.Add(delta);
+            if (delta == default) break;
+        }
+        if (reverse)
+            foreach (var delta in record.AsEnumerable().Reverse())
+                if (delta != default) await SwipeCoreAsync(new(-delta.X, -delta.Y), ct);
+        return record.AsReadOnly();
     }
 
     private async ValueTask<bool> SwipeCoreAsync(ViewCell requested, CancellationToken token)

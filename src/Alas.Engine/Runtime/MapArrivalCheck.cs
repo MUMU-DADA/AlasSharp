@@ -44,7 +44,8 @@ public interface IMapEncounterHandler
 /// <summary>Checks a clicked cell against fresh map frames; no sortie state changes until a caller handles all interactions.</summary>
 public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState state,
     Func<CancellationToken, ValueTask<bool>> isInMap, TimeProvider? clock = null,
-    IMapEncounterProbe? probe = null, IMapEncounterHandler? handler = null)
+    IMapEncounterProbe? probe = null, IMapEncounterHandler? handler = null,
+    Func<CancellationToken, ValueTask>? recoverAfterCombat = null)
 {
     public static readonly SourceFile Source = CampaignState.InitializationSource;
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
@@ -165,7 +166,9 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                 handled.Add(encounter);
                 if (resolution.Continuation == MapEncounterContinuation.InStage)
                     return Result(MapArrivalOutcome.StageReturned, encounter);
-                await camera.RelocalizeAsync(token);
+                if (resolution.Combat is { Return: CombatReturn.InMap, Rank.IsWinningRank: true } && recoverAfterCombat is not null)
+                    await recoverAfterCombat(token);
+                else await camera.RelocalizeAsync(token);
                 if (camera.FrameSequence <= sequence)
                     throw new InvalidDataException("Interaction recovery reused a stale map frame");
                 sequence = camera.FrameSequence;

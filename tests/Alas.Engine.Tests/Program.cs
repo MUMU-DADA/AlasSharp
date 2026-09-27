@@ -205,6 +205,13 @@ try
         await CampaignFleetSwitcherChecks.RunAsync();
         return 0;
     }
+    if (args is ["--boss-refocus", var refocusPython, var refocusUpstream, var refocusArtifacts])
+    {
+        string folder = Path.GetFullPath(refocusArtifacts);
+        Directory.CreateDirectory(folder);
+        await MapViewChecks.BossRefocusChecksAsync(Path.GetFullPath(refocusPython), Path.GetFullPath(refocusUpstream), folder);
+        return 0;
+    }
     if (args is ["--special-enemies", var specialPython, var specialUpstream, var specialArtifacts])
     {
         string folder = Path.GetFullPath(specialArtifacts);

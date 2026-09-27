@@ -95,22 +95,25 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         { throw new TimeoutException("Map camera initialization exceeded its time limit", error); }
     }
     public MapArrivalCheck CreateMapArrivalCheck(MapCamera camera, CampaignConfiguration configuration,
-        IMapEncounterHandler? handler = null)
+        IMapEncounterHandler? handler = null, Func<CancellationToken, ValueTask>? recoverAfterCombat = null)
     {
         var probe = new MapEncounterProbe(Driver, configuration.HasAmbush, _ammoProbe);
         return new(camera, camera.State, token => Driver.AppearsAsync(UiAssets.Handler.IN_MAP, token: token), Driver.Clock,
             probe, new MapAirRaidHandler(Driver, probe,
-                () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No air raid screenshot"), handler));
+                () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No air raid screenshot"), handler), recoverAfterCombat);
     }
     public MapMovement CreateMapMovement(MapCamera camera, CampaignConfiguration configuration)
         => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration), EnsureNoMapInfoBarAsync,
             token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration));
     public MapMovement CreateMapCombatMovement(MapCamera camera, CampaignConfiguration configuration,
-        StageEntranceKind entrances = StageEntranceKind.Normal)
+        StageEntranceKind entrances = StageEntranceKind.Normal, Func<CancellationToken, ValueTask>? refocusBoss = null)
         => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration,
             new MapCombatHandler(token => CreateCampaignCombatFlow(camera.State, configuration, entrances).RunAutoAsync(token: token),
                 new MapMysteryItemHandler(Driver), token => ReadFleetStatusAfterCombatAsync(camera.State,
-                    camera.State.FleetIndex, configuration, token))), EnsureNoMapInfoBarAsync,
+                    camera.State.FleetIndex, configuration, token)),
+            new MapCombatRecovery(camera.State, camera,
+                refocusBoss ?? (token => camera.RefocusBossAsync(configuration.BossAppearRefocusSwipe, token)),
+                token => ReadFleetHealthAsync(camera.State, camera.State.FleetIndex, configuration, token)).RecoverAsync), EnsureNoMapInfoBarAsync,
             token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration));
     private MapMovableScan CreateMovableScan(MapCamera camera, CampaignConfiguration configuration)
         => new(camera.State, configuration, new MapScanner(camera.State, camera, Driver.Clock), camera.HasEnemyTemplates);
@@ -162,15 +165,15 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             .EnsureNoInfoBarAsync(TimeSpan.FromSeconds(.6), token);
     }
     public CampaignMapCombat CreateCampaignMapCombat(MapCamera camera, CampaignConfiguration configuration,
-        StageEntranceKind entrances = StageEntranceKind.Normal)
-        => new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances),
+        StageEntranceKind entrances = StageEntranceKind.Normal, Func<CancellationToken, ValueTask>? refocusBoss = null)
+        => new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances, refocusBoss),
             new MapScanner(camera.State, camera, Driver.Clock),
             waitEmotion: (fleet, token) => RequireEmotion(configuration).WaitAsync(fleet, token, configuration.IsDoubleBook),
             switchFleet: CreateFleetSwitcher(camera, configuration).SwitchAsync,
             ensureEdges: token => camera.EnsureEdgesAsync(skipFirstUpdate: true, token));
     public CampaignExecution CreateInMapCampaignExecution(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token = default)
-        => new(rule, configuration, (state, effective) => new InMapCampaignOperations(this, state, effective, token));
+        => new(rule, configuration, (state, effective) => new InMapCampaignOperations(this, state, effective, token, rule));
     public async ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token)
     {
@@ -218,8 +221,11 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             TimeSpan.FromSeconds(30), token);
     }
     CampaignMapCombat ICampaignInMapHost.CreateCombat(IMapScanCamera camera,
-        CampaignConfiguration configuration)
-        => camera is MapCamera mapCamera ? CreateCampaignMapCombat(mapCamera, configuration) :
+        CampaignConfiguration configuration, Func<CancellationToken, ValueTask> refocusBoss)
+        => camera is MapCamera mapCamera ? CreateCampaignMapCombat(mapCamera, configuration, refocusBoss: refocusBoss) :
+            throw new ArgumentException("Campaign camera does not belong to this session", nameof(camera));
+    ValueTask ICampaignInMapHost.RefocusBossAsync(IMapScanCamera camera, (int X, int Y)? preset, CancellationToken token)
+        => camera is MapCamera mapCamera ? mapCamera.RefocusBossAsync(preset, token) :
             throw new ArgumentException("Campaign camera does not belong to this session", nameof(camera));
     public CombatRankProbe CreateCombatRankProbe() => new(Driver);
     internal CombatFlow CreateCampaignCombatFlow(CampaignState state, CampaignConfiguration configuration,

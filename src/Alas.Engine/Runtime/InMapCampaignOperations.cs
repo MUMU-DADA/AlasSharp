@@ -15,7 +15,9 @@ public interface ICampaignInMapHost
     ValueTask<CampaignWithdrawalEvidence> WithdrawAsync(string reason, CancellationToken token);
     ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state,
         CampaignConfiguration configuration, CancellationToken token);
-    CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration);
+    CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration,
+        Func<CancellationToken, ValueTask> refocusBoss);
+    ValueTask RefocusBossAsync(IMapScanCamera camera, (int X, int Y)? preset, CancellationToken token);
 }
 
 public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount, MapArrivalResult? StageReturn,
@@ -31,9 +33,10 @@ public interface ICampaignExecutionService
 
 /// <summary>Runs the compiled campaign loop after the user has completed stage and fleet preparation.</summary>
 public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignState state,
-    CampaignConfiguration configuration, CancellationToken token) : ICampaignOperations
+    CampaignConfiguration configuration, CancellationToken token, CampaignRule rule) : ICampaignOperations
 {
     private CampaignMapCombat? _combat;
+    private IMapScanCamera? _camera;
     private bool _entered;
     public MapArrivalResult? StageReturn => _combat?.StageReturn;
     public FleetSelection? InitialFleet { get; private set; }
@@ -62,14 +65,19 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
 
     public async ValueTask InitializeMapAsync(MapDefinition definition)
     {
-        if (!_entered || !ReferenceEquals(state.Map, definition))
+        if (!_entered || !ReferenceEquals(state.Map, definition) || !ReferenceEquals(rule.Map, definition))
             throw new InvalidOperationException("Map initialization requires the verified campaign declaration");
         InitialFleet = await host.PrepareInitialFleetAsync(configuration, token);
         await host.InitializeHealthAsync(state, InitialFleet.LogicalIndex, configuration, token);
         await host.InitializeLevelsAsync(state, InitialFleet.LogicalIndex, configuration, token);
         var ready = await CampaignMapInitializer.InitializeAsync(state, configuration, InitialFleet,
             (map, ct) => host.CreateCameraAsync(map, configuration, ct), TimeSpan.FromMinutes(2), token);
-        _combat = host.CreateCombat(ready.Camera, configuration);
+        _camera = ready.Camera;
+        _combat = host.CreateCombat(ready.Camera, configuration, ct =>
+        {
+            ct.ThrowIfCancellationRequested();
+            return rule.RefocusBossAsync(new(state, configuration, this));
+        });
     }
 
     private CampaignMapCombat Combat => _combat ??
@@ -84,7 +92,9 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync() => Combat.ClearAnyEnemyBySecondFleetCostAsync(token);
     public ValueTask<bool> ClearBouncingEnemyAsync() => Combat.ClearBouncingEnemyAsync(token);
     public ValueTask<bool> ClearMechanismAsync(IReadOnlyList<Cell>? grids = null) => Combat.ClearMechanismAsync(grids, token);
-    public ValueTask RefocusBossAsync((int X, int Y)? preset) => throw Missing("boss camera refocus");
+    public ValueTask RefocusBossAsync((int X, int Y)? preset)
+        => host.RefocusBossAsync(_camera ?? throw new InvalidOperationException("Initialize the map before boss refocus"),
+            preset ?? configuration.BossAppearRefocusSwipe, token);
     public ValueTask ResetLevelsAsync() => throw Missing("auto-search level reset");
     public ValueTask ReadLevelsAsync() => throw Missing("auto-search level read");
     public ValueTask AutoSearchMoveAsync() => throw Missing("auto-search movement");

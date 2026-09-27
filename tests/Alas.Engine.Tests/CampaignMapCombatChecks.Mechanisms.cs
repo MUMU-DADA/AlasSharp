@@ -20,7 +20,7 @@ internal static partial class CampaignMapCombatChecks
                 position, new(1, 0), mode)
         };
         var execution = new CampaignExecution(rule, new() { HasLandBased = true, HasAmbush = false, ClearAllThisTime = true, EmotionMode = CampaignEmotionMode.Ignore },
-            (state, config) => new InMapCampaignOperations(host, state, config, default));
+            (state, config) => new InMapCampaignOperations(host, state, config, default, rule));
         Check(await execution.RunAsync() == CampaignLoopExit.Ended && host.Camera is { Taps: 3, Scans: 2 } &&
             execution.Context.State is { BattleCount: 1, FleetAmmo: 4 } state &&
             state.MechanismReleases.Count == 1 && !state.Cells.Any(cell => cell.IsMechanismBlock || cell.IsMechanismTrigger),

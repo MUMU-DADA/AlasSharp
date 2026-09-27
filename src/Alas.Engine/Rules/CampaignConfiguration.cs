@@ -33,6 +33,7 @@ public sealed record CampaignConfiguration
     public double SirenMoveWait { get; init; } = 1.5;
     public bool HasMaze { get; init; }
     public bool WalkUseCurrentFleet { get; init; }
+    public (int X, int Y)? BossAppearRefocusSwipe { get; init; } = (0, 0);
     public bool HasWall { get; init; }
     public bool HasPortal { get; init; }
     public bool HasLandBased { get; init; }

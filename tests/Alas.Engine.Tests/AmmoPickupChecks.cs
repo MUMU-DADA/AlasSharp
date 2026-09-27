@@ -189,7 +189,7 @@ internal static class AmmoPickupChecks
         var state = new CampaignState(map);
         var host = new Host();
         var config = new CampaignConfiguration { PoorMapData = true, HasAmbush = false };
-        var operations = new InMapCampaignOperations(host, state, config, default);
+        var operations = new InMapCampaignOperations(host, state, config, default, new SupplyRule(map));
         await operations.EnterMapAsync();
         await operations.HandleFleetLockAsync();
         await operations.InitializeMapAsync(map);
@@ -305,7 +305,17 @@ internal static class AmmoPickupChecks
             ValueTask.FromResult(new FleetSelection(1, 1, 0, 1));
         public ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state, CampaignConfiguration config, CancellationToken token)
         { _run = new(state); return ValueTask.FromResult<IMapScanCamera>(_run.Camera); }
-        public CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration config) => _run!.Combat;
+        public CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration config,
+            Func<CancellationToken, ValueTask> refocusBoss) => _run!.Combat;
+        public ValueTask RefocusBossAsync(IMapScanCamera camera, (int X, int Y)? preset, CancellationToken token)
+            => throw new InvalidOperationException("Supply-only fixture has no boss");
+    }
+    private sealed class SupplyRule(MapDefinition map) : CampaignRule
+    {
+        public override string Id => "test/supply";
+        public override MapDefinition Map => map;
+        public override System.Collections.Immutable.ImmutableArray<SourceFile> Sources => [];
+        protected override IReadOnlyDictionary<int, BattleHook> Hooks { get; } = new Dictionary<int, BattleHook>();
     }
     private sealed class ImageDevice(ScreenFrame frame) : IGameDevice
     {

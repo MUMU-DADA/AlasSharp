@@ -287,11 +287,12 @@ internal static partial class CampaignMapCombatChecks
                         : [new(new(1 - position.Column, 1 - position.Row), new(IsFleet: true, IsCurrentFleet: true)),
                            new(new(3 - position.Column, 2 - position.Row), new(IsEnemy: true, EnemyScale: 1))]
                     : [new(new(5 - position.Column, 2 - position.Row), new(IsBoss: true))], position, new(0, 0), mode) };
-            var execution = new CampaignExecution(new SpecialRule(map), new()
+            var rule = new SpecialRule(map);
+            var execution = new CampaignExecution(rule, new()
             {
                 HasBouncingEnemy = !rescue, HasSiren = rescue, HasMovableEnemy = rescue,
                 Fleet2 = rescue ? 2 : 0, PoorMapData = rescue, HasAmbush = false, ClearAllThisTime = true, EmotionMode = CampaignEmotionMode.Ignore
-            }, (state, config) => new InMapCampaignOperations(host, state, config, default));
+            }, (state, config) => new InMapCampaignOperations(host, state, config, default, rule));
             CampaignLoopExit exit;
             try { exit = await execution.RunAsync(); }
             catch (Exception error)
