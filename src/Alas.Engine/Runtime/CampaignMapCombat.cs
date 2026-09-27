@@ -3,7 +3,7 @@ using Alas.Engine.Rules;
 namespace Alas.Engine.Runtime;
 
 /// <summary>On-map target selection and movement. Stage return is evidence, not a sortie verdict.</summary>
-public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration configuration,
+public sealed partial class CampaignMapCombat(CampaignState state, CampaignConfiguration configuration,
     MapMovement movement, MapScanner scanner, Func<int, CancellationToken, ValueTask>? waitEmotion = null,
     Func<int, CancellationToken, ValueTask>? switchFleet = null,
     Func<CancellationToken, ValueTask>? ensureEdges = null)
@@ -251,9 +251,11 @@ public sealed class CampaignMapCombat(CampaignState state, CampaignConfiguration
         return await ClearPotentialBossAsync(token);
     }
 
-    private async ValueTask SwitchFleetAsync(int fleet, CancellationToken token)
+    public async ValueTask SwitchFleetAsync(int fleet, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
+        if (fleet is not (1 or 2) || fleet == 2 && configuration.Fleet2 == 0) throw new ArgumentOutOfRangeException(nameof(fleet));
+        if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before switching fleets");
         if (state.FleetIndex == fleet) return;
         if (switchFleet is null) throw new NotSupportedException("Campaign fleet switching is unavailable");
         await switchFleet(fleet, token);

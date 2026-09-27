@@ -33,6 +33,9 @@ internal sealed class ProbeOperations(Scenario scenario) : ICampaignOperations
     private ValueTask<bool> Result(string operation) => ValueTask.FromResult(Call(operation));
     private ValueTask Void(string operation) { Call(operation); return ValueTask.CompletedTask; }
     public ValueTask<bool> ClearEnemyAsync() => Result("clear_enemy");
+    public ValueTask SwitchFleetAsync(int fleet) => Void("fleet_boss:" + fleet);
+    public ValueTask<bool> PushSecondFleetForwardAsync() => Result("fleet_2_push_forward");
+    public ValueTask<bool> RescueSecondFleetAsync(Cell destination) => Result("fleet_2_rescue:" + destination);
     public bool CheckAccessibility(Cell cell, int? fleet = null)
     { Call($"check_access:{cell}:{fleet}"); return scenario.Accessible; }
     public async ValueTask<bool> ClearBossForFleetAsync(int fleet)

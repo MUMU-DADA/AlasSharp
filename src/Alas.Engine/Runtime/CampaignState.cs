@@ -120,6 +120,9 @@ public sealed record CampaignContext(CampaignState State, CampaignConfiguration 
 /// <summary>Typed domain operations for the new C# action implementation. No method-name RPC.</summary>
 public interface ICampaignOperations
 {
+    ValueTask SwitchFleetAsync(int fleet) => throw new NotSupportedException("Fleet switching is unavailable");
+    ValueTask<bool> PushSecondFleetForwardAsync() => throw new NotSupportedException("Second-fleet advance is unavailable");
+    ValueTask<bool> RescueSecondFleetAsync(Cell destination) => throw new NotSupportedException("Second-fleet rescue is unavailable");
     bool CheckAccessibility(Cell cell, int? fleet = null) => throw new NotSupportedException("Fleet accessibility is unavailable");
     ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, bool potential = false)
         => throw new NotSupportedException("Declared roadblocks are unavailable");

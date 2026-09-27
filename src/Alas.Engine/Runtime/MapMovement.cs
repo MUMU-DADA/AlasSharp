@@ -18,7 +18,7 @@ public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arri
     public AmmoPickupEvidence? AmmoPickup { get; init; }
     public MechanismReleaseEvidence? MechanismRelease { get; init; }
 }
-internal enum MapAction { Move, Fight, Mystery, ProbeBoss, ProbeBouncing, Ammo }
+internal enum MapAction { Move, Reposition, Fight, Mystery, ProbeBoss, ProbeBouncing, Ammo }
 
 /// <summary>Commits a fleet move only after fresh visual arrival and complete interaction accounting.</summary>
 public sealed class MapMovement(CampaignState state, CampaignConfiguration configuration,
@@ -36,6 +36,15 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
     public ValueTask<MapMoveResult> MoveAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
         => MoveCoreAsync(destination, MapAction.Move, options, token);
+
+    /// <summary>Native raw goto: handle observed interactions, but supply confirmation alone does not replenish inventory.</summary>
+    internal ValueTask<MapMoveResult> RepositionAsync(Cell destination, CancellationToken token = default)
+    {
+        var grid = state[destination];
+        var action = grid.IsEnemy || grid.IsSiren || grid.IsBoss || grid.IsFortress || grid.IsCaughtBySiren
+            ? MapAction.Fight : grid.IsMystery ? MapAction.Mystery : MapAction.Reposition;
+        return MoveCoreAsync(destination, action, null, token, expectation: MapCombatExpectation.None);
+    }
 
     public ValueTask<MapMoveResult> FightAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default, MapCombatExpectation? expectation = null)
@@ -143,8 +152,8 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         if (ammo && (!target.MayAmmo || enemy || target.IsPortal))
             throw new ArgumentException("Supply destination must be a declared ammo tile without an enemy", nameof(destination));
         if (target.IsMechanismBlock ||
-            (action is MapAction.Move or MapAction.Mystery && enemy) ||
-            (target.IsMystery && !mystery) || (target.IsAmmo && !ammo && !probeBouncing && !mechanism && mazeWaitFor is null) || target.IsCarrier && !fight ||
+            (action is MapAction.Move or MapAction.Reposition or MapAction.Mystery && enemy) ||
+            (target.IsMystery && !mystery) || (target.IsAmmo && !ammo && action != MapAction.Reposition && !probeBouncing && !mechanism && mazeWaitFor is null) || target.IsCarrier && !fight ||
             (target.IsFleet && !((ammo || caughtCombat || probeBouncing || mechanism && action == MapAction.Move) && destination == origin)))
             throw new NotSupportedException("Destination requires a map interaction that is not committed by ordinary movement");
         Cell landing = target.IsPortal
@@ -222,7 +231,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             result.HandledEncounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush);
         bool interactionsConfirmed = action switch
         {
-            MapAction.Move or MapAction.Ammo => result.HandledEncounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn) &&
+            MapAction.Move or MapAction.Reposition or MapAction.Ammo => result.HandledEncounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn) &&
                 result.Combats.IsEmpty,
             MapAction.Fight => decoyConfirmed || combatConfirmed &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&

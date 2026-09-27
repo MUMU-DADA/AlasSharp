@@ -496,7 +496,8 @@ internal static partial class CampaignMapCombatChecks
             new MapArrivalCheck(camera, state, camera.InMapAsync, camera.Clock,
                 new Probe(camera), new Handler(camera), recoverAfterCombat: refocusBoss is null ? null :
                     new MapCombatRecovery(state, camera, refocusBoss).RecoverAsync),
-            movableScan: new(state, config, new(state, camera, camera.Clock)));
+            movableScan: new(state, config, new(state, camera, camera.Clock)),
+            carrierScanner: new(state, camera, camera.Clock));
         return new(state, config, movement, new MapScanner(state, camera, camera.Clock), waitEmotion, switchFleet,
             token => camera.EnsureEdgesAsync(true, token));
     }

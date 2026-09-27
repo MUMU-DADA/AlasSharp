@@ -219,6 +219,13 @@ try
         await CampaignMapCombatChecks.DeclaredRoadChecksAsync(Path.GetFullPath(declaredRoadPython), Path.GetFullPath(declaredRoadUpstream), folder);
         return 0;
     }
+    if (args is ["--second-fleet", var secondFleetPython, var secondFleetUpstream, var secondFleetArtifacts])
+    {
+        string folder = Path.GetFullPath(secondFleetArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.SecondFleetChecksAsync(Path.GetFullPath(secondFleetPython), Path.GetFullPath(secondFleetUpstream), folder);
+        return 0;
+    }
     if (args is ["--carrier", var carrierPython, var carrierUpstream, var carrierArtifacts])
     {
         string folder = Path.GetFullPath(carrierArtifacts);
@@ -461,6 +468,16 @@ try
             cases.Add(new Scenario(id, BattleCount: count, Poor: poor, ClearAll: clear, Movable: movable,
                 Cells: cells, TrueOperation: yes, CombatReturn: returned));
         cases.Add(new Scenario(id, "refocus"));
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterThreeRule)
+        {
+            foreach (int count in new[] { 0, 1, 2, 3, 4, 12, 13 })
+            foreach (bool accessible in new[] { false, true })
+            foreach (string? yes in new[] { null, "fleet_2_push_forward", "fleet_2_rescue:G2", "fleet_2_rescue:H1", "fleet_2_rescue:A4", "fleet_2_rescue:H3" })
+                cases.Add(new Scenario(id, BattleCount: count, Accessible: accessible, TrueOperation: yes));
+            foreach (string operation in new[] { "fleet_2_push_forward", "fleet_2_rescue:G2", "fleet_2_rescue:H1", "fleet_2_rescue:A4", "fleet_2_rescue:H3" })
+            foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
+                cases.Add(new Scenario(id, "execute", Signal: signal, SignalOperation: operation));
+        }
         if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterTwoRule)
             foreach (int count in new[] { 0, 1, 2, 3, 4, 12, 13 })
             foreach (bool accessible in new[] { false, true })

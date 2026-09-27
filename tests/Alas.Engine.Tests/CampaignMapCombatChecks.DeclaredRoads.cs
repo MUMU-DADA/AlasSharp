@@ -143,14 +143,16 @@ internal static partial class CampaignMapCombatChecks
                 ["HOMO_EDGE_COLOR_RANGE"] = new[] { detector.EdgeColor.Low, detector.EdgeColor.High },
                 ["MID_DIFF_RANGE_H"] = new[] { detector.MidHorizontal.Low, detector.MidHorizontal.High },
                 ["MID_DIFF_RANGE_V"] = new[] { detector.MidVertical.Low, detector.MidVertical.High } });
+            if (expected["MAP_MYSTERY_HAS_CARRIER"] is not null) actual!["MAP_MYSTERY_HAS_CARRIER"] = config.MysteryHasCarrier;
             Check(JsonNode.DeepEquals(actual, expected), "Inherited chapter config differs: " + rule.Id + ": " + actual);
         }
     }
-    private static async Task ChapterTwoCampaignsAsync()
+    private static async Task ChapterTwoCampaignsAsync(int chapter = 2)
     {
-        foreach (var id in Enumerable.Range(1, 4).Select(i => $"campaign_main/campaign_2_{i}"))
+        foreach (var id in Enumerable.Range(1, 4).Select(i => $"campaign_main/campaign_{chapter}_{i}"))
         {
             var rule = RuleCatalog.Create(id);
+            bool carrier = rule.Configure(new()).MysteryHasCarrier;
             Host? host = null;
             host = new Host { ObservationFactory = (_, position, mode) =>
             {
@@ -160,12 +162,26 @@ internal static partial class CampaignMapCombatChecks
                 shadow.InitializeMapData(new(PoorMapData: true));
                 shadow.Fleet1Location = start; shadow.RefreshFleetPaths(new() { HasAmbush = false });
                 bool boss = state.BattleCount >= rule.Map.ExpectedBattles - 1;
-                var target = shadow.Cells.Where(cell => cell.Location != start && cell.IsAccessible && (boss ? cell.MayBoss : cell.MayEnemy))
+                var target = shadow.Cells.Where(cell => cell.Location != start && cell.IsAccessible &&
+                    (mode == MapScanMode.Carrier ? cell.IsSea && !cell.MayEnemy && !cell.MayMystery && !cell.MayAmmo : boss ? cell.MayBoss : cell.MayEnemy))
                     .OrderBy(cell => cell.Cost).First();
-                return new([new(new(start.Column - position.Column, start.Row - position.Row), new(IsFleet: true, IsCurrentFleet: true)),
+                var observations = new List<MapCellObservation> { new(new(start.Column - position.Column, start.Row - position.Row), new(IsFleet: true, IsCurrentFleet: true)),
                     new(new(target.Location.Column - position.Column, target.Location.Row - position.Row),
-                        boss ? new(IsBoss: true) : new(IsEnemy: true, EnemyScale: 1))], position, new(0, 0), mode);
-            } };
+                        boss ? new(IsBoss: true) : new(IsEnemy: true, EnemyScale: 1)) };
+                if (carrier && state.MysteryCount == 0)
+                {
+                    var mystery = shadow.Cells.First(cell => cell.MayMystery);
+                    observations.Add(new(new(mystery.Location.Column - position.Column, mystery.Location.Row - position.Row), new(IsMystery: true)));
+                }
+                return new(observations, position, new(0, 0), mode);
+            }, CombatFactory = carrier ? (camera, config, refocus) =>
+            {
+                var scanner = new MapScanner(camera.State, camera, camera.Clock);
+                var movement = new MapMovement(camera.State, config, camera, () => new(camera, camera.State, camera.InMapAsync, camera.Clock,
+                    new CarrierCampaignProbe(camera), new CarrierSequenceHandler(camera),
+                    new MapCombatRecovery(camera.State, camera, refocus).RecoverAsync), carrierScanner: scanner);
+                return new(camera.State, config, movement, scanner);
+            } : null };
             var execution = new CampaignExecution(rule, new() { EmotionMode = CampaignEmotionMode.Ignore, UseFleetLock = false },
                 (state, config) => new InMapCampaignOperations(host, state, config, default, rule));
             var exit = await execution.RunAsync();
@@ -173,6 +189,9 @@ internal static partial class CampaignMapCombatChecks
             Check(exit == CampaignLoopExit.Ended && ReferenceEquals(execution.Context.State.Rule, rule) &&
                 execution.Context.State.BattleCount == rule.Map.ExpectedBattles - 1 && operations.StageReturn is not null,
                 "Compiled chapter failed its C# campaign/movement/boss-return composition: " + id);
+            if (carrier)
+                Check(execution.Context.State is { MysteryCount: 1, CarrierCount: 1 } && execution.Context.State.CarrierScans.Count == 1 &&
+                    execution.Context.State.CarrierScans[0].NewEnemies.Count() > 0, "Compiled chapter omitted carrier mystery/scanning: " + id);
         }
     }
 }

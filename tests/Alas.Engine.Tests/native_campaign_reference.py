@@ -53,6 +53,10 @@ def main():
                     return operation == scenario["trueOperation"] or (combat and scenario["combatReturn"])
 
                 def clear_enemy(self): return self.record("clear_enemy")
+                def fleet_2_push_forward(self): return self.record("fleet_2_push_forward")
+                def fleet_2_rescue(self, grid):
+                    from module.base.utils import location2node
+                    return self.record('fleet_2_rescue:' + location2node(grid.location))
                 def check_accessibility(self, grid, fleet=None):
                     from module.base.utils import location2node
                     if fleet == 'boss': fleet = self.config.FLEET_BOSS

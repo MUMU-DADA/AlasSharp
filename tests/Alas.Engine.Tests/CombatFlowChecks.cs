@@ -122,7 +122,7 @@ internal static class CombatFlowChecks
 
     public static async Task ChapterTwoExperienceAsync()
     {
-        foreach (var id in new[] { "campaign_main/campaign_2_1", "campaign_main/campaign_2_2", "campaign_main/campaign_2_3", "campaign_main/campaign_2_4" })
+        foreach (var id in RuleCatalog.Ids.Where(id => RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterTwoRule or Alas.Engine.Rules.Main.ChapterThreeRule))
         {
             var rule = RuleCatalog.Create(id);
             var ui = new Ui(UiAssets.Combat.BATTLE_PREPARATION);
@@ -134,7 +134,7 @@ internal static class CombatFlowChecks
                 allowExperience: token => rule.AllowExperienceAsync(ui, token)).RunAutoAsync(Options);
             Check(result is { Return: CombatReturn.InStage, Rank.Rank: CombatRank.S } &&
                 ui.Clicks.Contains("EXP_INFO_S") && !ui.Clicks.Contains("EXP_INFO_B"),
-                "Compiled second-chapter override lost a real experience screen or accepted background EXP_INFO_B: " + id);
+                "Compiled chapter override lost a real experience screen or accepted background EXP_INFO_B: " + id);
             var gate = new Ui(UiAssets.Ui.CAMPAIGN_CHECK, UiAssets.Combat.EXP_INFO_B) { StageEntranceVisible = false };
             Check(!await rule.AllowExperienceAsync(gate, default), "Chapter override incorrectly depended on OCR stage entrances");
         }
