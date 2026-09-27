@@ -126,7 +126,9 @@ internal static partial class CampaignMapCombatChecks
         foreach (int second in new[] { 0, 2 })
         {
             var config = rule.Configure(new() { Fleet2 = second, FleetOrder = order, Submarine = 1, AmbushEvade = false });
-            Check(config.Fleet2 == second && config.Submarine == 1 && !config.AmbushEvade && FleetRoles.BossIndex(config) == 1,
+            int? bossOverride = expected["FLEET_BOSS"]?.GetValue<int>();
+            Check(config.Fleet2 == second && config.Submarine == (expected["SUBMARINE"]?.GetValue<int>() ?? 1) && !config.AmbushEvade &&
+                config.BossFleet == bossOverride && FleetRoles.BossIndex(config) == FleetRoles.BossIndex(new() { Fleet2 = second, FleetOrder = order, BossFleet = bossOverride }),
                 "Chapter Config lost unrelated options or failed to override boss fleet");
             var detector = new MapDetectionRules().WithChapter(config.Vision); detector.Validate();
             static object Peaks(LinePeakParameters peaks) => peaks.Width is { } width
@@ -134,7 +136,7 @@ internal static partial class CampaignMapCombatChecks
                     ["prominence"] = peaks.Prominence, ["distance"] = peaks.Distance }
                 : new Dictionary<string, object> { ["height"] = new[] { peaks.Height.Low, peaks.Height.High }, ["prominence"] = peaks.Prominence,
                     ["distance"] = peaks.Distance, ["wlen"] = peaks.Window! };
-            var actual = JsonSerializer.SerializeToNode(new Dictionary<string, object> {
+            var actual = JsonSerializer.SerializeToNode(new Dictionary<string, object?> {
                 ["FLEET_BOSS"] = config.BossFleet!, ["INTERNAL_LINES_HOUGHLINES_THRESHOLD"] = detector.InternalLinesThreshold,
                 ["EDGE_LINES_HOUGHLINES_THRESHOLD"] = detector.EdgeLinesThreshold, ["HOMO_EDGE_HOUGHLINES_THRESHOLD"] = detector.EdgeHoughThreshold,
                 ["COINCIDENT_POINT_ENCOURAGE_DISTANCE"] = detector.CoincidentEncourage,
@@ -144,6 +146,7 @@ internal static partial class CampaignMapCombatChecks
                 ["MID_DIFF_RANGE_H"] = new[] { detector.MidHorizontal.Low, detector.MidHorizontal.High },
                 ["MID_DIFF_RANGE_V"] = new[] { detector.MidVertical.Low, detector.MidVertical.High } });
             if (expected["MAP_MYSTERY_HAS_CARRIER"] is not null) actual!["MAP_MYSTERY_HAS_CARRIER"] = config.MysteryHasCarrier;
+            if (expected.AsObject().ContainsKey("SUBMARINE")) actual!["SUBMARINE"] = expected["SUBMARINE"] is null ? null : JsonValue.Create(config.Submarine);
             Check(JsonNode.DeepEquals(actual, expected), "Inherited chapter config differs: " + rule.Id + ": " + actual);
         }
     }
@@ -172,10 +175,11 @@ internal static partial class CampaignMapCombatChecks
                 var observations = new List<MapCellObservation> { new(new(start.Column - position.Column, start.Row - position.Row), new(IsFleet: true, IsCurrentFleet: true)),
                     new(new(target.Location.Column - position.Column, target.Location.Row - position.Row),
                         boss && mode != MapScanMode.Carrier ? new(IsBoss: true) : new(IsEnemy: true, EnemyScale: 1)) };
-                if (carrier && state.MysteryCount < rule.Map.Waves.Where(wave => wave.Battle <= state.BattleCount).Sum(wave => wave.Mystery))
+                int pendingMysteries = rule.Map.Waves.Where(wave => wave.Battle <= state.BattleCount).Sum(wave => wave.Mystery) - state.MysteryCount;
+                if ((carrier || rule is Alas.Engine.Rules.Main.ChapterSevenRule) && pendingMysteries > 0)
                 {
-                    var mystery = shadow.Cells.First(cell => cell.MayMystery);
-                    observations.Add(new(new(mystery.Location.Column - position.Column, mystery.Location.Row - position.Row), new(IsMystery: true)));
+                    foreach (var mystery in shadow.Cells.Where(cell => cell.MayMystery && cell.Location != start).Take(pendingMysteries))
+                        observations.Add(new(new(mystery.Location.Column - position.Column, mystery.Location.Row - position.Row), new(IsMystery: true)));
                 }
                 return new(observations, position, new(0, 0), mode);
             }, CombatFactory = (camera, config, refocus) =>
@@ -211,6 +215,13 @@ internal static partial class CampaignMapCombatChecks
             if (rule is Alas.Engine.Rules.Main.Campaign64)
                 Check(operations.AmmoPickups.Count == 1 && operations.AmmoPickups[0].ExpectedRecovered == 3,
                     "Compiled 6-4 omitted the native pre-boss supply pickup");
+            if (rule is Alas.Engine.Rules.Main.ChapterSevenRule)
+                Check(execution.Context.State.MysteryCount == rule.Map.Waves.Sum(wave => wave.Mystery), "Compiled seventh chapter omitted declared mysteries: " + id);
+            if (rule is Alas.Engine.Rules.Main.Campaign71)
+                Check(host.RefocusPresets.SequenceEqual([(-3, -2)]), "Compiled 7-1 omitted boss camera preset");
+            if (rule is Alas.Engine.Rules.Main.Campaign74)
+                Check(operations.AmmoPickups.Count > 0 && operations.AmmoPickups[0].ExpectedRecovered == 3,
+                    "Compiled 7-4 omitted third-battle supply pickup");
         }
     }
 }

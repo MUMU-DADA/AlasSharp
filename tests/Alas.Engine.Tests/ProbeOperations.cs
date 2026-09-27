@@ -7,7 +7,8 @@ internal sealed record Scenario(string Rule, string Operation = "dispatch", int 
     bool Poor = false, bool ClearAll = false, bool Movable = false, string Cells = "empty",
     string? TrueOperation = null, bool CombatReturn = true, bool HandleError = false,
     bool AutoSearch = false, string? Signal = null, int SignalCount = 1, string SignalOperation = "clear_enemy",
-    bool Advance = false, bool Accessible = true, string? BossCells = null);
+    bool Advance = false, bool Accessible = true, string? BossCells = null,
+    int Fleet2 = 0, int? BossFleet = null, string? FirstFleet = null, string? SecondFleet = null, int FirstScale = 0, string? Mysteries = null);
 internal sealed record ProbeResult(string[] Calls, object? Value, string? Exception, int BattleCount);
 
 /// <summary>Synthetic terminal actions only; the compiled rule and native oracle each own their control flow.</summary>
@@ -33,12 +34,18 @@ internal sealed class ProbeOperations(Scenario scenario) : ICampaignOperations
     private ValueTask<bool> Result(string operation) => ValueTask.FromResult(Call(operation));
     private ValueTask Void(string operation) { Call(operation); return ValueTask.CompletedTask; }
     public ValueTask<bool> ClearEnemyAsync() => Result("clear_enemy");
-    public ValueTask SwitchFleetAsync(int fleet) => Void("fleet_boss:" + fleet);
+    public ValueTask<bool> ClearEnemyAsync(EnemySelection selection) { Selection(selection); return ClearEnemyAsync(); }
+    private void Selection(EnemySelection selection)
+        => Call($"enemy_selection:{string.Join(',', selection.Scales.IsDefault ? [] : selection.Scales)}:{(selection.Strongest ? 1 : 0)}:{(selection.Weakest ? 1 : 0)}");
+    public ValueTask SwitchFleetAsync(int fleet) { State.FleetIndex = fleet; return Void("fleet_boss:" + fleet); }
+    private void Roads(IReadOnlyList<RoadDefinition> roads)
+        => Call("roads:" + string.Join('|', roads.Select(road => string.Join('/', road.Groups.Select(group =>
+            string.Join(',', group.Select(cell => cell.ToString()).Distinct().Order(StringComparer.Ordinal)))))));
     public ValueTask<bool> PushSecondFleetForwardAsync() => Result("fleet_2_push_forward");
     public ValueTask<bool> PositionSecondFleetAsync(IReadOnlyList<Cell> cells, IReadOnlyList<RoadDefinition> roads)
     {
         Call("step_on:" + string.Join(',', cells));
-        Call("roads:" + string.Join('|', roads.Select(road => string.Join('/', road.Groups.Select(group => string.Join(',', group))))));
+        Roads(roads);
         return Result("fleet_2_step_on");
     }
     public ValueTask<bool> RescueSecondFleetAsync(Cell destination) => Result("fleet_2_rescue:" + destination);
@@ -48,13 +55,24 @@ internal sealed class ProbeOperations(Scenario scenario) : ICampaignOperations
     { await Void("fleet_boss:" + fleet); return await ClearBossAsync(); }
     public ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, bool potential = false)
     {
-        Call("roads:" + string.Join('|', roads.Select(road => string.Join('/', road.Groups.Select(group => string.Join(',', group))))));
+        Roads(roads);
         return Result(potential ? "clear_potential_roadblocks" : "clear_roadblocks");
     }
+    public ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, EnemySelection selection, bool potential = false)
+    { Roads(roads); Selection(selection); return Result(potential ? "clear_potential_roadblocks" : "clear_roadblocks"); }
     public ValueTask<bool> ClearBossAsync() => Result("clear_boss");
     public ValueTask<bool> BruteClearBossAsync() => Result("brute_clear_boss");
     public ValueTask<bool> BreakSirenCaughtAsync() => Result("fleet_2_break_siren_caught");
     public ValueTask<bool> ClearMysteriesAsync() => Result("clear_all_mystery");
+    public ValueTask<bool> ClearMysteriesAsync(IReadOnlyList<Cell>? ignore, bool nearby = false)
+    { Call($"mystery_selection:{(nearby ? 1 : 0)}:{(ignore is null ? "null" : string.Join(',', ignore))}"); return ClearMysteriesAsync(); }
+    public ValueTask ClearMysteryAsync(Cell destination)
+    {
+        Call("chosen_mystery:" + destination);
+        if (State.FleetIndex == 2) State.Fleet2Location = destination; else State.Fleet1Location = destination;
+        State[destination].IsMystery = false;
+        return ValueTask.CompletedTask;
+    }
     public ValueTask<bool> PickUpAmmoAsync() => Result("pick_up_ammo");
     public ValueTask<bool> ClearSirenAsync() => Result("clear_siren");
     public ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync() => Result("clear_any_enemy:cost_2");

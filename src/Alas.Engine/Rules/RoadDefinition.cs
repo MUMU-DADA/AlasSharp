@@ -7,9 +7,18 @@ namespace Alas.Engine.Rules;
 public sealed record RoadDefinition(ImmutableArray<ImmutableArray<Cell>> Groups)
 {
     public static readonly SourceFile Source = MapScanner.SelectionSource;
-    public IReadOnlyList<CellState> Select(CampaignState state, bool potential = false)
+    public RoadDefinition Combine(RoadDefinition other)
+    {
+        Validate(); other.Validate();
+        return new(Groups.SelectMany(first => other.Groups.Select(second => first.Concat(second).Distinct().ToImmutableArray())).ToImmutableArray());
+    }
+    private void Validate()
     {
         if (Groups.IsDefault || Groups.Any(group => group.IsDefault)) throw new InvalidDataException("Road groups must be initialized");
+    }
+    public IReadOnlyList<CellState> Select(CampaignState state, bool potential = false)
+    {
+        Validate();
         var selected = new List<CellState>();
         foreach (var group in Groups)
         {

@@ -86,6 +86,12 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     private CampaignMapCombat Combat => _combat ??
         throw new InvalidOperationException("Campaign map has not been initialized");
     public ValueTask<bool> ClearEnemyAsync() => Combat.ClearEnemyAsync(token);
+    public ValueTask<bool> ClearEnemyAsync(EnemySelection selection) => Combat.ClearEnemyAsync(selection, token);
+    public ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, EnemySelection selection, bool potential = false)
+        => Combat.ClearRoadblocksAsync(roads, selection, potential, token);
+    public ValueTask<bool> ClearMysteriesAsync(IReadOnlyList<Cell>? ignore, bool nearby = false)
+        => Combat.ClearMysteriesAsync(ignore, nearby, token);
+    public ValueTask ClearMysteryAsync(Cell destination) => Combat.ClearMysteryAsync(destination, token);
     public ValueTask SwitchFleetAsync(int fleet) => Combat.SwitchFleetAsync(fleet, token);
     public ValueTask<bool> PushSecondFleetForwardAsync() => Combat.PushSecondFleetForwardAsync(token);
     public ValueTask<bool> PositionSecondFleetAsync(IReadOnlyList<Cell> cells, IReadOnlyList<RoadDefinition> roads)

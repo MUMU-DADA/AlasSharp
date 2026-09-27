@@ -130,10 +130,16 @@ public interface ICampaignOperations
         => throw new NotSupportedException("Declared roadblocks are unavailable");
     ValueTask<bool> ClearBossForFleetAsync(int fleet) => throw new NotSupportedException("Selected-fleet boss combat is unavailable");
     ValueTask<bool> ClearEnemyAsync();
+    ValueTask<bool> ClearEnemyAsync(EnemySelection selection) => throw new NotSupportedException("Filtered enemy selection is unavailable");
+    ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, EnemySelection selection, bool potential = false)
+        => throw new NotSupportedException("Filtered roadblock selection is unavailable");
     ValueTask<bool> ClearBossAsync();
     ValueTask<bool> BruteClearBossAsync();
     ValueTask<bool> BreakSirenCaughtAsync();
     ValueTask<bool> ClearMysteriesAsync();
+    ValueTask<bool> ClearMysteriesAsync(IReadOnlyList<Cell>? ignore, bool nearby = false)
+        => throw new NotSupportedException("Filtered mystery selection is unavailable");
+    ValueTask ClearMysteryAsync(Cell destination) => throw new NotSupportedException("Chosen mystery collection is unavailable");
     ValueTask<bool> PickUpAmmoAsync();
     ValueTask<bool> ClearSirenAsync();
     ValueTask<bool> ClearAnyEnemyBySecondFleetCostAsync();

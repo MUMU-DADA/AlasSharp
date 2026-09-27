@@ -233,6 +233,13 @@ try
         await CampaignMapCombatChecks.MainChapterChecksAsync(Path.GetFullPath(chapterPython), Path.GetFullPath(chapterUpstream), folder);
         return 0;
     }
+    if (args is ["--target-selection", var targetPython, var targetUpstream, var targetArtifacts])
+    {
+        string folder = Path.GetFullPath(targetArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.TargetSelectionChecksAsync(Path.GetFullPath(targetPython), Path.GetFullPath(targetUpstream), folder);
+        return 0;
+    }
     if (args is ["--fleet-position", var positionPython, var positionUpstream, var positionArtifacts])
     {
         string folder = Path.GetFullPath(positionArtifacts);
@@ -497,6 +504,32 @@ try
             foreach (string operation in new[] { "fleet_2_step_on", "clear_roadblocks", "clear_all_mystery", "clear_potential_roadblocks" })
             foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
                 cases.Add(new Scenario(id, "execute", Signal: signal, SignalOperation: operation));
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterSevenRule)
+        {
+            foreach (int count in new[] { 0, 3, 5, 14, 15 })
+            foreach (int configuredSecond in new[] { 0, 2 })
+            foreach (int bossFleet in new[] { 1, 2 })
+            foreach (string? yes in new[] { null, "fleet_2_step_on", "clear_roadblocks", "clear_potential_roadblocks" })
+                cases.Add(new Scenario(id, BattleCount: count, Fleet2: configuredSecond, BossFleet: bossFleet, TrueOperation: yes, CombatReturn: false));
+            foreach (string operation in new[] { "fleet_2_push_forward", "fleet_2_step_on", "clear_roadblocks", "clear_all_mystery", "clear_potential_roadblocks", "brute_clear_boss", "pick_up_ammo" })
+            foreach (int count in new[] { 0, 3, 5 })
+            foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
+                cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation, Fleet2: 2));
+        }
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.Campaign72)
+            foreach (int count in new[] { 0, 4, 5, 6 })
+            foreach (string secondLocation in new[] { "A3", "G3", "C3" })
+            foreach (string firstFleet in new[] { "A1", "H1" })
+            foreach (int scale in new[] { 0, 2, 3 })
+            foreach (string? mysteries in new[] { null, "A2", "H3", "A2,H3" })
+            foreach (string? signal in new[] { null, "ended", "error" })
+                cases.Add(new Scenario(id, "execute", BattleCount: count, FirstFleet: firstFleet, SecondFleet: secondLocation,
+                    FirstScale: scale, Mysteries: mysteries, Fleet2: 2, Signal: signal,
+                    SignalOperation: "chosen_mystery:" + (secondLocation == "G3" ? "H3" : "A2")));
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.Campaign73)
+            foreach (string boss in new[] { "A1", "C6", "H1", "H5", "D3", "A1,H5" })
+            foreach (bool accessible in new[] { false, true })
+                cases.Add(new Scenario(id, BattleCount: 5, BossCells: boss, Accessible: accessible, Fleet2: 2));
         if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterThreeRule)
         {
             foreach (int count in new[] { 0, 1, 2, 3, 4, 12, 13 })
@@ -534,7 +567,8 @@ try
     await File.WriteAllTextAsync(input, JsonSerializer.Serialize(cases, json));
     await File.WriteAllTextAsync(Path.Combine(artifacts, "csharp.json"), JsonSerializer.Serialize(expected, json));
     var oracle = await process.RunAsync(python,
-        [Path.Combine(AppContext.BaseDirectory, "native_campaign_reference.py"), upstream, input, output], TimeSpan.FromSeconds(90));
+        // The 28-rule oracle takes about 100 seconds locally; retain a bounded execution budget.
+        [Path.Combine(AppContext.BaseDirectory, "native_campaign_reference.py"), upstream, input, output], TimeSpan.FromMinutes(3));
     if (oracle.ExitCode != 0) throw new InvalidOperationException($"Native reference failed: {oracle.Error}");
     var native = JsonNode.Parse(await File.ReadAllTextAsync(output))!.AsArray();
     Check(native.Count == cases.Count, "Native reference omitted scenarios");
@@ -562,10 +596,15 @@ static async Task<ProbeResult> Execute(Scenario scenario)
     var execution = new CampaignExecution(rule, new CampaignConfiguration
     {
         PoorMapData = scenario.Poor, ClearAllThisTime = scenario.ClearAll, HasMovableNormalEnemy = scenario.Movable,
-        HandleError = scenario.HandleError
+        HandleError = scenario.HandleError, Fleet2 = scenario.Fleet2, BossFleet = scenario.BossFleet
     }, operations);
     var state = operations.State = execution.Context.State;
     state.BattleCount = scenario.BattleCount;
+    state.Fleet1Location = scenario.FirstFleet is null ? null : Cell.Parse(scenario.FirstFleet);
+    state.Fleet2Location = scenario.SecondFleet is null ? null : Cell.Parse(scenario.SecondFleet);
+    state.Cells[0].EnemyScale = scenario.FirstScale;
+    if (scenario.Mysteries is { } mysteries)
+        foreach (var cell in mysteries.Split(',')) state[Cell.Parse(cell)].IsMystery = true;
     state.Cells[0].IsBoss = scenario.Cells is "boss" or "boss_enemy";
     state.Cells[0].IsEnemy = scenario.Cells is "enemy" or "boss_enemy";
     state.Cells[0].IsSiren = scenario.Cells == "siren";

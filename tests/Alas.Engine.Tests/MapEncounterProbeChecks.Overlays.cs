@@ -70,12 +70,15 @@ internal static partial class MapEncounterProbeChecks
         try
         {
             var baseline = await File.ReadAllBytesAsync(Path.Combine(artifacts, native["baseline"]!.GetValue<string>()));
-            var overlay = await File.ReadAllBytesAsync(Path.Combine(artifacts, "cn-air-137.png"));
             string executable = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Alas.Engine.Tests.exe" : "Alas.Engine.Tests");
             await using var session = new EngineSession(new(executable, "offline-map", GameServer.Cn, Path.Combine(upstream, "assets"), python));
-            foreach (string id in new[] { "campaign_main/campaign_4_1", "campaign_main/campaign_5_1" })
+            foreach (var entry in native["chapters"]!.AsArray())
+            foreach (string image in new[] { "cn-air-137.png", "cn-air-158.png" })
             {
+                string id = entry!["id"]!.GetValue<string>();
                 var rule = RuleCatalog.Create(id);
+                var sample = entry["cases"]!.AsArray().Single(value => value!["image"]!.GetValue<string>() == image)!;
+                var overlay = await File.ReadAllBytesAsync(Path.Combine(artifacts, image));
                 await File.WriteAllBytesAsync(fixture, baseline);
                 await session.Driver.ScreenshotAsync(default);
                 // Only composition is exercised here; the separate map tests own camera geometry/movement.
@@ -88,7 +91,7 @@ internal static partial class MapEncounterProbeChecks
                 await File.WriteAllBytesAsync(fixture, overlay);
                 await session.Driver.ScreenshotAsync(default);
                 var result = await captured.InspectAsync(session.Driver.Frame!.Sequence, default);
-                Check(result == (rule is Alas.Engine.Rules.Main.ChapterFourRule ? MapEncounterKind.AirRaid : MapEncounterKind.None),
+                Check(result.ToString() == sample["encounter"]!.GetValue<string>(),
                     "EngineSession factory discarded the campaign's overlay rules: " + id);
             }
         }

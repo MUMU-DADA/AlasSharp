@@ -52,7 +52,12 @@ def main():
                         self.battle_count += 1
                     return operation == scenario["trueOperation"] or (combat and scenario["combatReturn"])
 
-                def clear_enemy(self): return self.record("clear_enemy")
+                def selection_record(self, kwargs):
+                    if kwargs:
+                        self.record(f"enemy_selection:{','.join(str(v) for v in kwargs.get('scale', ()))}:{int(kwargs.get('strongest', False))}:{int(kwargs.get('weakest', False))}")
+                def clear_enemy(self, **kwargs):
+                    self.selection_record(kwargs)
+                    return self.record("clear_enemy")
                 def fleet_2_push_forward(self): return self.record("fleet_2_push_forward")
                 def fleet_2_step_on(self, grids, roadblocks):
                     from module.base.utils import location2node
@@ -64,27 +69,47 @@ def main():
                     return self.record('fleet_2_rescue:' + location2node(grid.location))
                 def check_accessibility(self, grid, fleet=None):
                     from module.base.utils import location2node
-                    if fleet == 'boss': fleet = self.config.FLEET_BOSS
+                    if fleet == 'boss': fleet = self.fleet_boss_index
                     self.record(f'check_access:{location2node(grid.location)}:{fleet}')
                     return scenario['accessible']
                 @property
                 def fleet_boss(self):
-                    self.record(f'fleet_boss:{self.config.FLEET_BOSS}')
+                    self.fleet_current_index = self.fleet_boss_index
+                    self.record(f'fleet_boss:{self.fleet_boss_index}')
+                    return self
+                @property
+                def fleet_2(self):
+                    if self.config.FLEET_2:
+                        self.fleet_current_index = 2
+                        self.record('fleet_boss:2')
                     return self
                 def roads_record(self, roads):
                     from module.base.utils import location2node
-                    self.record('roads:' + '|'.join('/'.join(','.join(location2node(g.location) for g in group)
+                    self.record('roads:' + '|'.join('/'.join(','.join(sorted({location2node(g.location) for g in group}))
                         for group in road.grids) for road in roads))
-                def clear_roadblocks(self, roads):
+                def clear_roadblocks(self, roads, **kwargs):
                     self.roads_record(roads)
+                    self.selection_record(kwargs)
                     return self.record('clear_roadblocks')
-                def clear_potential_roadblocks(self, roads):
+                def clear_potential_roadblocks(self, roads, **kwargs):
                     self.roads_record(roads)
+                    self.selection_record(kwargs)
                     return self.record('clear_potential_roadblocks')
                 def clear_boss(self): return self.record("clear_boss")
                 def brute_clear_boss(self): return self.record("brute_clear_boss")
                 def fleet_2_break_siren_caught(self): return self.record("fleet_2_break_siren_caught")
-                def clear_all_mystery(self): return self.record("clear_all_mystery")
+                def clear_all_mystery(self, **kwargs):
+                    if kwargs:
+                        from module.base.utils import location2node
+                        ignore = kwargs.get('ignore')
+                        ignored = 'null' if ignore is None else ','.join(location2node(g.location) for g in ignore)
+                        self.record(f"mystery_selection:{int(kwargs.get('nearby', False))}:{ignored}")
+                    return self.record("clear_all_mystery")
+                def clear_chosen_mystery(self, grid):
+                    from module.base.utils import location2node
+                    self.record('chosen_mystery:' + location2node(grid.location))
+                    self.fleet_current = grid.location
+                    grid.is_mystery = False
                 def pick_up_ammo(self): return self.record("pick_up_ammo")
                 def clear_siren(self): return self.record("clear_siren")
                 def clear_any_enemy(self, sort):
@@ -110,14 +135,26 @@ def main():
             probe.calls, probe.signals = [], 0
             probe.config = SimpleNamespace(POOR_MAP_DATA=scenario["poor"],
                 MAP_CLEAR_ALL_THIS_TIME=scenario["clearAll"], MAP_HAS_MOVABLE_NORMAL_ENEMY=scenario["movable"],
-                Error_HandleError=scenario["handleError"], Campaign_Mode="normal", FLEET_BOSS=getattr(source.Config, 'FLEET_BOSS', 1))
+                Error_HandleError=scenario["handleError"], Campaign_Mode="normal",
+                FLEET_2=getattr(source.Config, 'FLEET_2', scenario.get('fleet2', 0)),
+                FLEET_BOSS=getattr(source.Config, 'FLEET_BOSS', scenario.get('bossFleet') or (2 if scenario.get('fleet2') else 1)))
             probe.battle_count = scenario["battleCount"]
+            from module.base.utils import node2location
+            probe.fleet_1_location = node2location(scenario['firstFleet']) if scenario.get('firstFleet') else ()
+            probe.fleet_2_location = node2location(scenario['secondFleet']) if scenario.get('secondFleet') else ()
+            probe.fleet_current_index = 1
+            # Chapter hooks reference module-level GridInfo objects, as real map_init does.
+            source.MAP.reset()
             probe.map = copy.deepcopy(source.MAP)
             grid = next(iter(probe.map))
             grid.is_boss = scenario["cells"] in ("boss", "boss_enemy")
             grid.is_enemy = scenario["cells"] in ("enemy", "boss_enemy")
             grid.is_siren = scenario["cells"] == "siren"
             grid.is_fortress = scenario["cells"] == "fortress"
+            for selected_map in (source.MAP, probe.map):
+                next(iter(selected_map)).enemy_scale = scenario.get('firstScale', 0)
+                for cell in (scenario.get('mysteries') or '').split(','):
+                    if cell: selected_map[node2location(cell)].is_mystery = True
             if scenario.get('bossCells'):
                 from module.base.utils import node2location
                 for cell in scenario['bossCells'].split(','):

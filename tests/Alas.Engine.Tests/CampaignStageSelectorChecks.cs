@@ -22,7 +22,7 @@ internal static partial class CampaignStageSelectorChecks
         Check(Convert.ToHexStringLower(SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(upstream, source.Path)))) == source.Sha256,
             "Native fleet lock and auto-search source drifted");
         Check(RuleCatalog.Ids.Select(id => RuleCatalog.Create(id).StageName)
-            .SequenceEqual(Enumerable.Range(1, 6).SelectMany(chapter => Enumerable.Range(1, 4).Select(stage => $"{chapter}-{stage}"))), "Compiled main-stage identities changed");
+            .SequenceEqual(Enumerable.Range(1, 7).SelectMany(chapter => Enumerable.Range(1, 4).Select(stage => $"{chapter}-{stage}"))), "Compiled main-stage identities changed");
 
         var switchDriver = new Driver { AutoSearchAvailable = false };
         var auto = new CampaignAutoSearch(switchDriver, new SwitchVision(switchDriver),

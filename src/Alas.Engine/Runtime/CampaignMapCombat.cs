@@ -27,14 +27,15 @@ public sealed partial class CampaignMapCombat(CampaignState state, CampaignConfi
     }
 
     public ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, bool potential = false, CancellationToken token = default)
+        => ClearRoadblocksAsync(roads, new EnemySelection(), potential, token);
+
+    public ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, EnemySelection selection,
+        bool potential = false, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
         if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before selecting a roadblock");
         var candidates = roads.SelectMany(road => road.Select(state, potential)).Distinct().Where(grid => grid.IsAccessible).ToArray();
-        bool strongest = configuration.EnemyPriority == EnemyScalePriority.StrongestFirst ||
-            configuration.EnemyPriority == EnemyScalePriority.Default && configuration.ClearAllThisTime;
-        if (strongest) candidates = FirstPresentScale(candidates, [3, 2, 1, 0]);
-        else if (configuration.EnemyPriority == EnemyScalePriority.WeakestFirst) candidates = FirstPresentScale(candidates, [1, 2, 3, 0]);
+        candidates = SelectEnemyScales(candidates, selection);
         return candidates.Length == 0 ? ValueTask.FromResult(false) : FightAsync(Order(candidates)[0], token, MapCombatExpectation.Enemy);
     }
 
@@ -103,39 +104,69 @@ public sealed partial class CampaignMapCombat(CampaignState state, CampaignConfi
         return false;
     }
 
-    public async ValueTask<bool> ClearMysteriesAsync(CancellationToken token = default)
+    public ValueTask<bool> ClearMysteriesAsync(CancellationToken token = default)
+        => ClearMysteriesAsync(null, token: token);
+
+    public async ValueTask<bool> ClearMysteriesAsync(IReadOnlyList<Cell>? ignore, bool nearby = false, CancellationToken token = default)
     {
         while (true)
         {
-            var target = state.Cells.Where(grid => grid.IsMystery && grid.IsAccessible)
+            token.ThrowIfCancellationRequested();
+            var target = state.Cells.Where(grid => grid.IsMystery && grid.IsAccessible &&
+                    (!nearby || grid.IsNearby) && (ignore is null || !ignore.Contains(grid.Location)))
                 .OrderBy(grid => grid.Cost).FirstOrDefault();
             if (target is null) return false;
-            var route = state.Paths.FindRoute(target.Location, FleetRoles.Step(state.FleetIndex, configuration), turningOptimize: configuration.HasAmbush);
-            if (!route.IsReachable || route.Waypoints.Count == 0)
-                throw new InvalidOperationException("Selected mystery has no confirmed fleet route");
-            for (int index = 0; index < route.Waypoints.Count; index++)
-            {
-                token.ThrowIfCancellationRequested();
-                var cell = route.Waypoints[index];
-                await WaitForMazeAsync(cell, token);
-                var result = index == route.Waypoints.Count - 1
-                    ? await movement.CollectMysteryAsync(cell, token: token)
-                    : await movement.MoveAsync(cell, token: token);
-                if (result.Outcome != MapMoveOutcome.Committed)
-                    throw new CampaignScriptException($"Mystery route to {cell} ended as {result.Outcome}");
-            }
+            await ClearMysteryAsync(target.Location, token);
+        }
+    }
+
+    public async ValueTask ClearMysteryAsync(Cell destination, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!state.IsMapInitialized) throw new InvalidOperationException("Initialize the map before collecting a mystery");
+        var route = state.Paths.FindRoute(destination, FleetRoles.Step(state.FleetIndex, configuration), turningOptimize: configuration.HasAmbush);
+        if (!route.IsReachable || route.Waypoints.Count == 0)
+            throw new CampaignScriptException("Selected mystery has no confirmed fleet route");
+        for (int index = 0; index < route.Waypoints.Count; index++)
+        {
+            token.ThrowIfCancellationRequested();
+            var cell = route.Waypoints[index];
+            await WaitForMazeAsync(cell, token);
+            var result = index == route.Waypoints.Count - 1
+                ? await movement.CollectMysteryAsync(cell, token: token)
+                : await movement.MoveAsync(cell, token: token);
+            if (result.Outcome != MapMoveOutcome.Committed)
+                throw new CampaignScriptException($"Mystery route to {cell} ended as {result.Outcome}");
         }
     }
 
     public ValueTask<bool> ClearEnemyAsync(CancellationToken token = default)
+        => ClearEnemyAsync(new EnemySelection(), token);
+
+    public ValueTask<bool> ClearEnemyAsync(EnemySelection selection, CancellationToken token = default)
     {
+        token.ThrowIfCancellationRequested();
         var candidates = state.Cells.Where(grid => grid.IsEnemy && !grid.IsBoss && grid.IsAccessible).ToArray();
-        bool strongest = configuration.EnemyPriority == EnemyScalePriority.StrongestFirst ||
+        candidates = SelectEnemyScales(candidates, selection);
+        return candidates.Length == 0 ? ValueTask.FromResult(false) : FightAsync(Order(candidates)[0], token, MapCombatExpectation.Enemy);
+    }
+
+    private CellState[] SelectEnemyScales(CellState[] candidates, EnemySelection selection)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        if (!selection.Scales.IsDefaultOrEmpty)
+        {
+            if (selection.Scales.Any(scale => scale is < 0 or > 3)) throw new ArgumentOutOfRangeException(nameof(selection));
+            candidates = candidates.Where(grid => selection.Scales.Contains(grid.EnemyScale)).ToArray();
+        }
+        // Config sets one flag without clearing a flag explicitly supplied by the rule.
+        // If both are true, native applies strongest first, then weakest to that subset.
+        bool strongest = selection.Strongest || configuration.EnemyPriority == EnemyScalePriority.StrongestFirst ||
             configuration.EnemyPriority == EnemyScalePriority.Default && configuration.ClearAllThisTime;
         if (strongest) candidates = FirstPresentScale(candidates, [3, 2, 1, 0]);
-        else if (configuration.EnemyPriority == EnemyScalePriority.WeakestFirst)
+        if (selection.Weakest || configuration.EnemyPriority == EnemyScalePriority.WeakestFirst)
             candidates = FirstPresentScale(candidates, [1, 2, 3, 0]);
-        return candidates.Length == 0 ? ValueTask.FromResult(false) : FightAsync(Order(candidates)[0], token, MapCombatExpectation.Enemy);
+        return candidates;
     }
 
     public async ValueTask<bool> ClearBossAsync(CancellationToken token = default)

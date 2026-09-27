@@ -69,7 +69,7 @@ def main():
                     probe._handle_air_raid()
                     cases.append(dict(**fixture, air=air, ambush=ambush, waitFrames=frames,
                         encounter='AirRaid' if air else 'Ambush' if ambush else 'None'))
-                chapters.append(dict(id=f'campaign_main/campaign_{chapter}_{stage}', config={name: getattr(Config(), name) for name in names},
+                chapters.append(dict(id=f'campaign_main/campaign_{chapter}_{stage}', config={name: getattr(Config(), name, None) for name in names + (['SUBMARINE'] if chapter == 7 else [])},
                     attributes={name: getattr(module.Campaign, name) for name in attribute_names}, cases=cases))
         sources = {p: hashlib.sha256((root / p).read_bytes()).hexdigest()
             for p in ['module/handler/ambush.py', 'module/handler/enemy_searching.py', 'module/config/config_manual.py']}
