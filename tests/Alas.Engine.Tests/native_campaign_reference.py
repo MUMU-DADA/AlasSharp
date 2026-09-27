@@ -58,6 +58,9 @@ def main():
                 def clear_enemy(self, **kwargs):
                     self.selection_record(kwargs)
                     return self.record("clear_enemy")
+                def clear_filter_enemy(self, string, preserve=0):
+                    self.record(f'enemy_filter:{string}:{preserve}')
+                    return self.record('clear_filter_enemy')
                 def fleet_2_push_forward(self): return self.record("fleet_2_push_forward")
                 def fleet_2_step_on(self, grids, roadblocks):
                     from module.base.utils import location2node

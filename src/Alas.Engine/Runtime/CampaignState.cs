@@ -139,6 +139,8 @@ public interface ICampaignOperations
         => throw new NotSupportedException("First roadblock selection is unavailable");
     ValueTask<bool> ClearBossForFleetAsync(int fleet) => throw new NotSupportedException("Selected-fleet boss combat is unavailable");
     ValueTask<bool> ClearEnemyAsync();
+    ValueTask<bool> ClearFilterEnemyAsync(EnemyFilter filter, int preserve = 0)
+        => throw new NotSupportedException("Ordered enemy filtering is unavailable");
     ValueTask<bool> ClearEnemyAsync(EnemySelection selection) => throw new NotSupportedException("Filtered enemy selection is unavailable");
     ValueTask<bool> ClearRoadblocksAsync(IReadOnlyList<RoadDefinition> roads, EnemySelection selection, bool potential = false)
         => throw new NotSupportedException("Filtered roadblock selection is unavailable");

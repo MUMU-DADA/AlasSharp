@@ -233,6 +233,13 @@ try
         await CampaignMapCombatChecks.MainChapterChecksAsync(Path.GetFullPath(chapterPython), Path.GetFullPath(chapterUpstream), folder);
         return 0;
     }
+    if (args is ["--enemy-filter", var filterPython, var filterUpstream, var filterArtifacts])
+    {
+        string folder = Path.GetFullPath(filterArtifacts);
+        Directory.CreateDirectory(folder);
+        await CampaignMapCombatChecks.EnemyFilterChecksAsync(Path.GetFullPath(filterPython), Path.GetFullPath(filterUpstream), folder);
+        return 0;
+    }
     if (args is ["--chapters-eleven-twelve", var laterPython, var laterUpstream, var laterArtifacts])
     {
         string folder = Path.GetFullPath(laterArtifacts);
@@ -596,6 +603,18 @@ try
                     Accessible: accessible, TrueOperation: yes, CombatReturn: false));
             foreach (string operation in new[] { "fleet_2_push_forward", "fleet_2_step_on", "clear_roadblocks", "clear_potential_roadblocks", "pick_up_ammo", "clear_boss" })
             foreach (int count in new[] { 0, 3, 6 })
+            foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
+                cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation, Fleet2: 2));
+        }
+        if (RuleCatalog.Create(id) is Alas.Engine.Rules.Main.ChapterThirteenRule)
+        {
+            foreach (int count in new[] { 0, 3, 4, 5, 6, 7, 14, 15, 16, 17 })
+            foreach (int fleet2 in new[] { 0, 2 })
+            foreach (int bossFleet in new[] { 1, 2 })
+            foreach (string? yes in new[] { null, "clear_filter_enemy", "clear_siren", "pick_up_ammo" })
+                cases.Add(new Scenario(id, BattleCount: count, Fleet2: fleet2, BossFleet: bossFleet, TrueOperation: yes, CombatReturn: false));
+            foreach (string operation in new[] { "clear_filter_enemy", "clear_siren", "pick_up_ammo", "clear_boss" })
+            foreach (int count in new[] { 0, 3, 5, 6, 7 })
             foreach (string signal in new[] { "moved", "moved_after_battle", "ended", "error" })
                 cases.Add(new Scenario(id, "execute", BattleCount: count, Signal: signal, SignalOperation: operation, Fleet2: 2));
         }

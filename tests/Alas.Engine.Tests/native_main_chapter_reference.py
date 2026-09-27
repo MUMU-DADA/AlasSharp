@@ -76,6 +76,8 @@ def main():
                     chapter_names += ['HOMO_STORAGE', 'MAP_ENSURE_EDGE_INSIGHT_CORNER', 'MAP_HAS_MYSTERY']
                 if chapter >= 10:
                     chapter_names += ['DETECTION_BACKEND']
+                if chapter >= 13:
+                    chapter_names += ['MAP_HAS_SIREN', 'MAP_HAS_FORTRESS']
                 entry = dict(id=f'campaign_main/campaign_{chapter}_{stage}', config={name: getattr(Config(), name, None) for name in chapter_names},
                     attributes={name: getattr(module.Campaign, name) for name in attribute_names}, cases=cases)
                 if chapter == 8 and stage == 1:

@@ -170,10 +170,15 @@ internal static partial class CampaignMapCombatChecks
             }
             if (expected.AsObject().ContainsKey("DETECTION_BACKEND"))
                 actual!["DETECTION_BACKEND"] = detector.Backend.ToString().ToLowerInvariant();
+            if (expected.AsObject().ContainsKey("MAP_HAS_SIREN"))
+            {
+                actual!["MAP_HAS_SIREN"] = config.HasSiren;
+                actual["MAP_HAS_FORTRESS"] = config.HasFortress;
+            }
             Check(JsonNode.DeepEquals(actual, expected), "Inherited chapter config differs: " + rule.Id + ": " + actual);
         }
     }
-    private static async Task ChapterTwoCampaignsAsync(int chapter = 2)
+    private static async Task ChapterTwoCampaignsAsync(int chapter = 2, string? enemyGenre = null)
     {
         foreach (var id in Enumerable.Range(1, 4).Select(i => $"campaign_main/campaign_{chapter}_{i}"))
         {
@@ -197,7 +202,7 @@ internal static partial class CampaignMapCombatChecks
                 if (mode == MapScanMode.Carrier) carrierTargets[state.CarrierCount] = target.Location;
                 var observations = new List<MapCellObservation> { new(new(start.Column - position.Column, start.Row - position.Row), new(IsFleet: true, IsCurrentFleet: true)),
                     new(new(target.Location.Column - position.Column, target.Location.Row - position.Row),
-                        boss && mode != MapScanMode.Carrier ? new(IsBoss: true) : new(IsEnemy: true, EnemyScale: 1)) };
+                        boss && mode != MapScanMode.Carrier ? new(IsBoss: true) : new(IsEnemy: true, EnemyScale: 1, EnemyGenre: enemyGenre)) };
                 int pendingMysteries = rule.Map.Waves.Where(wave => wave.Battle <= state.BattleCount).Sum(wave => wave.Mystery) - state.MysteryCount;
                 if ((carrier || rule is Alas.Engine.Rules.Main.ChapterSevenRule or Alas.Engine.Rules.Main.ChapterEightRule or Alas.Engine.Rules.Main.ChapterNineRule or Alas.Engine.Rules.Main.ChapterTenRule) && pendingMysteries > 0)
                 {
@@ -250,9 +255,9 @@ internal static partial class CampaignMapCombatChecks
                     "Compiled 9-4 omitted boss-fleet supply pickup");
             if (rule is Alas.Engine.Rules.Main.Campaign112)
                 Check(host.RefocusPresets.SequenceEqual([(-3, -2)]), "Compiled 11-2 omitted boss camera preset");
-            if (rule is Alas.Engine.Rules.Main.Campaign124)
+            if (rule is Alas.Engine.Rules.Main.Campaign124 or Alas.Engine.Rules.Main.Campaign134)
                 Check(operations.AmmoPickups.Count > 0 && operations.AmmoPickups[0].ExpectedRecovered == 3,
-                    "Compiled 12-4 omitted post-third-battle supply pickup");
+                    "Compiled chapter omitted post-third-battle supply pickup: " + id);
             if (rule is Alas.Engine.Rules.Main.Campaign92)
                 Check(execution.Context.State.MysteryCount == 0 && execution.Context.State.Cells.Any(cell => cell.IsMystery),
                     "Compiled 9-2 added mystery collection absent from its native hooks");

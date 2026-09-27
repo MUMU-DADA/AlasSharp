@@ -35,6 +35,8 @@ internal sealed class ProbeOperations(Scenario scenario) : ICampaignOperations
     private ValueTask<bool> Result(string operation) => ValueTask.FromResult(Call(operation));
     private ValueTask Void(string operation) { Call(operation); return ValueTask.CompletedTask; }
     public ValueTask<bool> ClearEnemyAsync() => Result("clear_enemy");
+    public ValueTask<bool> ClearFilterEnemyAsync(EnemyFilter filter, int preserve = 0)
+    { Call($"enemy_filter:{filter.Expression}:{preserve}"); return Result("clear_filter_enemy"); }
     public ValueTask<bool> ClearEnemyAsync(EnemySelection selection) { Selection(selection); return ClearEnemyAsync(); }
     private void Selection(EnemySelection selection)
         => Call($"enemy_selection:{string.Join(',', selection.Scales.IsDefault ? [] : selection.Scales)}:{(selection.Strongest ? 1 : 0)}:{(selection.Weakest ? 1 : 0)}");

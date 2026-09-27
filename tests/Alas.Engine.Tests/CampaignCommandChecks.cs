@@ -13,7 +13,7 @@ internal static class CampaignCommandChecks
         Check(CampaignCommand.NormalizeRuleId("campaign_1_3") == "campaign_main/campaign_1_3");
 
         var options = new CampaignCommandOptions(
-            ["campaign.campaign_main.campaign_11_3", "campaign/campaign_main/campaign_12_4.py", "campaign_main/campaign_99_1"],
+            ["campaign.campaign_main.campaign_13_1", "campaign/campaign_main/campaign_13_4.py", "campaign_main/campaign_99_1"],
             "missing-adb", "offline", GameServer.Cn, "missing-assets", "missing-python", artifacts,
             ModelDirectory: "missing-models", DryRun: true, ContinueOnFailure: true,
             Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead,
@@ -30,7 +30,7 @@ internal static class CampaignCommandChecks
         var calculated = CampaignCommand.BuildRequests(options with { EmotionMode = CampaignEmotionMode.CalculateIgnore, ConfigTask = "EventA" });
         Check(calculated.All(request => request.Input!["emotionMode"]!.GetValue<string>() == "calculate_ignore" &&
             request.Input["configTask"]!.GetValue<string>() == "EventA"), "Command lost persistent emotion options");
-        Check(requests.Count == 3 && requests[0].Input!["campaign"]!.GetValue<string>() == "campaign_main/campaign_11_3");
+        Check(requests.Count == 3 && requests[0].Input!["campaign"]!.GetValue<string>() == "campaign_main/campaign_13_1");
         Check(requests.All(request => request.Input!["fleet1Formation"]!.GetValue<string>() == "diamond" &&
             request.Input["fleet2Formation"]!.GetValue<string>() == "line_ahead" &&
             request.Input["fleetOrder"]!.GetValue<string>() == "fleet1_boss_fleet2_mob"), "Command lost formation/order options");
