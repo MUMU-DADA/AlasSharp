@@ -47,7 +47,11 @@ required 的前置条件缺失计为队列失败；正常边界停止不计业�
 
 两个战役任务还支持 `reachLevel` 非负整数，默认 0 关闭等级观测；开启后要求配置 OCR 模型目录。`levels` 工件保存同帧六槽读数、战前基线及 `reachLevelTriggered`，遵循原生 `after >= limit > before > 0`，且只接受升一级或新等级低于 35 的跨阈值变化。初始读数不会触发停止，后续读数不会清除已触发标记；读取失败或六槽帧号不一致不发布部分状态。当前任务只执行一次出击，`reachLevel` 不会中途撤退，也不影响之后显式排列的独立任务。完整 CampaignRun 连续出击及其到级禁用调度仍待迁移，不能把标记输出当成该调度已完成。等级读数、等级达到和 LV32 标记都不能证明通关。
 
-CLI 公共参数为 --adb、--serial、--server、--assets、--python、--artifacts；OCR 任务使用 --models，动作另需 --allow-actions 和 --package。`campaign --chapter <规则列表>` 默认 dry-run，使用 --run --allow-actions 才执行；--fleet1-formation/--fleet2-formation 选择上述阵型，--fleet-order 指定舰队顺序。运行前读取 --help 核对参数。
+两个战役任务的队列输入可带 `retirement` 对象：`mode` 为 `one_click_retire`（缺省）、`old_retire` 或 `disabled`；`keepLimitBreak` 缺省 true；`rarities` 缺省 `["N","R"]`，只允许 N/R/SR/SSR 且不得为空或重复；`amount` 为 `retire_all`（缺省，原生上限 3000）或 `retire_10`。稀有度与数量仅控制 old 模式，一键模式按游戏的一键选择结果操作；`keepLimitBreak` 控制一键失败后的最后设置回退，不会覆盖首次尝试时已有的游戏设置。`enhance` 和其他未迁模式明确拒绝。禁用退役时遇容量提示或退役页失败，不自动整理。`campaign_fleet_prepare` 不启用自动退役。
+
+退役由 Engine 的通用船坞筛选、排序/收藏开关、一键设置和船/装备/奖励确认流程执行，进图与战斗准备共用同一会话处理器；`emotionMode=ignore` 的低心情确认已接入。`retirement.json` 保存开始/返回帧、确认动作及未完成尝试；`NativeSelectionEstimate` 是原生选择估算，不是实测退役数。未确认设置、缺少实际确认动作或最后动作后的新帧、超时无奖励证据均失败；只见离开船坞不证明返回特定页面，更不证明通关。强化、GemsFarming 保留航母/退役旗舰与完整心情计算仍未迁移，没有新增实机退役证据。
+
+CLI 公共参数为 --adb、--serial、--server、--assets、--python、--artifacts；OCR 任务使用 --models，动作另需 --allow-actions 和 --package。`campaign --chapter <规则列表>` 默认 dry-run，使用 --run --allow-actions 才执行；--fleet1-formation/--fleet2-formation 选择上述阵型，--fleet-order 指定舰队顺序。自定义退役选项使用队列输入；直接 campaign 命令沿用缺省选项。运行前读取 --help 核对参数。
 
 ## 待完成能力与验证
 

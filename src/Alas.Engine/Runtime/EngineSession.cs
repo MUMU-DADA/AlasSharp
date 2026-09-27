@@ -24,6 +24,8 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     private readonly ImageStability _imageStability;
     private readonly IntervalTimer _automationSet;
     private readonly List<CombatHealthPreparation> _combatHealth = [];
+    private readonly RetirementHandler _retirement;
+    private readonly CampaignInterruptions _interruptions;
     public UiDriver Driver { get; }
     public PageGraph Pages { get; } = UpstreamPages.Create();
     public TaskCapabilities Capabilities { get; }
@@ -42,6 +44,11 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         Driver = new UiDriver(options.Server, _device, _vision, _assets);
         _imageStability = new(Driver, _vision, () => Driver.Frame ?? throw new InvalidOperationException("No stability screenshot"));
         _automationSet = new(Driver.Clock, 1);
+        var visuals = new UiVisuals(_vision, () => Driver.Frame ?? throw new InvalidOperationException("No dock screenshot"));
+        var info = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No dock screenshot"),
+            _vision, _assets, Driver.Server);
+        _retirement = new(Driver, new RetirementDock(Driver, visuals), () => Driver.Frame?.Sequence ?? 0, info.InfoBarCountAsync);
+        _interruptions = new(Driver, visuals, _retirement);
         _ammoProbe = new(Driver, new MapUiObservations(
             () => Driver.Frame ?? throw new InvalidOperationException("No ammo screenshot"), _vision, _assets, Driver.Server),
             () => Driver.Frame?.Sequence ?? 0);
@@ -200,6 +207,7 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     internal CombatFlow CreateCampaignCombatFlow(CampaignState state, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal)
     {
+        _interruptions.Configure(configuration.Retirement, configuration.EmotionMode);
         var preparation = new CombatHealthPreparation(Driver,
             () => Driver.Frame ?? throw new InvalidOperationException("No combat preparation screenshot"),
             _imageStability, () => state.Health.Get(state.FleetIndex), configuration.Health, configuration.UseFleetLock,
@@ -213,7 +221,7 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
         var observations = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No combat screenshot"),
             _vision, _assets, Driver.Server, entrances);
-        return new(Driver, recovery, recovery, observations, healthPreparation, _automationSet);
+        return new(Driver, recovery, recovery, observations, healthPreparation, _automationSet, _interruptions);
     }
     public async ValueTask<MapVisualObservation> ObserveMapAsync(CampaignRule rule, CancellationToken token)
     {
@@ -241,7 +249,7 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
             .ApplyAsync(plan, token);
     public ValueTask<CampaignEntryObservation> EnterFromFleetAsync(CancellationToken token)
         => new CampaignEntry(Driver,
-            () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No map entry screenshot"))
+            () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No map entry screenshot"), _interruptions)
             .EnterAsync(token);
     public ValueTask<AutoSearchObservation> EnsureManualAsync(CancellationToken token)
         => new CampaignAutoSearch(Driver, _vision,
@@ -251,9 +259,11 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
     {
         _device.Actions.Clear();
         _combatHealth.Clear();
+        _retirement.ResetEvidence();
+        _interruptions.Configure(new() { Mode = RetirementMode.Disabled }, CampaignEmotionMode.Calculate);
         Driver.ResetTask();
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
-        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this, this, this, this);
+        return new(Driver, new UiNavigator(Driver, Pages, recovery), recovery, timeout, this, this, this, this, this, this, _interruptions);
     }
     public async Task<JsonObjectEvidence> SaveEvidenceAsync(string directory, bool failed)
     {
@@ -267,6 +277,12 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
             await File.WriteAllTextAsync(Path.Combine(directory, healthFile),
                 JsonSerializer.Serialize(_combatHealth.Select(preparation => preparation.Evidence), json));
         }
+        string? retirementFile = null;
+        if (_retirement.Evidence.Count > 0)
+        {
+            retirementFile = "retirement.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, retirementFile), JsonSerializer.Serialize(_retirement.Evidence, json));
+        }
         string? image = null, hash = null;
         long? sequence = null;
         if (Driver.Frame is { } frame)
@@ -276,11 +292,11 @@ public sealed class EngineSession : IAsyncDisposable, IMapObservationService, IC
             hash = Convert.ToHexStringLower(SHA256.HashData(frame.Png.Span));
             sequence = frame.Sequence;
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile);
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
-        string? CombatHealthFile = null);
+        string? CombatHealthFile = null, string? RetirementFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

@@ -12,12 +12,13 @@ public sealed class CampaignResumeTask : ITaskRunner
     public bool RequiresActions => true;
     public void Validate(JsonObject? input)
     {
-        TaskInput.Fields(input, "campaign", "hpControl", "reachLevel");
+        TaskInput.Fields(input, "campaign", "hpControl", "reachLevel", "retirement");
         string id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign resume requires a compiled rule");
         _ = RuleCatalog.Create(id);
         _ = FleetHealthInput.Read(input!);
         _ = FleetLevelInput.Read(input!);
+        _ = RetirementInput.Read(input!);
     }
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
         => FleetLevelInput.Read(request.Input!).Enabled && !capabilities.HasOcrModels ? ["ocr_models"] : [];
@@ -28,7 +29,7 @@ public sealed class CampaignResumeTask : ITaskRunner
         var rule = RuleCatalog.Create(request.Input!["campaign"]!.GetValue<string>());
         var result = await service.ResumeInMapAsync(rule,
             new CampaignConfiguration { EmotionMode = CampaignEmotionMode.Ignore, Health = FleetHealthInput.Read(request.Input),
-                Levels = FleetLevelInput.Read(request.Input) }, token);
+                Levels = FleetLevelInput.Read(request.Input), Retirement = RetirementInput.Read(request.Input) }, token);
         return Describe(request.Id, Kind, rule, result, false);
     }
 

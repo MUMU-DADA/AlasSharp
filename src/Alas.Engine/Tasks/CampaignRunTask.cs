@@ -14,7 +14,7 @@ public sealed class CampaignRunTask : ITaskRunner
     public void Validate(JsonObject? input)
     {
         TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
-            "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel");
+            "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement");
         var id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign run requires a compiled campaign rule");
         if (RuleCatalog.Create(id).StageName is null)
@@ -30,6 +30,7 @@ public sealed class CampaignRunTask : ITaskRunner
         _ = Order(input);
         _ = FleetHealthInput.Read(input);
         _ = FleetLevelInput.Read(input);
+        _ = RetirementInput.Read(input);
     }
 
     public IReadOnlyList<string> Preconditions(TaskRequest request, TaskCapabilities capabilities)
@@ -55,6 +56,7 @@ public sealed class CampaignRunTask : ITaskRunner
             FleetOrder = Order(request.Input),
             Health = FleetHealthInput.Read(request.Input),
             Levels = FleetLevelInput.Read(request.Input),
+            Retirement = RetirementInput.Read(request.Input),
             UseFleetLock = request.Input["fleetLock"]?.GetValue<bool>() ?? true
         };
         // Config inheritance is authoritative. Apply it before touching the
@@ -67,6 +69,7 @@ public sealed class CampaignRunTask : ITaskRunner
         };
         plan.Validate();
         var configuration = effectiveConfiguration;
+        context.Interruptions?.Configure(configuration.Retirement, configuration.EmotionMode);
 
         var evidence = new JsonObject
         {
@@ -90,7 +93,7 @@ public sealed class CampaignRunTask : ITaskRunner
             var manual = await autoSearch.EnsureManualAsync(token);
             evidence["autoSearch"] = JsonSerializer.SerializeToNode(manual, TaskQueue.Json);
             phase = "map_preparation";
-            await new CampaignPreparation(context.Driver).OpenFleetAsync(selection.Preparation, token);
+            await new CampaignPreparation(context.Driver, context.Interruptions).OpenFleetAsync(selection.Preparation, token);
             phase = "fleet_setup";
             var setup = await fleets.ConfigureFleetAsync(plan, context.Popups, token);
             evidence["fleetSetup"] = JsonSerializer.SerializeToNode(setup, TaskQueue.Json);

@@ -168,12 +168,14 @@ internal static class CombatHealthChecks
             new[] { "BATTLE_PREPARATION", "EMERGENCY_REPAIR_AVAILABLE" },
             new[] { "BATTLE_PREPARATION", "EMERGENCY_REPAIR_AVAILABLE" },
             new[] { "BATTLE_PREPARATION", "EMERGENCY_REPAIR_AVAILABLE" },
+            new[] { "BATTLE_PREPARATION", "EMERGENCY_REPAIR_AVAILABLE" },
+            new[] { "BATTLE_PREPARATION", "EMERGENCY_REPAIR_AVAILABLE" },
             new[] { "EMERGENCY_REPAIR_CONFIRM" }, new[] { "BATTLE_PREPARATION" },
             new[] { "PAUSE" }, new[] { "BATTLE_STATUS_S" }, new[] { "CAMPAIGN_CHECK" } })!.AsArray();
-        var ui = new Ui(pngs, [0], frames); await ui.PrimeAsync();
+        var ui = new Ui(pngs, [0], frames) { HandleInterruptions = true }; await ui.PrimeAsync();
         var hp = Snapshot([.8, 0, 0, .2, .8, .5])!;
         var prep = Make(ui, vision, hp);
-        var completed = await new CombatFlow(ui, ui, ui, ui, prep).RunAutoAsync(new(TimeSpan.FromSeconds(10),
+        var completed = await new CombatFlow(ui, ui, ui, ui, prep, interruptions: ui).RunAutoAsync(new(TimeSpan.FromSeconds(10),
             TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10)));
         Check(completed.Return == CombatReturn.InStage && completed.HealthPreparation?.RepairClicks.Count == 2 &&
             ui.Clicks.Select(v => JsonSerializer.SerializeToNode(v)!["asset"]!.GetValue<string>()).SequenceEqual(new[] {
@@ -183,6 +185,15 @@ internal static class CombatHealthChecks
             JsonSerializer.SerializeToNode(e)?["interval"]?.GetValue<double>() == 2);
         Check(battle >= 0 && ui.Events.Take(battle).All(e => JsonSerializer.SerializeToNode(e)?["asset"]?.GetValue<string>() != "$story"),
             "Story skipped ahead of native preparation handlers");
+        var events = ui.Events.Select(e => JsonSerializer.SerializeToNode(e)!).ToArray();
+        Check(ui.Retired && ui.Ignored && events.Where(e => e["frame"]?.GetValue<int>() < 2)
+            .All(e => e["asset"]?.GetValue<string>() != "EMERGENCY_REPAIR_CONFIRM"),
+            "Combat repair ran before pending retirement or low-emotion handling");
+        int retirement = Array.FindIndex(events, e => e["frame"]?.GetValue<int>() == 2 && e["asset"]?.GetValue<string>() == "$retirement");
+        int emotion = Array.FindIndex(events, e => e["frame"]?.GetValue<int>() == 2 && e["asset"]?.GetValue<string>() == "$emotion");
+        int repair = Array.FindIndex(events, e => e["asset"]?.GetValue<string>() == "EMERGENCY_REPAIR_CONFIRM");
+        Check(retirement >= 0 && emotion > retirement && repair > emotion,
+            "Combat interruption handlers drifted from the native retirement, emotion, repair order");
         var stalled = new Ui(pngs, [0], JsonSerializer.SerializeToNode(new[] {
             new[] { "BATTLE_PREPARATION", "EMERGENCY_REPAIR_AVAILABLE", "MAIN_FLEET_POWER_ZERO" } })!.AsArray()) { CaptureDelay = true };
         await stalled.PrimeAsync();
@@ -232,13 +243,29 @@ internal static class CombatHealthChecks
     }
 
     private sealed class Ui(byte[][] pngs, int[] initial, JsonArray? scenes = null) : AppearanceProbe(GameServer.Cn, null),
-        IStoryHandler, IPopupHandler, IMapUiObservations
+        IStoryHandler, IPopupHandler, IMapUiObservations, ICampaignInterruptions
     {
         private int[] _images = initial;
         private long _sequence = 1;
         public int Frame { get; private set; }
         public bool Stale { get; set; }
         public bool CaptureDelay { get; set; }
+        public bool HandleInterruptions { get; init; }
+        public bool Retired { get; private set; }
+        public bool Ignored { get; private set; }
+        public void Configure(RetirementOptions retirement, CampaignEmotionMode emotion) => throw new NotSupportedException();
+        public ValueTask<bool> RetirementAsync(CancellationToken token)
+        {
+            Events.Add(new { asset = "$retirement", frame = Frame });
+            bool handled = HandleInterruptions && !Retired;
+            Retired |= handled; return ValueTask.FromResult(handled);
+        }
+        public ValueTask<bool> LowEmotionAsync(CancellationToken token)
+        {
+            Events.Add(new { asset = "$emotion", frame = Frame });
+            bool handled = HandleInterruptions && !Ignored;
+            Ignored |= handled; return ValueTask.FromResult(handled);
+        }
         public ScreenFrame Current => new(_sequence, DateTimeOffset.UnixEpoch, pngs[_images[Math.Min(Frame, _images.Length - 1)]]);
         public List<object> Events { get; } = [];
         public List<object> Clicks { get; } = [];

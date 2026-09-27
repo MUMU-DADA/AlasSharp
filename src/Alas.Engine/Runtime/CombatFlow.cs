@@ -14,7 +14,8 @@ public sealed record CombatFlowOptions(TimeSpan PreparationTimeout, TimeSpan Exe
 
 /// <summary>Independent C# automatic combat phases. The caller still owns map state and sortie adjudication.</summary>
 public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler popups, IMapUiObservations mapUi,
-    CombatHealthPreparation? healthPreparation = null, IntervalTimer? automationSetTimer = null)
+    CombatHealthPreparation? healthPreparation = null, IntervalTimer? automationSetTimer = null,
+    ICampaignInterruptions? interruptions = null)
 {
     public static readonly SourceFile Source = MapEncounterProbe.CombatSource;
     private static readonly (AssetRule Asset, TemplatePreprocessing Processing)[] PauseVariants =
@@ -132,6 +133,11 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
             first = false;
             if (await ui.AppearsAsync(UiAssets.Combat.BATTLE_PREPARATION, ButtonOffset.Expand(20, 20), token: token) &&
                 await SetAutomationAsync(token)) continue;
+            if (interruptions is not null)
+            {
+                if (await interruptions.RetirementAsync(token)) continue;
+                if (await interruptions.LowEmotionAsync(token)) continue;
+            }
             if (healthPreparation is not null && await healthPreparation.HandleRepairAsync(token)) continue;
             if (await ui.AppearsAsync(UiAssets.Combat.BATTLE_PREPARATION, ButtonOffset.Expand(20, 20),
                     interval: 2, threshold: 30, token: token))

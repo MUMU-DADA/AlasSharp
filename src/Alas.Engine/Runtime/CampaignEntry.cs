@@ -11,7 +11,7 @@ public interface ICampaignEntryService
 }
 
 /// <summary>Advances an observed fleet preparation page into a fresh in-map observation.</summary>
-public sealed class CampaignEntry(IUiDriver ui, Func<long> frameSequence)
+public sealed class CampaignEntry(IUiDriver ui, Func<long> frameSequence, ICampaignInterruptions? interruptions = null)
 {
     public static readonly SourceFile Source = MapUiRecovery.PreparationSource;
     private static ButtonOffset FleetOffset => ButtonOffset.Expand(20, 50);
@@ -26,13 +26,22 @@ public sealed class CampaignEntry(IUiDriver ui, Func<long> frameSequence)
                 throw new InvalidDataException("Map was entered before the fleet preparation action");
             if (!await ui.AppearsAsync(UiAssets.Map.FLEET_PREPARATION, FleetOffset, token: token))
                 throw new InvalidDataException("Fleet preparation is no longer visible");
+            long beforeClick = frameSequence();
             await ui.ClickAsync(UiAssets.Map.FLEET_PREPARATION, token);
             for (int frame = 0; frame < 20; frame++)
             {
                 await ui.DelayAsync(TimeSpan.FromMilliseconds(250), token);
                 await ui.ScreenshotAsync(token);
                 if (await ui.AppearsAsync(UiAssets.Handler.IN_MAP, token: token))
+                {
+                    if (frameSequence() <= beforeClick) throw new InvalidDataException("Map entry reused a stale frame");
                     return new(click + 1, frameSequence());
+                }
+                if (interruptions is not null)
+                {
+                    if (await interruptions.RetirementAsync(token)) continue;
+                    if (await interruptions.LowEmotionAsync(token)) continue;
+                }
                 if (await ui.AppearsAsync(UiAssets.Map.MAP_PREPARATION, MapOffset, token: token) ||
                     await ui.AppearsAsync(UiAssets.Map.MAP_PREPARATION_HARD, MapOffset, token: token))
                     throw new InvalidDataException("Fleet preparation returned to the map preparation page");

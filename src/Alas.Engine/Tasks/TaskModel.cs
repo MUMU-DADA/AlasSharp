@@ -14,7 +14,8 @@ public sealed record TaskResult(string Id, string Kind, TaskOutcome Outcome, str
 public sealed record TaskContext(IUiDriver Driver, IPageNavigator Navigator, IPopupHandler Popups, TimeSpan Timeout,
     IMapObservationService? Map = null, ICampaignExecutionService? Campaign = null,
     ICampaignStageObservationService? Stages = null, ICampaignFleetPreparationService? Fleets = null,
-    ICampaignEntryService? Entry = null, ICampaignAutoSearchService? AutoSearch = null);
+    ICampaignEntryService? Entry = null, ICampaignAutoSearchService? AutoSearch = null,
+    ICampaignInterruptions? Interruptions = null);
 
 /// <summary>Each business domain owns its input schema and completion evidence.</summary>
 public interface ITaskRunner

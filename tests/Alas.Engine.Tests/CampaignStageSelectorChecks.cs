@@ -218,10 +218,13 @@ internal static class CampaignStageSelectorChecks
         }, "Campaign run accepted implicit emotion calculation without an implementation");
         driver = new Driver { Chapter = 1 };
         var runFleet = new FleetService();
+        var interruptions = new Interruptions();
         result = await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = runInput },
             new TaskContext(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
                 Campaign: new CampaignService(), Stages: new Stages(driver), Fleets: runFleet,
-                Entry: new EntryService(driver), AutoSearch: new AutoSearchService()), default);
+                Entry: new EntryService(driver), AutoSearch: new AutoSearchService(), Interruptions: interruptions), default);
+        Check(interruptions.Options is { Mode: RetirementMode.OneClick, KeepLimitBreak: true },
+            "Campaign run did not configure native retirement defaults before entry");
         Check(result.Outcome == TaskOutcome.Failed && runFleet.Plan == new FleetPlan(1, 0, 0) &&
             result.Evidence?["campaignIdentityVerified"]?.GetValue<bool>() == true &&
             result.Evidence["entry"]?["fleetClicks"]?.GetValue<int>() == 1 &&
@@ -238,17 +241,21 @@ internal static class CampaignStageSelectorChecks
                 new CombatRankEvidence(CombatRank.S, CombatRankSource.BattleStatus,
                     UiAssets.Combat.BATTLE_STATUS_S.Id), false, false, 3)]
         };
+        runInput["retirement"] = new JsonObject { ["mode"] = "disabled" };
+        interruptions = new Interruptions();
         result = await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = runInput },
             new TaskContext(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
-                Campaign: new CampaignService { StageReturn = terminal }, Stages: new Stages(driver),
+                Campaign: new CampaignService { StageReturn = terminal, Retirement = RetirementMode.Disabled }, Stages: new Stages(driver),
                 Fleets: new FleetService(), Entry: new EntryService(driver),
-                AutoSearch: new AutoSearchService()), default);
+                AutoSearch: new AutoSearchService(), Interruptions: interruptions), default);
+        Check(interruptions.Options?.Mode == RetirementMode.Disabled, "Campaign run enabled disabled retirement during entry");
         Check(result.Outcome == TaskOutcome.Succeeded &&
             result.Evidence?["cleared"]?.GetValue<bool>() == true &&
             result.Evidence["sortie"]?["outcome"]?.GetValue<string>() == "cleared" &&
             result.Evidence["entry"] is not null,
             "Integrated campaign evidence merge discarded a verified settlement");
         driver = new Driver { Chapter = 1 };
+        runInput.Remove("retirement");
         try
         {
             await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = runInput },
@@ -337,18 +344,29 @@ internal static class CampaignStageSelectorChecks
     }
     private sealed class CampaignService : ICampaignExecutionService
     {
+        public RetirementMode Retirement { get; init; } = RetirementMode.OneClick;
         public bool Fail { get; init; }
         public MapArrivalResult? StageReturn { get; init; }
         public ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
             CampaignConfiguration configuration, CancellationToken token)
         {
             if (Fail) throw new IOException("Injected map execution failure");
+            Check(configuration.Retirement.Mode == Retirement, "Campaign execution lost the requested retirement mode");
             Check(configuration is { EmotionMode: CampaignEmotionMode.Ignore, UseFleetLock: true,
                 Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead,
                 FleetOrder: FleetOrder.Fleet1BossFleet2Mob, Vision: not null },
                 "Integrated campaign did not preserve explicit emotion, fleet-lock and formation settings");
             return ValueTask.FromResult(new CampaignResumeResult(CampaignLoopExit.Ended, 1, StageReturn));
         }
+    }
+    private sealed class Interruptions : ICampaignInterruptions
+    {
+        public RetirementOptions? Options { get; private set; }
+        public void Configure(RetirementOptions retirement, CampaignEmotionMode emotion)
+        { Check(emotion == CampaignEmotionMode.Ignore, "Campaign ignored its emotion choice"); Options = retirement; }
+        public ValueTask<bool> RetirementAsync(CancellationToken token)
+        { Check(Options is not null, "Campaign entry used unconfigured interruptions"); return ValueTask.FromResult(false); }
+        public ValueTask<bool> LowEmotionAsync(CancellationToken token) => ValueTask.FromResult(false);
     }
     private sealed class Driver : IUiDriver
     {

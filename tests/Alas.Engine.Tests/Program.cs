@@ -263,6 +263,13 @@ try
         return 0;
     }
 
+    if (args is ["--retirement", var retirementPython, var retirementUpstream, var retirementArtifacts])
+    {
+        string folder = Path.GetFullPath(retirementArtifacts);
+        Directory.CreateDirectory(folder);
+        await RetirementChecks.RunAsync(Path.GetFullPath(retirementPython), Path.GetFullPath(retirementUpstream), folder);
+        return 0;
+    }
     if (args is ["--combat-health", var combatHealthPython, var combatHealthUpstream, var combatHealthArtifacts])
     {
         string folder = Path.GetFullPath(combatHealthArtifacts);

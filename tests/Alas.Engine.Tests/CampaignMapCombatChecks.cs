@@ -166,9 +166,18 @@ internal static class CampaignMapCombatChecks
             new JsonObject { ["campaign"] = "campaign_main/campaign_1_1" });
         var stage = ((InMapCampaignOperations)execution.Context.Operations).StageReturn;
         var initialFleet = ((InMapCampaignOperations)execution.Context.Operations).InitialFleet;
+        var resumeService = new ResumeService(new(CampaignLoopExit.Ended, 1, stage, initialFleet));
         var result = await task.RunAsync(request,
             new TaskContext(null!, null!, null!, TimeSpan.FromMinutes(2),
-                Campaign: new ResumeService(new(CampaignLoopExit.Ended, 1, stage, initialFleet))), default);
+                Campaign: resumeService), default);
+        Check(resumeService.Configuration?.Retirement is { Mode: RetirementMode.OneClick, KeepLimitBreak: true },
+            "Resume task lost native retirement defaults");
+        var disabledInput = request.Input!.DeepClone().AsObject();
+        disabledInput["retirement"] = new JsonObject { ["mode"] = "disabled" };
+        _ = await task.RunAsync(request with { Input = disabledInput },
+            new TaskContext(null!, null!, null!, TimeSpan.FromMinutes(2), Campaign: resumeService), default);
+        Check(resumeService.Configuration?.Retirement.Mode == RetirementMode.Disabled,
+            "Resume task re-enabled disabled retirement");
         Check(result is { Outcome: TaskOutcome.Failed, Reason: "sortie_settlement_unverified" } &&
             result.Evidence?["cleared"]?.GetValue<bool>() == false &&
             result.Evidence["settlementVerified"]?.GetValue<bool>() == false &&
@@ -261,9 +270,10 @@ internal static class CampaignMapCombatChecks
 
     private sealed class ResumeService(CampaignResumeResult result) : ICampaignExecutionService
     {
+        public CampaignConfiguration? Configuration { get; private set; }
         public ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
             CampaignConfiguration configuration, CancellationToken token)
-        { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(result); }
+        { token.ThrowIfCancellationRequested(); Configuration = configuration; return ValueTask.FromResult(result); }
     }
 
     private sealed class TwoBattleRule(MapDefinition map) : CampaignRule
