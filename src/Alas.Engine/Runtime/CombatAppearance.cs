@@ -20,7 +20,7 @@ public sealed class CombatAppearance(IUiDriver ui, bool useFleetLock,
     public static async ValueTask<bool> ConfirmAutomationAsync(IUiDriver ui, CancellationToken token)
     {
         if (!await ui.AppearsAsync(UiAssets.Combat.AUTOMATION_CONFIRM_CHECK, interval: 1, threshold: 30, token: token)) return false;
-        if (await ui.AppearsAsync(UiAssets.Combat.AUTOMATION_CONFIRM, ButtonOffset.Expand(20, 20), token: token))
+        if (await ui.AppearsAsync(UiAssets.Combat.AUTOMATION_CONFIRM, ButtonOffset.Expand(20, 20), threshold: 30, token: token))
             await ui.ClickAsync(UiAssets.Combat.AUTOMATION_CONFIRM, token);
         return true;
     }

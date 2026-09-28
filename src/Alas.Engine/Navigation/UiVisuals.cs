@@ -25,6 +25,7 @@ public sealed class UiVisuals(IImagePatchVision vision, Func<ScreenFrame> curren
         double interval, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        ui.ObserveProgress(asset);
         if (interval > 0 && !ui.Timer(asset, interval, renew: true).Reached()) return false;
         if (!await ui.AppearsAsync(asset, offset, preprocessing: TemplatePreprocessing.Luma, token: token)) return false;
         var variant = asset.For(ui.Server);

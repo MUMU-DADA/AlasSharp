@@ -5,10 +5,14 @@ namespace Alas.Engine.Devices;
 
 public interface IGameDevice
 {
+    DeviceWatchdog? Watchdog => null;
     ValueTask<ScreenFrame> CaptureAsync(CancellationToken token = default);
     ValueTask TapAsync(PixelPoint point, CancellationToken token = default);
     ValueTask SwipeAsync(PixelPoint start, PixelPoint end, TimeSpan duration, CancellationToken token = default);
     ValueTask BackAsync(CancellationToken token = default);
+    ValueTask TapAsync(PixelPoint point, string? name, CancellationToken token) => TapAsync(point, token);
+    ValueTask SwipeAsync(PixelPoint start, PixelPoint end, TimeSpan duration, string name, CancellationToken token)
+        => SwipeAsync(start, end, duration, token);
 }
 
 /// <summary>Native C# ADB I/O, independent of the image service and all game business rules.</summary>

@@ -124,7 +124,7 @@ internal static partial class MapWalkInterruptionChecks
             if (asset == UiAssets.Combat.BATTLE_PREPARATION) Check(offset == ButtonOffset.Expand(30, 20), "Preparation offset drift");
             if (asset == UiAssets.Combat.BATTLE_PREPARATION_WITH_OVERLAY || asset == UiAssets.Combat.AUTOMATION_CONFIRM_CHECK)
                 Check(threshold == 30, "Overlay detection threshold drift");
-            if (asset == UiAssets.Combat.AUTOMATION_CONFIRM) Check(offset == ButtonOffset.Expand(20, 20) && threshold == 10, "Confirmation detection drift");
+            if (asset == UiAssets.Combat.AUTOMATION_CONFIRM) Check(offset == ButtonOffset.Expand(20, 20) && threshold == 30, "Confirmation detection drift");
             bool found = Scene.Contains(asset == UiAssets.Handler.IN_MAP ? "$map" : asset.Name);
             if (found && interval > 0) Timer(asset).Reset();
             return ValueTask.FromResult(found);

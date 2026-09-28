@@ -12,7 +12,9 @@ public sealed class AdbFleetDrag(IGameDevice device, IUiDriver ui)
     public async ValueTask DragAsync(PixelPoint start, PixelPoint end, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        await device.SwipeAsync(start, end, TimeSpan.FromMilliseconds(500), token);
-        await ui.ClickAreaAsync(new(end.X - 10, end.Y - 10, end.X + 10, end.Y + 10), token);
+        await device.SwipeAsync(start, end, TimeSpan.FromMilliseconds(500), "DRAG", token);
+        var area = new Rectangle(end.X - 10, end.Y - 10, end.X + 10, end.Y + 10);
+        if (ui is UiDriver driver) await driver.ClickNamedAreaAsync(area, null, token);
+        else await ui.ClickAreaAsync(area, token);
     }
 }

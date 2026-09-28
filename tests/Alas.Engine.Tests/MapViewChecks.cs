@@ -442,7 +442,11 @@ internal static partial class MapViewChecks
         var trace = expected["trace"]!.AsArray();
         Check(input.Gestures.Count == trace.Count, "Control gesture count");
         for (int i = 0; i < trace.Count; i++)
-        { Near(input.Gestures[i].Pixels, trace[i]!["pixels"]!, "Pixel gesture"); Check(input.Gestures[i].Box == ReadArea(trace[i]!["box"]!), "Gesture bounds"); }
+        {
+            Near(input.Gestures[i].Pixels, trace[i]!["pixels"]!, "Pixel gesture");
+            Check(input.Gestures[i].Box == ReadArea(trace[i]!["box"]!), "Gesture bounds");
+            Check(input.Gestures[i].ControlName == trace[i]!["name"]!.GetValue<string>(), "Native map control identity");
+        }
         if (edge && !B(s["reverse"]!))
         {
             // Exercise the same interface overload used by CampaignMapInitializer
@@ -463,6 +467,7 @@ internal static partial class MapViewChecks
             {
                 Near(bridgeInput.Gestures[i].Pixels, trace[i]!["pixels"]!, "Initializer preset gesture");
                 Check(bridgeInput.Gestures[i].Box == ReadArea(trace[i]!["box"]!), "Initializer preset gesture bounds");
+                Check(bridgeInput.Gestures[i].ControlName == trace[i]!["name"]!.GetValue<string>(), "Initializer control identity");
             }
         }
         var observation = await camera.ObserveAsync(MapScanMode.Init, default);

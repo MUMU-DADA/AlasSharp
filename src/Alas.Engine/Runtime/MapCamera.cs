@@ -19,9 +19,13 @@ public interface IMapSwipeInput
 public interface IMapGridInput
 {
     ValueTask TapAsync(PixelArea area, CancellationToken token);
+    ValueTask TapAsync(PixelArea area, Cell location, CancellationToken token) => TapAsync(area, token);
 }
 public sealed record MapSwipeGesture(ScreenPoint Pixels, PixelArea Box,
-    IReadOnlyList<PixelArea>? PreferredEnds, IReadOnlyList<PixelArea>? ForbiddenAreas);
+    IReadOnlyList<PixelArea>? PreferredEnds, IReadOnlyList<PixelArea>? ForbiddenAreas)
+{
+    public string ControlName { get; init; } = "SWIPE";
+}
 public enum MapControlMethod { Adb, Minitouch, MaaTouch }
 public sealed class MapImageRefreshRequiredException() : InvalidOperationException("Refresh the map image after a grid tap");
 public sealed class MapRelocalizationRequiredException() : InvalidOperationException("Relocalize the map camera after an interaction");
@@ -214,7 +218,7 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera, ISubmarineMov
             if (!View.Geometry.Projections.ContainsKey(Local())) await FocusCoreAsync(destination, ct);
             if (!View.Geometry.Projections.TryGetValue(Local(), out var grid))
                 throw new MapGeometryException("Destination grid remains outside the localized map view");
-            await _gridInput.TapAsync(grid.Inner, ct);
+            await _gridInput.TapAsync(grid.Inner, destination, ct);
             _observation = null;
             _requiresRefresh = true;
             return true;
@@ -239,7 +243,7 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera, ISubmarineMov
                     checked(destination.Row - Position.Row + View.Geometry.Center.Y));
                 if (!View.Geometry.Projections.TryGetValue(local, out var grid))
                     throw new MapGeometryException($"Destination grid {destination} is outside the localized map view");
-                await _gridInput!.TapAsync(grid.Inner, ct);
+                await _gridInput!.TapAsync(grid.Inner, destination, ct);
             }
             _observation = null;
             _requiresRefresh = true;
@@ -496,7 +500,8 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera, ISubmarineMov
         }
         var basis = view.Geometry.SwipeBase;
         var pixels = new ScreenPoint(-basis.X * _multiply.X * vector.X, -basis.Y * _multiply.Y * vector.Y);
-        await _input.SwipeAsync(new(pixels, new(123, 159, 1052, 469), preferred, forbidden), token);
+        string control = FormattableString.Invariant($"MAP_SWIPE_{checked((int)Math.Round(vector.X))}_{checked((int)Math.Round(vector.Y))}");
+        await _input.SwipeAsync(new(pixels, new(123, 159, 1052, 469), preferred, forbidden) { ControlName = control }, token);
         await UpdateCoreAsync(true, token);
         return true;
     }

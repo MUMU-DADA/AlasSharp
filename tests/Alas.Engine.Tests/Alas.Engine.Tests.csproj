@@ -59,5 +59,6 @@
     <None Include="native_walk_timeout_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_walk_interruptions_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_fleet_overlap_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_device_watchdog_reference.py" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -89,9 +89,17 @@ internal static class CombatHealthChecks
             autoUi.Events.Clear(); autoUi.Clicks.Clear();
             // Recreate a battle flow but retain the session timer, as the product does.
             bool handled = await new CombatFlow(autoUi, autoUi, autoUi, autoUi, automationSetTimer: autoTimer).SetAutomationAsync(default);
-            Check(handled == sample["result"]!.GetValue<bool>() &&
-                JsonNode.DeepEquals(JsonSerializer.SerializeToNode(autoUi.Events), sample["calls"]) &&
-                JsonNode.DeepEquals(JsonSerializer.SerializeToNode(autoUi.Clicks), sample["clicks"]), "Native automation-set timer differs");
+            if (handled != sample["result"]!.GetValue<bool>() ||
+                !JsonNode.DeepEquals(JsonSerializer.SerializeToNode(autoUi.Events), sample["calls"]) ||
+                !JsonNode.DeepEquals(JsonSerializer.SerializeToNode(autoUi.Clicks), sample["clicks"]))
+            {
+                await File.WriteAllTextAsync(Path.Combine(artifacts, "automation-mismatch.json"), new JsonObject
+                {
+                    ["actual"] = JsonSerializer.SerializeToNode(new { handled, calls = autoUi.Events, clicks = autoUi.Clicks }),
+                    ["expected"] = sample.DeepClone()
+                }.ToJsonString());
+                throw new InvalidOperationException("Native automation-set timer differs");
+            }
         }
         var dragUi = new Ui(pngs, [0]); var device = new Device();
         await new AdbFleetDrag(device, dragUi).DragAsync(new(403, 421), new(821, 326), default);

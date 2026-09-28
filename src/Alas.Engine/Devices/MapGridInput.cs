@@ -12,6 +12,8 @@ public sealed class MapGridInput(IGameDevice device, Random? random = null) : IM
 
     public ValueTask TapAsync(PixelArea area, CancellationToken token)
         => device.TapAsync(Place(area, _random), token);
+    public ValueTask TapAsync(PixelArea area, Cell location, CancellationToken token)
+        => device.TapAsync(Place(area, _random), location.ToString(), token);
 
     public static PixelPoint Place(PixelArea area, Random random)
     {

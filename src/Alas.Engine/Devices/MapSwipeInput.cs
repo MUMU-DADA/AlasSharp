@@ -21,9 +21,14 @@ public sealed class MapSwipeInput(IGameDevice device, Random? random = null) : I
         var path = Place(gesture, _random);
         LastPath = path;
         int milliseconds = Normal(100, 200, _random);
-        if (double.Hypot(path.Start.X - path.End.X, path.Start.Y - path.End.Y) < 10) return;
+        if (double.Hypot(path.Start.X - path.End.X, path.Start.Y - path.End.Y) < 10)
+        {
+            // Native control checks precede the distance guard, even when no input is sent.
+            device.Watchdog?.BeforeControl(gesture.ControlName);
+            return;
+        }
         // Native ADB swipes multiply duration by 2.5; other backends need their own transport.
-        await device.SwipeAsync(path.Start, path.End, TimeSpan.FromMilliseconds(milliseconds * 2.5), token);
+        await device.SwipeAsync(path.Start, path.End, TimeSpan.FromMilliseconds(milliseconds * 2.5), gesture.ControlName, token);
     }
 
     public static SwipePath Place(MapSwipeGesture gesture, Random random, int padding = 15)

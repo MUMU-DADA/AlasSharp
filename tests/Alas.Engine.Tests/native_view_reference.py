@@ -175,7 +175,7 @@ def main():
                 # focus needs eventually stable geometry centered enough to drop, and no persistent edge clamp.
                 if action=='focus': c.view.left_edge=c.view.lower_edge=False
             c.update=update; c.predict=lambda: None; c.show_camera=lambda: None
-            c.device=SimpleNamespace(swipe_vector=lambda vector,**kwargs: trace.append(dict(pixels=vector.tolist(),box=kwargs['box'])))
+            c.device=SimpleNamespace(swipe_vector=lambda vector,**kwargs: trace.append(dict(pixels=vector.tolist(),box=kwargs['box'],name=kwargs['name'])))
             # focus and center use a centered initial viewport, while edge cases exercise center correction.
             if action in ('focus','center'):
                 c.view=geometry(layout('control',columns=3,rows=3,screen=(262,227.5)))

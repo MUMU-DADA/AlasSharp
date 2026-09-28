@@ -3,6 +3,7 @@ using Alas.Engine.Imaging;
 using Alas.Engine.Navigation;
 using Alas.Engine.Rules;
 using Alas.Engine.Runtime;
+using Alas.Engine.Devices;
 
 namespace Alas.Engine.Tests;
 
@@ -40,6 +41,9 @@ internal static partial class CombatFlowChecks
     public static async Task RunAsync()
     {
         var ui = new Ui(UiAssets.Combat.BATTLE_PREPARATION, UiAssets.Combat.AUTOMATION_OFF);
+        // A prior map interaction must not poison the next combat phase's control history.
+        ui.Progress = new DeviceWatchdog(ui.Clock);
+        for (int i = 0; i < 11; i++) ui.Progress.BeforeControl("AUTOMATION_SWITCH");
         ui.Enqueue(UiAssets.Combat.BATTLE_PREPARATION, UiAssets.Combat.AUTOMATION_ON);
         ui.Enqueue(UiAssets.Combat.AUTOMATION_CONFIRM_CHECK, UiAssets.Combat.AUTOMATION_CONFIRM);
         ui.Enqueue(UiAssets.CombatUi.PAUSE);
@@ -48,6 +52,8 @@ internal static partial class CombatFlowChecks
         ui.Enqueue(UiAssets.Combat.GET_ITEMS_1);
         for (int i = 0; i < 4; i++) ui.Enqueue(UiAssets.Ui.CAMPAIGN_CHECK);
         var result = await Flow(ui).RunAutoAsync(Options);
+        Check(ui.Progress.Evidence.Count == 0 && ui.ProgressResets == 3,
+            "Combat phases inherited control history or failed to reset native progress checks");
         Check(result is { Return: CombatReturn.InStage, Rank: { Rank: CombatRank.S, IsWinningRank: true } } &&
               result.Rank.Source == CombatRankSource.BattleStatus && result.CapturedFrames == 10,
             "Automatic combat did not preserve the rank and stable stage return");
@@ -228,6 +234,9 @@ internal static partial class CombatFlowChecks
         public int Captures { get; private set; }
         public int SearchingChecks { get; private set; }
         public List<string> Clicks { get; } = [];
+        public DeviceWatchdog? Progress { get; set; }
+        public int ProgressResets { get; private set; }
+        public void ResetProgress() { Progress?.Reset(); ProgressResets++; }
         public void Enqueue(params AssetRule[] assets)
             => _frames.Enqueue(assets.Select(a => a.Id).ToHashSet(StringComparer.Ordinal));
         public ValueTask ScreenshotAsync(CancellationToken token)
@@ -244,7 +253,7 @@ internal static partial class CombatFlowChecks
         { token.ThrowIfCancellationRequested(); if (asset == UiAssets.Handler.MAP_ENEMY_SEARCHING) SearchingChecks++;
             return ValueTask.FromResult(Visible.Contains(asset.Id)); }
         public ValueTask ClickAsync(AssetRule asset, CancellationToken token)
-        { token.ThrowIfCancellationRequested(); if (FailClick) throw new IOException("Synthetic combat start failure"); Clicks.Add(asset.Name); return ValueTask.CompletedTask; }
+        { token.ThrowIfCancellationRequested(); Progress?.BeforeControl(asset.Name); if (FailClick) throw new IOException("Synthetic combat start failure"); Clicks.Add(asset.Name); return ValueTask.CompletedTask; }
         public ValueTask ClickAreaAsync(Rectangle area, CancellationToken token) => throw new NotSupportedException();
         public ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token) => throw new NotSupportedException();
         public ValueTask<ColorBandObservation> ColorBandsAsync(ColorBandRequest request, CancellationToken token) => throw new NotSupportedException();

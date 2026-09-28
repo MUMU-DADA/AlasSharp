@@ -2,6 +2,7 @@ using Alas.Engine.Imaging;
 using Alas.Engine.Navigation;
 using Alas.Engine.Rules;
 using Alas.Engine.Runtime;
+using Alas.Engine.Devices;
 using static Alas.Engine.Rules.UiAssets.Retire;
 
 namespace Alas.Engine.Tests;
@@ -42,6 +43,14 @@ internal static class RetirementWorkflowChecks
                 ui.Attempts == ui.SuccessAt && ui.Scene == "returned" && result.NativeSelectionEstimate == 10,
                 "Full one-click retirement lost native fallback, confirmed return or selection estimate");
         }
+
+        var slow = new DockUi(GameServer.Cn) { SlowRetire = true };
+        slow.Progress = new(slow.Clock);
+        await slow.PrimeAsync();
+        var slowResult = await Handler(slow, vision).RunAsync(new(), default);
+        Check(slow.Attempts == 5 && slow.ProgressResets == 1 && slow.Progress.Evidence.Count == 0 &&
+            slowResult.Confirmations is [{ ShipConfirmClicks: 1, EquipmentConfirmClicks: 1 }] && slow.Scene == "returned",
+            "Slow retirement did not clear native progress history before waiting for delayed confirmation");
 
         foreach (int amount in new[] { 10, 3000 })
         {
@@ -98,7 +107,7 @@ internal static class RetirementWorkflowChecks
         throw new InvalidOperationException("Expected " + typeof(T).Name);
     }
 
-    private sealed class DockUi(GameServer server) : AppearanceProbe(server, null)
+    private sealed class DockUi(GameServer server) : AppearanceProbe(server, null), IUiDriver
     {
         private int _frames, _available = 14, _selected;
         private string _seen = "dock";
@@ -106,6 +115,11 @@ internal static class RetirementWorkflowChecks
         private AssetRule? _matched;
         public int SuccessAt { get; init; } = 1;
         public int Attempts { get; private set; }
+        public bool SlowRetire { get; init; }
+        private int _slowFrames;
+        public DeviceWatchdog? Progress { get; set; }
+        public int ProgressResets { get; private set; }
+        public void ResetProgress() { Progress?.Reset(); ProgressResets++; }
         public bool Old { get; init; }
         public bool Favourite { get; private set; } = true;
         public bool Descending { get; private set; }
@@ -121,6 +135,7 @@ internal static class RetirementWorkflowChecks
         {
             token.ThrowIfCancellationRequested();
             if (++_frames > 160) throw new TimeoutException("Synthetic dock stalled");
+            if (SlowRetire && Attempts >= 5 && Scene == "dock" && ++_slowFrames == 3) Scene = "ship";
             Time.Advance(.5); Capture(); return ValueTask.CompletedTask;
         }
         private void Capture()
@@ -174,6 +189,7 @@ internal static class RetirementWorkflowChecks
         public override ValueTask ClickAsync(AssetRule asset, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
+            Progress?.BeforeControl(asset.Name);
             if (asset.Name == FailClick) throw new IOException("Synthetic equipment confirmation failed");
             switch (asset.Name)
             {
@@ -183,7 +199,12 @@ internal static class RetirementWorkflowChecks
                 case "DOCK_FILTER_CONFIRM": Scene = "dock"; break;
                 case "RETIRE_SETTING_ENTER": Scene = "quick"; break;
                 case "RETIRE_SETTING_QUIT": Scene = "dock"; break;
-                case "ONE_CLICK_RETIREMENT": Scene = ++Attempts == SuccessAt ? "ship" : "info"; break;
+                case "ONE_CLICK_RETIREMENT":
+                    Attempts++;
+                    Scene = SlowRetire ? "dock" : Attempts == SuccessAt ? "ship" : "info";
+                    if (SlowRetire && Attempts == 5)
+                        for (int i = 0; i < 11; i++) Progress!.BeforeControl("SHIP_CONFIRM_2");
+                    break;
                 case "SHIP_CONFIRM": case "SHIP_CONFIRM_2": Scene = "equipment"; break;
                 case "EQUIP_CONFIRM_2": Scene = "dock"; _available -= _selected; _selected = 0; break;
                 case "BACK_ARROW": Scene = "returned"; break;

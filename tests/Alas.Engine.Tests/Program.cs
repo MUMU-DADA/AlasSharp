@@ -13,6 +13,7 @@ Console.OutputEncoding = Encoding.UTF8;
 Console.InputEncoding = Encoding.UTF8;
 if (args is ["-s", "offline-replay", ..]) return await RuntimeChecks.FakeAdbAsync(args[2..]);
 if (args is ["-s", "offline-map", ..]) return await DetectorChecks.FakeAdbAsync(args[2..]);
+if (args is ["-s", "offline-watchdog", ..]) return await DeviceWatchdogChecks.FakeAdbAsync(args[2..]);
 
 if (args is ["--echo", var argument])
 {
@@ -43,6 +44,11 @@ async Task Throws<T>(Func<Task> action, string message) where T : Exception
 
 try
 {
+    if (args is ["--device-watchdog", var watchdogPython, var watchdogUpstream, var watchdogArtifacts])
+    {
+        await DeviceWatchdogChecks.RunAsync(Path.GetFullPath(watchdogPython), Path.GetFullPath(watchdogUpstream), Path.GetFullPath(watchdogArtifacts));
+        return 0;
+    }
     var references = typeof(CampaignExecution).Assembly.GetReferencedAssemblies();
     Check(references.All(r => r.Name is { } name && (name.StartsWith("System.", StringComparison.Ordinal) || name is "Microsoft.Win32.Primitives" or "YamlDotNet")),
         "New engine references the legacy backend or an unexpected runtime: " + string.Join(", ", references.Select(r => r.Name)));

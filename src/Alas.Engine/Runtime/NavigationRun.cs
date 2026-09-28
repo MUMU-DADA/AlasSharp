@@ -28,7 +28,9 @@ public static class NavigationRun
         string artifacts = Path.Combine(Path.GetFullPath(options.Artifacts), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(artifacts);
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };
-        var device = new AuditedDevice(new AdbDevice(options.Adb, options.Serial, allowActions: navigate));
+        var raw = new AdbDevice(options.Adb, options.Serial, allowActions: navigate);
+        var application = navigate ? new AdbApplication(options.Adb, options.Serial, options.ApplicationPackage!, allowActions: true) : null;
+        var device = new AuditedDevice(application is null ? raw : new GuardedDevice(raw, application, new()));
         UiDriver? driver = null;
         try
         {
@@ -39,9 +41,7 @@ public static class NavigationRun
             bool? switched = null;
             if (navigate)
             {
-                var application = new AuditedApplication(new AdbApplication(options.Adb, options.Serial,
-                    options.ApplicationPackage!, allowActions: true), device);
-                var recovery = new UiRecovery(driver, application, graph, new UiRecoveryOptions());
+                var recovery = new UiRecovery(driver, new AuditedApplication(application!, device), graph, new UiRecoveryOptions());
                 var observation = await new UiNavigator(driver, graph, recovery).EnsureAsync(options.Destination!, timeout, token: token);
                 pages = [observation.Page];
                 switched = observation.Switched;
@@ -77,6 +77,8 @@ public static class NavigationRun
         finally
         {
             await File.WriteAllTextAsync(Path.Combine(artifacts, "actions.json"), JsonSerializer.Serialize(device.Actions, json), CancellationToken.None);
+            if (device.Watchdog?.Evidence.Count > 0)
+                await File.WriteAllTextAsync(Path.Combine(artifacts, "device-watchdog.json"), JsonSerializer.Serialize(device.Watchdog.Evidence, json));
         }
     }
 
@@ -87,12 +89,17 @@ public static class NavigationRun
     }
     private sealed class AuditedDevice(IGameDevice device) : IGameDevice
     {
+        public DeviceWatchdog? Watchdog => device.Watchdog;
         public List<DeviceAction> Actions { get; } = [];
         public ValueTask<ScreenFrame> CaptureAsync(CancellationToken token = default) => device.CaptureAsync(token);
         public ValueTask TapAsync(PixelPoint point, CancellationToken token = default)
             => Act("tap", point, () => device.TapAsync(point, token));
+        public ValueTask TapAsync(PixelPoint point, string? name, CancellationToken token)
+            => Act("tap", new { point.X, point.Y, name }, () => device.TapAsync(point, name, token));
         public ValueTask SwipeAsync(PixelPoint start, PixelPoint end, TimeSpan duration, CancellationToken token = default)
             => Act("swipe", new { start, end, duration }, () => device.SwipeAsync(start, end, duration, token));
+        public ValueTask SwipeAsync(PixelPoint start, PixelPoint end, TimeSpan duration, string name, CancellationToken token)
+            => Act("swipe", new { start, end, duration, name }, () => device.SwipeAsync(start, end, duration, name, token));
         public ValueTask BackAsync(CancellationToken token = default)
             => Act("back", new { }, () => device.BackAsync(token));
         public async ValueTask Act(string kind, object parameters, Func<ValueTask> action)
@@ -107,6 +114,7 @@ public static class NavigationRun
     {
         public ValueTask<bool> IsRunningAsync(CancellationToken token) => application.IsRunningAsync(token);
         public ValueTask RefreshOrientationAsync(CancellationToken token) => application.RefreshOrientationAsync(token);
-        public ValueTask StopAsync(CancellationToken token) => audit.Act("app_stop", new { }, () => application.StopAsync(token));
+        public ValueTask StopAsync(CancellationToken token) => audit.Act("app_stop", new { }, async () =>
+        { await application.StopAsync(token); audit.Watchdog?.Reset(); });
     }
 }

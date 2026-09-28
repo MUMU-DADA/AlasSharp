@@ -57,6 +57,7 @@ def main():
                 if found and interval: self.intervals[asset.name].reset()
                 return found
             def appear_then_click(self, asset, **kwargs):
+                kwargs.setdefault('threshold', 30)
                 if not self.appear(asset, **kwargs): return False
                 self.click(asset)
                 return True

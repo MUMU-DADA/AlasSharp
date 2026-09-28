@@ -61,10 +61,13 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
         var rank = new CombatRankProbe(ui);
         try
         {
+            ui.ResetProgress();
             // Recovery may take minutes; the enclosing task deadline, not the animation timeout, bounds this wait.
             if (emotion is not null) await emotion.WaitAsync(token);
             await PhaseAsync("preparation", options.PreparationTimeout, PrepareAsync, token);
+            ui.ResetProgress();
             await PhaseAsync("execution", options.ExecutionTimeout, (time, ct) => ExecuteAsync(rank, time, ct), token);
+            ui.ResetProgress();
             var (returned, newShip, searching) = await PhaseAsync("status", options.StatusTimeout,
                 (time, ct) => StatusAsync(rank, time, options.WaitForEnemySearch, ct), token);
             var health = healthPreparation?.Evidence;

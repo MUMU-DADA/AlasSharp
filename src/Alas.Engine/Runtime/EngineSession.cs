@@ -47,21 +47,23 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     public UiDriver Driver { get; }
     public PageGraph Pages { get; } = UpstreamPages.Create();
     public TaskCapabilities Capabilities { get; }
-    public EngineSession(EngineSessionOptions options)
+    public EngineSession(EngineSessionOptions options) : this(options, TimeProvider.System) { }
+    internal EngineSession(EngineSessionOptions options, TimeProvider clock)
     {
         options.ValidateProfileBinding();
         _options = options;
         if (options.AllowActions && string.IsNullOrWhiteSpace(options.ApplicationPackage))
             throw new ArgumentException("Device actions require an explicit game application package");
         Capabilities = new(options.AllowActions, options.ModelDirectory is not null, options.HasProfileStore);
-        _device = new JournalDevice(new AdbDevice(options.Adb, options.Serial, options.AllowActions));
-        _application = options.ApplicationPackage is null ? new UnconfiguredApplication() :
-            new JournalApplication(new AdbApplication(options.Adb, options.Serial, options.ApplicationPackage, options.AllowActions), _device);
+        IApplicationHealth application = options.ApplicationPackage is null ? new UnconfiguredApplication() :
+            new AdbApplication(options.Adb, options.Serial, options.ApplicationPackage, options.AllowActions);
+        _device = new JournalDevice(new GuardedDevice(new AdbDevice(options.Adb, options.Serial, options.AllowActions), application, new(clock)));
+        _application = new JournalApplication(application, _device);
         string visionRuntime = options.VisionRuntime.Contains(Path.DirectorySeparatorChar) || options.VisionRuntime.Contains(Path.AltDirectorySeparatorChar)
             ? Path.GetFullPath(options.VisionRuntime) : options.VisionRuntime;
         _vision = new PureVisionWorker(visionRuntime, Path.Combine(AppContext.BaseDirectory, "Imaging/Worker/vision_worker.py"), modelDirectory: options.ModelDirectory);
         _assets = new AssetFiles(options.Assets);
-        Driver = new UiDriver(options.Server, _device, _vision, _assets);
+        Driver = new UiDriver(options.Server, _device, _vision, _assets, clock);
         _imageStability = new(Driver, _vision, () => Driver.Frame ?? throw new InvalidOperationException("No stability screenshot"));
         _automationSet = new(Driver.Clock, 1);
         _submarineClick = new(Driver.Clock, 1);
@@ -494,14 +496,20 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             walkInterruptionsFile = "walk-interruptions.json";
             await File.WriteAllTextAsync(Path.Combine(directory, walkInterruptionsFile), JsonSerializer.Serialize(interruptions, TaskQueue.Json));
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile, submarineCallsFile, submarineMovesFile, walkRecoveriesFile, walkTimeoutsFile, walkInterruptionsFile);
+        string? watchdogFile = null;
+        if (_device.Watchdog!.Evidence.Count > 0)
+        {
+            watchdogFile = "device-watchdog.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, watchdogFile), JsonSerializer.Serialize(_device.Watchdog.Evidence, TaskQueue.Json));
+        }
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile, submarineCallsFile, submarineMovesFile, walkRecoveriesFile, walkTimeoutsFile, walkInterruptionsFile, watchdogFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
         string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null, string? MapPreparationFile = null,
         string? FleetSwitchFile = null, string? MapStopFile = null, string? SubmarineFile = null, string? SubmarineCallsFile = null,
         string? SubmarineMovesFile = null, string? WalkRecoveriesFile = null, string? WalkTimeoutsFile = null,
-        string? WalkInterruptionsFile = null);
+        string? WalkInterruptionsFile = null, string? DeviceWatchdogFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }
@@ -509,11 +517,16 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     }
     private sealed class JournalDevice(IGameDevice device) : IGameDevice
     {
+        public DeviceWatchdog? Watchdog => device.Watchdog;
         public List<DeviceAction> Actions { get; } = [];
         public ValueTask<ScreenFrame> CaptureAsync(CancellationToken token = default) => device.CaptureAsync(token);
         public ValueTask TapAsync(PixelPoint point, CancellationToken token = default) => Act("tap", point, () => device.TapAsync(point, token));
+        public ValueTask TapAsync(PixelPoint point, string? name, CancellationToken token)
+            => Act("tap", new { point.X, point.Y, name }, () => device.TapAsync(point, name, token));
         public ValueTask SwipeAsync(PixelPoint start, PixelPoint end, TimeSpan duration, CancellationToken token = default)
             => Act("swipe", new { start, end, duration }, () => device.SwipeAsync(start, end, duration, token));
+        public ValueTask SwipeAsync(PixelPoint start, PixelPoint end, TimeSpan duration, string name, CancellationToken token)
+            => Act("swipe", new { start, end, duration, name }, () => device.SwipeAsync(start, end, duration, name, token));
         public ValueTask BackAsync(CancellationToken token = default) => Act("back", new { }, () => device.BackAsync(token));
         public async ValueTask Act(string kind, object parameters, Func<ValueTask> action)
         {
@@ -527,7 +540,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     {
         public ValueTask<bool> IsRunningAsync(CancellationToken token) => application.IsRunningAsync(token);
         public ValueTask RefreshOrientationAsync(CancellationToken token) => application.RefreshOrientationAsync(token);
-        public ValueTask StopAsync(CancellationToken token) => device.Act("app_stop", new { }, () => application.StopAsync(token));
+        public ValueTask StopAsync(CancellationToken token) => device.Act("app_stop", new { }, async () =>
+        { await application.StopAsync(token); device.Watchdog?.Reset(); });
     }
     private sealed class UnconfiguredApplication : IApplicationHealth
     {

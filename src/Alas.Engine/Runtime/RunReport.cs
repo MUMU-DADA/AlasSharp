@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Alas.Engine.Tasks;
+using Alas.Engine.Devices;
 
 namespace Alas.Engine.Runtime;
 
@@ -122,6 +123,16 @@ public sealed class RunReport
         }
         if (boundary.ActionAttempts != actionAttempts)
             throw new InvalidDataException("任务边界动作次数与动作工件不同");
+        if (boundary.DeviceWatchdogFile is { } watchdogFile)
+        {
+            if (watchdogFile != "device-watchdog.json") throw new InvalidDataException("设备进度工件必须位于当前任务目录");
+            string watchdogPath = Path.Combine(taskRoot, watchdogFile);
+            if ((File.GetAttributes(watchdogPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("设备进度工件必须是普通文件");
+            var records = JsonSerializer.Deserialize<DeviceWatchdogEvidence[]>(ArtifactReader.ReadAllText(watchdogPath), TaskQueue.Json);
+            if (records is not { Length: > 0 }) throw new InvalidDataException("缺少设备进度失败记录");
+            foreach (var record in records) ValidateDeviceWatchdog(record);
+        }
         if (boundary.SubmarineFile is { } submarineFile)
         {
             if (submarineFile != "submarine-location.json") throw new InvalidDataException("潜艇定位工件必须位于当前任务目录");
@@ -264,6 +275,28 @@ public sealed class RunReport
             throw new InvalidDataException("任务边界图像必须是普通文件");
         string hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)));
         if (hash != boundary.Sha256) throw new InvalidDataException("任务边界图像哈希不同");
+    }
+    internal static void ValidateDeviceWatchdog(DeviceWatchdogEvidence? record)
+    {
+        if (record is null || record.Kind is not ("stuck" or "repeated_controls") || record.FrameSequence is <= 0 ||
+            !double.IsFinite(record.Seconds) || record.Seconds < 0 || record.Checks < 0 ||
+            record.Detections.IsDefault || record.Controls.IsDefault || record.Controls.Length > 15 ||
+            record.Detections.Concat(record.Controls).Any(string.IsNullOrWhiteSpace) ||
+            record.Detections.Distinct(StringComparer.Ordinal).Count() != record.Detections.Length)
+            throw new InvalidDataException("设备进度记录缺少有效时间、图像或历史");
+        if (record.Kind == "stuck")
+        {
+            bool longer = record.Detections.Any(DeviceWatchdog.LongWait.Contains);
+            if (record.Seconds <= (longer ? 180 : 60) || record.Checks <= (longer ? 180 : 60))
+                throw new InvalidDataException("卡死记录未达到原生时间与次数门槛");
+        }
+        else
+        {
+            var counts = record.Controls.GroupBy(value => value, StringComparer.Ordinal).Select(group => group.Count()).OrderDescending().Take(2).ToArray();
+            if (record.ApplicationRunning is not null || record.Detections.Length != 0 || record.Seconds != 0 || record.Checks != 0 ||
+                counts.Length == 0 || counts[0] < 12 && !(counts.Length == 2 && counts[0] >= 6 && counts[1] >= 6))
+                throw new InvalidDataException("重复输入记录未达到原生次数门槛");
+        }
     }
 
     private static void ValidateSubmarine(SubmarineLocationEvidence? evidence)

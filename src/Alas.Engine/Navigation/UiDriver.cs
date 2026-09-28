@@ -26,6 +26,8 @@ public interface IUiDriver
     void ResetInterval(AssetRule asset, double seconds = 3);
     void ClearInterval(AssetRule asset);
     ValueTask DelayAsync(TimeSpan time, CancellationToken token);
+    void ObserveProgress(AssetRule asset) { }
+    void ResetProgress() { }
 }
 
 /// <summary>C# owns screenshot identity, button offsets, timers and clicks for one automation session.</summary>
@@ -40,7 +42,9 @@ public sealed class UiDriver : IUiDriver
     public TimeProvider Clock { get; }
     public ScreenFrame? Frame { get; private set; }
     public bool HasFrame => Frame is not null;
-    public void ResetTask() { Frame = null; _timers.Clear(); _matcher.Reset(); }
+    public void ResetTask() { Frame = null; _timers.Clear(); _matcher.Reset(); _device.Watchdog?.ResetTask(); }
+    public void ObserveProgress(AssetRule asset) => _device.Watchdog?.Observe(asset.Name);
+    public void ResetProgress() => _device.Watchdog?.Reset();
 
     public UiDriver(GameServer server, IGameDevice device, IVision vision, AssetFiles assets,
         TimeProvider? clock = null, Random? random = null)
@@ -65,6 +69,8 @@ public sealed class UiDriver : IUiDriver
         double similarity = 0.85, int threshold = 10, TemplatePreprocessing preprocessing = TemplatePreprocessing.Color,
         CancellationToken token = default)
     {
+        token.ThrowIfCancellationRequested();
+        ObserveProgress(asset);
         if (interval > 0 && !Timer(asset, interval, renew: true).Reached()) return false;
         bool appeared = await _matcher.AppearsAsync(Frame ?? throw new InvalidOperationException("No screenshot has been captured"),
             asset, offset, similarity, threshold, preprocessing, token);
@@ -72,9 +78,11 @@ public sealed class UiDriver : IUiDriver
         return appeared;
     }
     public ValueTask ClickAsync(AssetRule asset, CancellationToken token)
-        => ClickAreaAsync(_matcher.ClickArea(asset), token);
+        => ClickNamedAreaAsync(_matcher.ClickArea(asset), asset.Name, token);
     public ValueTask ClickAreaAsync(Rectangle area, CancellationToken token)
-        => _device.TapAsync(new PixelPoint(RandomCoordinate(area.Left, area.Right), RandomCoordinate(area.Top, area.Bottom)), token);
+        => ClickNamedAreaAsync(area, $"({area.Left}, {area.Top}, {area.Right}, {area.Bottom})", token);
+    internal ValueTask ClickNamedAreaAsync(Rectangle area, string? name, CancellationToken token)
+        => _device.TapAsync(new PixelPoint(RandomCoordinate(area.Left, area.Right), RandomCoordinate(area.Top, area.Bottom)), name, token);
     public Rectangle ButtonArea(AssetRule asset) => _matcher.ClickArea(asset);
     public void LoadOffset(AssetRule target, AssetRule reference) => _matcher.LoadOffset(target, reference);
     public ValueTask<MeanColorObservation> ColorAsync(Rectangle area, CancellationToken token)

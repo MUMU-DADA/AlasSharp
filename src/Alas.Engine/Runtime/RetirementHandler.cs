@@ -113,6 +113,7 @@ public sealed class RetirementHandler(IUiDriver ui, IRetirementDock dock, Func<l
             if (clicks >= 5)
             {
                 // Native slow-dock wait reuses the current image, then waits for the ship confirmation.
+                ui.ResetProgress();
                 while (!await ui.AppearsAsync(SHIP_CONFIRM_2, Wide, token: token)) await ui.ScreenshotAsync(token);
             }
             if (await RetirementUi.ClickIfAsync(ui, ONE_CLICK_RETIREMENT, ButtonOffset.Expand(20, 20), 2, token)) clicks++;
