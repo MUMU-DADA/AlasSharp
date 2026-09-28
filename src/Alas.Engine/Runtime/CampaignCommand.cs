@@ -53,7 +53,7 @@ public static class CampaignCommand
             Kind: "campaign_run",
             Input: new JsonObject
             {
-                ["campaign"] = NormalizeRuleId(chapter),
+                ["campaign"] = RequireCompiledRuleId(chapter),
                 ["fleet1"] = options.Fleet1,
                 ["fleet2"] = options.Fleet2,
                 ["submarine"] = options.Submarine,
@@ -84,17 +84,16 @@ public static class CampaignCommand
                 options.ContinueOnFailure, options.ResumeDirectory), token);
     }
 
-    /// <summary>Accepts the source module spellings used by upstream and the CLI.</summary>
-    public static string NormalizeRuleId(string chapter)
+    /// <summary>Accepts only the canonical identifier emitted by the compiled C# rule catalog.</summary>
+    public static string RequireCompiledRuleId(string chapter)
     {
-        if (string.IsNullOrWhiteSpace(chapter)) throw new ArgumentException("章节不能为空", nameof(chapter));
-        string value = chapter.Trim().Replace('\\', '/');
-        if (value.EndsWith(".py", StringComparison.OrdinalIgnoreCase)) value = value[..^3];
-        if (value.StartsWith("campaign/", StringComparison.Ordinal)) value = value[9..];
-        if (value.StartsWith("campaign.", StringComparison.Ordinal)) value = value[9..].Replace('.', '/');
-        value = value.Replace('.', '/').Trim('/');
-        if (!value.Contains('/', StringComparison.Ordinal))
-            value = "campaign_main/" + value;
+        if (string.IsNullOrWhiteSpace(chapter)) throw new ArgumentException("必须提供已编译的 C# 规则 ID", nameof(chapter));
+        string value = chapter.Trim();
+        if (!value.Equals(chapter, StringComparison.Ordinal) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(value,
+                @"\Acampaign_main/campaign_[0-9]+_[0-9]+(?:_[0-9]+)?\z",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+            throw new ArgumentException("只接受形如 campaign_main/campaign_1_1 的已编译 C# 规则 ID；不接受 Python 模块路径或文件名", nameof(chapter));
         return value;
     }
 

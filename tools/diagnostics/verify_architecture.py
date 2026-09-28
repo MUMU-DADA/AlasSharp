@@ -47,6 +47,22 @@ LEGACY_IMPORT = re.compile(
     re.MULTILINE,
 )
 
+# These checks belonged to the retired Python plan/scheduler host. They are
+# kept only for historical review under tools/archive/legacy-python; a file
+# with one of these names in the active diagnostics directory is a product
+# boundary regression rather than a current Engine check.
+LEGACY_DIAGNOSTIC_PATTERNS = (
+    "r5_*.py",
+    "r5-*.json",
+    "s3_*.py",
+    "verify_r5_*.py",
+    "verify_s3_*.py",
+    "audit_scheduler_evidence.py",
+    "verify_scheduler_evidence.py",
+    "verify_periodic_run_result.py",
+    "queue_navigation.py",
+)
+
 
 def read(relative: str) -> str:
     path = ROOT / relative
@@ -91,6 +107,9 @@ def product_boundary() -> list[str]:
     # skipped and are checked only as historical files.
     active_diagnostics = tools_root / "diagnostics"
     if active_diagnostics.is_dir():
+        for pattern in LEGACY_DIAGNOSTIC_PATTERNS:
+            for stale in active_diagnostics.rglob(pattern):
+                problems.append(f"退役 Python 诊断仍位于活动目录: {stale.relative_to(ROOT)}；应保留在 tools/archive/legacy-python/diagnostics")
         for script in active_diagnostics.rglob("*.py"):
             if script.name == Path(__file__).name:
                 continue

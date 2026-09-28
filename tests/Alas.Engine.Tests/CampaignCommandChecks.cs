@@ -8,12 +8,12 @@ internal static class CampaignCommandChecks
 {
     public static async Task RunAsync(string artifacts)
     {
-        Check(CampaignCommand.NormalizeRuleId("campaign.campaign_main.campaign_1_1") == "campaign_main/campaign_1_1");
-        Check(CampaignCommand.NormalizeRuleId("campaign/campaign_main/campaign_1_2.py") == "campaign_main/campaign_1_2");
-        Check(CampaignCommand.NormalizeRuleId("campaign_1_3") == "campaign_main/campaign_1_3");
+        Check(CampaignCommand.RequireCompiledRuleId("campaign_main/campaign_1_1") == "campaign_main/campaign_1_1");
+        foreach (string retired in new[] { "campaign.campaign_main.campaign_1_1", "campaign/campaign_main/campaign_1_2.py", "campaign_1_3", "campaign_main/campaign_1_1.py" })
+            Reject<ArgumentException>(() => CampaignCommand.RequireCompiledRuleId(retired));
 
         var options = new CampaignCommandOptions(
-            ["campaign.campaign_main.campaign_13_1", "campaign/campaign_main/campaign_13_4.py", "campaign_main/campaign_99_1"],
+            ["campaign_main/campaign_13_1", "campaign_main/campaign_13_4", "campaign_main/campaign_99_1"],
             "missing-adb", "offline", GameServer.Cn, "missing-assets", "missing-python", artifacts,
             ModelDirectory: "missing-models", DryRun: true, ContinueOnFailure: true,
             Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead,
@@ -45,5 +45,11 @@ internal static class CampaignCommandChecks
     private static void Check(bool value, string message = "Campaign command check failed")
     {
         if (!value) throw new InvalidOperationException(message);
+    }
+    private static void Reject<T>(Action action) where T : Exception
+    {
+        try { action(); }
+        catch (T) { return; }
+        throw new InvalidOperationException("Retired campaign spelling was accepted");
     }
 }

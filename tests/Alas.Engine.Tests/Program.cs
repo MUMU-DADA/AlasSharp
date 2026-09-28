@@ -503,7 +503,7 @@ try
         string folder = Path.GetFullPath(campaignArtifacts);
         Directory.CreateDirectory(folder);
         await CampaignCommandChecks.RunAsync(folder);
-        Console.WriteLine("Campaign command checks passed: normalization, dry-run and unsupported-rule refusal.");
+        Console.WriteLine("Campaign command checks passed: canonical C# rule IDs, dry-run and unsupported-rule refusal.");
         return 0;
     }
 
