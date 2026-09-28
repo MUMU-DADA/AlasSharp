@@ -56,6 +56,9 @@ internal static partial class CampaignMapCombatChecks
         foreach (bool wait in new[] { false, true })
             cases.Add(new("bounce", Enabled: enabled, Siren: false, Movable: false, Second: null,
                 Start: "B2", Caught: [], Inactive: inactive, Hit: hit, Calculate: wait, Locked: wait));
+        foreach (string second in new[] { "B2", "C2" })
+        foreach (int hit in new[] { 0, 1, 3, 13 })
+            cases.Add(new("bounce", Siren: false, Movable: false, Second: second, Caught: [], Inactive: [], Hit: hit));
         string input = Path.Combine(artifacts, "special-enemies-input.json");
         string output = Path.Combine(artifacts, "special-enemies-native.json");
         await File.WriteAllTextAsync(input, JsonSerializer.Serialize(cases, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
@@ -206,10 +209,10 @@ internal static partial class CampaignMapCombatChecks
 
     private static async Task SpecialEnemyPreflightAsync()
     {
-        foreach (string invalid in new[] { "inactive", "other-fleet", "unreachable", "cancel" })
+        foreach (string invalid in new[] { "inactive", "unknown-fleet", "unreachable", "cancel" })
         {
-            var (state, config) = SpecialState(new("bounce", Siren: false, Movable: false,
-                Second: invalid == "other-fleet" ? "B2" : null));
+            var (state, config) = SpecialState(new("bounce", Siren: false, Movable: false, Second: null));
+            if (invalid == "unknown-fleet") state[Cell.Parse("B2")].IsFleet = true;
             if (invalid == "inactive") foreach (var grid in state.Cells) grid.MayBouncingEnemy = false;
             if (invalid == "unreachable")
             {

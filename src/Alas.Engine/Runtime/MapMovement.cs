@@ -118,6 +118,7 @@ public sealed partial class MapMovement(CampaignState state, CampaignConfigurati
         if (state.FleetIndex is not (1 or 2)) throw new InvalidOperationException("Invalid current fleet index");
         Cell origin = (state.FleetIndex == 1 ? state.Fleet1Location : state.Fleet2Location)
             ?? throw new InvalidOperationException("Current fleet location is unknown");
+        Cell? otherFleet = state.FleetIndex == 1 ? state.Fleet2Location : state.Fleet1Location;
         if (!state[origin].IsFleet) throw new InvalidOperationException("Current fleet marker is absent from map state");
         bool ammo = action == MapAction.Ammo;
         bool visit = action == MapAction.Visit;
@@ -155,16 +156,19 @@ public sealed partial class MapMovement(CampaignState state, CampaignConfigurati
             throw new ArgumentException("Bouncing destination must belong to an enabled uncleared route", nameof(destination));
         if (ammo && (!target.MayAmmo || enemy || target.IsPortal))
             throw new ArgumentException("Supply destination must be a declared ammo tile without an enemy", nameof(destination));
+        // Native route optimization avoids occupied intermediate stops, not a declared final target.
+        // Both known fleets can share a committed location; an unidentified marker remains unsupported.
         if (target.IsMechanismBlock ||
             (action is MapAction.Move or MapAction.Reposition or MapAction.Mystery && enemy) ||
             (target.IsMystery && !mystery && !visit) || (target.IsAmmo && !ammo && !visit && action != MapAction.Reposition && !probeBouncing && !mechanism && mazeWaitFor is null) || target.IsCarrier && !fight && !visit ||
-            (target.IsFleet && !((visit || ammo || caughtCombat || probeBouncing || mechanism && action == MapAction.Move) && destination == origin)))
+            (target.IsFleet && destination != otherFleet &&
+                !((visit || ammo || caughtCombat || probeBouncing || mechanism && action == MapAction.Move) && destination == origin)))
             throw new NotSupportedException("Destination requires a map interaction that is not committed by ordinary movement");
         Cell landing = target.IsPortal
             ? target.PortalLink ?? throw new InvalidDataException("Portal has no linked exit") : destination;
         var landingGrid = state[landing];
         if (target.IsPortal &&
-            (landingGrid.IsLand || landingGrid.IsFleet || landingGrid.IsEnemy || landingGrid.IsSiren ||
+            (landingGrid.IsLand || (landingGrid.IsFleet && landing != otherFleet) || landingGrid.IsEnemy || landingGrid.IsSiren ||
              landingGrid.IsBoss || landingGrid.IsFortress || landingGrid.IsMystery || landingGrid.IsAmmo ||
              landingGrid.IsMechanismTrigger || landingGrid.IsMechanismBlock))
             throw new NotSupportedException("Portal exit requires an interaction that is not committed by ordinary movement");
@@ -308,7 +312,9 @@ public sealed partial class MapMovement(CampaignState state, CampaignConfigurati
             int mysteryCount = checked(state.MysteryCount + result.AmmoNotificationFrames.Length + result.Carriers.Length +
                 ((mystery || visit) && state.Rule?.CountMysteryItems != false ? result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) : 0));
             if (battled) state.CommitBattle(siren);
-            state[origin].IsFleet = false;
+            // Native find_path_initial reasserts both known locations after every move.
+            // A shared origin still belongs to the stationary fleet when the active fleet leaves.
+            state[origin].IsFleet = origin == otherFleet;
             state.ResetCurrentFleet();
             landingGrid.WipeOut();
             if (cleared) landingGrid.IsCleared = true;

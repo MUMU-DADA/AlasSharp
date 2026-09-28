@@ -520,6 +520,23 @@ internal static class MapArrivalChecks
             "Portal supply acknowledgement used the entrance or fabricated a supply quantity during ordinary movement");
 
         clock = new TestClock(); state = State(portal: true);
+        state.Fleet2Location = exit; state[exit].IsFleet = true;
+        camera = new Camera(clock, [new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        moved = await new MapMovement(state, new() { Fleet2 = 2 }, camera, () => arrival).MoveAsync(destination, options);
+        Check(moved.Outcome == MapMoveOutcome.Committed && state.Fleet1Location == exit && state.Fleet2Location == exit &&
+            state[exit].IsFleet && state[exit].IsCurrentFleet && camera.CenterReads > 0 && camera.MarkerReads == 0,
+            "Portal arrival onto the other known fleet bypassed center confirmation or lost fleet identity");
+
+        clock = new TestClock(); state = State(portal: true); state[exit].IsFleet = true;
+        camera = new Camera(clock, [new(true, new(true, true))]);
+        arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
+        bool unknownExit = false;
+        try { await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination, options); }
+        catch (NotSupportedException) { unknownExit = true; }
+        Check(unknownExit && camera.Taps == 0, "Portal exit accepted an unidentified fleet marker");
+
+        clock = new TestClock(); state = State(portal: true);
         camera = new Camera(clock, [new(true, default)]);
         arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);
         moved = await new MapMovement(state, new(), camera, () => arrival).MoveAsync(destination,

@@ -318,6 +318,11 @@ try
         await CampaignMapCombatChecks.TargetSelectionChecksAsync(Path.GetFullPath(targetPython), Path.GetFullPath(targetUpstream), folder);
         return 0;
     }
+    if (args is ["--fleet-overlap", var overlapPython, var overlapUpstream, var overlapArtifacts])
+    {
+        await CampaignMapCombatChecks.FleetOverlapChecksAsync(Path.GetFullPath(overlapPython), Path.GetFullPath(overlapUpstream), Path.GetFullPath(overlapArtifacts));
+        return 0;
+    }
     if (args is ["--fleet-position", var positionPython, var positionUpstream, var positionArtifacts])
     {
         string folder = Path.GetFullPath(positionArtifacts);

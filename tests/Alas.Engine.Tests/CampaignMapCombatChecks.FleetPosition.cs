@@ -31,6 +31,9 @@ internal static partial class CampaignMapCombatChecks
         samples.Add(new(2, 1, 0, 0, 511, Enumerable.Repeat(10, 9).ToArray(), ["B1", "B2"], [], "default"));
         // With a mixture, skip a cleared cell even when it appears first in the rule.
         samples.Add(new(2, 1, 0, 0, 2, Enumerable.Repeat(10, 9).ToArray(), ["B1", "B2"], [], "default"));
+        // Native final targets may coincide with fleet 1; do not reorder or filter this candidate.
+        foreach (int active in new[] { 1, 2 })
+            samples.Add(new(2, active, 0, 0, 0, Enumerable.Repeat(10, 9).ToArray(), ["A1", "B2"], [], "default"));
         string input = Path.Combine(artifacts, "position-input.json"), output = Path.Combine(artifacts, "position-native.json");
         await File.WriteAllTextAsync(input, JsonSerializer.Serialize(samples, TaskQueue.Json));
         var run = await new ProcessRunner().RunAsync(python,
@@ -67,7 +70,7 @@ internal static partial class CampaignMapCombatChecks
                 trace.SequenceEqual(expected["trace"]!.AsArray().Select(item => item!.GetValue<string>()))),
                 $"Fleet positioning differs at {i}: trace={string.Join(',', trace)}; native={alternatives}");
             moves += state.Fleet2Location != new Cell(3, 3) ? 1 : 0; battles += state.BattleCount; mysteries += state.MysteryCount;
-            if (i >= 360)
+            if (i is 360 or 361)
                 Check(!value && state.Fleet2Location == Cell.Parse(i == 360 ? "B1" : "B2"),
                     "Cleared candidate eligibility or declared order changed");
         }
@@ -84,7 +87,7 @@ internal static partial class CampaignMapCombatChecks
 
     private static async Task PositionFailuresAsync()
     {
-        foreach (string failure in new[] { "tap", "timeout", "switch", "round", "occupied", "road-scan" })
+        foreach (string failure in new[] { "tap", "timeout", "switch", "round", "unknown-fleet", "road-scan" })
         {
             var config = new CampaignConfiguration { Fleet2 = 2, BossFleet = 1, HasAmbush = false, HasMaze = failure == "round",
                 EmotionMode = CampaignEmotionMode.Ignore };
@@ -92,6 +95,7 @@ internal static partial class CampaignMapCombatChecks
             state.Fleet2Location = new(4, 1);
             if (failure == "round") { state.Rounds.Initialize(config); state.Rounds.Advance(); state.Rounds.Advance(); }
             if (failure == "road-scan") state[new(2, 1)].IsEnemy = true;
+            if (failure == "unknown-fleet") state[new(2, 1)].IsFleet = true;
             state.RefreshFleetPaths(config);
             var camera = new Camera(state) { Failure = failure == "road-scan" ? "scan" : failure };
             var switches = new List<int>();
@@ -102,12 +106,12 @@ internal static partial class CampaignMapCombatChecks
                 state.FleetIndex = fleet; state.RefreshFleetPaths(config); return ValueTask.CompletedTask;
             });
             Exception? error = null;
-            try { await combat.PositionSecondFleetAsync(failure == "road-scan" ? [] : [new Cell(failure == "occupied" ? 1 : 2, 1)], [new([[new Cell(2, 1)]])]); }
+            try { await combat.PositionSecondFleetAsync(failure == "road-scan" ? [] : [new Cell(2, 1)], [new([[new Cell(2, 1)]])]); }
             catch (Exception caught) { error = caught; }
             Check(error is not null && (failure != "round" || error is MapEnemyMovedException) &&
                 state.Fleet2Location == new Cell(failure == "round" ? 2 : 4, 1) &&
                 state.BattleCount == (failure == "road-scan" ? 1 : 0) && combat.StageReturn is null &&
-                !switches.Contains(1) && (failure != "occupied" || camera.Taps == 0),
+                !switches.Contains(1) && (failure != "unknown-fleet" || camera.Taps == 0),
                 "Positioning failure fabricated movement, rolled back confirmed battle, or restored a fleet: " + failure);
         }
     }
