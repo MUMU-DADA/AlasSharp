@@ -82,7 +82,7 @@ public sealed partial class GridRecognition(IImagePatchVision vision, AssetFiles
             (await Match(-0.55, -0.2, 0.45, 0.2, 50, 20, UiAssets.Template.TEMPLATE_ENEMY_BOSS, 0.75, new(255, 77, 82)) ||
              await Hsv(0.03, -0.15, 0.63, 0.15, 50, 20, 355, 361) > 100 &&
              await Match(0.03, -0.15, 0.63, 0.15, 50, 20, UiAssets.Template.TEMPLATE_ENEMY_BOSS, 0.7, new(255, 77, 82)));
-        bool submarine = await Match(-0.86, 0.08, -0.36, 0.58, 50, 50, UiAssets.Template.TEMPLATE_SUBMARINE, color: new(255, 243, 156));
+        bool submarine = await PredictSubmarineAsync(frame, projection, token);
         bool fleet = !submarine && await PredictFleetAsync(frame, projection, token);
         bool mystery = rules.HasMystery && await Rgb(-0.3, -2, 0.3, -0.6, 20, 50, new(148, 255, 247)) > 50;
         bool current = await PredictCurrentFleetAsync(frame, projection, token);
@@ -93,6 +93,17 @@ public sealed partial class GridRecognition(IImagePatchVision vision, AssetFiles
         return new(IsSubmarine: submarine, IsFleet: fleet, IsCurrentFleet: current, IsBoss: boss, IsSiren: siren,
             IsEnemy: enemy, IsMystery: mystery, IsMissileAttack: missile, EnemyScale: siren ? 0 : scale, EnemyGenre: genre);
     }
+
+    public ValueTask<bool> PredictSubmarineAsync(ScreenFrame frame, GridCorners corners, CancellationToken token = default)
+    {
+        rules.Validate();
+        return PredictSubmarineAsync(frame, new Projection(corners, rules.ImageScale), token);
+    }
+
+    private async ValueTask<bool> PredictSubmarineAsync(ScreenFrame frame, Projection projection, CancellationToken token)
+        => await MeasureAsync(frame, projection.Crop(-0.86, 0.08, -0.36, 0.58), 50, 50,
+            PatchMeasure.Template, PatchProcessing.ColorSimilarity, new(255, 243, 156),
+            UiAssets.Template.TEMPLATE_SUBMARINE, token: token) > 0.85;
 
     private sealed class Projection
     {

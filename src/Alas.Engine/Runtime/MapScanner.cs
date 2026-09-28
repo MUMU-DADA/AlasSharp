@@ -11,6 +11,9 @@ public interface IMapScanCamera
     ValueTask CenterAsync(double tolerance, CancellationToken token);
     ValueTask<MapObservation> ObserveAsync(MapScanMode mode, CancellationToken token);
     ValueTask EnsureEdgesAsync(bool skipFirstUpdate, CancellationToken token);
+    /// <summary>Bring the spawn into the native submarine sight and inspect its icon on the localized frame.</summary>
+    ValueTask<SubmarineObservation> InspectSubmarineAsync(Cell destination, CancellationToken token)
+        => throw new NotSupportedException("This camera cannot inspect submarine spawn points");
     /// <summary>Runs the native edge scan with an optional map-declared first swipe.</summary>
     ValueTask EnsureEdgesAsync(bool skipFirstUpdate, ViewCell? preset, CancellationToken token)
         => preset is null ? EnsureEdgesAsync(skipFirstUpdate, token) :

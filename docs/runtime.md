@@ -41,6 +41,8 @@ run.json 原子替换，报告只展示当前尝试；断点跳过项指向以�
 
 运行 id 为随机值，最近运行按快照修改时间排序。`GET /api/report?stamp=` 返回报告，`GET /api/state` 包含 active、report、live_tasks、recent_logs 和 runs；当前 recent_logs 尚无新引擎实时日志接线。原始账号、设备、日志和截图只留忽略目录，入库证据须脱敏。
 
+地图初始化的潜艇定位写入任务证据 `submarine`，会话另存 `submarine-location.json`。其中区分观测、规则推定与中心假设；异常时保留已检查点及当前待检查点，下一任务不复用。报告检查文件存在、定位来源、观察顺序及其与任务结果的一致性。该证据只说明定位过程，不证明潜艇战斗或战役通关。
+
 ## 服务与桌面组合
 
 Server 只运行控制 API 和预构建 Web UI 托管，不再转发旧 Core CLI。使用 `Alas.Engine.Cli --help` 查看新命令。Server 参数 `--root`、`--engine-root`、`--instance-store`、`--assets`、`--workspace`、`--artifacts`、`--ui-root` 和 `--port` 指定布局；旧上游仓库和 Python 宿主参数已移除。

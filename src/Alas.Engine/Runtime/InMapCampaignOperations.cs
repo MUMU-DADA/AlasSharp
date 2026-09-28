@@ -27,7 +27,8 @@ public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount
     IReadOnlyList<MovableScanEvidence>? MovableScans = null, IReadOnlyList<MazeWaitEvidence>? MazeWaits = null,
     IReadOnlyList<DecoyArrivalEvidence>? DecoyArrivals = null,
     IReadOnlyList<AmbushEncounterEvidence>? AmbushEncounters = null,
-    IReadOnlyList<CarrierEncounterEvidence>? CarrierEncounters = null, IReadOnlyList<CarrierScanEvidence>? CarrierScans = null);
+    IReadOnlyList<CarrierEncounterEvidence>? CarrierEncounters = null, IReadOnlyList<CarrierScanEvidence>? CarrierScans = null,
+    SubmarineLocationEvidence? Submarine = null);
 public interface ICampaignExecutionService
 {
     ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,

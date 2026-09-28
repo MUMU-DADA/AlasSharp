@@ -36,6 +36,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     private readonly RetirementHandler _retirement;
     private readonly CampaignInterruptions _interruptions;
     private CampaignMapPreparation? _mapPreparation;
+    private CampaignState? _campaignState;
     public UiDriver Driver { get; }
     public PageGraph Pages { get; } = UpstreamPages.Create();
     public TaskCapabilities Capabilities { get; }
@@ -182,7 +183,11 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     }
     public CampaignExecution CreateInMapCampaignExecution(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token = default)
-        => new(rule, configuration, (state, effective) => new InMapCampaignOperations(this, state, effective, token, rule));
+        => new(rule, configuration, (state, effective) =>
+        {
+            _campaignState = state;
+            return new InMapCampaignOperations(this, state, effective, token, rule);
+        });
     public async ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token)
     {
@@ -193,7 +198,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             execution.Context.State.Health.Observations, execution.Context.State.Withdrawal,
             execution.Context.State.Levels.Evidence(execution.Context.Config.Levels), execution.Context.State.MechanismReleases,
             execution.Context.State.MovableScans, execution.Context.State.MazeWaits, execution.Context.State.DecoyArrivals,
-            execution.Context.State.AmbushEncounters, execution.Context.State.CarrierEncounters, execution.Context.State.CarrierScans);
+            execution.Context.State.AmbushEncounters, execution.Context.State.CarrierEncounters, execution.Context.State.CarrierScans,
+            execution.Context.State.SubmarineEvidence);
     }
     async ValueTask<bool> ICampaignInMapHost.VerifyInMapAsync(CancellationToken token)
     {
@@ -328,6 +334,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         _emotion = null;
         _emotionConfiguration = null;
         _mapPreparation = null;
+        _campaignState = null;
         _achievement = null;
         _retirement.ResetEvidence();
         _interruptions.Configure(new() { Mode = RetirementMode.Disabled }, CampaignEmotionMode.Calculate);
@@ -379,6 +386,12 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             fleetSwitchFile = "fleet-switch.json";
             await File.WriteAllTextAsync(Path.Combine(directory, fleetSwitchFile), JsonSerializer.Serialize(switches, json));
         }
+        string? submarineFile = null;
+        if (_campaignState?.SubmarineEvidence is { } submarine)
+        {
+            submarineFile = "submarine-location.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, submarineFile), JsonSerializer.Serialize(submarine, json));
+        }
         long? sequence = null;
         if (Driver.Frame is { } frame)
         {
@@ -387,12 +400,12 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             hash = Convert.ToHexStringLower(SHA256.HashData(frame.Png.Span));
             sequence = frame.Sequence;
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile);
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
         string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null, string? MapPreparationFile = null,
-        string? FleetSwitchFile = null, string? MapStopFile = null);
+        string? FleetSwitchFile = null, string? MapStopFile = null, string? SubmarineFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

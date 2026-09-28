@@ -507,6 +507,11 @@ try
         return 0;
     }
 
+    if (args is ["--submarine", var submarinePython, var submarineUpstream, var submarineArtifacts])
+    {
+        await SubmarineChecks.RunAsync(Path.GetFullPath(submarinePython), Path.GetFullPath(submarineUpstream), Path.GetFullPath(submarineArtifacts));
+        return 0;
+    }
     if (args is ["--map-initializer"])
     {
         await CampaignMapInitializerChecks.RunAsync();

@@ -93,6 +93,7 @@ internal static class CampaignMapInitializerChecks
         IMapScanCamera basic = new BasicCamera();
         await basic.EnsureEdgesAsync(true, null, default);
         await Rejects<NotSupportedException>(() => basic.EnsureEdgesAsync(true, new ViewCell(1, 0), default).AsTask());
+        await Rejects<NotSupportedException>(() => basic.InspectSubmarineAsync(new(1, 1), default).AsTask());
         Check(((BasicCamera)basic).Edges == 1, "Unsupported preset was silently discarded by the camera interface");
 
         map = new MapDefinition("B1", "SP --", ["A1"], ["A1"], [new SpawnWave(0)], swipePreset: new(1, 0));
@@ -113,7 +114,55 @@ internal static class CampaignMapInitializerChecks
                 camera.Calls.SequenceEqual(["edges"]), "Failed initial swipe continued fleet scanning or masked its failure");
         }
 
-        Console.WriteLine("Campaign map initialization: scan, fleet localization, topology and swipe preset passed offline; no device entry or strategy handling.");
+        // The submarine is deliberately absent from the initial scan. Only the native single-spawn inference resolves it.
+        map = new MapDefinition("C2", "SP -- __\n-- -- --", ["B1"], ["B1"], [new SpawnWave(0)]);
+        state = new CampaignState(map);
+        camera = new Camera(new MapObservation([new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true))], new(2, 1), new(1, 0)));
+        ready = await CampaignMapInitializer.InitializeAsync(state, new() { Submarine = 1 }, new(1, 1, 0, 1),
+            (_, _) => ValueTask.FromResult<IMapScanCamera>(camera), TimeSpan.FromSeconds(3));
+        Check(state.SubmarineLocation == new Cell(3, 1) && state.SubmarineEvidence?.Method == "single_spawn" &&
+            !state[new(3, 1)].IsSubmarine && state.Rounds.Initialized && ready.Fleet1 == new Cell(1, 1),
+            "Initialized campaign lost the submarine assumption or marked it as an observation");
+        foreach (var mode in Enum.GetValues<SubmarineMode>().Where(mode => mode != SubmarineMode.DoNotUse))
+            await Rejects<NotSupportedException>(() => CampaignMapInitializer.InitializeAsync(new CampaignState(map),
+                new() { Submarine = 1, SubmarineMode = mode }, new(1, 1, 0, 1),
+                (_, _) => throw new InvalidOperationException("Unsupported combat modes must stop before creating a camera"), TimeSpan.FromSeconds(3)).AsTask());
+
+        // Exercise the initializer's ambiguous-spawn path, with both complete and partial camera results.
+        map = new MapDefinition("C2", "SP __ __\n-- -- --", ["A1"], ["A1"], [new SpawnWave(0)]);
+        foreach (bool fail in new[] { false, true })
+        {
+            state = new CampaignState(map);
+            int inspected = 0;
+            camera = new Camera(new([new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true))], new(1, 1), default))
+            {
+                Inspect = (target, ct) =>
+                {
+                    ct.ThrowIfCancellationRequested(); inspected++;
+                    Check(target == new Cell(inspected + 1, 1), "Initialization did not search submarine spawns in camera order");
+                    if (fail && inspected == 2) throw new IOException("synthetic second-spawn failure");
+                    return ValueTask.FromResult(new SubmarineObservation(target, new(2, 2), inspected + 10, inspected == 2));
+                }
+            };
+            var task = CampaignMapInitializer.InitializeAsync(state, new() { Submarine = 1 }, new(1, 1, 0, 1),
+                (_, _) => ValueTask.FromResult<IMapScanCamera>(camera), TimeSpan.FromSeconds(3)).AsTask();
+            if (fail)
+            {
+                await Rejects<IOException>(() => task);
+                Check(state.SubmarineLocation is null && state.Fleet1Location is null && !state.Rounds.Initialized &&
+                    state.MovementInvalidated && state.SubmarineEvidence is { Method: "failed", Observations.Count: 1 },
+                    "Partial submarine initialization proceeded to battle-ready fleet state");
+            }
+            else
+            {
+                _ = await task;
+                Check(state.SubmarineLocation == new Cell(3, 1) && state.Rounds.Initialized &&
+                    state.SubmarineEvidence is { Method: "searched_observation", Observations.Count: 2 },
+                    "Submarine search did not feed initialized campaign state");
+            }
+        }
+
+        Console.WriteLine("Campaign map initialization: scan, fleet localization, topology, swipe preset and submarine localization passed offline; no device entry or strategy handling.");
     }
 
     private static async Task Rejects<T>(Func<Task> action) where T : Exception
@@ -141,6 +190,13 @@ internal static class CampaignMapInitializerChecks
         public ViewCell? Preset { get; private set; }
         public List<string> Calls { get; } = [];
         public Exception? EdgeFailure { get; init; }
+        public Func<Cell, CancellationToken, ValueTask<SubmarineObservation>>? Inspect { get; init; }
+        public async ValueTask<SubmarineObservation> InspectSubmarineAsync(Cell destination, CancellationToken token)
+        {
+            var result = await (Inspect ?? throw new InvalidOperationException("Unexpected submarine inspection"))(destination, token);
+            Position = result.Camera;
+            return result;
+        }
         public ValueTask FocusAsync(Cell destination, CancellationToken token)
         { token.ThrowIfCancellationRequested(); Calls.Add("focus"); Position = destination; return ValueTask.CompletedTask; }
         public ValueTask CenterAsync(double tolerance, CancellationToken token)

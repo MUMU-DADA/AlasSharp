@@ -42,6 +42,7 @@ public sealed partial class CampaignState
     public Cell? Fleet1Location { get; set; }
     public Cell? Fleet2Location { get; set; }
     public Cell? SubmarineLocation { get; set; }
+    public SubmarineLocationEvidence? SubmarineEvidence { get; internal set; }
     public MapProgress Progress => new(BattleCount, MysteryCount, SirenCount, CarrierCount);
     internal void CommitBattle(bool siren)
     {

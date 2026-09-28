@@ -21,8 +21,8 @@ public static class CampaignMapInitializer
         MapRounds.Validate(configuration);
         if (scanTimeout <= TimeSpan.Zero || scanTimeout.TotalMilliseconds > int.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(scanTimeout));
-        if (configuration.Submarine != 0)
-            throw new NotSupportedException("Submarine positioning is not yet ported to campaign initialization");
+        if (configuration.Submarine != 0 && configuration.SubmarineMode != SubmarineMode.DoNotUse)
+            throw new NotSupportedException("Submarine hunting, relocation and combat calls are not yet ported");
         if (selected.FrameSequence <= 0 || selected.Clicks < 0 || selected.LogicalIndex is not (1 or 2) ||
             selected.DisplayedIndex is not (1 or 2) ||
             selected.LogicalIndex != FleetRoles.LogicalIndex(selected.DisplayedIndex, configuration) ||
@@ -52,6 +52,7 @@ public static class CampaignMapInitializer
         Cell? other = configuration.Fleet2 == 0 ? null : fleets.Single(grid => grid.Location != active).Location;
         var fleet1 = selected.LogicalIndex == 1 ? active : other!.Value;
         Cell? fleet2 = selected.LogicalIndex == 2 ? active : other;
+        await MapSubmarineLocator.LocateAsync(state, configuration.Submarine != 0, camera, scanTimeout, token);
         state.FleetIndex = selected.LogicalIndex;
         state.Fleet1Location = fleet1;
         state.Fleet2Location = fleet2;

@@ -122,6 +122,20 @@ public sealed class RunReport
         }
         if (boundary.ActionAttempts != actionAttempts)
             throw new InvalidDataException("任务边界动作次数与动作工件不同");
+        if (boundary.SubmarineFile is { } submarineFile)
+        {
+            if (submarineFile != "submarine-location.json") throw new InvalidDataException("潜艇定位工件必须位于当前任务目录");
+            string submarinePath = Path.Combine(taskRoot, submarineFile);
+            if ((File.GetAttributes(submarinePath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("潜艇定位工件必须是普通文件");
+            var stored = JsonNode.Parse(ArtifactReader.ReadAllText(submarinePath));
+            var submarine = stored?.Deserialize<SubmarineLocationEvidence>(TaskQueue.Json);
+            ValidateSubmarine(submarine);
+            if (result.Evidence?["submarine"] is { } declared && !JsonNode.DeepEquals(declared, stored))
+                throw new InvalidDataException("任务潜艇定位与独立工件不同");
+        }
+        else if (result.Evidence?["submarine"] is not null)
+            throw new InvalidDataException("任务缺少潜艇定位工件");
         if (boundary.MapStopFile is { } stopFile)
         {
             if (stopFile != "map-stop.json") throw new InvalidDataException("成就停止工件必须位于当前任务目录");
@@ -198,6 +212,37 @@ public sealed class RunReport
             throw new InvalidDataException("任务边界图像必须是普通文件");
         string hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)));
         if (hash != boundary.Sha256) throw new InvalidDataException("任务边界图像哈希不同");
+    }
+
+    private static void ValidateSubmarine(SubmarineLocationEvidence? evidence)
+    {
+        static bool Valid(Rules.Cell cell) => cell.Column > 0 && cell.Row > 0;
+        if (evidence is null || evidence.Observations is null ||
+            evidence.Location is { } location && !Valid(location) || evidence.Pending is { } pending && !Valid(pending))
+            throw new InvalidDataException("潜艇定位缺少有效坐标或观察列表");
+        long sequence = 0;
+        var visited = new HashSet<Rules.Cell>();
+        foreach (var observation in evidence.Observations)
+        {
+            if (observation is null || !Valid(observation.Location) || !Valid(observation.Camera) ||
+                observation.FrameSequence <= 0 || observation.FrameSequence < sequence || !visited.Add(observation.Location))
+                throw new InvalidDataException("潜艇定位包含重复位置、旧帧或无效观察");
+            sequence = observation.FrameSequence;
+        }
+        bool consistent = evidence.Method switch
+        {
+            "disabled" or "no_spawn" => evidence.Location is null && evidence.Pending is null && evidence.Observations.Count == 0,
+            "initial_observation" or "single_spawn" or "covered_spawn" =>
+                evidence.Location is not null && evidence.Pending is null && evidence.Observations.Count == 0,
+            "searched_observation" => evidence.Pending is null && evidence.Observations.Count > 0 &&
+                evidence.Observations[^1] is { Present: true } match && match.Location == evidence.Location &&
+                !evidence.Observations.SkipLast(1).Any(item => item.Present),
+            "map_center_assumption" => evidence.Location is not null && evidence.Pending is null &&
+                evidence.Observations.Count > 0 && !evidence.Observations.Any(item => item.Present),
+            "failed" => evidence.Location is null,
+            _ => false
+        };
+        if (!consistent) throw new InvalidDataException("潜艇定位结果与观察来源不一致");
     }
 
     private static bool IsArtifactError(Exception error)

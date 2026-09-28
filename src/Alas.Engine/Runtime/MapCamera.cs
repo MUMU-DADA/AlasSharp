@@ -280,6 +280,28 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
             return _observation with { Mode = mode };
         }, token, requiresFreshImage: true);
     }
+    public ValueTask<SubmarineObservation> InspectSubmarineAsync(Cell destination, CancellationToken token = default)
+    {
+        if (!_map.Contains(destination)) throw new ArgumentOutOfRangeException(nameof(destination));
+        return RunAsync(async ct =>
+        {
+            // Native in_sight((-2,-1,2,-1)) keeps the icon one row above the camera.
+            // Its desired camera can exceed the map bounds; edge clipping belongs to focus/swipe.
+            var sight = MapSubmarineLocator.SearchSight;
+            int x = destination.Column - Position.Column, y = destination.Row - Position.Row;
+            await FocusCoreAsync(new(Position.Column + x - Math.Clamp(x, sight.Left, sight.Right),
+                Position.Row + y - Math.Clamp(y, sight.Top, sight.Bottom)), ct);
+            VisibleGrid? Grid() => View.Geometry.Grids.FirstOrDefault(grid => grid.LocalCell ==
+                new ViewCell(destination.Column - Position.Column + View.Geometry.Center.X,
+                    destination.Row - Position.Row + View.Geometry.Center.Y));
+            // Native convert_global_to_local retries focus on the cell itself when it is still offscreen.
+            if (Grid() is null) await FocusCoreAsync(destination, ct);
+            var grid = Grid() ?? throw new MapGeometryException("Submarine spawn remains outside the localized view");
+            bool present = await _recognition.PredictSubmarineAsync(View.Frame, grid.Corners, ct);
+            return new SubmarineObservation(destination, Position, FrameSequence, present);
+        }, token, requiresFreshImage: true);
+    }
+
     public ValueTask<FleetMarker> ReadFleetMarkerAsync(Cell destination, CancellationToken token = default)
     {
         if (!_map.Contains(destination)) throw new ArgumentOutOfRangeException(nameof(destination));

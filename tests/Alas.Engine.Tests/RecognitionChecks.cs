@@ -37,6 +37,8 @@ internal static class RecognitionChecks
             var frame = new ScreenFrame(++sequence, DateTimeOffset.UtcNow, await File.ReadAllBytesAsync(Path.Combine(artifacts, item["image"]!.GetValue<string>())));
             var predictor = new GridRecognition(vision, files, GameServer.Cn, options);
             var actual = await predictor.PredictAsync(frame, corners);
+            if (await predictor.PredictSubmarineAsync(frame, corners) != actual.IsSubmarine)
+                throw new InvalidOperationException("Independent submarine icon recognition differs from the native pixel fixture");
             var serialized = JsonSerializer.SerializeToNode(actual, Json);
             if (!JsonNode.DeepEquals(serialized, item["expected"]))
                 throw new InvalidOperationException($"Grid recognition differs: {item["name"]}\nExpected: {item["expected"]}\nActual: {serialized}");
