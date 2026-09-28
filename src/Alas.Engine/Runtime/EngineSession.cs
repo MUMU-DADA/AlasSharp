@@ -132,6 +132,12 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         CampaignConfiguration configuration, CancellationToken token)
         => new FleetLevelReader(Driver, () => Driver.Frame?.Sequence ?? 0)
             .ReadAsync(state.Levels, fleet, afterBattle, configuration.Levels, token);
+
+    long ICampaignInMapHost.CurrentFrameSequence => Driver.Frame?.Sequence ?? 0;
+
+    ValueTask<FleetLevelReading?> ICampaignInMapHost.ReadLevelsAsync(CampaignState state, int fleet,
+        bool afterBattle, CampaignConfiguration configuration, CancellationToken token)
+        => ReadFleetLevelsAsync(state, fleet, afterBattle, configuration, token);
     async ValueTask ICampaignInMapHost.InitializeLevelsAsync(CampaignState state, int fleet,
         CampaignConfiguration configuration, CancellationToken token)
     {
@@ -148,6 +154,40 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     {
         state.Health.Reset();
         await ReadFleetHealthAsync(state, fleet, configuration, token);
+    }
+
+    async ValueTask<EnemySearchWaitResult> ICampaignInMapHost.AutoSearchMoveAsync(
+        CampaignState state, CampaignConfiguration configuration, CancellationToken token)
+    {
+        var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
+        var observations = new MapUiObservations(
+            () => Driver.Frame ?? throw new InvalidOperationException("No auto-search screenshot"),
+            _vision, _assets, Driver.Server);
+        var guard = new MapUiRecovery(Driver, observations, _application, recovery, recovery);
+        var loading = new CombatLoadingProbe(_vision, _assets, Driver.Server,
+            () => Driver.Frame ?? throw new InvalidOperationException("No auto-search loading screenshot"));
+        var searching = new MapEnemySearching(Driver, recovery, guard.HandleInStageAsync,
+            recovery.GuildPopupCancelAsync, recovery.UrgentCommissionAsync, loading.ObserveAsync,
+            () => Driver.Frame?.Sequence ?? 0);
+        while (true)
+        {
+            var result = await searching.WaitAsync(TimeSpan.FromMinutes(5), token);
+            if (result.CombatLoading) return result;
+            if (result.TimedOut)
+                throw new TimeoutException("Auto-search movement did not reach combat loading");
+            // A search animation can finish without exposing the loading strip for
+            // one frame. Re-enter the same native wait loop after that fresh frame.
+        }
+    }
+
+    async ValueTask<CombatFlowResult> ICampaignInMapHost.AutoSearchCombatAsync(
+        CampaignState state, int fleet, CampaignConfiguration configuration, CancellationToken token)
+    {
+        var result = await CreateCampaignCombatFlow(state, configuration)
+            .RunAutoAsync(CombatFlowOptions.Default with { WaitForEnemySearch = true }, token);
+        if (result.Return == CombatReturn.InMap)
+            await ReadFleetStatusAfterCombatAsync(state, fleet, configuration, token);
+        return result;
     }
     ValueTask<CampaignWithdrawalEvidence> ICampaignInMapHost.WithdrawAsync(string reason, CancellationToken token)
         => WithdrawCampaignAsync(reason, token);

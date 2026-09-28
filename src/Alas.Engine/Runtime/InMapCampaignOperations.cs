@@ -5,12 +5,22 @@ namespace Alas.Engine.Runtime;
 /// <summary>Device/vision composition for an already-entered map; business decisions remain in C#.</summary>
 public interface ICampaignInMapHost
 {
+    long CurrentFrameSequence => 0;
     ValueTask EnsureEmotionAsync(CampaignConfiguration configuration, CancellationToken token)
         => configuration.EmotionMode.Calculates() ? throw new NotSupportedException("Emotion state is unavailable") : ValueTask.CompletedTask;
     ValueTask<bool> VerifyInMapAsync(CancellationToken token);
     ValueTask EnsureFleetLockAsync(bool enabled, CancellationToken token);
     ValueTask<FleetSelection> PrepareInitialFleetAsync(CampaignConfiguration configuration, CancellationToken token);
     ValueTask InitializeHealthAsync(CampaignState state, int fleet, CampaignConfiguration configuration, CancellationToken token);
+    ValueTask<FleetLevelReading?> ReadLevelsAsync(CampaignState state, int fleet, bool afterBattle,
+        CampaignConfiguration configuration, CancellationToken token)
+        => throw new NotSupportedException("Campaign host does not provide level reading");
+    ValueTask<EnemySearchWaitResult> AutoSearchMoveAsync(CampaignState state,
+        CampaignConfiguration configuration, CancellationToken token)
+        => throw new NotSupportedException("Campaign host does not provide auto-search movement");
+    ValueTask<CombatFlowResult> AutoSearchCombatAsync(CampaignState state, int fleet,
+        CampaignConfiguration configuration, CancellationToken token)
+        => throw new NotSupportedException("Campaign host does not provide auto-search combat");
     ValueTask InitializeLevelsAsync(CampaignState state, int fleet, CampaignConfiguration configuration, CancellationToken token);
     ValueTask<CampaignWithdrawalEvidence> WithdrawAsync(string reason, CancellationToken token);
     ValueTask<IMapScanCamera> CreateCameraAsync(CampaignState state,
@@ -39,9 +49,10 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     CampaignConfiguration configuration, CancellationToken token, CampaignRule rule) : ICampaignOperations
 {
     private CampaignMapCombat? _combat;
+    private MapArrivalResult? _autoStageReturn;
     private IMapScanCamera? _camera;
     private bool _entered;
-    public MapArrivalResult? StageReturn => _combat?.StageReturn;
+    public MapArrivalResult? StageReturn => _combat?.StageReturn ?? _autoStageReturn;
     public FleetSelection? InitialFleet { get; private set; }
     public IReadOnlyList<AmmoPickupEvidence> AmmoPickups => _combat?.AmmoPickups ?? [];
 
@@ -123,16 +134,45 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask RefocusBossAsync((int X, int Y)? preset)
         => host.RefocusBossAsync(_camera ?? throw new InvalidOperationException("Initialize the map before boss refocus"),
             preset ?? configuration.BossAppearRefocusSwipe, token);
-    public ValueTask ResetLevelsAsync() => throw Missing("auto-search level reset");
-    public ValueTask ReadLevelsAsync() => throw Missing("auto-search level read");
-    public ValueTask AutoSearchMoveAsync() => throw Missing("auto-search movement");
-    public ValueTask AutoSearchCombatAsync(int fleetIndex) => throw Missing("auto-search combat");
+    public ValueTask ResetLevelsAsync()
+    {
+        state.Levels.Reset();
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask ReadLevelsAsync()
+        => _ = await host.ReadLevelsAsync(state, state.FleetIndex, afterBattle: false, configuration, token);
+
+    public async ValueTask AutoSearchMoveAsync()
+    {
+        var result = await host.AutoSearchMoveAsync(state, configuration, token);
+        if (result.TimedOut || !result.CombatLoading)
+            throw new TimeoutException("Auto-search movement did not reach combat loading");
+    }
+
+    public async ValueTask AutoSearchCombatAsync(int fleetIndex)
+    {
+        if (fleetIndex is not (1 or 2)) throw new ArgumentOutOfRangeException(nameof(fleetIndex));
+        var result = await host.AutoSearchCombatAsync(state, fleetIndex, configuration, token);
+        if (result.Rank is not { IsWinningRank: true } rank)
+            throw new InvalidDataException("Auto-search combat did not produce a winning rank");
+        if (result.Return == CombatReturn.InStage)
+        {
+            long frame = host.CurrentFrameSequence;
+            if (frame <= 0 || result.CapturedFrames <= 0)
+                throw new InvalidDataException("Auto-search stage return has no fresh frame evidence");
+            _autoStageReturn = new(MapArrivalOutcome.StageReturned, frame, result.CapturedFrames,
+                MapEncounterKind.Combat)
+            {
+                HandledEncounters = [MapEncounterKind.Combat],
+                Combats = [result]
+            };
+        }
+    }
     public async ValueTask WithdrawAsync()
     {
         state.Withdrawal = await host.WithdrawAsync("campaign_error", token);
         throw new CampaignEndedException("Withdraw: campaign error");
     }
 
-    private static NotSupportedException Missing(string operation)
-        => new($"C# campaign resume has not ported {operation}");
 }

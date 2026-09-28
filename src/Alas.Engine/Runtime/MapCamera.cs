@@ -340,6 +340,9 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
     public async ValueTask EnsureEdgesAsync(bool skipFirstUpdate, CancellationToken token)
         => await EnsureEdgesAsync(skipFirstUpdate, reverse: false, preset: null, new(3, 2), token);
 
+    public async ValueTask EnsureEdgesAsync(bool skipFirstUpdate, ViewCell? preset, CancellationToken token)
+        => await EnsureEdgesAsync(skipFirstUpdate, reverse: false, preset, new(3, 2), token);
+
     public ValueTask<IReadOnlyList<ViewCell>> EnsureEdgesAsync(bool skipFirstUpdate, bool reverse,
         ViewCell? preset, ViewCell swipeLimit, CancellationToken token = default)
     {

@@ -507,6 +507,12 @@ try
         return 0;
     }
 
+    if (args is ["--map-initializer"])
+    {
+        await CampaignMapInitializerChecks.RunAsync();
+        return 0;
+    }
+
     if (args.Length == 0)
     {
         Console.WriteLine("Native comparison and pure CV checks NOT RUN: supply --python <executable> --upstream <source> --artifacts <directory>.");

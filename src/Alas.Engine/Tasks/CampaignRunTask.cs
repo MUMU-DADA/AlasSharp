@@ -124,7 +124,12 @@ public sealed class CampaignRunTask : ITaskRunner
             var prepared = await mapPreparation.PrepareMapAsync(configuration, context.Timeout, token);
             evidence["mapPreparation"] = JsonSerializer.SerializeToNode(prepared, TaskQueue.Json);
             evidence["autoSearch"] = JsonSerializer.SerializeToNode(prepared.AutoSearch, TaskQueue.Json);
-            configuration = CampaignObjectives.Apply(configuration with { IsClearMode = prepared.ClearMode, PreparationInfo = prepared.Info });
+            configuration = CampaignObjectives.Apply(configuration with
+            {
+                IsClearMode = prepared.ClearMode,
+                PreparationInfo = prepared.Info,
+                AutoSearch = prepared.AutoSearch.Enabled
+            });
             evidence["clearAllThisTime"] = configuration.ClearAllThisTime;
             evidence["hasMapStory"] = configuration.HasMapStory;
             if (CampaignObjectives.Reached(configuration.MapAchievement, prepared.Info))

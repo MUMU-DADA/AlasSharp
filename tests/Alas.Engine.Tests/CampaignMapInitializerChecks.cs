@@ -72,21 +72,32 @@ internal static class CampaignMapInitializerChecks
         catch (InvalidDataException) { rejected = true; }
         Check(rejected && !state.IsMapInitialized, "Inconsistent displayed/logical fleet identity initialized the map");
 
-        map = new MapDefinition("B1", "SP --", ["A1"], [], [], swipePreset: new(1, 0));
+        map = new MapDefinition("B1", "SP --", ["A1"], [], [new SpawnWave(0, Enemy: 1)], swipePreset: new(1, 0));
         state = new CampaignState(map);
-        factories = 0; rejected = false;
-        try
+        camera = new Camera(new MapObservation(
+            [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true))], new(1, 1), new(0, 0)));
+        factories = 0;
+        ready = await CampaignMapInitializer.InitializeAsync(state, new(), new(1, 1, 0, 1), (_, _) =>
         {
-            await CampaignMapInitializer.InitializeAsync(state, new(), new(1, 1, 0, 1), (_, _) =>
+            factories++;
+            return ValueTask.FromResult<IMapScanCamera>(camera);
+        }, TimeSpan.FromSeconds(3));
+        Check(factories == 1 && camera.Preset == new ViewCell(1, 0) && ready.Fleet1 == new Cell(1, 1),
+            "Compiled map swipe preset was not passed to the camera edge scan");
+
+        map = new MapDefinition("B1", "SP __", ["B1"], ["A1"], [new SpawnWave(0, Enemy: 1)], name: "submarine");
+        state = new CampaignState(map);
+        camera = new Camera(new MapObservation(
+            [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true)),
+             new(new(1, 0), new(IsSubmarine: true))], new(2, 1), new(1, 0)));
+        ready = await CampaignMapInitializer.InitializeAsync(state,
+            new CampaignConfiguration { Submarine = 1 }, new(1, 1, 0, 1), (_, _) =>
             {
-                factories++;
-                throw new InvalidOperationException("Camera must not start");
+                return ValueTask.FromResult<IMapScanCamera>(camera);
             }, TimeSpan.FromSeconds(3));
-        }
-        catch (NotSupportedException) { rejected = true; }
-        Check(rejected && factories == 0 && !state.IsMapInitialized,
-            "Unported initial swipe preset started an incomplete sortie initialization");
-        Console.WriteLine("Campaign map initialization: scan, fleet localization and topology passed offline; no device entry or strategy handling.");
+        Check(state.SubmarineLocation == new Cell(2, 1) && state[new Cell(2, 1)].IsSubmarine,
+            "Observed submarine location was not retained by map initialization");
+        Console.WriteLine("Campaign map initialization: scan, fleet localization, topology, swipe preset and submarine state passed offline; no device entry or strategy handling.");
     }
 
     private sealed class Camera(MapObservation observation) : IMapScanCamera
@@ -94,6 +105,7 @@ internal static class CampaignMapInitializerChecks
         public Cell Position { get; private set; } = observation.Camera;
         public int Edges { get; private set; }
         public int Scans { get; private set; }
+        public ViewCell? Preset { get; private set; }
         public ValueTask FocusAsync(Cell destination, CancellationToken token)
         { token.ThrowIfCancellationRequested(); Position = destination; return ValueTask.CompletedTask; }
         public ValueTask CenterAsync(double tolerance, CancellationToken token)
@@ -106,5 +118,7 @@ internal static class CampaignMapInitializerChecks
         }
         public ValueTask EnsureEdgesAsync(bool skipFirstUpdate, CancellationToken token)
         { token.ThrowIfCancellationRequested(); Edges++; return ValueTask.CompletedTask; }
+        public ValueTask EnsureEdgesAsync(bool skipFirstUpdate, ViewCell? preset, CancellationToken token)
+        { token.ThrowIfCancellationRequested(); Preset = preset; Edges++; return ValueTask.CompletedTask; }
     }
 }
