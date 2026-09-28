@@ -14,11 +14,11 @@ def main():
     sys.path.insert(0, str(root))
     with open(os.devnull, "w") as quiet, contextlib.redirect_stdout(quiet):
         import module.base.timer as timers
-        from module.map.map_operation import MapOperation
+        from module.map.fleet import Fleet
         from module.logger import logger
         logger.setLevel("CRITICAL")
 
-        class Replay(MapOperation):
+        class Replay(Fleet):
             def __init__(self, case):
                 self.case, self.frame, self.now = case, 0, 100.
                 self.calls, self.clicks, self.delays = [], [], []
@@ -26,6 +26,9 @@ def main():
                 self.map_is_hard_mode = False
                 self.in_stage_timer = timers.Timer(.5, count=2)
                 self.fleet_show_index = self.fleet_current_index = 1
+                self.effects = []
+                self.fleet_1_location, self.fleet_2_location = (0, 0), (3, 0)
+                self.map = SimpleNamespace(show_cost=lambda: None)
                 self.device = SimpleNamespace(screenshot=self.screenshot, click=self.click, sleep=self.sleep)
 
             def positive(self, name):
@@ -69,13 +72,23 @@ def main():
                 self.calls.append(dict(asset="$info", offset=[], frame=self.frame))
                 return int(self.positive("$info"))
 
+            def update(self): self.effects.append('camera')
+            def find_path_initial(self): self.effects.append('paths')
+            def show_fleet(self): pass
+            def hp_get(self): self.effects.append('hp')
+            def lv_get(self): self.effects.append('levels')
+            def handle_strategy(self, index): self.effects.append('strategy:' + str(index))
+
         results = []
         for case in json.loads(inputs.read_text(encoding="utf-8")):
             driver = Replay(case)
             timers.time = lambda: driver.now
             changed, error = None, None
             try:
-                if case["initialize"]:
+                if case.get('ensure', False):
+                    driver.fleet_current_index = case['target']
+                    changed = driver.fleet_ensure(case['target'])
+                elif case["initialize"]:
                     changed = driver.handle_fleet_reverse()
                     if not changed:
                         changed = driver.fleet_set(index=1)
@@ -85,9 +98,9 @@ def main():
                 error = type(exc).__name__
             results.append(dict(changed=changed, error=error, logical=driver.fleet_current_index,
                 displayed=driver.fleet_show_index, frames=driver.frame, calls=driver.calls,
-                clicks=driver.clicks, delays=driver.delays))
+                clicks=driver.clicks, delays=driver.delays, effects=driver.effects))
         sources = {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in
-                   ["module/map/map_operation.py", "module/handler/enemy_searching.py", "module/handler/info_handler.py"]}
+                   ["module/map/map_operation.py", "module/handler/enemy_searching.py", "module/handler/info_handler.py", "module/map/fleet.py"]}
         import cv2
         import numpy as np
         from module.map import assets as map_assets

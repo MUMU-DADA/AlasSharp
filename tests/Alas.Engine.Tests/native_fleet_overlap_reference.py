@@ -114,11 +114,14 @@ def main():
         import cv2
         import numpy as np
         from module.handler.assets import IN_MAP
+        from module.map.assets import FLEET_NUM_1
         from module.base.utils import load_image
         image = np.zeros((720, 1280, 3), dtype=np.uint8)
         x, y, right, bottom = IN_MAP.area
         image[y:bottom, x:right] = load_image(IN_MAP.file)[y:bottom, x:right]
         assert IN_MAP.appear_on(image)
+        x, y, right, bottom = FLEET_NUM_1.area
+        image[y:bottom, x:right] = load_image(FLEET_NUM_1.file)[y:bottom, x:right]
         cv2.imwrite(str(output.parent / 'in-map.png'), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
     output.write_text(json.dumps(dict(results=results, sources=sources)), encoding='utf-8')
 

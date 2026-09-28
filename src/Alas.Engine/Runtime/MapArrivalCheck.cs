@@ -63,7 +63,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
     IMapEncounterProbe? probe = null, IMapEncounterHandler? handler = null,
     Func<CancellationToken, ValueTask>? recoverAfterCombat = null, MapWalkPopups? walkPopups = null,
     Func<CancellationToken, ValueTask>? recoverAfterWalkTimeout = null,
-    Func<long, CancellationToken, ValueTask<WalkInterruptionResult>>? walkInterruptions = null)
+    Func<long, CancellationToken, ValueTask<WalkInterruptionResult>>? walkInterruptions = null,
+    Func<CancellationToken, ValueTask>? ensureFleet = null)
 {
     public static readonly SourceFile Source = CampaignState.InitializationSource;
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
@@ -114,6 +115,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                 WalkTimeouts = _walkTimeouts.ToImmutableArray() };
         try
         {
+            token.ThrowIfCancellationRequested();
+            if (ensureFleet is not null) await ensureFleet(token);
             await camera.PrepareTapAsync(destination, token);
             sequence = camera.FrameSequence;
             if (probe is not null) await probe.InitializeAsync(sequence, token);
@@ -247,6 +250,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                 }
                 if (retryTap)
                 {
+                    // Only a walk timeout restarts native _goto's outer loop. Ambush retaps stay inside it.
+                    if (walkTimedOut && ensureFleet is not null) await ensureFleet(token);
                     await camera.PrepareTapAsync(destination, token);
                     sequence = camera.FrameSequence;
                     if (probe is not null) await probe.InitializeAsync(sequence, token);

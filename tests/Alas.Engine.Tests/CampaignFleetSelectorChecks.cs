@@ -11,7 +11,7 @@ namespace Alas.Engine.Tests;
 internal static class CampaignFleetSelectorChecks
 {
     private sealed record Case(string[][] Frames, int Fleet2 = 2, string Order = "fleet1_mob_fleet2_boss",
-        int Target = 1, bool Initialize = false, double Step = .5, bool NativeAssumesSuccess = false);
+        int Target = 1, bool Initialize = false, double Step = .5, bool NativeAssumesSuccess = false, bool Ensure = false);
     private sealed record Call(string Asset, int[] Offset, int Frame);
     private sealed record Click(string Asset, int Frame);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -44,6 +44,15 @@ internal static class CampaignFleetSelectorChecks
         samples.Add(new([[], [], ["FLEET_NUM_1"]], NativeAssumesSuccess: true));
         samples.Add(new([[]], NativeAssumesSuccess: true));
         samples.Add(new([["FLEET_NUM_2"]], NativeAssumesSuccess: true));
+        foreach (var order in Enum.GetValues<FleetOrder>())
+        foreach (int target in new[] { 1, 2 })
+        foreach (int clicks in new[] { 0, 1, 2 })
+        {
+            int desired = FleetRoles.LogicalIndex(target, new() { Fleet2 = 2, FleetOrder = order });
+            string[][] frames = [.. Enumerable.Range(0, clicks).Select(_ => new[] { "FLEET_NUM_" + (3 - desired), "SWITCH_OVER" }),
+                ["FLEET_NUM_" + desired]];
+            samples.Add(new(frames, Order: FleetRoles.Name(order), Target: target, Ensure: true));
+        }
         string input = Path.Combine(artifacts, "fleet-inputs.json"), output = Path.Combine(artifacts, "fleet-native.json");
         await File.WriteAllTextAsync(input, JsonSerializer.Serialize(samples, Json));
         var response = await new ProcessRunner().RunAsync(python,
@@ -51,7 +60,7 @@ internal static class CampaignFleetSelectorChecks
             TimeSpan.FromSeconds(60));
         Check(response.ExitCode == 0, "Native fleet selection failed: " + response.Error);
         var native = JsonNode.Parse(await File.ReadAllTextAsync(output))!;
-        foreach (var source in new[] { CampaignFleetSelector.Source, MapUiRecovery.StageSource, UiRecovery.InfoSource })
+        foreach (var source in new[] { CampaignFleetSelector.Source, MapUiRecovery.StageSource, UiRecovery.InfoSource, CampaignFleetSwitcher.Source })
             Check(native["sources"]![source.Path]!.GetValue<string>() == source.Sha256, "Fleet source drifted");
         int equal = 0, stricter = 0;
         for (int i = 0; i < samples.Count; i++)
@@ -64,7 +73,21 @@ internal static class CampaignFleetSelectorChecks
             string? error = null;
             try
             {
-                selected = sample.Initialize ? await selector.InitializeAsync(configuration, TimeSpan.FromSeconds(90)) :
+                if (sample.Ensure)
+                {
+                    var state = new CampaignState(new MapDefinition("D1", "SP -- -- SP", [], [], []));
+                    state.InitializeMapData(new()); state.FleetIndex = sample.Target;
+                    state.Fleet1Location = new(1, 1); state.Fleet2Location = new(4, 1); state.RefreshFleetPaths(configuration);
+                    var host = new EnsureHost(state, configuration, ui);
+                    var switcher = new CampaignFleetSwitcher(state, configuration, host);
+                    await switcher.EnsureCurrentAsync(default);
+                    var record = switcher.Evidence.Single(); selected = record.Selection;
+                    Check(record.CurrentCheck && record.From == sample.Target && record.To == sample.Target && record.Ready &&
+                        (record.CameraFrame is not null) == (selected!.Clicks > 0) &&
+                        JsonNode.DeepEquals(JsonSerializer.SerializeToNode(host.Effects), native["results"]![i]!["effects"]),
+                        "Current-fleet verification lost native camera/path/HP/level/strategy effects");
+                }
+                else selected = sample.Initialize ? await selector.InitializeAsync(configuration, TimeSpan.FromSeconds(90)) :
                     await selector.SelectAsync(sample.Target, configuration, TimeSpan.FromSeconds(90));
             }
             catch (CampaignEndedException) { error = "CampaignEnd"; }
@@ -106,6 +129,7 @@ internal static class CampaignFleetSelectorChecks
         await Rejects<TimeoutException>(() => Selector(repeated).SelectAsync(1, new() { Fleet2 = 2 }, TimeSpan.FromSeconds(8)).AsTask());
         Check(repeated.Clicks.Count > 1, "Selection timeout was not tested across repeated clicks");
         await CampaignMapInitializerChecks.RunAsync();
+        await CampaignFleetSwitcherChecks.RunAsync();
         await CampaignMapCombatChecks.RunAsync(python, upstream);
         await SessionReplayAsync(python, upstream, artifacts);
         await CampaignFleetSwitchSessionChecks.RunAsync(python, upstream, artifacts);
@@ -167,6 +191,27 @@ internal static class CampaignFleetSelectorChecks
     {
         var guard = new MapUiRecovery(ui, ui, new NoApplication(), ui, new NoPopup());
         return new(ui, ui, guard.HandleInStageAsync, () => ui.Stale ? 1 : ui.Frame + 1, new MidpointRandom());
+    }
+    private sealed class EnsureHost(CampaignState state, CampaignConfiguration configuration, Replay ui) : ICampaignFleetSwitchHost
+    {
+        public List<string> Effects { get; } = [];
+        public void SuspendCamera() { }
+        public void InvalidateCamera() { }
+        public ValueTask<FleetSelection> SelectAsync(int fleet, CancellationToken token)
+            => Selector(ui).SelectAsync(fleet, configuration, TimeSpan.FromSeconds(90), token);
+        public ValueTask AdoptSelectionImageAsync(CancellationToken token) => ValueTask.CompletedTask;
+        public ValueTask<long> RelocalizeAsync(Cell location, long selectedFrame, CancellationToken token)
+        { Effects.Add("camera"); return ValueTask.FromResult(selectedFrame + 1); }
+        public ValueTask ReadHealthAsync(int fleet, CancellationToken token)
+        {
+            Check(state[state.FleetIndex == 1 ? state.Fleet1Location!.Value : state.Fleet2Location!.Value].Cost == 0,
+                "Fleet path was not refreshed before health");
+            Effects.Add("paths"); Effects.Add("hp"); return ValueTask.CompletedTask;
+        }
+        public ValueTask ReadLevelsAsync(int fleet, CancellationToken token)
+        { Effects.Add("levels"); return ValueTask.CompletedTask; }
+        public ValueTask ConfigureStrategyAsync(int displayedFleet, CancellationToken token)
+        { Effects.Add("strategy:" + displayedFleet); return ValueTask.CompletedTask; }
     }
     private static void Check(bool value, string message)
     { if (!value) throw new InvalidOperationException(message); }

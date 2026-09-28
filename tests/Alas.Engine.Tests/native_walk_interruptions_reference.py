@@ -114,10 +114,11 @@ def main():
         import cv2
         import numpy as np
         from module.handler.assets import IN_MAP, POPUP_CANCEL, POPUP_CONFIRM
+        from module.map.assets import FLEET_NUM_1
         from module.retire.assets import RETIRE_APPEAR_1
         from module.template.assets import TEMPLATE_COMBAT_LOADING
         from module.base.utils import load_image
-        for name, assets in [('map', [IN_MAP]), ('emotion', [POPUP_CANCEL, POPUP_CONFIRM]), ('dock', [RETIRE_APPEAR_1]), ('loading', [])]:
+        for name, assets in [('map', [IN_MAP, FLEET_NUM_1]), ('emotion', [POPUP_CANCEL, POPUP_CONFIRM]), ('dock', [RETIRE_APPEAR_1]), ('loading', [])]:
             image = np.zeros((720, 1280, 3), dtype=np.uint8)
             for button in assets:
                 x, y, right, bottom = button.area

@@ -110,11 +110,15 @@ def main():
                 self.map_cat_attack_timer = timers.Timer(2)
                 self.map_is_clear_mode = clear
 
+        from module.map.assets import FLEET_NUM_1
+        from module.base.utils import load_image
         fixtures = []
         for clear in [False, True]:
             for mirror in [False, True]:
                 for count in [99, 100, 101, 199, 200, 201]:
                     image = np.zeros((720, 1280, 3), dtype=np.uint8)
+                    x, y, right, bottom = FLEET_NUM_1.area
+                    image[y:bottom, x:right] = load_image(FLEET_NUM_1.file)[y:bottom, x:right]
                     button = MAP_CAT_ATTACK_MIRROR if mirror else MAP_CAT_ATTACK
                     x, y, right, bottom = button.area
                     coords = np.arange(count)

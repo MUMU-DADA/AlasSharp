@@ -113,12 +113,15 @@ def main():
                 fleet=node(replay.fleet_current), battle=replay.battle_count, siren=replay.siren_count,
                 mystery=replay.mystery_count, ammo=replay.fleet_ammo))
 
+        from module.map.assets import FLEET_NUM_1
         template = ambush.TEMPLATE_MAP_WALK_OUT_OF_STEP
         fixtures = []
         rng = np.random.default_rng(9873)
         for present in [False, True]:
             for noise in [0, 25, 90]:
                 image = rng.integers(0, 80, (720, 1280, 3), dtype=np.uint8)
+                x, y, right, bottom = FLEET_NUM_1.area
+                image[y:bottom, x:right] = load_image(FLEET_NUM_1.file)[y:bottom, x:right]
                 x, y, right, bottom = ambush.INFO_BAR_DETECT.area
                 # Real row-peak recognition sees one native blue information-bar border.
                 bx, by, br, bb = ambush.INFO_BAR_AREA.area

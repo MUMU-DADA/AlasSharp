@@ -7,6 +7,32 @@ internal static partial class MapWalkTimeoutChecks
 {
     private static async Task FailuresAsync()
     {
+        foreach (int failAt in new[] { 1, 2 })
+        foreach (bool cancel in new[] { false, true })
+        {
+            var state = new CampaignState(new MapDefinition("B1", "SP --", [], [], []));
+            state.InitializeMapData(new()); state.Fleet1Location = new(1, 1); state.RefreshFleetPaths(new());
+            var camera = new Replay(new(1, "fleet", false, "", 1, 1));
+            int checks = 0;
+            var arrival = new MapArrivalCheck(camera, state, _ => ValueTask.FromResult(true), camera.Clock, camera,
+                recoverAfterWalkTimeout: camera.RecoverAsync, ensureFleet: _ =>
+                {
+                    if (++checks == failAt)
+                    {
+                        if (cancel) throw new OperationCanceledException();
+                        throw new IOException("Synthetic fleet verification failure");
+                    }
+                    return ValueTask.CompletedTask;
+                });
+            Exception? error = null;
+            try { await new MapMovement(state, new(), camera, () => arrival).MoveAsync(new(2, 1)); }
+            catch (Exception caught) { error = caught; }
+            Check(error is not null && checks == failAt && camera.Taps.Count == failAt - 1 &&
+                state.MovementInvalidated && camera.Invalidated && state.Fleet1Location == new Cell(1, 1),
+                "Failed fleet verification allowed the next grid tap or committed movement");
+            if (failAt == 2) Check(arrival.WalkTimeouts is [{ RecoveredFrame: > 0, RetapFrame: null, RetapCompleted: false }],
+                "Failed retry fleet check claimed a completed retap");
+        }
         foreach (bool combat in new[] { false, true })
         {
             var state = new CampaignState(new MapDefinition("B1", "SP " + (combat ? "ME" : "MM"), [], [], []));

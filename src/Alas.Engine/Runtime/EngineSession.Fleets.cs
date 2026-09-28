@@ -21,6 +21,8 @@ public sealed partial class EngineSession
         private bool _waitInfoBar;
         public void SuspendCamera() => camera.Suspend();
         public void InvalidateCamera() => camera.Invalidate();
+        public ValueTask AdoptSelectionImageAsync(CancellationToken token)
+            => camera.AdoptImageAsync(session.Driver.Frame ?? throw new InvalidOperationException("No fleet screenshot"), token);
         public async ValueTask<FleetSelection> SelectAsync(int fleet, CancellationToken token)
         {
             var recovery = new UiRecovery(session.Driver, session._application, session.Pages, new UiRecoveryOptions());

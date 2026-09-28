@@ -21,6 +21,7 @@ def main():
         import cv2
         import numpy as np
         from module.handler.assets import IN_MAP
+        from module.map.assets import FLEET_NUM_1
         from module.base.utils import load_image
         logger.setLevel('CRITICAL')
 
@@ -41,7 +42,7 @@ def main():
                 self.round_reset()
                 self.battle_count = self.mystery_count = 0
                 self.now, self.frames, self.attempt_frames = 100., 0, 0
-                self.taps, self.recoveries = [], []
+                self.taps, self.recoveries, self.fleet_checks = [], [], []
                 self.device = SimpleNamespace(image=None, screenshot=self.screenshot, click=self.click)
                 self.view = SimpleNamespace(update=lambda **kwargs: None)
                 self.predicted = False
@@ -50,7 +51,9 @@ def main():
                 if self.frames > 700: raise AssertionError('Native walk did not finish')
             def click(self, grid): self.taps.append(self.frames); self.attempt_frames = 0
             def hp_retreat_triggered(self): return False
-            def fleet_ensure(self, *args): pass
+            def fleet_set(self, index):
+                self.fleet_checks.append([self.frames, index])
+                return False
             def in_sight(self, *args, **kwargs): pass
             def focus_to_grid_center(self): pass
             def convert_global_to_local(self, location):
@@ -81,12 +84,14 @@ def main():
             replay = Replay(sample)
             timers.time = lambda: replay.now
             replay._goto(loc('B1'), expected=sample['expected'])
-            results.append(dict(frames=replay.frames, taps=replay.taps, recoveries=replay.recoveries))
+            results.append(dict(frames=replay.frames, taps=replay.taps, recoveries=replay.recoveries, fleet_checks=replay.fleet_checks))
         sources = {p: hashlib.sha256((root/p).read_bytes()).hexdigest() for p in ['module/map/fleet.py', 'module/map/camera.py']}
         image = np.zeros((720, 1280, 3), dtype=np.uint8)
         x, y, right, bottom = IN_MAP.area
         image[y:bottom, x:right] = load_image(IN_MAP.file)[y:bottom, x:right]
         assert IN_MAP.appear_on(image)
+        x, y, right, bottom = FLEET_NUM_1.area
+        image[y:bottom, x:right] = load_image(FLEET_NUM_1.file)[y:bottom, x:right]
         cv2.imwrite(str(output.parent/'in-map.png'), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
     output.write_text(json.dumps(dict(results=results, sources=sources)), encoding='utf-8')
 

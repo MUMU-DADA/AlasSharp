@@ -106,7 +106,8 @@ internal static partial class MapWalkTimeoutChecks
             state.RefreshFleetPaths(new());
             var camera = new Replay(sample);
             var arrival = new MapArrivalCheck(camera, state, _ => ValueTask.FromResult(true), camera.Clock,
-                camera, recoverAfterWalkTimeout: camera.RecoverAsync);
+                camera, recoverAfterWalkTimeout: camera.RecoverAsync,
+                ensureFleet: _ => { camera.FleetChecks.Add([camera.Frames, state.FleetIndex]); return ValueTask.CompletedTask; });
             var result = await arrival.TapAndCheckAsync(new(2, 1), new(TimeSpan.FromSeconds(.5), TimeSpan.FromSeconds(20),
                 sample.UseCurrent && sample.Expected != "combat_boss")
                 { ExpectCombat = sample.Expected.StartsWith("combat", StringComparison.Ordinal), ExpectMystery = sample.Expected == "mystery" });
@@ -115,6 +116,7 @@ internal static partial class MapWalkTimeoutChecks
             Check(camera.Frames == native["frames"]!.GetValue<int>(), "Native timeout arrival frame differs: " + label + " C#=" + camera.Frames + " native=" + native["frames"]);
             Check(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(camera.Taps), native["taps"]), "Timeout tap order differs: " + label);
             Check(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(camera.RecoveryFrames), native["recoveries"]), "Timeout recovery frame differs: " + label);
+            Check(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(camera.FleetChecks), native["fleet_checks"]), "Current fleet was not verified before each native attempt: " + label);
             Check(result.RetryTaps == sample.MissedTaps && result.WalkTimeouts.Length == sample.MissedTaps &&
                 camera.Initializations == camera.Taps.Count && state.BattleCount == 0 && state.MysteryCount == 0,
                 "Retry lost baseline or invented interaction accounting: " + label);
@@ -133,6 +135,7 @@ internal static partial class MapWalkTimeoutChecks
         public long FrameSequence => Frames + 1;
         public List<int> Taps { get; } = [];
         public List<int> RecoveryFrames { get; } = [];
+        public List<int[]> FleetChecks { get; } = [];
         public int Initializations { get; private set; }
         public bool Invalidated { get; private set; }
         public bool Suspended { get; private set; }

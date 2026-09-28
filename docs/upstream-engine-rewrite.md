@@ -14,7 +14,7 @@
 
 地图准备、周回与双倍书现由 CampaignMapPreparation 和 CampaignPreparationRules 管理，复用既有纯 CV 测量及通用 Switch，不新增 Python 业务或 JSON 解释。章节 Config 与本次出击观测分离，周回覆盖在配置之后应用，控制 loop 地图/出生及机制；已确认双倍书连接心情等待和扣减，未知状态不能假定单倍。图内 resume 缺少先前倍率观察，计算模式拒绝，完整 campaign_run 通过准备页取得证据。完整成就/剧情覆盖、自动寻敌调度和全部章节尚未迁完；原生轨迹、四服 CV 与模拟 ADB 验证范围见路线，无新增真机通关结论。
 
-BOSS 路障和战中舰队切换现由 MapRoadblocks、CampaignMapCombat 与 CampaignFleetSwitcher 直接执行。最少阻敌与原生枚举优先级保持一致，搜索不再污染权威成本场，出击只选真实可达的阻敌；舰队编号确认后重定位、读取 HP/等级并配置策略。部分切换失败也保存证据，不沿用旧舰队身份或相机。Python 新增内容仅为测试项目的原生搜索 oracle，产品视觉 worker 不增业务能力；语义修正、离线范围及未完成分支见[路线](architecture-roadmap.md)。
+BOSS 路障和战中舰队切换现由 MapRoadblocks、CampaignMapCombat 与 CampaignFleetSwitcher 直接执行。最少阻敌与原生枚举优先级保持一致，搜索不再污染权威成本场，出击只选真实可达的阻敌；舰队编号确认后重定位、读取 HP/等级并配置策略。两个移动入口在首次点击和行走超时恢复后也调用原生语义的当前舰队确认；画面编号正确时只同步新图，需要切队才重建状态，伏击补点不额外确认。部分失败也保存证据并使地图状态失效，不沿用旧舰队身份或相机。Python 改动仅为测试项目的原生 oracle 和合成素材夹具，产品视觉 worker 不增业务能力；语义修正、离线范围及未完成分支见[路线](architecture-roadmap.md)。
 
 血量状态直接由 C# `FleetHealthState` / `FleetHealthReader` 管理，纯视觉 `color_bars` 只返回给定图像区域与颜色的色条长度，不接收舰队、服务器或撤退规则。首次读取的有船掩码按逻辑舰队保留，进图初始化与战后读取在 Engine 会话内执行。低血量判断位于地图移动之前，撤退由独立 C# 流程处理并使用冻结合同的 `withdrawn` 结果；读取失败不继续该次移动。战斗准备现由 C# CombatHealthPreparation 消费加权 HP，决定前排换位和紧急维修；纯视觉 worker 无新增业务操作。完整等级停止调度、战中舰队调度与新引擎实机结算仍未完成。
 

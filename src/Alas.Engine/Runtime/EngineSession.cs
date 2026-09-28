@@ -132,7 +132,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         var arrival = new MapArrivalCheck(camera, camera.State, token => Driver.AppearsAsync(UiAssets.Handler.IN_MAP, token: token), Driver.Clock,
             probe, new MapAirRaidHandler(Driver, probe,
                 () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No air raid screenshot"), handler), recoverAfterCombat, popups,
-            camera.RecoverWalkTimeoutAsync, interruptions is null ? null : HandleInterruptions);
+            camera.RecoverWalkTimeoutAsync, interruptions is null ? null : HandleInterruptions,
+            CreateFleetSwitcher(camera, configuration).EnsureCurrentAsync);
         _mapArrivals.Add(arrival);
         return arrival;
     }

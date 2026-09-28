@@ -16,17 +16,20 @@ internal static class CampaignFleetSwitchSessionChecks
         string? previous = Environment.GetEnvironmentVariable("ALAS_TEST_ADB_FIXTURE");
         try
         {
-            foreach (string mode in new[] { "normal", "reversed", "tap-failure", "camera-failure" })
+            foreach (string mode in new[] { "normal", "reversed", "tap-failure", "camera-failure",
+                "current", "current-reversed", "current-ready", "current-tap-failure", "current-camera-failure" })
             {
-                bool reversed = mode == "reversed", failure = mode.EndsWith("failure", StringComparison.Ordinal);
+                bool reversed = mode.Contains("reversed", StringComparison.Ordinal), failure = mode.EndsWith("failure", StringComparison.Ordinal);
+                bool current = mode.StartsWith("current", StringComparison.Ordinal), ready = mode == "current-ready";
+                int desired = current ? (reversed ? 2 : 1) : (reversed ? 1 : 2);
                 string folder = Path.Combine(artifacts, "switch-session-" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(folder);
                 string fixture = Path.Combine(folder, "fixture.json");
                 await File.WriteAllTextAsync(fixture, JsonSerializer.Serialize(new
                 {
-                    first = Path.Combine(artifacts, reversed ? "fleet-2.png" : "fleet-1.png"),
-                    second = Path.Combine(artifacts, reversed ? "fleet-1.png" : "fleet-2.png"),
-                    advance = true, failTap = mode == "tap-failure"
+                    first = Path.Combine(artifacts, $"fleet-{(ready ? desired : 3 - desired)}.png"),
+                    second = Path.Combine(artifacts, $"fleet-{desired}.png"),
+                    advance = true, failTap = mode.EndsWith("tap-failure", StringComparison.Ordinal)
                 }));
                 Environment.SetEnvironmentVariable("ALAS_TEST_ADB_FIXTURE", fixture);
                 string executable = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Alas.Engine.Tests.exe" : "Alas.Engine.Tests");
@@ -42,18 +45,20 @@ internal static class CampaignFleetSwitchSessionChecks
                 Check(files.Length == 1 && RunReport.Build(result.Directory).ToJson()["evidence_complete"]!.GetValue<bool>(),
                     "Fleet switch evidence was lost, reused by next task, or rejected");
                 var record = JsonSerializer.Deserialize<FleetSwitchEvidence[]>(await File.ReadAllTextAsync(files[0]), TaskQueue.Json)!.Single();
-                Check(record.Ready == !failure && (record.Selection is not null) == (mode != "tap-failure") &&
-                    (record.CameraFrame is not null) == !failure, "Partial physical switch evidence was not retained");
+                Check(record.Ready == !failure && (record.Selection is not null) == !mode.EndsWith("tap-failure", StringComparison.Ordinal) &&
+                    (record.CameraFrame is not null) == (!failure && !ready) && record.CurrentCheck == current,
+                    "Partial physical switch evidence was not retained");
                 string original = await File.ReadAllTextAsync(files[0]);
                 File.Delete(files[0]);
                 Check(!RunReport.Build(result.Directory).ToJson()["evidence_complete"]!.GetValue<bool>(), "Missing switch evidence was accepted");
-                await File.WriteAllTextAsync(files[0], JsonSerializer.Serialize(new[] { record with { Ready = true, CameraFrame = null } }, TaskQueue.Json));
+                var broken = ready ? record with { CurrentCheck = false } : record with { Ready = true, CameraFrame = null };
+                await File.WriteAllTextAsync(files[0], JsonSerializer.Serialize(new[] { broken }, TaskQueue.Json));
                 Check(!RunReport.Build(result.Directory).ToJson()["evidence_complete"]!.GetValue<bool>(), "Unconfirmed switch was reported ready");
                 await File.WriteAllTextAsync(files[0], original);
             }
         }
         finally { Environment.SetEnvironmentVariable("ALAS_TEST_ADB_FIXTURE", previous); }
-        Console.WriteLine("Fleet switch session: four actual queue/session replays passed; real UI CV/HP/OCR, synthetic geometry/markers and ADB; partial evidence/report tamper checks passed.");
+        Console.WriteLine("Fleet switch session: nine actual queue/session replays passed, including both movement factories and current-fleet repair; real UI CV/HP/OCR, synthetic geometry/markers and ADB; partial evidence/report tamper checks passed.");
     }
     private sealed class Probe(string upstream, string mode) : ITaskRunner
     {
@@ -73,26 +78,43 @@ internal static class CampaignFleetSwitchSessionChecks
             state[new(1, 1)].IsFleet = state[new(1, 1)].IsCurrentFleet = state[new(4, 1)].IsFleet = true;
             state.Health.Commit(1, 1, [.8, 0, 0, .7, 0, 0], new());
             var originalHealth = state.Health.Get(1);
-            var source = new Source(session, mode == "camera-failure");
+            bool current = mode.StartsWith("current", StringComparison.Ordinal);
+            var source = new Source(session, mode.EndsWith("camera-failure", StringComparison.Ordinal));
             var geometry = MapViewChecks.Regular(new(262, 227.5));
             var patches = new Markers();
             var recognition = new GridRecognition(patches, new AssetFiles(Path.Combine(upstream, "assets")), GameServer.Cn, new());
             var camera = new MapCamera(state, new(1, 1), new(session.Driver.Frame!, geometry), source, new NoSwipe(),
-                recognition, new(new NoSwipe()), new() { Optimize = false });
+                recognition, new(new NoSwipe()), new() { Optimize = false }, gridInput: new GridInput(session));
             var configuration = new CampaignConfiguration { Fleet2 = 2,
-                FleetOrder = mode == "reversed" ? FleetOrder.Fleet1BossFleet2Mob : FleetOrder.Fleet1MobFleet2Boss,
+                FleetOrder = mode.Contains("reversed", StringComparison.Ordinal) ? FleetOrder.Fleet1BossFleet2Mob : FleetOrder.Fleet1MobFleet2Boss,
                 Fleet1Formation = FleetFormation.Diamond, Fleet2Formation = FleetFormation.DoubleLine,
                 WaitForFleetSwitchInfoBar = true, Levels = new(120) };
-            var switcher = session.CreateFleetSwitcher(camera, configuration);
-            try { await switcher.SwitchAsync(2, token); }
+            try
+            {
+                if (current)
+                {
+                    var movement = mode == "current-reversed" ? session.CreateMapCombatMovement(camera, configuration) :
+                        session.CreateMapMovement(camera, configuration);
+                    var moved = await movement.MoveAsync(new(2, 1), token: token);
+                    Check(moved.Outcome == MapMoveOutcome.Committed && state.Fleet1Location == new Cell(2, 1) &&
+                        state.Fleet2Location == new Cell(4, 1) && state.BattleCount == 0,
+                        "Current-fleet repair did not precede the production grid move");
+                }
+                else await session.CreateFleetSwitcher(camera, configuration).SwitchAsync(2, token);
+            }
             catch
             {
-                Check(state.FleetIndex == (mode == "camera-failure" ? 2 : 1), "Failed session rolled back observed identity");
+                Check(state.FleetIndex == (!current && mode == "camera-failure" ? 2 : 1), "Failed session rolled back observed identity");
+                if (current) Check(state.MovementInvalidated && state.Fleet1Location == new Cell(1, 1), "Unconfirmed repair committed movement");
                 throw;
             }
-            Check(state.FleetIndex == 2 && state[new(4, 1)].IsCurrentFleet &&
-                state.Health.Get(2) is { FrameSequence: > 0 } && ReferenceEquals(originalHealth, state.Health.Get(1)) &&
-                state.Levels.Evidence(configuration.Levels).Readings is [{ FleetIndex: 2, AfterBattle: false }] &&
+            int fleet = current ? 1 : 2;
+            if (mode == "current-ready")
+                Check(ReferenceEquals(originalHealth, state.Health.Get(1)) && state.Levels.Evidence(configuration.Levels).Readings.Count == 0,
+                    "Verified current fleet overwrote health or level baselines");
+            else Check(state.FleetIndex == fleet && state[current ? new(2, 1) : new(4, 1)].IsCurrentFleet &&
+                state.Health.Get(fleet) is { FrameSequence: > 0 } && (current || ReferenceEquals(originalHealth, state.Health.Get(1))) &&
+                state.Levels.Evidence(configuration.Levels).Readings is [{ FleetIndex: var readFleet, AfterBattle: false }] && readFleet == fleet &&
                 source.Captures >= 3 && patches.Calls > 3, "Session omitted switch recovery, HP, levels, or strategy refresh");
             return new(request.Id, Kind, TaskOutcome.Succeeded, "fleet_switch_observed");
         }
@@ -126,5 +148,10 @@ internal static class CampaignFleetSwitchSessionChecks
         public ValueTask SwipeAsync(MapSwipeGesture gesture, CancellationToken token) => throw new InvalidOperationException("Unexpected swipe");
         public ValueTask<FleetMarker> FleetAsync(MapViewFrame view, VisibleGrid grid, CancellationToken token) => throw new InvalidOperationException("Old fleet prediction");
         public ValueTask<double?> SimilarityAsync(MapViewFrame before, VisibleGrid oldGrid, MapViewFrame after, VisibleGrid newGrid, CancellationToken token) => throw new InvalidOperationException("Old fleet prediction");
+    }
+    private sealed class GridInput(EngineSession session) : IMapGridInput
+    {
+        public ValueTask TapAsync(PixelArea area, CancellationToken token)
+            => session.Driver.ClickAreaAsync(new(area.X, area.Y, area.X + area.Width, area.Y + area.Height), token);
     }
 }

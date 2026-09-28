@@ -48,9 +48,10 @@ internal static partial class CampaignMapCombatChecks
                 target == "empty" ? [] : new[] { MapEncounterKind.Combat });
             var probe = new AmbushSequenceProbe(sequence);
             var handler = new AmbushSequenceHandler(camera, overlay, fought, target == "stage");
-            int recoveries = 0;
+            int recoveries = 0, fleetChecks = 0;
             var movement = new MapMovement(state, config, camera, () => new(camera, state, camera.InMapAsync, camera.Clock,
-                probe, handler, async token => { recoveries++; await camera.RelocalizeAsync(token); }));
+                probe, handler, async token => { recoveries++; await camera.RelocalizeAsync(token); },
+                ensureFleet: _ => { fleetChecks++; return ValueTask.CompletedTask; }));
             var result = target == "empty" ? await movement.MoveAsync(new(2, 1)) : await movement.FightAsync(new(2, 1));
             bool canArrive = !retry || overlay;
             var expected = target == "stage" ? MapMoveOutcome.StageReturned : canArrive ? MapMoveOutcome.Committed : MapMoveOutcome.Unconfirmed;
@@ -59,6 +60,7 @@ internal static partial class CampaignMapCombatChecks
                 state.FleetAmmo == 5 - state.BattleCount && state.SirenCount == 0 &&
                 recoveries == (target == "combat" ? 1 : 0), "Ambush altered map battle accounting, recovery, or evidence");
             Check(camera.Taps == 1 + (retry && overlay && target != "stage" ? 1 : 0), "Ambush retry ignored overlay/arrival gate");
+            Check(fleetChecks == 1, "Ambush retap incorrectly restarted outer-loop fleet verification");
             if (target == "stage")
             {
                 var task = CampaignResumeTask.Describe("test", "campaign_run", RuleCatalog.Create("campaign_main/campaign_1_1"),
