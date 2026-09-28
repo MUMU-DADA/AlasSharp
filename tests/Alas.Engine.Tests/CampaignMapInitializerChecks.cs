@@ -118,7 +118,7 @@ internal static class CampaignMapInitializerChecks
         map = new MapDefinition("C2", "SP -- __\n-- -- --", ["B1"], ["B1"], [new SpawnWave(0)]);
         state = new CampaignState(map);
         camera = new Camera(new MapObservation([new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true))], new(2, 1), new(1, 0)));
-        foreach (var mode in new[] { SubmarineMode.DoNotUse, SubmarineMode.HuntOnly, SubmarineMode.EveryCombat })
+        foreach (var mode in Enum.GetValues<SubmarineMode>())
         {
             state = new CampaignState(map);
             ready = await CampaignMapInitializer.InitializeAsync(state, new() { Submarine = 1, SubmarineMode = mode }, new(1, 1, 0, 1),
@@ -127,11 +127,6 @@ internal static class CampaignMapInitializerChecks
                 !state[new(3, 1)].IsSubmarine && state.Rounds.Initialized && ready.Fleet1 == new Cell(1, 1),
                 "Initialized campaign lost the submarine assumption or marked it as an observation");
         }
-        foreach (var mode in new[] { SubmarineMode.BossOnly, SubmarineMode.HuntAndBoss })
-            await Rejects<NotSupportedException>(() => CampaignMapInitializer.InitializeAsync(new CampaignState(map),
-                new() { Submarine = 1, SubmarineMode = mode }, new(1, 1, 0, 1),
-                (_, _) => throw new InvalidOperationException("Unsupported combat modes must stop before creating a camera"), TimeSpan.FromSeconds(3)).AsTask());
-
         // Exercise the initializer's ambiguous-spawn path, with both complete and partial camera results.
         map = new MapDefinition("C2", "SP __ __\n-- -- --", ["A1"], ["A1"], [new SpawnWave(0)]);
         foreach (bool fail in new[] { false, true })

@@ -35,7 +35,8 @@ public sealed record CampaignCommandOptions(
     bool DoubleBook = false,
     MapAchievement MapAchievement = MapAchievement.NonStop,
     bool StageIncrease = false,
-    SubmarineMode SubmarineMode = SubmarineMode.DoNotUse);
+    SubmarineMode SubmarineMode = SubmarineMode.DoNotUse,
+    string SubmarineDistanceToBoss = "2_grid_to_boss");
 
 /// <summary>Translates CLI chapter arguments into typed C# task requests.</summary>
 public static class CampaignCommand
@@ -50,6 +51,7 @@ public static class CampaignCommand
         _ = options.EmotionMode.Name();
         _ = options.MapAchievement.Name();
         _ = options.SubmarineMode.Name();
+        _ = new CampaignConfiguration { SubmarineDistanceToBoss = options.SubmarineDistanceToBoss }.BossDistance();
         return options.Chapters.Select((chapter, index) => new TaskRequest(
             Id: $"campaign-{index + 1:D4}",
             Kind: "campaign_run",
@@ -60,6 +62,7 @@ public static class CampaignCommand
                 ["fleet2"] = options.Fleet2,
                 ["submarine"] = options.Submarine,
                 ["submarineMode"] = options.SubmarineMode.Name(),
+                ["submarineDistanceToBoss"] = options.SubmarineDistanceToBoss,
                 ["emotionMode"] = options.EmotionMode.Name(),
                 ["fleetLock"] = options.FleetLock,
                 ["clearMode"] = options.ClearMode,

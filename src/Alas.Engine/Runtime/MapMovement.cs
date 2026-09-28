@@ -205,7 +205,8 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         options ??= MapArrivalOptions.Default;
         bool expectedBoss = mazeWaitFor is null && (probeBoss || fight && expectation == MapCombatExpectation.Boss ||
             (fight && expectation != MapCombatExpectation.None || probeBouncing) && target.MayBoss);
-        options = options with { AllowCurrentMarker = !expectedBoss && (options.AllowCurrentMarker || configuration.WalkUseCurrentFleet) };
+        options = options with { ExpectedBoss = expectedBoss,
+            AllowCurrentMarker = !expectedBoss && (options.AllowCurrentMarker || configuration.WalkUseCurrentFleet) };
         if (state.Rounds.Initialized)
         {
             state.Rounds.RequireConfiguration(configuration);

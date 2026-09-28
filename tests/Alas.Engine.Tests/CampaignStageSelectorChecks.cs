@@ -283,15 +283,20 @@ internal static partial class CampaignStageSelectorChecks
             driver = new Driver { Chapter = 1 };
             var input = runInput.DeepClone().AsObject();
             input["clearMode"] = clear; input["doubleBook"] = book;
+            input["submarineMode"] = "boss_only"; input["submarineDistanceToBoss"] = "use_open_ocean_support";
             var preparation = new PreparationService { ClearMode = clear, DoubleBook = clear && book };
+            var observedFleet = new FleetService();
             result = await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = input },
                 new(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
                     Campaign: new CampaignService { ClearMode = clear, DoubleBook = clear && book },
-                    Stages: new Stages(driver), Fleets: new FleetService(), Entry: new EntryService(driver),
+                    Stages: new Stages(driver), Fleets: observedFleet, Entry: new EntryService(driver),
                     MapPreparation: preparation), default);
             Check(preparation.BookConfiguration is { } observed && observed.IsClearMode == clear &&
                 observed.UseDoubleBook == book && result.Evidence!["doubleBook"]!["enabled"]!.GetValue<bool>() == (clear && book),
                 "Task lost requested versus observed preparation/book state");
+            Check(observedFleet.Plan is { } fleet && fleet.IsClearMode == clear && fleet.SubmarineMode == SubmarineMode.BossOnly &&
+                result.Evidence!["submarineDistanceToBoss"]!.GetValue<string>() == "use_open_ocean_support",
+                "Fleet preparation lost observed clear mode or requested submarine settings");
         }
         driver = new Driver { Chapter = 1 };
         try

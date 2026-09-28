@@ -100,6 +100,17 @@ public sealed partial class GridRecognition(IImagePatchVision vision, AssetFiles
         return PredictSubmarineAsync(frame, new Projection(corners, rules.ImageScale), token);
     }
 
+    public ValueTask<bool> PredictSubmarineMoveAsync(ScreenFrame frame, GridCorners corners, CancellationToken token = default)
+    {
+        rules.Validate();
+        return PredictSubmarineMoveAsync(frame, new Projection(corners, rules.ImageScale), token);
+    }
+
+    private async ValueTask<bool> PredictSubmarineMoveAsync(ScreenFrame frame, Projection projection, CancellationToken token)
+        => await MeasureAsync(frame, projection.Crop(-0.5, -1, 0.5, 0), 60, 60,
+            PatchMeasure.SimilarityCount, PatchProcessing.ColorSimilarity, new(231, 138, 49), minimum: 221,
+            token: token) > 200;
+
     private async ValueTask<bool> PredictSubmarineAsync(ScreenFrame frame, Projection projection, CancellationToken token)
         => await MeasureAsync(frame, projection.Crop(-0.86, 0.08, -0.36, 0.58), 50, 50,
             PatchMeasure.Template, PatchProcessing.ColorSimilarity, new(255, 243, 156),

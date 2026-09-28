@@ -225,6 +225,19 @@ internal static class MapArrivalChecks
         }
 
         var clock = new TestClock();
+        foreach (var expectation in new[] { MapCombatExpectation.Boss, MapCombatExpectation.None, MapCombatExpectation.Enemy })
+        foreach (bool declaredBoss in new[] { false, true })
+        {
+            var contextState = State(); contextState[destination].IsEnemy = true; contextState[destination].MayBoss = declaredBoss;
+            var contextClock = new TestClock(); var contextCamera = new Camera(contextClock, [new(true, new(true, true))]);
+            bool? sawBoss = null;
+            var contextHandler = new Handler(contextCamera, contextClock) { Inspect = () => sawBoss = contextState.EncounterExpectedBoss };
+            var contextArrival = new MapArrivalCheck(contextCamera, contextState, contextCamera.InMapAsync, contextClock,
+                new Probe(MapEncounterKind.Combat), contextHandler);
+            await new MapMovement(contextState, new(), contextCamera, () => contextArrival).FightAsync(destination, expectation: expectation);
+            Check(sawBoss == (expectation == MapCombatExpectation.Boss || expectation != MapCombatExpectation.None && declaredBoss) &&
+                !contextState.EncounterExpectedBoss, "Combat expectation was inferred from the cell alone or leaked after the handler");
+        }
         foreach (var mode in Enum.GetValues<SubmarineMode>())
         foreach (bool combat in new[] { false, true })
         {
@@ -639,9 +652,11 @@ internal static class MapArrivalChecks
     {
         public int Calls { get; private set; }
         public bool SawSuspended { get; private set; }
+        public Action? Inspect { get; init; }
         public ValueTask<MapEncounterHandling> HandleAsync(MapEncounterKind encounter, CancellationToken token)
         {
             token.ThrowIfCancellationRequested(); Calls++; SawSuspended = camera.Suspended;
+            Inspect?.Invoke();
             clock.Advance(30);
             if (encounter != completed) return ValueTask.FromResult(new MapEncounterHandling(MapEncounterContinuation.Unhandled));
             CombatFlowResult? result = encounter == MapEncounterKind.Combat

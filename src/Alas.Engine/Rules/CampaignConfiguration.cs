@@ -80,6 +80,7 @@ public sealed record CampaignConfiguration
     public FleetFormation Fleet1Formation { get; init; } = FleetFormation.DoubleLine;
     public FleetFormation Fleet2Formation { get; init; } = FleetFormation.DoubleLine;
     public SubmarineMode SubmarineMode { get; init; } = SubmarineMode.DoNotUse;
+    public string SubmarineDistanceToBoss { get; init; } = "2_grid_to_boss";
     public bool UseFleetLock { get; init; } = true;
     public FleetHealthOptions Health { get; init; } = new();
     public FleetLevelOptions Levels { get; init; } = new();

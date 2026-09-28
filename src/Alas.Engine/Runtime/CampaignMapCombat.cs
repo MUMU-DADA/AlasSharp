@@ -8,7 +8,8 @@ public sealed partial class CampaignMapCombat(CampaignState state, CampaignConfi
     Func<int, CancellationToken, ValueTask>? switchFleet = null,
     Func<CancellationToken, ValueTask>? ensureEdges = null,
     Func<CancellationToken, ValueTask>? waitForInfoBar = null,
-    Func<Cell, Cell, CancellationToken, ValueTask<bool>>? moveMob = null)
+    Func<Cell, Cell, CancellationToken, ValueTask<bool>>? moveMob = null,
+    Func<CampaignState, Cell, CampaignConfiguration, CancellationToken, ValueTask<SubmarineMoveResult?>>? moveSubmarine = null)
 {
     public static readonly SourceFile Source = new("module/map/map.py",
         "187a5ee7d8fbde3c944681216fd2ac75f68036716b17db5a8bb43fdd42de5365");
@@ -231,7 +232,14 @@ public sealed partial class CampaignMapCombat(CampaignState state, CampaignConfi
             grid.MayBoss && grid.IsCaughtBySiren).Distinct().ToArray();
         if (candidates.Length == 0)
             candidates = state.Cells.Where(grid => grid.MayBoss && grid.IsEnemy && grid.IsAccessible).ToArray();
-        if (candidates.Length > 0) await FightAsync(Order(candidates)[0], token, MapCombatExpectation.Boss);
+        if (candidates.Length > 0)
+        {
+            // Native relocates against the first declared candidate before sorting the combat target.
+            if (configuration.RequiresBossRelocation() && state.Cells.Any(cell => cell.IsSubmarineSpawnPoint))
+                await (moveSubmarine ?? throw new NotSupportedException("Boss submarine relocation is unavailable"))
+                    (state, candidates[0].Location, configuration, token);
+            await FightAsync(Order(candidates)[0], token, MapCombatExpectation.Boss);
+        }
         return await ClearPotentialBossAsync(token);
     }
 

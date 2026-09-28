@@ -2,6 +2,20 @@ namespace Alas.Engine.Rules;
 
 public static class SubmarineRules
 {
+    public static bool RequiresBossRelocation(this CampaignConfiguration configuration)
+        => configuration.Submarine != 0 && configuration.SubmarineMode is SubmarineMode.BossOnly or SubmarineMode.HuntAndBoss;
+
+    public static int BossDistance(this CampaignConfiguration configuration) => configuration.SubmarineDistanceToBoss switch
+    {
+        "to_boss_position" => 0, "1_grid_to_boss" => 1, "2_grid_to_boss" => 2,
+        "use_open_ocean_support" => -1,
+        _ => throw new ArgumentException("Unknown submarine distance: " + configuration.SubmarineDistanceToBoss)
+    };
+
+    public static SubmarineMode CombatMode(this CampaignConfiguration configuration, bool expectedBoss)
+        => configuration.Submarine == 0 ? SubmarineMode.DoNotUse : configuration.RequiresBossRelocation()
+            ? expectedBoss ? SubmarineMode.EveryCombat : SubmarineMode.DoNotUse : configuration.SubmarineMode;
+
     public static string Name(this SubmarineMode mode) => mode switch
     {
         SubmarineMode.DoNotUse => "do_not_use", SubmarineMode.HuntOnly => "hunt_only",
@@ -17,8 +31,7 @@ public static class SubmarineRules
     public static void RequireSupported(CampaignConfiguration configuration)
     {
         _ = configuration.SubmarineMode.Name();
+        _ = configuration.BossDistance();
         if (configuration.Submarine < 0) throw new ArgumentException("Invalid submarine fleet");
-        if (configuration.Submarine != 0 && configuration.SubmarineMode is SubmarineMode.BossOnly or SubmarineMode.HuntAndBoss)
-            throw new NotSupportedException("Boss submarine modes require relocation and fleet-page standby preparation, which are not yet ported");
     }
 }

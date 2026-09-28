@@ -40,6 +40,7 @@ public sealed record MapArrivalOptions(TimeSpan ConfirmDelay, TimeSpan WalkTimeo
 {
     public TimeSpan? AfterCombatConfirmDelay { get; init; }
     public bool ExpectCombat { get; init; }
+    public bool ExpectedBoss { get; init; }
     public static MapArrivalOptions Default { get; } = new(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(20));
 }
 
@@ -185,7 +186,10 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                 }
                 if (handler is null) return Result(MapArrivalOutcome.MapInterrupted, encounter);
                 camera.Suspend();
-                var resolution = await handler.HandleAsync(encounter, token);
+                state.EncounterExpectedBoss = encounter == MapEncounterKind.Combat && options.ExpectedBoss;
+                MapEncounterHandling resolution;
+                try { resolution = await handler.HandleAsync(encounter, token); }
+                finally { state.EncounterExpectedBoss = false; }
                 if (!Enum.IsDefined(resolution.Continuation))
                     throw new InvalidDataException("Encounter handler returned an unknown continuation");
                 if (resolution.Continuation == MapEncounterContinuation.Unhandled)

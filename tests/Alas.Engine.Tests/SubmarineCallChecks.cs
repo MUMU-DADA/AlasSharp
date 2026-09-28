@@ -136,9 +136,7 @@ internal static partial class SubmarineCallChecks
         {
             var input = new JsonObject { ["campaign"] = "campaign_main/campaign_13_1", ["fleet1"] = 1,
                 ["fleet2"] = 0, ["submarine"] = fleet, ["submarineMode"] = mode.Name() };
-            if (fleet != 0 && mode is SubmarineMode.BossOnly or SubmarineMode.HuntAndBoss)
-                await Rejects<NotSupportedException>(() => { new CampaignRunTask().Validate(input); return Task.CompletedTask; });
-            else new CampaignRunTask().Validate(input);
+            new CampaignRunTask().Validate(input);
         }
         foreach (JsonNode? invalid in new JsonNode?[] { null, JsonValue.Create("invalid") })
             await Rejects<ArgumentException>(() => { new CampaignRunTask().Validate(new()

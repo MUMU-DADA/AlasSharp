@@ -34,6 +34,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     private readonly IntervalTimer _automationSet;
     private readonly IntervalTimer _submarineClick;
     private readonly List<CombatSubmarineCall> _submarineCalls = [];
+    private readonly List<SubmarineMovement> _submarineMovements = [];
     private readonly List<CombatHealthPreparation> _combatHealth = [];
     private readonly RetirementHandler _retirement;
     private readonly CampaignInterruptions _interruptions;
@@ -177,12 +178,15 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         StageEntranceKind entrances = StageEntranceKind.Normal, Func<CancellationToken, ValueTask>? refocusBoss = null)
     {
         var mobMovement = new CampaignMobMovement(Driver, camera);
+        var submarineMovement = new SubmarineMovement(Driver, camera,
+            new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions()), () => Driver.Frame?.Sequence ?? 0);
+        _submarineMovements.Add(submarineMovement);
         return new(camera.State, configuration, CreateMapCombatMovement(camera, configuration, entrances, refocusBoss),
             new MapScanner(camera.State, camera, Driver.Clock),
             waitEmotion: (fleet, token) => RequireEmotion(configuration).WaitAsync(fleet, token, configuration.IsDoubleBook),
             switchFleet: CreateFleetSwitcher(camera, configuration).SwitchAsync,
             ensureEdges: token => camera.EnsureEdgesAsync(skipFirstUpdate: true, token), waitForInfoBar: EnsureNoMapInfoBarAsync,
-            moveMob: mobMovement.MoveAsync);
+            moveMob: mobMovement.MoveAsync, moveSubmarine: submarineMovement.MoveNearBossAsync);
     }
     public CampaignExecution CreateInMapCampaignExecution(CampaignRule rule,
         CampaignConfiguration configuration, CancellationToken token = default)
@@ -264,7 +268,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
                 () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No battle loading frame"),
                 configuration.IsDoubleBook) : null;
         var submarine = new CombatSubmarineCall(Driver, () => Driver.Frame?.Sequence ?? 0,
-            configuration.Submarine == 0 ? SubmarineMode.DoNotUse : configuration.SubmarineMode, _submarineClick);
+            configuration.CombatMode(state.EncounterExpectedBoss), _submarineClick);
         _submarineCalls.Add(submarine);
         return CreateCombatFlow(entrances, preparation, emotion,
             state.Rule is { } rule ? token => rule.AllowExperienceAsync(Driver, token) : null, submarine);
@@ -338,6 +342,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         _device.Actions.Clear();
         _combatHealth.Clear();
         _submarineCalls.Clear();
+        _submarineMovements.Clear();
         _submarineClick.Clear();
         _fleetSwitchers.Clear();
         _emotion = null;
@@ -408,6 +413,13 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             await File.WriteAllTextAsync(Path.Combine(directory, submarineCallsFile),
                 JsonSerializer.Serialize(_submarineCalls.Select(call => call.Evidence), TaskQueue.Json));
         }
+        string? submarineMovesFile = null;
+        var moves = _submarineMovements.SelectMany(movement => movement.Evidence).ToArray();
+        if (moves.Length > 0)
+        {
+            submarineMovesFile = "submarine-moves.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, submarineMovesFile), JsonSerializer.Serialize(moves, TaskQueue.Json));
+        }
         long? sequence = null;
         if (Driver.Frame is { } frame)
         {
@@ -416,12 +428,13 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             hash = Convert.ToHexStringLower(SHA256.HashData(frame.Png.Span));
             sequence = frame.Sequence;
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile, submarineCallsFile);
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile, submarineCallsFile, submarineMovesFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
         string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null, string? MapPreparationFile = null,
-        string? FleetSwitchFile = null, string? MapStopFile = null, string? SubmarineFile = null, string? SubmarineCallsFile = null);
+        string? FleetSwitchFile = null, string? MapStopFile = null, string? SubmarineFile = null, string? SubmarineCallsFile = null,
+        string? SubmarineMovesFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

@@ -15,14 +15,15 @@ public sealed class CampaignRunTask : ITaskRunner
     {
         TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
             "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement",
-            "clearMode", "doubleBook", "mapAchievement", "stageIncrease", "ambushEvade", "submarineMode");
+            "clearMode", "doubleBook", "mapAchievement", "stageIncrease", "ambushEvade", "submarineMode", "submarineDistanceToBoss");
         var id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign run requires a compiled campaign rule");
         var rule = RuleCatalog.Create(id);
         if (rule.StageName is null)
             throw new NotSupportedException("Compiled campaign has no selectable stage");
         var plan = Plan(input);
-        SubmarineRules.RequireSupported(rule.Configure(new() { Submarine = plan.Submarine, SubmarineMode = SubmarineModeInput(input!) }));
+        SubmarineRules.RequireSupported(rule.Configure(new() { Submarine = plan.Submarine,
+            SubmarineMode = SubmarineModeInput(input!), SubmarineDistanceToBoss = SubmarineDistanceInput(input!) }));
         _ = EmotionInput.Mode(input!);
         if (input.ContainsKey("fleetLock") && input["fleetLock"] is null)
             throw new ArgumentException("Fleet lock setting cannot be null");
@@ -61,6 +62,7 @@ public sealed class CampaignRunTask : ITaskRunner
             Fleet2 = requestedPlan.Second,
             Submarine = requestedPlan.Submarine,
             SubmarineMode = SubmarineModeInput(request.Input),
+            SubmarineDistanceToBoss = SubmarineDistanceInput(request.Input),
             Fleet1Formation = Formation(request.Input, "fleet1Formation"),
             Fleet2Formation = Formation(request.Input, "fleet2Formation"),
             FleetOrder = Order(request.Input),
@@ -81,7 +83,9 @@ public sealed class CampaignRunTask : ITaskRunner
         var plan = requestedPlan with
         {
             Second = effectiveConfiguration.Fleet2,
-            Submarine = effectiveConfiguration.Submarine
+            Submarine = effectiveConfiguration.Submarine,
+            SubmarineMode = effectiveConfiguration.SubmarineMode,
+            IsClearMode = effectiveConfiguration.IsClearMode
         };
         plan.Validate();
         var configuration = effectiveConfiguration;
@@ -104,6 +108,7 @@ public sealed class CampaignRunTask : ITaskRunner
         evidence["stageIncrease"] = configuration.StageIncrease;
         evidence["ambushEvade"] = configuration.AmbushEvade;
         evidence["submarineMode"] = configuration.SubmarineMode.Name();
+        evidence["submarineDistanceToBoss"] = configuration.SubmarineDistanceToBoss;
         string phase = "achievement_binding";
         try
         {
@@ -149,6 +154,8 @@ public sealed class CampaignRunTask : ITaskRunner
                 IsDoubleBook = book.Enabled ?? throw new InvalidDataException("Double-book state was not confirmed")
             };
             phase = "fleet_setup";
+            plan = plan with { IsClearMode = configuration.IsClearMode };
+            evidence["fleetPlan"] = JsonSerializer.SerializeToNode(plan, TaskQueue.Json);
             var setup = await fleets.ConfigureFleetAsync(plan, context.Popups, token);
             evidence["fleetSetup"] = JsonSerializer.SerializeToNode(setup, TaskQueue.Json);
             configuration = configuration with { Submarine = setup.EffectiveSubmarine };
@@ -169,6 +176,9 @@ public sealed class CampaignRunTask : ITaskRunner
             throw new TaskEvidenceException(phase, evidence, error);
         }
     }
+
+    private static string SubmarineDistanceInput(JsonObject input) => input.TryGetPropertyValue("submarineDistanceToBoss", out var value)
+        ? value?.GetValue<string>() ?? throw new ArgumentException("submarineDistanceToBoss cannot be null") : "2_grid_to_boss";
 
     private static SubmarineMode SubmarineModeInput(JsonObject input) => SubmarineRules.Parse(
         input.TryGetPropertyValue("submarineMode", out var value)

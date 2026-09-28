@@ -8,6 +8,43 @@ namespace Alas.Engine.Tests;
 
 internal static partial class MapViewChecks
 {
+    internal static async Task SubmarineMoveCameraAsync(string upstream)
+    {
+        var frame = new ScreenFrame(1, DateTimeOffset.UnixEpoch, ReadOnlyMemory<byte>.Empty);
+        foreach (int count in new[] { 200, 201 })
+        {
+            var clock = new FakeClock(); var patches = new MovePatches(count);
+            var geometry = Regular(new(262, 227.5));
+            var source = new Source(i => new(frame with { Sequence = i + 1 }, geometry), clock);
+            var camera = new MapCamera(Map(), new(5, 4), new(frame, geometry), source, new Input(),
+                new(patches, new AssetFiles(Path.Combine(upstream, "assets")), GameServer.Cn, new()),
+                new(new FixedEvidence(null)), new() { Predict = false, Optimize = false }, clock: clock, gridInput: new TapInput());
+            await camera.PrepareSubmarineTapAsync(new(5, 4));
+            await camera.TapCellAsync(new(5, 4));
+            bool refused = false;
+            try { await camera.PredictSubmarineMoveAsync(new(5, 4)); } catch (MapImageRefreshRequiredException) { refused = true; }
+            Check(refused, "Submarine arrow accepted a pre-tap frame");
+            await camera.RefreshImageAsync();
+            Check(await camera.PredictSubmarineMoveAsync(new(5, 4)) == (count > 200), "Submarine arrow threshold drifted");
+            patches.Stale = true; refused = false;
+            try { await camera.PredictSubmarineMoveAsync(new(5, 4)); } catch (InvalidDataException) { refused = true; }
+            Check(refused, "Submarine arrow accepted stale CV evidence");
+        }
+    }
+
+    private sealed class MovePatches(int count) : IImagePatchVision
+    {
+        public bool Stale { get; set; }
+        public ValueTask<ImagePatchObservation> MeasurePatchAsync(ScreenFrame frame, ImagePatchRequest request, CancellationToken token = default)
+        {
+            bool arrow = request.Color == new PixelColor(231, 138, 49);
+            if (arrow) Check(request.Width == 60 && request.Height == 60 && request.MinimumSimilarity == 221 &&
+                request.Measure == PatchMeasure.SimilarityCount && request.Processing == PatchProcessing.ColorSimilarity,
+                "Submarine arrow crop processing drifted");
+            return ValueTask.FromResult(new ImagePatchObservation(Stale ? frame.Sequence - 1 : frame.Sequence, arrow ? count : 0));
+        }
+    }
+
     internal static async Task SubmarineCameraAsync(string upstream, JsonArray sights)
     {
         var frame = new ScreenFrame(1, DateTimeOffset.UnixEpoch, ReadOnlyMemory<byte>.Empty);

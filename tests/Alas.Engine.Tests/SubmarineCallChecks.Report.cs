@@ -10,22 +10,21 @@ internal static partial class SubmarineCallChecks
 {
     private static async Task ReportsAsync(string python, string upstream, string artifacts)
     {
-        await using (var session = new EngineSession(new("unused-adb", "offline", GameServer.Cn, Path.Combine(upstream, "assets"), python)))
-            foreach (var mode in new[] { SubmarineMode.BossOnly, SubmarineMode.HuntAndBoss })
-                await Rejects<NotSupportedException>(() => session.ResumeInMapAsync(RuleCatalog.Create("campaign_main/campaign_13_1"),
-                    new() { Submarine = 1, SubmarineMode = mode, EmotionMode = CampaignEmotionMode.Ignore }, default).AsTask());
         foreach (int fleet in new[] { 0, 1 })
-        foreach (var mode in new[] { SubmarineMode.DoNotUse, SubmarineMode.HuntOnly, SubmarineMode.EveryCombat })
+        foreach (var mode in Enum.GetValues<SubmarineMode>())
+        foreach (bool boss in new[] { false, true })
         {
             var options = new EngineSessionOptions("unused-adb", "offline", GameServer.Cn, Path.Combine(upstream, "assets"), python);
-            var result = await new TaskQueue([new CallProbe(fleet, mode)]).RunAsync(
+            var result = await new TaskQueue([new CallProbe(fleet, mode, boss)]).RunAsync(
                 [new("call", "call_probe"), new("next", "call_probe")], options, new(Path.Combine(artifacts, "reports")));
             Check(result.Tasks.All(t => t.Outcome == TaskOutcome.Succeeded), "Session construction probe failed");
             var paths = Directory.GetFiles(result.Directory, "submarine-calls.json", SearchOption.AllDirectories);
             Check(paths.Length == 1 && Complete(), "Session call evidence was missing or leaked across task boundaries");
             string original = await File.ReadAllTextAsync(paths[0]);
             var saved = JsonSerializer.Deserialize<SubmarineCallEvidence[]>(original, TaskQueue.Json)!;
-            Check(saved is [{ State: "not_started", Attempts.Count: 0 }] && saved[0].Mode == (fleet == 0 ? SubmarineMode.DoNotUse : mode),
+            var expected = fleet == 0 ? SubmarineMode.DoNotUse : mode is SubmarineMode.BossOnly or SubmarineMode.HuntAndBoss
+                ? boss ? SubmarineMode.EveryCombat : SubmarineMode.DoNotUse : mode;
+            Check(saved is [{ State: "not_started", Attempts.Count: 0 }] && saved[0].Mode == expected,
                 "Session ignored the actual fleet or submarine configuration");
             File.Delete(paths[0]); Check(!Complete(), "Missing call file passed report validation");
             // Validator fixtures are synthetic: they exercise the artifact contract, not device observations.
@@ -55,7 +54,7 @@ internal static partial class SubmarineCallChecks
         Console.WriteLine("Actual EngineSession factory/queue: mode wiring, disabled fleet and next-task isolation passed; synthetic report corruption checks passed without device I/O.");
     }
 
-    private sealed class CallProbe(int fleet, SubmarineMode mode) : ITaskRunner
+    private sealed class CallProbe(int fleet, SubmarineMode mode, bool boss) : ITaskRunner
     {
         public string Kind => "call_probe";
         public bool RequiresActions => false;
@@ -66,7 +65,7 @@ internal static partial class SubmarineCallChecks
             if (request.Id != "next")
             {
                 var session = context.Campaign as EngineSession ?? throw new InvalidOperationException("Actual session required");
-                _ = session.CreateCampaignCombatFlow(new CampaignState(RuleCatalog.Create("campaign_main/campaign_13_1").Map),
+                _ = session.CreateCampaignCombatFlow(new CampaignState(RuleCatalog.Create("campaign_main/campaign_13_1").Map) { EncounterExpectedBoss = boss },
                     new() { Submarine = fleet, SubmarineMode = mode, EmotionMode = CampaignEmotionMode.Ignore });
             }
             return ValueTask.FromResult(new TaskResult(request.Id, Kind, TaskOutcome.Succeeded, "factory_probe"));

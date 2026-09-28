@@ -146,6 +146,16 @@ public sealed class RunReport
             if (calls is null || calls.Length == 0) throw new InvalidDataException("缺少潜艇呼叫记录");
             foreach (var call in calls) ValidateSubmarineCall(call);
         }
+        if (boundary.SubmarineMovesFile is { } movesFile)
+        {
+            if (movesFile != "submarine-moves.json") throw new InvalidDataException("潜艇移动工件必须位于当前任务目录");
+            string movesPath = Path.Combine(taskRoot, movesFile);
+            if ((File.GetAttributes(movesPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("潜艇移动工件必须是普通文件");
+            var moves = JsonSerializer.Deserialize<SubmarineMoveEvidence[]>(ArtifactReader.ReadAllText(movesPath), TaskQueue.Json);
+            if (moves is null || moves.Length == 0) throw new InvalidDataException("缺少潜艇移动记录");
+            foreach (var move in moves) ValidateSubmarineMove(move);
+        }
         if (boundary.MapStopFile is { } stopFile)
         {
             if (stopFile != "map-stop.json") throw new InvalidDataException("成就停止工件必须位于当前任务目录");
@@ -253,6 +263,22 @@ public sealed class RunReport
             _ => false
         };
         if (!consistent) throw new InvalidDataException("潜艇定位结果与观察来源不一致");
+    }
+
+    internal static void ValidateSubmarineMove(SubmarineMoveEvidence? move)
+    {
+        if (move is null || new[] { move.Boss, move.Origin, move.Target }.Any(cell => cell.Column < 1 || cell.Row < 1) ||
+            move.Phase is not ("opening" or "entering" or "selecting" or "confirming" or "cancelling" or "hiding_zone" or "closing" or "completed") ||
+            move.Attempts < 0 || move.SelectionFrame is <= 0 || move.ReturnedFrame is <= 0 ||
+            (move.SelectionFrame is null) != (move.Moved is null) ||
+            move.Phase is "opening" or "entering" && (move.Attempts != 0 || move.SelectionFrame is not null) ||
+            move.Phase is "selecting" && move.SelectionFrame is not null ||
+            move.Phase is "confirming" or "cancelling" or "hiding_zone" or "closing" or "completed" &&
+                (move.Attempts == 0 || move.SelectionFrame is null) ||
+            move.Phase == "confirming" && move.Moved != true || move.Phase == "cancelling" && move.Moved != false ||
+            move.Phase == "completed" && (move.ReturnedFrame is null || move.ReturnedFrame <= move.SelectionFrame) ||
+            move.Phase != "completed" && move.ReturnedFrame is not null)
+            throw new InvalidDataException("潜艇移动缺少一致的选择、阶段或返回帧记录");
     }
 
     private static void ValidateSubmarineCall(SubmarineCallEvidence? call)

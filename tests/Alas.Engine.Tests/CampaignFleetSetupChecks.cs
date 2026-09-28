@@ -49,6 +49,20 @@ internal static class CampaignFleetSetupChecks
         await Throws<ArgumentOutOfRangeException>(() => new Probe().Setup.ApplyAsync(new(0, 2, 0)).AsTask());
         await Throws<ArgumentOutOfRangeException>(() => new Probe().Setup.ApplyAsync(new(1, 7, 0)).AsTask());
         await Throws<ArgumentOutOfRangeException>(() => new Probe().Setup.ApplyAsync(new(1, 0, 3)).AsTask());
+        foreach (bool hard in new[] { false, true })
+        foreach (bool clear in new[] { false, true })
+        foreach (bool available in new[] { false, true })
+        {
+            probe = new Probe();
+            probe.State(FleetSlot.First).Hard = hard; probe.State(FleetSlot.First).Satisfied = hard;
+            probe.State(FleetSlot.Submarine).Allowed = available;
+            result = await probe.Setup.ApplyAsync(new(1, 0, 1, SubmarineMode.BossOnly, clear));
+            Check(result.SubmarineStandby == (!available ? null : clear ? "confirmed" : "unavailable_clear_mode"),
+                "Fleet setup lost standby confirmation or native locked-setting assumption");
+            Check(probe.Trace.Contains("standby") == (available && clear), "Standby bypassed effective submarine availability");
+            if (!hard && available && clear) Check(probe.Trace.IndexOf("standby") > probe.Trace.IndexOf("FLEET_1_CHOOSE"),
+                "Standby opened before fleet configuration finished");
+        }
         Console.WriteLine("Fleet setup: normal, second fleet, submarine, hard restrictions and invalid plans passed offline.");
     }
 
@@ -90,6 +104,12 @@ internal static class CampaignFleetSetupChecks
             CancellationToken token = default)
         {
             token.ThrowIfCancellationRequested();
+            if (asset == UiAssets.Map.FLEET_PREPARATION_CHECK)
+            {
+                Check(offset == ButtonOffset.Expand(20, 80), "Sidebar anchor offset changed");
+                Trace.Add("standby");
+                return ValueTask.FromResult(true);
+            }
             Check(offset == ButtonOffset.Bounds(-20, -80, 20, 5), "Fleet asset search offset changed");
             var state = _states.FirstOrDefault(s => s.Slot.Clear == asset || s.Slot.Advice == asset);
             return ValueTask.FromResult(state is not null && (state.Slot.Clear == asset ? state.Allowed : state.Hard));
@@ -112,7 +132,10 @@ internal static class CampaignFleetSetupChecks
         {
             token.ThrowIfCancellationRequested();
             double value;
-            if (request.Measure == PatchMeasure.RowPeakCount)
+            if (request.Color is { } color && color == new PixelColor(99, 235, 255)) value = request.Area.Y == 377 ? 51 : 0;
+            else if (request.Color == new PixelColor(255, 255, 255)) value = 101;
+            else if (request.Color == new PixelColor(156, 255, 82)) value = request.Area == ButtonArea(UiAssets.Handler.AUTO_SEARCH_SET_SUB_STANDBY).Area ? 21 : 0;
+            else if (request.Measure == PatchMeasure.RowPeakCount)
             {
                 var state = _states.Single(s => ButtonArea(s.Slot.HardSatisfied).Area == request.Area);
                 Check(request.Color == new PixelColor(249, 199, 0) && request.PeakHeight == 180 &&

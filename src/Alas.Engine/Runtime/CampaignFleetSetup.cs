@@ -4,16 +4,21 @@ using Alas.Engine.Rules;
 
 namespace Alas.Engine.Runtime;
 
-public sealed record FleetPlan(int First, int Second, int Submarine)
+public sealed record FleetPlan(int First, int Second, int Submarine,
+    SubmarineMode SubmarineMode = SubmarineMode.DoNotUse, bool IsClearMode = false)
 {
     public void Validate()
     {
         if (First is < 1 or > 6 || Second is < 0 or > 6 || Submarine is < 0 or > 2)
             throw new ArgumentOutOfRangeException(nameof(FleetPlan), "Fleet indices exceed upstream dropdown ranges");
+        _ = SubmarineMode.Name();
     }
 }
 
-public sealed record FleetSetupResult(bool HardMode, bool Changed, bool SubmarineAvailable, int EffectiveSubmarine);
+public sealed record FleetSetupResult(bool HardMode, bool Changed, bool SubmarineAvailable, int EffectiveSubmarine)
+{
+    public string? SubmarineStandby { get; init; }
+}
 
 public interface ICampaignFleetPreparationService
 {
@@ -36,6 +41,10 @@ public sealed class CampaignFleetSetup(IUiDriver ui, IImagePatchVision vision,
         var submarine = new CampaignFleetOperator(ui, vision, currentFrame, FleetSlot.Submarine, popups);
         await second.InitializeAsync(token);
         await submarine.InitializeAsync(token);
+        if (await first.AllowedAsync(token))
+            foreach (var setting in CampaignAutoSearchSettings.Settings.Take(4)) ui.LoadOffset(setting, UiAssets.Map.FLEET_1_CLEAR);
+        if (await submarine.AllowedAsync(token))
+            foreach (var setting in CampaignAutoSearchSettings.Settings.Skip(4)) ui.LoadOffset(setting, UiAssets.Map.SUBMARINE_CLEAR);
 
         bool? h1 = await first.HardSatisfiedAsync(token);
         bool? h2 = await second.HardSatisfiedAsync(token);
@@ -51,7 +60,7 @@ public sealed class CampaignFleetSetup(IUiDriver ui, IImagePatchVision vision,
         {
             bool available = await submarine.AllowedAsync(token);
             if (available && plan.Submarine == 0) await submarine.ClearAsync(token);
-            return new(true, false, available, available ? plan.Submarine : 0);
+            return await FinishAsync(new(true, false, available, available ? plan.Submarine : 0));
         }
 
         // Cache availability before the second fleet dropdown can cover the submarine controls.
@@ -83,6 +92,15 @@ public sealed class CampaignFleetSetup(IUiDriver ui, IImagePatchVision vision,
             await first.EnsureAsync(plan.First, token);
         }
         if (submarineAvailable && plan.Submarine == 0) await submarine.ClearAsync(token);
-        return new(false, true, submarineAvailable, submarineAvailable ? plan.Submarine : 0);
+        return await FinishAsync(new(false, true, submarineAvailable, submarineAvailable ? plan.Submarine : 0));
+
+        async ValueTask<FleetSetupResult> FinishAsync(FleetSetupResult result)
+        {
+            if (result.EffectiveSubmarine == 0 || plan.SubmarineMode is not (SubmarineMode.BossOnly or SubmarineMode.HuntAndBoss)) return result;
+            // Native skips locked role settings before clear mode. Record the assumption, never a confirmation.
+            if (!plan.IsClearMode) return result with { SubmarineStandby = "unavailable_clear_mode" };
+            await new CampaignAutoSearchSettings(ui, vision, currentFrame).EnsureSubmarineStandbyAsync(token);
+            return result with { SubmarineStandby = "confirmed" };
+        }
     }
 }

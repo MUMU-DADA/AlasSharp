@@ -517,6 +517,11 @@ try
         await SubmarineCallChecks.RunAsync(Path.GetFullPath(callPython), Path.GetFullPath(callUpstream), Path.GetFullPath(callArtifacts));
         return 0;
     }
+    if (args is ["--submarine-move", var movePython, var moveUpstream, var moveArtifacts])
+    {
+        await SubmarineMoveChecks.RunAsync(Path.GetFullPath(movePython), Path.GetFullPath(moveUpstream), Path.GetFullPath(moveArtifacts));
+        return 0;
+    }
     if (args is ["--map-initializer"])
     {
         await CampaignMapInitializerChecks.RunAsync();

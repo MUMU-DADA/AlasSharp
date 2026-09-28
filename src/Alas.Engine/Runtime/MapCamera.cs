@@ -56,7 +56,7 @@ public sealed record MapCameraRules
 
 /// <summary>C# scan-camera implementation. Detection and pixel gestures are injected I/O boundaries.
 /// A failed action/update invalidates this instance; uncertain physical state must be relocalized.</summary>
-public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
+public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera, ISubmarineMoveCamera
 {
     public static readonly SourceFile DirectionSource = new("module/map/utils.py",
         "74b9fb3440cf3000336a6a056419b35ea03b8735c935849f6b85c1f0830eaf94");
@@ -299,6 +299,43 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera
             var grid = Grid() ?? throw new MapGeometryException("Submarine spawn remains outside the localized view");
             bool present = await _recognition.PredictSubmarineAsync(View.Frame, grid.Corners, ct);
             return new SubmarineObservation(destination, Position, FrameSequence, present);
+        }, token, requiresFreshImage: true);
+    }
+
+    public ValueTask<bool> PredictSubmarineAsync(Cell destination, CancellationToken token = default)
+        => PredictSubmarine(destination, move: false, token);
+
+    public ValueTask<bool> PredictSubmarineMoveAsync(Cell destination, CancellationToken token = default)
+        => PredictSubmarine(destination, move: true, token);
+
+    public async ValueTask PrepareSubmarineTapAsync(Cell destination, CancellationToken token = default)
+    {
+        if (!_map.Contains(destination)) throw new ArgumentOutOfRangeException(nameof(destination));
+        await RunAsync(async ct =>
+        {
+            var sight = _map.Map.CameraSight;
+            int x = destination.Column - Position.Column, y = destination.Row - Position.Row;
+            await FocusCoreAsync(new(Position.Column + x - Math.Clamp(x, sight.Left, sight.Right),
+                Position.Row + y - Math.Clamp(y, 0, sight.Bottom)), ct);
+            var offset = View.Geometry.CenterOffset;
+            if (Math.Abs(offset.X - .5) > _rules.CenterTolerance || Math.Abs(offset.Y - .5) > _rules.CenterTolerance)
+                await SwipeCoreAsync(default, ct);
+            return true;
+        }, token, requiresFreshImage: true);
+        await PrepareTapAsync(destination, token);
+    }
+
+    private ValueTask<bool> PredictSubmarine(Cell destination, bool move, CancellationToken token)
+    {
+        if (!_map.Contains(destination)) throw new ArgumentOutOfRangeException(nameof(destination));
+        return RunAsync(ct =>
+        {
+            var local = new ViewCell(checked(destination.Column - Position.Column + View.Geometry.Center.X),
+                checked(destination.Row - Position.Row + View.Geometry.Center.Y));
+            var grid = View.Geometry.Grids.FirstOrDefault(g => g.LocalCell == local)
+                ?? throw new MapGeometryException("Submarine destination is outside the localized view");
+            return move ? _recognition.PredictSubmarineMoveAsync(View.Frame, grid.Corners, ct)
+                : _recognition.PredictSubmarineAsync(View.Frame, grid.Corners, ct);
         }, token, requiresFreshImage: true);
     }
 
