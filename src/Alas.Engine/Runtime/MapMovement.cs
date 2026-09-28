@@ -21,11 +21,11 @@ public sealed record MapMoveResult(MapMoveOutcome Outcome, MapArrivalResult Arri
 internal enum MapAction { Move, Reposition, Fight, Mystery, ProbeBoss, ProbeBouncing, Ammo, Visit }
 
 /// <summary>Commits a fleet move only after fresh visual arrival and complete interaction accounting.</summary>
-public sealed class MapMovement(CampaignState state, CampaignConfiguration configuration,
+public sealed partial class MapMovement(CampaignState state, CampaignConfiguration configuration,
     IMapArrivalCamera camera, Func<MapArrivalCheck> createArrival,
     Func<CancellationToken, ValueTask>? waitForInfoBar = null,
     Func<CancellationToken, ValueTask<CampaignWithdrawalEvidence>>? withdraw = null,
-    MapMovableScan? movableScan = null, MapScanner? carrierScanner = null)
+    MapMovableScan? movableScan = null, MapScanner? carrierScanner = null, Func<CancellationToken, ValueTask>? recoverWalk = null)
 {
     internal void Invalidate()
     {
@@ -35,10 +35,10 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
 
     public ValueTask<MapMoveResult> MoveAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
-        => MoveCoreAsync(destination, MapAction.Move, options, token);
+        => MoveWithRecoveryAsync(destination, MapAction.Move, options, token);
 
     internal ValueTask<MapMoveResult> VisitAsync(Cell destination, CancellationToken token = default)
-        => MoveCoreAsync(destination, MapAction.Visit, null, token, expectation: MapCombatExpectation.None);
+        => MoveWithRecoveryAsync(destination, MapAction.Visit, null, token, MapCombatExpectation.None);
 
     /// <summary>Native raw goto: handle observed interactions, but supply confirmation alone does not replenish inventory.</summary>
     internal ValueTask<MapMoveResult> RepositionAsync(Cell destination, CancellationToken token = default)
@@ -46,27 +46,27 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         var grid = state[destination];
         var action = grid.IsEnemy || grid.IsSiren || grid.IsBoss || grid.IsFortress || grid.IsCaughtBySiren
             ? MapAction.Fight : grid.IsMystery ? MapAction.Mystery : MapAction.Reposition;
-        return MoveCoreAsync(destination, action, null, token, expectation: MapCombatExpectation.None);
+        return MoveWithRecoveryAsync(destination, action, null, token, MapCombatExpectation.None);
     }
 
     public ValueTask<MapMoveResult> FightAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default, MapCombatExpectation? expectation = null)
-        => MoveCoreAsync(destination, MapAction.Fight, options, token, expectation: expectation);
+        => MoveWithRecoveryAsync(destination, MapAction.Fight, options, token, expectation);
 
     public ValueTask<MapMoveResult> CollectMysteryAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
-        => MoveCoreAsync(destination, MapAction.Mystery, options, token);
+        => MoveWithRecoveryAsync(destination, MapAction.Mystery, options, token);
 
     public ValueTask<MapMoveResult> ProbeBossAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
-        => MoveCoreAsync(destination, MapAction.ProbeBoss, options, token);
+        => MoveWithRecoveryAsync(destination, MapAction.ProbeBoss, options, token);
 
     public ValueTask<MapMoveResult> ProbeBouncingAsync(Cell destination, CancellationToken token = default)
-        => MoveCoreAsync(destination, MapAction.ProbeBouncing, null, token);
+        => MoveWithRecoveryAsync(destination, MapAction.ProbeBouncing, null, token);
 
     public ValueTask<MapMoveResult> CollectAmmoAsync(Cell destination, MapArrivalOptions? options = null,
         CancellationToken token = default)
-        => MoveCoreAsync(destination, MapAction.Ammo, options, token);
+        => MoveWithRecoveryAsync(destination, MapAction.Ammo, options, token);
 
     /// <summary>Native goto's maze waypoint prelude. Raw neighbor taps do not recurse into another maze wait.</summary>
     public async ValueTask<MapMoveResult?> WaitForMazeAsync(Cell waypoint, CancellationToken token = default)
@@ -136,7 +136,7 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         if (!Enum.IsDefined(expectation.Value)) throw new ArgumentOutOfRangeException(nameof(expectation));
         // Native only redispatches an empty result for expected == 'combat'.
         // Boss/siren/fortress calls and raw maze detours retain their own contracts.
-        bool decoyCandidate = fight && configuration.HasDecoyEnemy &&
+        bool decoyCandidate = (fight || visit) && configuration.HasDecoyEnemy &&
             expectation == MapCombatExpectation.Enemy && mazeWaitFor is null;
         bool mystery = action == MapAction.Mystery;
         bool probeBoss = action == MapAction.ProbeBoss;
@@ -203,8 +203,8 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         // Native removes the enemy animation wait after combat but keeps mechanism and base delays.
         var before = dynamic ? MovableEnemySnapshot.Capture(state) : null;
         options ??= MapArrivalOptions.Default;
-        bool expectedBoss = mazeWaitFor is null && (probeBoss || fight && expectation == MapCombatExpectation.Boss ||
-            (fight && expectation != MapCombatExpectation.None || probeBouncing) && target.MayBoss);
+        bool expectedBoss = mazeWaitFor is null && (probeBoss || (fight || visit) && expectation == MapCombatExpectation.Boss ||
+            ((fight || visit) && expectation != MapCombatExpectation.None || probeBouncing) && target.MayBoss);
         options = options with { ExpectedBoss = expectedBoss,
             AllowCurrentMarker = !expectedBoss && (options.AllowCurrentMarker || configuration.WalkUseCurrentFleet) };
         if (state.Rounds.Initialized)
@@ -229,6 +229,16 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
         MapArrivalResult result;
         try { result = await createArrival().TapAndCheckAsync(destination, options, token); }
         catch { state.MovementInvalidated = true; camera.Invalidate(); throw; }
+        if (result.Outcome == MapArrivalOutcome.WalkOutOfStep)
+        {
+            int entry = RecordWalkInterruption(origin, destination, result);
+            try { CommitInterruptedInteractions(target, result, expectation.Value, fight || visit || probeBoss || probeBouncing, mystery || visit); }
+            catch { Invalidate(); throw; }
+            // Native maze waiting calls raw _goto outside goto's MapWalkError recovery block.
+            if (mazeWaitFor is not null) Invalidate();
+            throw new MapWalkException(entry, probeBoss ? MapCombatExpectation.Boss :
+                fight || probeBouncing || visit ? expectation.Value : MapCombatExpectation.None);
+        }
         if (result.Outcome != MapArrivalOutcome.MarkerConfirmed) state.MovementInvalidated = true;
         if (result.Outcome == MapArrivalOutcome.Unconfirmed) return new(MapMoveOutcome.Unconfirmed, result);
         if (result.Outcome == MapArrivalOutcome.MapInterrupted) return new(MapMoveOutcome.Interrupted, result);
@@ -290,8 +300,8 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
             bool battled = (fight || visit || probeBoss || probeBouncing) && combatConfirmed;
             // A maze detour is native _goto(expected=''). Native attributes its
             // unplanned battle to sirens only when movable sirens are enabled.
-            bool siren = battled && (visit || mazeWaitFor is not null || fight && expectation == MapCombatExpectation.None
-                ? configuration.HasMovableEnemy : fight && expectation == MapCombatExpectation.Siren);
+            bool siren = battled && (mazeWaitFor is not null || (visit || fight) && expectation == MapCombatExpectation.None
+                ? configuration.HasMovableEnemy : (fight || visit) && expectation == MapCombatExpectation.Siren);
             bool cleared = battled && !siren && target.MayEnemy;
             int mysteryCount = checked(state.MysteryCount + result.AmmoNotificationFrames.Length + result.Carriers.Length +
                 ((mystery || visit) && state.Rule?.CountMysteryItems != false ? result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) : 0));

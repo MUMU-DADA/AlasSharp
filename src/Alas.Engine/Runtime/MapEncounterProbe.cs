@@ -4,7 +4,7 @@ using Alas.Engine.Rules;
 
 namespace Alas.Engine.Runtime;
 
-public enum MapEncounterKind { None, Combat, AirRaid, Ambush, ItemPopup, UnknownPage, AmmoNotification, CarrierSpawn }
+public enum MapEncounterKind { None, Combat, AirRaid, Ambush, ItemPopup, UnknownPage, AmmoNotification, CarrierSpawn, WalkOutOfStep }
 
 public interface IMapEncounterProbe
 {
@@ -14,7 +14,7 @@ public interface IMapEncounterProbe
 
 /// <summary>Read-only upstream interaction priority; CV returns colors and template matches, not decisions.</summary>
 public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe? ammo = null, bool mysteryHasCarrier = false,
-    MapOverlayRules? overlays = null) : IMapEncounterProbe
+    MapOverlayRules? overlays = null, MapWalkStep? walkStep = null) : IMapEncounterProbe
 {
     private readonly MapOverlayRules _overlays = (overlays ?? new()).Validate();
     public static readonly SourceFile CombatSource = new("module/combat/combat.py",
@@ -55,6 +55,7 @@ public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe
         if (ammo is not null && await ammo.ObserveAsync(frameSequence, token))
             return MapEncounterKind.AmmoNotification;
         if (mysteryHasCarrier && await MapEnemySearching.AppearsAsync(ui, token)) return MapEncounterKind.CarrierSpawn;
+        if (walkStep is not null && await walkStep.ObserveAsync(frameSequence, token)) return MapEncounterKind.WalkOutOfStep;
         return MapEncounterKind.None;
     }
 

@@ -47,6 +47,8 @@ run.json 原子替换，报告只展示当前尝试；断点跳过项指向以�
 
 BOSS 潜艇移动另存 `submarine-moves.json`，任务边界清空。每次保留 BOSS/起点/目标、尝试次数、最后阶段、选择帧及返回帧；失败不会补成完成。只有完成关闭策略并获取新相机帧才记录 `completed`，返回帧必须晚于选择帧；选点已在原位时走取消，也会记录其完整返回过程。报告校验固定文件名、普通文件、阶段与帧序；缺失/损坏工件使证据不完整。舰队页待命的 `confirmed` 和 `unavailable_clear_mode` 在任务结果中分开记录。完整失败工件只证明过程可追踪，不证明移动成功或战役通关。
 
+地图移动识别步数不足后，`walk-recoveries.json` 保存当前舰队、原位置/目标、拒绝帧及此前交互、恢复帧、单步路径、已完成步数和阶段。`observed` / `recovering` / `walking` 保留失败停点；`redispatched` 表示已提交单步后遇到回合变化，`completed` 仅表示该恢复路径结束。报告校验帧序、路径末端和完成步数，缺失或损坏文件不计完整；会话在任务边界清空。信息条消失、恢复完成和工件完整均不证明战役通关。
+
 ## 服务与桌面组合
 
 Server 只运行控制 API 和预构建 Web UI 托管，不再转发旧 Core CLI。使用 `Alas.Engine.Cli --help` 查看新命令。Server 参数 `--root`、`--engine-root`、`--instance-store`、`--assets`、`--workspace`、`--artifacts`、`--ui-root` 和 `--port` 指定布局；旧上游仓库和 Python 宿主参数已移除。

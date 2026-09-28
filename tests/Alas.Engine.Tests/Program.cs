@@ -172,6 +172,17 @@ try
         await CombatFlowChecks.RunAsync();
         return 0;
     }
+    if (args is ["--walk-recovery"])
+    {
+        await MapWalkRecoveryChecks.RunAsync();
+        return 0;
+    }
+    if (args is ["--walk-recovery", var walkPython, var walkUpstream, var walkArtifacts])
+    {
+        await MapWalkRecoveryChecks.RunAsync();
+        await MapWalkRecoveryChecks.NativeAsync(Path.GetFullPath(walkPython), Path.GetFullPath(walkUpstream), Path.GetFullPath(walkArtifacts));
+        return 0;
+    }
     if (args is ["--maps", var mapsPython, var mapsUpstream, var mapsArtifacts])
     {
         string folder = Path.GetFullPath(mapsArtifacts);

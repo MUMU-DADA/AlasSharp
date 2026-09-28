@@ -38,6 +38,8 @@ mapAchievement（默认 non_stop）接受 non_stop、100_percent_clear、map_3_s
 
 第十三章调用公共 `ClearFilterEnemyAsync`，由 C# 按规模/类型顺序与保留数量选敌；强/弱敌偏好和移动普通敌人的 cost_2 分支在引擎内处理。13-3 保留 Siren 优先及其原生配置门控，13-4 在第三战钩子先补给再选敌。任务 JSON 不装载过滤器的执行步骤，未编译章节仍明确拒绝。
 
+已迁移规则启用舰队步数限制时，公共移动会识别上游步数不足提示、等待消失并恢复相机，然后重算单步路径。恢复途中仍保持原战斗预期；重复拒绝、恢复失败或取消不会伪造到达，回合变化停止旧路径。`walk-recoveries.json` 保存拒绝前交互与恢复阶段，任务层不解释恢复步骤或另建地图特例。
+
 CLI `Alas.Engine.Cli run --queue <文件>` 读取任务数组；控制 API 的 queue.tasks 使用同一数组：
 
 ```json

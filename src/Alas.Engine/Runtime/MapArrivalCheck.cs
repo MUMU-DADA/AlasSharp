@@ -18,7 +18,7 @@ public interface IMapArrivalCamera
     void Invalidate();
 }
 
-public enum MapArrivalOutcome { MarkerConfirmed, MapInterrupted, Unconfirmed, StageReturned }
+public enum MapArrivalOutcome { MarkerConfirmed, MapInterrupted, Unconfirmed, StageReturned, WalkOutOfStep }
 public sealed record MapArrivalResult(MapArrivalOutcome Outcome, long FrameSequence, int FreshFrames,
     MapEncounterKind Encounter = MapEncounterKind.None)
 {
@@ -40,6 +40,7 @@ public sealed record MapArrivalOptions(TimeSpan ConfirmDelay, TimeSpan WalkTimeo
 {
     public TimeSpan? AfterCombatConfirmDelay { get; init; }
     public bool ExpectCombat { get; init; }
+    public bool ExpectMystery { get; init; }
     public bool ExpectedBoss { get; init; }
     public static MapArrivalOptions Default { get; } = new(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(20));
 }
@@ -72,7 +73,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
             options.ConfirmDelay >= options.WalkTimeout || options.WalkTimeout.TotalMilliseconds > int.MaxValue ||
             options.AfterCombatConfirmDelay is { } afterCombat && (afterCombat < TimeSpan.Zero || afterCombat >= options.WalkTimeout))
             throw new ArgumentOutOfRangeException(nameof(options));
-        if (options.ExpectCombat && options.ConfirmDelay + TimeSpan.FromSeconds(1) >= options.WalkTimeout)
+        if ((options.ExpectCombat || options.ExpectMystery) && options.ConfirmDelay + TimeSpan.FromSeconds(1) >= options.WalkTimeout)
             throw new ArgumentOutOfRangeException(nameof(options), "Unexpected-arrival confirmation must fit the walk deadline");
         if (Interlocked.Exchange(ref _started, 1) != 0)
             throw new InvalidOperationException("An arrival check belongs to one grid tap");
@@ -87,6 +88,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
         long sequence = camera.FrameSequence;
         int frames = 0;
         bool confirmed = false;
+        bool stepInterrupted = false;
         bool supplyClickCompleted = false;
         var handled = ImmutableArray.CreateBuilder<MapEncounterKind>();
         var combats = ImmutableArray.CreateBuilder<CombatFlowResult>();
@@ -149,7 +151,9 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                             if (present)
                             {
                                 if (!confirm.Started) { confirm.Reset(); unexpected.Reset(); }
-                                if (confirm.Reached() && (!options.ExpectCombat || combats.Count > 0 || unexpected.Reached()))
+                                bool expected = (!options.ExpectCombat || combats.Count > 0) &&
+                                    (!options.ExpectMystery || handled.Contains(MapEncounterKind.ItemPopup) || ammoFrames.Count > 0 || carriers.Count > 0);
+                                if (confirm.Reached() && (expected || unexpected.Reached()))
                                 {
                                     if (portal) await camera.AnchorAtAsync(portalExit!.Value, linked.Token);
                                     var arrivedCell = portalExit ?? destination;
@@ -183,6 +187,13 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                     retryTaps++;
                     ambushedRetry.Clear();
                     continue;
+                }
+                if (encounter == MapEncounterKind.WalkOutOfStep)
+                {
+                    // The original tap has not established arrival. Only the movement recovery may resume this camera.
+                    camera.Suspend();
+                    stepInterrupted = true;
+                    return Result(MapArrivalOutcome.WalkOutOfStep, encounter);
                 }
                 if (handler is null) return Result(MapArrivalOutcome.MapInterrupted, encounter);
                 camera.Suspend();
@@ -244,6 +255,6 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                 }
             }
         }
-        finally { if (!confirmed) camera.Invalidate(); }
+        finally { if (!confirmed && !stepInterrupted) camera.Invalidate(); }
     }
 }

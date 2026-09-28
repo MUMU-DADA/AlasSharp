@@ -156,6 +156,16 @@ public sealed class RunReport
             if (moves is null || moves.Length == 0) throw new InvalidDataException("缺少潜艇移动记录");
             foreach (var move in moves) ValidateSubmarineMove(move);
         }
+        if (boundary.WalkRecoveriesFile is { } walkFile)
+        {
+            if (walkFile != "walk-recoveries.json") throw new InvalidDataException("移动恢复工件必须位于当前任务目录");
+            string walkPath = Path.Combine(taskRoot, walkFile);
+            if ((File.GetAttributes(walkPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("移动恢复工件必须是普通文件");
+            var walks = JsonSerializer.Deserialize<WalkRecoveryEvidence[]>(ArtifactReader.ReadAllText(walkPath), TaskQueue.Json);
+            if (walks is null || walks.Length == 0) throw new InvalidDataException("缺少移动恢复记录");
+            foreach (var walk in walks) ValidateWalkRecovery(walk);
+        }
         if (boundary.MapStopFile is { } stopFile)
         {
             if (stopFile != "map-stop.json") throw new InvalidDataException("成就停止工件必须位于当前任务目录");
@@ -263,6 +273,22 @@ public sealed class RunReport
             _ => false
         };
         if (!consistent) throw new InvalidDataException("潜艇定位结果与观察来源不一致");
+    }
+
+    internal static void ValidateWalkRecovery(WalkRecoveryEvidence? walk)
+    {
+        if (walk is null || walk.Fleet is not (1 or 2) || walk.Origin.Column < 1 || walk.Origin.Row < 1 ||
+            walk.Target.Column < 1 || walk.Target.Row < 1 || walk.Steps.IsDefault ||
+            walk.Steps.Any(cell => cell.Column < 1 || cell.Row < 1) ||
+            walk.Phase is not ("observed" or "recovering" or "walking" or "completed" or "redispatched") ||
+            walk.Interruption is not { Outcome: MapArrivalOutcome.WalkOutOfStep, Encounter: MapEncounterKind.WalkOutOfStep,
+                FreshFrames: > 0, FrameSequence: > 0 } ||
+            walk.CompletedSteps < 0 || walk.CompletedSteps > walk.Steps.Length ||
+            walk.Phase is "observed" or "recovering" && (!walk.Steps.IsEmpty || walk.RecoveredFrame is not null) ||
+            walk.Phase is "walking" or "completed" or "redispatched" &&
+                (walk.Steps.IsEmpty || walk.Steps[^1] != walk.Target || walk.RecoveredFrame is null || walk.RecoveredFrame <= walk.Interruption.FrameSequence) ||
+            walk.Phase == "completed" && walk.CompletedSteps != walk.Steps.Length)
+            throw new InvalidDataException("移动恢复缺少一致的中断、路径或帧记录");
     }
 
     internal static void ValidateSubmarineMove(SubmarineMoveEvidence? move)

@@ -35,6 +35,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     private readonly IntervalTimer _submarineClick;
     private readonly List<CombatSubmarineCall> _submarineCalls = [];
     private readonly List<SubmarineMovement> _submarineMovements = [];
+    private readonly List<MapMovement> _mapMovements = [];
     private readonly List<CombatHealthPreparation> _combatHealth = [];
     private readonly RetirementHandler _retirement;
     private readonly CampaignInterruptions _interruptions;
@@ -104,26 +105,37 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         Func<MapEncounterProbe, IMapEncounterHandler>? createHandler = null)
     {
         var probe = new MapEncounterProbe(Driver, configuration.HasAmbush, _ammoProbe, configuration.MysteryHasCarrier,
-            camera.State.Rule?.Overlays);
+            camera.State.Rule?.Overlays, configuration.HasFleetStep ? CreateWalkStep() : null);
         handler = createHandler?.Invoke(probe) ?? handler;
         return new(camera, camera.State, token => Driver.AppearsAsync(UiAssets.Handler.IN_MAP, token: token), Driver.Clock,
             probe, new MapAirRaidHandler(Driver, probe,
                 () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No air raid screenshot"), handler), recoverAfterCombat);
     }
     public MapMovement CreateMapMovement(MapCamera camera, CampaignConfiguration configuration)
-        => new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration), EnsureNoMapInfoBarAsync,
-            token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration), new MapScanner(camera.State, camera, Driver.Clock));
+        => TrackMovement(new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration), EnsureNoMapInfoBarAsync,
+            token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration), new MapScanner(camera.State, camera, Driver.Clock),
+            token => RecoverWalkAsync(camera, token)));
     public MapMovement CreateMapCombatMovement(MapCamera camera, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal, Func<CancellationToken, ValueTask>? refocusBoss = null)
     {
         // Keep story and urgent-commission timers across grid visits in this sortie.
         var recovery = new UiRecovery(Driver, _application, Pages, new());
-        return new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration,
+        return TrackMovement(new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration,
             recoverAfterCombat: new MapCombatRecovery(camera.State, camera,
                 refocusBoss ?? (token => camera.RefocusBossAsync(configuration.BossAppearRefocusSwipe, token)),
                 token => ReadFleetHealthAsync(camera.State, camera.State.FleetIndex, configuration, token)).RecoverAsync,
             createHandler: probe => CreateMapEncounterHandler(camera.State, configuration, entrances, probe, recovery)), EnsureNoMapInfoBarAsync,
-            token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration), new MapScanner(camera.State, camera, Driver.Clock));
+            token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration), new MapScanner(camera.State, camera, Driver.Clock),
+            token => RecoverWalkAsync(camera, token)));
+    }
+    private MapMovement TrackMovement(MapMovement movement) { _mapMovements.Add(movement); return movement; }
+    private MapWalkStep CreateWalkStep() => new(Driver,
+        new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No walk screenshot"), _vision, _assets, Driver.Server),
+        _vision, _assets, () => Driver.Frame ?? throw new InvalidOperationException("No walk screenshot"));
+    private async ValueTask RecoverWalkAsync(MapCamera camera, CancellationToken token)
+    {
+        await CreateWalkStep().ClearAsync(token);
+        await camera.RecoverWalkAsync(token);
     }
     private MapMovableScan CreateMovableScan(MapCamera camera, CampaignConfiguration configuration)
         => new(camera.State, configuration, new MapScanner(camera.State, camera, Driver.Clock), camera.HasEnemyTemplates);
@@ -343,6 +355,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         _combatHealth.Clear();
         _submarineCalls.Clear();
         _submarineMovements.Clear();
+        _mapMovements.Clear();
         _submarineClick.Clear();
         _fleetSwitchers.Clear();
         _emotion = null;
@@ -421,6 +434,13 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             await File.WriteAllTextAsync(Path.Combine(directory, submarineMovesFile), JsonSerializer.Serialize(moves, TaskQueue.Json));
         }
         long? sequence = null;
+        string? walkRecoveriesFile = null;
+        var walks = _mapMovements.SelectMany(movement => movement.WalkRecoveries).ToArray();
+        if (walks.Length > 0)
+        {
+            walkRecoveriesFile = "walk-recoveries.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, walkRecoveriesFile), JsonSerializer.Serialize(walks, TaskQueue.Json));
+        }
         if (Driver.Frame is { } frame)
         {
             image = failed ? "failure.png" : "frame.png";
@@ -428,13 +448,13 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             hash = Convert.ToHexStringLower(SHA256.HashData(frame.Png.Span));
             sequence = frame.Sequence;
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile, submarineCallsFile, submarineMovesFile);
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile, submarineCallsFile, submarineMovesFile, walkRecoveriesFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
         string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null, string? MapPreparationFile = null,
         string? FleetSwitchFile = null, string? MapStopFile = null, string? SubmarineFile = null, string? SubmarineCallsFile = null,
-        string? SubmarineMovesFile = null);
+        string? SubmarineMovesFile = null, string? WalkRecoveriesFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

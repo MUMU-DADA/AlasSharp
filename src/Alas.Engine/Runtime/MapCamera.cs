@@ -367,6 +367,18 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera, ISubmarineMov
             return true;
         }, token, allowSuspended: true);
 
+    /// <summary>Native goto's MapWalkError branch: predict the fresh view, then recover its edges.</summary>
+    public async ValueTask RecoverWalkAsync(CancellationToken token = default)
+        => await RunAsync(async ct =>
+        {
+            _camera.UpdateImage(await _source.CaptureImageAsync(ct));
+            _observation = await _recognition.ObserveAsync(View, Position, token: ct);
+            await EnsureEdgesCoreAsync(true, false, null, new(3, 2), ct);
+            _requiresRefresh = false;
+            Volatile.Write(ref _suspended, false);
+            return true;
+        }, token, allowSuspended: true);
+
     /// <summary>Native handle_boss_appear_refocus: localize, recover by the rule's preset only on geometry failure,
     /// find the edges, then focus the camera position saved before the boss animation.</summary>
     public async ValueTask RefocusBossAsync((int X, int Y)? preset, CancellationToken token = default)
