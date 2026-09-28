@@ -15,9 +15,7 @@ public sealed class CampaignExecution
     {
         _rule = rule;
         var state = new CampaignState(rule.Map, rule);
-        var effective = Configure(rule, configuration, state);
-        state.AutoSearch = effective.AutoSearch;
-        Context = new CampaignContext(state, effective, operations);
+        Context = new CampaignContext(state, Configure(rule, configuration, state), operations);
     }
 
     public CampaignExecution(CampaignRule rule, CampaignConfiguration configuration,
@@ -27,7 +25,6 @@ public sealed class CampaignExecution
         _rule = rule;
         var state = new CampaignState(rule.Map, rule);
         var effective = Configure(rule, configuration, state);
-        state.AutoSearch = effective.AutoSearch;
         Context = new CampaignContext(state, effective, createOperations(state, effective));
     }
 

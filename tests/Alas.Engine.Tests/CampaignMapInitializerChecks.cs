@@ -72,32 +72,65 @@ internal static class CampaignMapInitializerChecks
         catch (InvalidDataException) { rejected = true; }
         Check(rejected && !state.IsMapInitialized, "Inconsistent displayed/logical fleet identity initialized the map");
 
-        map = new MapDefinition("B1", "SP --", ["A1"], [], [new SpawnWave(0, Enemy: 1)], swipePreset: new(1, 0));
-        state = new CampaignState(map);
-        camera = new Camera(new MapObservation(
-            [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true))], new(1, 1), new(0, 0)));
-        factories = 0;
-        ready = await CampaignMapInitializer.InitializeAsync(state, new(), new(1, 1, 0, 1), (_, _) =>
+        foreach (SwipePreset? preset in new SwipePreset?[] { null, new(0, 0), new(1, 0), new(-1, 2), new(0, -2) })
         {
-            factories++;
-            return ValueTask.FromResult<IMapScanCamera>(camera);
-        }, TimeSpan.FromSeconds(3));
-        Check(factories == 1 && camera.Preset == new ViewCell(1, 0) && ready.Fleet1 == new Cell(1, 1),
-            "Compiled map swipe preset was not passed to the camera edge scan");
-
-        map = new MapDefinition("B1", "SP __", ["B1"], ["A1"], [new SpawnWave(0, Enemy: 1)], name: "submarine");
-        state = new CampaignState(map);
-        camera = new Camera(new MapObservation(
-            [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true)),
-             new(new(1, 0), new(IsSubmarine: true))], new(2, 1), new(1, 0)));
-        ready = await CampaignMapInitializer.InitializeAsync(state,
-            new CampaignConfiguration { Submarine = 1 }, new(1, 1, 0, 1), (_, _) =>
+            map = new MapDefinition("B1", "SP --", ["A1"], ["A1"], [new SpawnWave(0)], swipePreset: preset);
+            state = new CampaignState(map);
+            camera = new Camera(new MapObservation(
+                [new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true))], new(1, 1), new(0, 0)));
+            factories = 0;
+            ready = await CampaignMapInitializer.InitializeAsync(state, new(), new(1, 1, 0, 1), (_, _) =>
             {
+                factories++;
                 return ValueTask.FromResult<IMapScanCamera>(camera);
             }, TimeSpan.FromSeconds(3));
-        Check(state.SubmarineLocation == new Cell(2, 1) && state[new Cell(2, 1)].IsSubmarine,
-            "Observed submarine location was not retained by map initialization");
-        Console.WriteLine("Campaign map initialization: scan, fleet localization, topology, swipe preset and submarine state passed offline; no device entry or strategy handling.");
+            ViewCell? expected = preset is { } value ? new(value.X, value.Y) : null;
+            Check(factories == 1 && camera.Preset == expected && ready.Fleet1 == new Cell(1, 1) &&
+                camera.Calls.SequenceEqual(["edges", "focus", "center", "observe"]),
+                "Compiled map swipe preset was not passed to the camera edge scan");
+        }
+
+        IMapScanCamera basic = new BasicCamera();
+        await basic.EnsureEdgesAsync(true, null, default);
+        await Rejects<NotSupportedException>(() => basic.EnsureEdgesAsync(true, new ViewCell(1, 0), default).AsTask());
+        Check(((BasicCamera)basic).Edges == 1, "Unsupported preset was silently discarded by the camera interface");
+
+        map = new MapDefinition("B1", "SP --", ["A1"], ["A1"], [new SpawnWave(0)], swipePreset: new(1, 0));
+        foreach (Exception failure in new Exception[] { new IOException("synthetic swipe failure"),
+            new InvalidDataException("synthetic stale frame"), new TimeoutException("synthetic edge timeout"),
+            new OperationCanceledException("synthetic cancellation") })
+        {
+            state = new CampaignState(map);
+            camera = new Camera(new([], new(1, 1), default)) { EdgeFailure = failure };
+            Exception? actual = null;
+            try
+            {
+                await CampaignMapInitializer.InitializeAsync(state, new(), new(1, 1, 0, 1),
+                    (_, _) => ValueTask.FromResult<IMapScanCamera>(camera), TimeSpan.FromSeconds(3));
+            }
+            catch (Exception error) { actual = error; }
+            Check(ReferenceEquals(actual, failure) && camera.Scans == 0 && state.Fleet1Location is null &&
+                camera.Calls.SequenceEqual(["edges"]), "Failed initial swipe continued fleet scanning or masked its failure");
+        }
+
+        Console.WriteLine("Campaign map initialization: scan, fleet localization, topology and swipe preset passed offline; no device entry or strategy handling.");
+    }
+
+    private static async Task Rejects<T>(Func<Task> action) where T : Exception
+    {
+        try { await action(); } catch (T) { return; }
+        throw new InvalidOperationException("Expected " + typeof(T).Name);
+    }
+
+    private sealed class BasicCamera : IMapScanCamera
+    {
+        public Cell Position => new(1, 1);
+        public int Edges { get; private set; }
+        public ValueTask EnsureEdgesAsync(bool skipFirstUpdate, CancellationToken token)
+        { token.ThrowIfCancellationRequested(); Edges++; return ValueTask.CompletedTask; }
+        public ValueTask FocusAsync(Cell destination, CancellationToken token) => throw new InvalidOperationException();
+        public ValueTask CenterAsync(double tolerance, CancellationToken token) => throw new InvalidOperationException();
+        public ValueTask<MapObservation> ObserveAsync(MapScanMode mode, CancellationToken token) => throw new InvalidOperationException();
     }
 
     private sealed class Camera(MapObservation observation) : IMapScanCamera
@@ -106,19 +139,26 @@ internal static class CampaignMapInitializerChecks
         public int Edges { get; private set; }
         public int Scans { get; private set; }
         public ViewCell? Preset { get; private set; }
+        public List<string> Calls { get; } = [];
+        public Exception? EdgeFailure { get; init; }
         public ValueTask FocusAsync(Cell destination, CancellationToken token)
-        { token.ThrowIfCancellationRequested(); Position = destination; return ValueTask.CompletedTask; }
+        { token.ThrowIfCancellationRequested(); Calls.Add("focus"); Position = destination; return ValueTask.CompletedTask; }
         public ValueTask CenterAsync(double tolerance, CancellationToken token)
-        { token.ThrowIfCancellationRequested(); return ValueTask.CompletedTask; }
+        { token.ThrowIfCancellationRequested(); Calls.Add("center"); return ValueTask.CompletedTask; }
         public ValueTask<MapObservation> ObserveAsync(MapScanMode mode, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
+            Calls.Add("observe");
             Scans++;
             return ValueTask.FromResult(observation with { Camera = Position, Mode = mode });
         }
         public ValueTask EnsureEdgesAsync(bool skipFirstUpdate, CancellationToken token)
         { token.ThrowIfCancellationRequested(); Edges++; return ValueTask.CompletedTask; }
         public ValueTask EnsureEdgesAsync(bool skipFirstUpdate, ViewCell? preset, CancellationToken token)
-        { token.ThrowIfCancellationRequested(); Preset = preset; Edges++; return ValueTask.CompletedTask; }
+        {
+            token.ThrowIfCancellationRequested(); Calls.Add("edges"); Preset = preset; Edges++;
+            if (EdgeFailure is not null) throw EdgeFailure;
+            return ValueTask.CompletedTask;
+        }
     }
 }

@@ -13,7 +13,8 @@ public interface IMapScanCamera
     ValueTask EnsureEdgesAsync(bool skipFirstUpdate, CancellationToken token);
     /// <summary>Runs the native edge scan with an optional map-declared first swipe.</summary>
     ValueTask EnsureEdgesAsync(bool skipFirstUpdate, ViewCell? preset, CancellationToken token)
-        => EnsureEdgesAsync(skipFirstUpdate, token);
+        => preset is null ? EnsureEdgesAsync(skipFirstUpdate, token) :
+            throw new NotSupportedException("This camera cannot apply a declared initial swipe preset");
 }
 
 /// <summary>Scan evidence only. Exhausting cameras or finding all spawns is not a sortie result.</summary>

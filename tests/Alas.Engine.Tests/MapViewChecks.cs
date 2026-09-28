@@ -443,6 +443,28 @@ internal static partial class MapViewChecks
         Check(input.Gestures.Count == trace.Count, "Control gesture count");
         for (int i = 0; i < trace.Count; i++)
         { Near(input.Gestures[i].Pixels, trace[i]!["pixels"]!, "Pixel gesture"); Check(input.Gestures[i].Box == ReadArea(trace[i]!["box"]!), "Gesture bounds"); }
+        if (edge && !B(s["reverse"]!))
+        {
+            // Exercise the same interface overload used by CampaignMapInitializer
+            // against native traces, including absent and zero-valued presets.
+            var bridgeClock = new FakeClock();
+            var bridgeSource = new Source(i => new(frame with { Sequence = i + 1 },
+                Regular(center, new(Left: i >= 1, Lower: i >= 2))), bridgeClock);
+            var bridgeInput = new Input();
+            IMapScanCamera bridge = new MapCamera(Map(), new(5, 4), old, bridgeSource, bridgeInput, recognition,
+                new(new FixedEvidence(null)), new() { Predict = false, Optimize = false,
+                    EdgeCorner = s["corner"]!.GetValue<string>() }, clock: bridgeClock,
+                random: new DirectionRandom(D(s["draw"]!)));
+            await bridge.EnsureEdgesAsync(B(s["skip"]!), s["preset"] is { } first ? Cell(first) : null, default);
+            Check(bridgeSource.Captures == I(expected["captures"]!) && bridgeInput.Gestures.Count == trace.Count,
+                "Initializer camera interface changed native capture or gesture count");
+            Equal(Pair(bridge.Position.Column, bridge.Position.Row), expected["position"], "Initializer camera interface final position");
+            for (int i = 0; i < trace.Count; i++)
+            {
+                Near(bridgeInput.Gestures[i].Pixels, trace[i]!["pixels"]!, "Initializer preset gesture");
+                Check(bridgeInput.Gestures[i].Box == ReadArea(trace[i]!["box"]!), "Initializer preset gesture bounds");
+            }
+        }
         var observation = await camera.ObserveAsync(MapScanMode.Init, default);
         Check(observation.Camera == camera.Position && observation.LocalCenter == camera.View.Geometry.Center &&
             observation.Mode == MapScanMode.Init && observation.Cells.Count == 9, "Camera did not feed geometry into observation");

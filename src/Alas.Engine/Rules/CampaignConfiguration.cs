@@ -57,9 +57,6 @@ public sealed record CampaignConfiguration
     public bool HasSiren { get; init; }
     public bool HasMystery { get; init; } = true;
     public bool IsClearMode { get; init; }
-    /// <summary>Observed map mode. This is supplied by Engine map preparation and is
-    /// never a chapter rule or a Python execution switch.</summary>
-    public bool AutoSearch { get; init; }
     public bool UseClearMode { get; init; } = true;
     public bool UseDoubleBook { get; init; }
     public bool IsDoubleBook { get; init; }
