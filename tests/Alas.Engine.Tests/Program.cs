@@ -177,6 +177,11 @@ try
         await MapWalkRecoveryChecks.RunAsync();
         return 0;
     }
+    if (args is ["--walk-popups", var popupPython, var popupUpstream, var popupArtifacts])
+    {
+        await MapWalkPopupChecks.RunAsync(Path.GetFullPath(popupPython), Path.GetFullPath(popupUpstream), Path.GetFullPath(popupArtifacts));
+        return 0;
+    }
     if (args is ["--walk-recovery", var walkPython, var walkUpstream, var walkArtifacts])
     {
         await MapWalkRecoveryChecks.RunAsync();

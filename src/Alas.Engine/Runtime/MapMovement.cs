@@ -244,8 +244,10 @@ public sealed partial class MapMovement(CampaignState state, CampaignConfigurati
         if (result.Outcome == MapArrivalOutcome.MapInterrupted) return new(MapMoveOutcome.Interrupted, result);
         // Some compiled campaigns dismiss items but return false from
         // handle_mystery_items. Keep the observation without treating it as a mystery.
+        // Animation/popup clicks are retained as observations, never as combat or mystery outcomes.
         var encounters = result.HandledEncounters.Where(kind =>
-            kind != MapEncounterKind.ItemPopup || state.Rule?.CountMysteryItems != false).ToArray();
+            kind is not (MapEncounterKind.CatAttack or MapEncounterKind.GuildPopup) &&
+            (kind != MapEncounterKind.ItemPopup || state.Rule?.CountMysteryItems != false)).ToArray();
         if (result.Outcome == MapArrivalOutcome.StageReturned)
             return new((fight || visit || probeBoss || probeBouncing) && result.AmbushesConfirmed &&
                 result.Combats is [ { Return: CombatReturn.InStage, Rank.IsWinningRank: true } ] &&
@@ -262,7 +264,7 @@ public sealed partial class MapMovement(CampaignState state, CampaignConfigurati
         {
             MapAction.Visit => (result.Combats.IsEmpty || combatConfirmed) &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == result.Combats.Length &&
-                result.HandledEncounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.ItemPopup or
+                encounters.All(kind => kind is MapEncounterKind.Combat or MapEncounterKind.ItemPopup or
                     MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn),
             MapAction.Move or MapAction.Reposition or MapAction.Ammo => encounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn) &&
                 result.Combats.IsEmpty,
@@ -272,7 +274,7 @@ public sealed partial class MapMovement(CampaignState state, CampaignConfigurati
             MapAction.Mystery => result.Combats.IsEmpty &&
                 (result.HandledEncounters.Contains(MapEncounterKind.ItemPopup) || !result.AmmoNotificationFrames.IsEmpty || !result.Carriers.IsEmpty) &&
                 result.HandledEncounters.Count(kind => kind == MapEncounterKind.ItemPopup) <= 1 &&
-                result.HandledEncounters.All(kind => kind is MapEncounterKind.ItemPopup or MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn),
+                encounters.All(kind => kind is MapEncounterKind.ItemPopup or MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn),
             MapAction.ProbeBoss or MapAction.ProbeBouncing => (result.Combats.IsEmpty &&
                     encounters.All(kind => kind is MapEncounterKind.AirRaid or MapEncounterKind.Ambush or MapEncounterKind.CarrierSpawn) ||
                 combatConfirmed && result.HandledEncounters.Count(kind => kind == MapEncounterKind.Combat) == 1 &&

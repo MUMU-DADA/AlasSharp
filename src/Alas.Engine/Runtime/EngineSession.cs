@@ -33,6 +33,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     private readonly ImageStability _imageStability;
     private readonly IntervalTimer _automationSet;
     private readonly IntervalTimer _submarineClick;
+    private readonly IntervalTimer _mapCatAttack;
     private readonly List<CombatSubmarineCall> _submarineCalls = [];
     private readonly List<SubmarineMovement> _submarineMovements = [];
     private readonly List<MapMovement> _mapMovements = [];
@@ -62,6 +63,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         _imageStability = new(Driver, _vision, () => Driver.Frame ?? throw new InvalidOperationException("No stability screenshot"));
         _automationSet = new(Driver.Clock, 1);
         _submarineClick = new(Driver.Clock, 1);
+        _mapCatAttack = new(Driver.Clock, 2);
         var visuals = new UiVisuals(_vision, () => Driver.Frame ?? throw new InvalidOperationException("No dock screenshot"));
         var info = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No dock screenshot"),
             _vision, _assets, Driver.Server);
@@ -104,12 +106,15 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         IMapEncounterHandler? handler = null, Func<CancellationToken, ValueTask>? recoverAfterCombat = null,
         Func<MapEncounterProbe, IMapEncounterHandler>? createHandler = null)
     {
+        var popups = new MapWalkPopups(Driver, new UiVisuals(_vision,
+            () => Driver.Frame ?? throw new InvalidOperationException("No map popup screenshot")),
+            () => Driver.Frame?.Sequence ?? 0, configuration.IsClearMode, _mapCatAttack);
         var probe = new MapEncounterProbe(Driver, configuration.HasAmbush, _ammoProbe, configuration.MysteryHasCarrier,
-            camera.State.Rule?.Overlays, configuration.HasFleetStep ? CreateWalkStep() : null);
+            camera.State.Rule?.Overlays, configuration.HasFleetStep ? CreateWalkStep() : null, popups);
         handler = createHandler?.Invoke(probe) ?? handler;
         return new(camera, camera.State, token => Driver.AppearsAsync(UiAssets.Handler.IN_MAP, token: token), Driver.Clock,
             probe, new MapAirRaidHandler(Driver, probe,
-                () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No air raid screenshot"), handler), recoverAfterCombat);
+                () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No air raid screenshot"), handler), recoverAfterCombat, popups);
     }
     public MapMovement CreateMapMovement(MapCamera camera, CampaignConfiguration configuration)
         => TrackMovement(new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration), EnsureNoMapInfoBarAsync,
@@ -357,6 +362,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         _submarineMovements.Clear();
         _mapMovements.Clear();
         _submarineClick.Clear();
+        _mapCatAttack.Clear();
         _fleetSwitchers.Clear();
         _emotion = null;
         _emotionConfiguration = null;

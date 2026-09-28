@@ -73,10 +73,13 @@ public sealed class UiRecovery : IUiRecovery, IPopupHandler, IStoryHandler
     public ValueTask<bool> UrgentCommissionAsync(CancellationToken token) => UrgentCommission(token);
     public async ValueTask<bool> GuildPopupCancelAsync(CancellationToken token)
     {
-        if (!await Appear(GUILD_POPUP_CONFIRM, Popup, 0, token) || !await Appear(GUILD_POPUP_CANCEL, Popup, 2, token)) return false;
+        if (!await GuildPopupAppearsAsync(_driver, token)) return false;
         await _driver.ClickAsync(GUILD_POPUP_CANCEL, token);
         return true;
     }
+    internal static async ValueTask<bool> GuildPopupAppearsAsync(IUiDriver driver, CancellationToken token)
+        => await driver.AppearsAsync(GUILD_POPUP_CONFIRM, Popup, token: token) &&
+            await driver.AppearsAsync(GUILD_POPUP_CANCEL, Popup, 2, token: token);
     private async ValueTask<bool> UrgentCommission(CancellationToken token)
     {
         bool appeared = await Appear(GET_MISSION, ButtonOffset.Vertical(_options.ButtonOffset), 2, token);

@@ -58,7 +58,7 @@ public interface IMapEncounterHandler
 public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState state,
     Func<CancellationToken, ValueTask<bool>> isInMap, TimeProvider? clock = null,
     IMapEncounterProbe? probe = null, IMapEncounterHandler? handler = null,
-    Func<CancellationToken, ValueTask>? recoverAfterCombat = null)
+    Func<CancellationToken, ValueTask>? recoverAfterCombat = null, MapWalkPopups? walkPopups = null)
 {
     public static readonly SourceFile Source = CampaignState.InitializationSource;
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
@@ -90,6 +90,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
         bool confirmed = false;
         bool stepInterrupted = false;
         bool supplyClickCompleted = false;
+        bool waitingForPopup = false;
         var handled = ImmutableArray.CreateBuilder<MapEncounterKind>();
         var combats = ImmutableArray.CreateBuilder<CombatFlowResult>();
         var ammoFrames = ImmutableArray.CreateBuilder<long>();
@@ -139,10 +140,30 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                             {
                                 ammoFrames.Add(sequence);
                                 lastMysteryWasCarrier = false;
-                                encounter = MapEncounterKind.None;
+                                encounter = await probe!.InspectAfterMysteryAsync(sequence, linked.Token);
                             }
-                            if (encounter == MapEncounterKind.None && !await isInMap(linked.Token))
-                                encounter = MapEncounterKind.UnknownPage;
+                            if (encounter is MapEncounterKind.CatAttack or MapEncounterKind.GuildPopup && walkPopups is not null)
+                            {
+                                await walkPopups.HandleAsync(encounter, sequence, linked.Token);
+                                handled.Add(encounter);
+                                // Native cat attacks reset arrival confirmation; guild popups preserve it.
+                                if (encounter == MapEncounterKind.CatAttack) { confirm.Reset(); unexpected.Reset(); }
+                                walk.Reset();
+                                deadline.CancelAfter(options.WalkTimeout);
+                                waitingForPopup = true;
+                                continue;
+                            }
+                            if (encounter == MapEncounterKind.None)
+                            {
+                                if (await isInMap(linked.Token)) waitingForPopup = false;
+                                else if (waitingForPopup)
+                                {
+                                    if (confirm.Started) { confirm.Reset(); unexpected.Reset(); }
+                                    if (walk.Reached()) return Result(MapArrivalOutcome.Unconfirmed);
+                                    continue;
+                                }
+                                else encounter = MapEncounterKind.UnknownPage;
+                            }
                             if (encounter != MapEncounterKind.None) break;
                             var marker = portal ? await camera.ReadCenterMarkerAsync(linked.Token) :
                                 await camera.ReadFleetMarkerAsync(destination, linked.Token);

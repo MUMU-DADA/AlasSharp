@@ -4,17 +4,19 @@ using Alas.Engine.Rules;
 
 namespace Alas.Engine.Runtime;
 
-public enum MapEncounterKind { None, Combat, AirRaid, Ambush, ItemPopup, UnknownPage, AmmoNotification, CarrierSpawn, WalkOutOfStep }
+public enum MapEncounterKind { None, Combat, AirRaid, Ambush, ItemPopup, UnknownPage, AmmoNotification, CarrierSpawn, WalkOutOfStep, CatAttack, GuildPopup }
 
 public interface IMapEncounterProbe
 {
     ValueTask InitializeAsync(long frameSequence, CancellationToken token);
     ValueTask<MapEncounterKind> InspectAsync(long frameSequence, CancellationToken token);
+    ValueTask<MapEncounterKind> InspectAfterMysteryAsync(long frameSequence, CancellationToken token)
+        => ValueTask.FromResult(MapEncounterKind.None);
 }
 
 /// <summary>Read-only upstream interaction priority; CV returns colors and template matches, not decisions.</summary>
 public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe? ammo = null, bool mysteryHasCarrier = false,
-    MapOverlayRules? overlays = null, MapWalkStep? walkStep = null) : IMapEncounterProbe
+    MapOverlayRules? overlays = null, MapWalkStep? walkStep = null, MapWalkPopups? walkPopups = null) : IMapEncounterProbe
 {
     private readonly MapOverlayRules _overlays = (overlays ?? new()).Validate();
     public static readonly SourceFile CombatSource = new("module/combat/combat.py",
@@ -55,6 +57,13 @@ public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe
         if (ammo is not null && await ammo.ObserveAsync(frameSequence, token))
             return MapEncounterKind.AmmoNotification;
         if (mysteryHasCarrier && await MapEnemySearching.AppearsAsync(ui, token)) return MapEncounterKind.CarrierSpawn;
+        return await InspectAfterMysteryAsync(frameSequence, token);
+    }
+
+    public async ValueTask<MapEncounterKind> InspectAfterMysteryAsync(long frameSequence, CancellationToken token)
+    {
+        if (walkPopups is not null && await walkPopups.ObserveAsync(frameSequence, token) is var popup && popup != MapEncounterKind.None)
+            return popup;
         if (walkStep is not null && await walkStep.ObserveAsync(frameSequence, token)) return MapEncounterKind.WalkOutOfStep;
         return MapEncounterKind.None;
     }

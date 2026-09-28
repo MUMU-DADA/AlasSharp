@@ -55,5 +55,6 @@
     <None Include="native_submarine_call_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_submarine_move_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_walk_recovery_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_walk_popups_reference.py" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
