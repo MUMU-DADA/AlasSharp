@@ -6,7 +6,7 @@ using Alas.Engine.Runtime;
 
 namespace Alas.Engine.Tests;
 
-internal static class CombatFlowChecks
+internal static partial class CombatFlowChecks
 {
     public static async Task AmbushReturnsAsync(JsonArray cases)
     {

@@ -56,6 +56,7 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
 
     public async ValueTask EnterMapAsync()
     {
+        SubmarineRules.RequireSupported(configuration);
         if (!await host.VerifyInMapAsync(token))
             throw new InvalidDataException("Campaign resume requires an observed in-map page");
         _entered = true;

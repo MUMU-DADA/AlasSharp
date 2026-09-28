@@ -136,6 +136,16 @@ public sealed class RunReport
         }
         else if (result.Evidence?["submarine"] is not null)
             throw new InvalidDataException("任务缺少潜艇定位工件");
+        if (boundary.SubmarineCallsFile is { } callsFile)
+        {
+            if (callsFile != "submarine-calls.json") throw new InvalidDataException("潜艇呼叫工件必须位于当前任务目录");
+            string callsPath = Path.Combine(taskRoot, callsFile);
+            if ((File.GetAttributes(callsPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("潜艇呼叫工件必须是普通文件");
+            var calls = JsonSerializer.Deserialize<SubmarineCallEvidence[]>(ArtifactReader.ReadAllText(callsPath), TaskQueue.Json);
+            if (calls is null || calls.Length == 0) throw new InvalidDataException("缺少潜艇呼叫记录");
+            foreach (var call in calls) ValidateSubmarineCall(call);
+        }
         if (boundary.MapStopFile is { } stopFile)
         {
             if (stopFile != "map-stop.json") throw new InvalidDataException("成就停止工件必须位于当前任务目录");
@@ -243,6 +253,40 @@ public sealed class RunReport
             _ => false
         };
         if (!consistent) throw new InvalidDataException("潜艇定位结果与观察来源不一致");
+    }
+
+    private static void ValidateSubmarineCall(SubmarineCallEvidence? call)
+    {
+        if (call is null || !Enum.IsDefined(call.Mode) || call.Attempts is null ||
+            call.StartedFrame is <= 0 || call.LastFrame is <= 0 || call.ObservedFrame is <= 0 ||
+            call.LastFrame is not null && (call.StartedFrame is null || call.LastFrame < call.StartedFrame) ||
+            call.ObservedFrame is not null && (call.LastFrame is null || call.ObservedFrame > call.LastFrame || call.ObservedFrame < call.StartedFrame))
+            throw new InvalidDataException("潜艇呼叫缺少有效模式或帧号");
+        long previous = 0;
+        foreach (var attempt in call.Attempts)
+        {
+            if (attempt is null || attempt.FrameSequence <= previous || call.LastFrame is null ||
+                attempt.FrameSequence > call.LastFrame || attempt.FrameSequence < call.StartedFrame ||
+                !attempt.Completed && (!ReferenceEquals(attempt, call.Attempts[^1]) || call.State != "failed"))
+                throw new InvalidDataException("潜艇呼叫动作记录与观察不一致");
+            previous = attempt.FrameSequence;
+        }
+        if (call.ObservedFrame is { } observed && (observed <= previous || call.Attempts.Any(attempt => !attempt.Completed)))
+            throw new InvalidDataException("潜艇呼叫确认早于动作或包含未完成点击");
+        bool disabled = call.Mode is Rules.SubmarineMode.DoNotUse or Rules.SubmarineMode.HuntOnly or Rules.SubmarineMode.HuntAndBoss;
+        if (disabled && (call.Attempts.Count > 0 || call.ObservedFrame is not null))
+            throw new InvalidDataException("未呼叫模式出现潜艇动作或呼叫确认");
+        bool valid = call.State switch
+        {
+            "not_started" => call.StartedFrame is null && call.LastFrame is null && call.ObservedFrame is null && call.Attempts.Count == 0,
+            "disabled" => disabled && call.StartedFrame is not null && call.LastFrame is not null,
+            "called_observed" => !disabled && call.ObservedFrame is not null && call.ObservedFrame > previous,
+            "window_expired" => !disabled && call.LastFrame is not null && call.ObservedFrame is null,
+            "battle_ended_unconfirmed" => call.StartedFrame is not null && call.ObservedFrame is null,
+            "failed" => true,
+            _ => false
+        };
+        if (!valid) throw new InvalidDataException("潜艇呼叫状态缺少相符的观察证据");
     }
 
     private static bool IsArtifactError(Exception error)

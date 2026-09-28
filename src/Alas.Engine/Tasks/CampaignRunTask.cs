@@ -15,12 +15,14 @@ public sealed class CampaignRunTask : ITaskRunner
     {
         TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
             "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement",
-            "clearMode", "doubleBook", "mapAchievement", "stageIncrease", "ambushEvade");
+            "clearMode", "doubleBook", "mapAchievement", "stageIncrease", "ambushEvade", "submarineMode");
         var id = input?["campaign"]?.GetValue<string>() ??
             throw new ArgumentException("Campaign run requires a compiled campaign rule");
-        if (RuleCatalog.Create(id).StageName is null)
+        var rule = RuleCatalog.Create(id);
+        if (rule.StageName is null)
             throw new NotSupportedException("Compiled campaign has no selectable stage");
-        _ = Plan(input);
+        var plan = Plan(input);
+        SubmarineRules.RequireSupported(rule.Configure(new() { Submarine = plan.Submarine, SubmarineMode = SubmarineModeInput(input!) }));
         _ = EmotionInput.Mode(input!);
         if (input.ContainsKey("fleetLock") && input["fleetLock"] is null)
             throw new ArgumentException("Fleet lock setting cannot be null");
@@ -58,6 +60,7 @@ public sealed class CampaignRunTask : ITaskRunner
             EmotionMode = EmotionInput.Mode(request.Input),
             Fleet2 = requestedPlan.Second,
             Submarine = requestedPlan.Submarine,
+            SubmarineMode = SubmarineModeInput(request.Input),
             Fleet1Formation = Formation(request.Input, "fleet1Formation"),
             Fleet2Formation = Formation(request.Input, "fleet2Formation"),
             FleetOrder = Order(request.Input),
@@ -74,6 +77,7 @@ public sealed class CampaignRunTask : ITaskRunner
         // Config inheritance is authoritative. Apply it before touching the
         // fleet page so the device selection and map state use identical values.
         var effectiveConfiguration = CampaignObjectives.Apply(rule.Configure(requestedConfiguration));
+        SubmarineRules.RequireSupported(effectiveConfiguration);
         var plan = requestedPlan with
         {
             Second = effectiveConfiguration.Fleet2,
@@ -99,6 +103,7 @@ public sealed class CampaignRunTask : ITaskRunner
         evidence["mapAchievement"] = configuration.MapAchievement.Name();
         evidence["stageIncrease"] = configuration.StageIncrease;
         evidence["ambushEvade"] = configuration.AmbushEvade;
+        evidence["submarineMode"] = configuration.SubmarineMode.Name();
         string phase = "achievement_binding";
         try
         {
@@ -164,6 +169,10 @@ public sealed class CampaignRunTask : ITaskRunner
             throw new TaskEvidenceException(phase, evidence, error);
         }
     }
+
+    private static SubmarineMode SubmarineModeInput(JsonObject input) => SubmarineRules.Parse(
+        input.TryGetPropertyValue("submarineMode", out var value)
+            ? value?.GetValue<string>() ?? throw new ArgumentException("submarineMode cannot be null") : "do_not_use");
 
     private static FleetFormation Formation(JsonObject input, string name)
         => CampaignStrategy.ParseFormation(input.TryGetPropertyValue(name, out var value)

@@ -6,7 +6,8 @@ namespace Alas.Engine.Runtime;
 
 public enum CombatReturn { InMap, InStage }
 public sealed record CombatFlowResult(CombatReturn Return, CombatRankEvidence? Rank,
-    bool NewShipObserved, bool EnemySearchingObserved, int CapturedFrames, CombatHealthEvidence? HealthPreparation = null);
+    bool NewShipObserved, bool EnemySearchingObserved, int CapturedFrames, CombatHealthEvidence? HealthPreparation = null,
+    SubmarineCallEvidence? SubmarineCall = null);
 public sealed record CombatFlowOptions(TimeSpan PreparationTimeout, TimeSpan ExecutionTimeout, TimeSpan StatusTimeout)
 {
     public bool WaitForEnemySearch { get; init; } = true;
@@ -17,7 +18,7 @@ public sealed record CombatFlowOptions(TimeSpan PreparationTimeout, TimeSpan Exe
 public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler popups, IMapUiObservations mapUi,
     CombatHealthPreparation? healthPreparation = null, IntervalTimer? automationSetTimer = null,
     ICampaignInterruptions? interruptions = null, ICombatEmotion? emotion = null,
-    Func<CancellationToken, ValueTask<bool>>? allowExperience = null)
+    Func<CancellationToken, ValueTask<bool>>? allowExperience = null, CombatSubmarineCall? submarine = null)
 {
     public static readonly SourceFile Source = MapEncounterProbe.CombatSource;
     private static readonly (AssetRule Asset, TemplatePreprocessing Processing)[] PauseVariants =
@@ -58,14 +59,18 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
         if (Interlocked.Exchange(ref _started, 1) != 0)
             throw new InvalidOperationException("A combat flow belongs to one battle");
         var rank = new CombatRankProbe(ui);
-        // Recovery may take minutes; the enclosing task deadline, not the animation timeout, bounds this wait.
-        if (emotion is not null) await emotion.WaitAsync(token);
-        await PhaseAsync("preparation", options.PreparationTimeout, PrepareAsync, token);
-        await PhaseAsync("execution", options.ExecutionTimeout, (time, ct) => ExecuteAsync(rank, time, ct), token);
-        var (returned, newShip, searching) = await PhaseAsync("status", options.StatusTimeout,
-            (time, ct) => StatusAsync(rank, time, options.WaitForEnemySearch, ct), token);
-        var health = healthPreparation?.Evidence;
-        return new(returned, rank.Evidence, newShip, searching, _frames + (health?.CapturedFrames ?? 0), health);
+        try
+        {
+            // Recovery may take minutes; the enclosing task deadline, not the animation timeout, bounds this wait.
+            if (emotion is not null) await emotion.WaitAsync(token);
+            await PhaseAsync("preparation", options.PreparationTimeout, PrepareAsync, token);
+            await PhaseAsync("execution", options.ExecutionTimeout, (time, ct) => ExecuteAsync(rank, time, ct), token);
+            var (returned, newShip, searching) = await PhaseAsync("status", options.StatusTimeout,
+                (time, ct) => StatusAsync(rank, time, options.WaitForEnemySearch, ct), token);
+            var health = healthPreparation?.Evidence;
+            return new(returned, rank.Evidence, newShip, searching, _frames + (health?.CapturedFrames ?? 0), health, submarine?.Evidence);
+        }
+        catch { submarine?.Fail(); throw; }
     }
 
     private async ValueTask<T> PhaseAsync<T>(string phase, TimeSpan timeout,
@@ -163,6 +168,7 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
         var autoClick = new IntervalTimer(ui.Clock, 1);
         var autoCheck = new IntervalTimer(ui.Clock, 5);
         limit.Reset(); autoSkip.Reset(); autoClick.Reset(); autoCheck.Reset();
+        submarine?.Begin();
         bool first = true;
         while (true)
         {
@@ -176,11 +182,12 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
                  await ui.AppearsAsync(UiAssets.Combat.COMBAT_AUTO_133, ButtonOffset.Expand(20, 20), token: token) ||
                  await ui.AppearsAsync(UiAssets.Combat.COMBAT_AUTO_150, ButtonOffset.Expand(20, 20), token: token)))
             { await ui.ClickAsync(UiAssets.Combat.COMBAT_AUTO_SWITCH, token); autoClick.Reset(); continue; }
+            if (submarine is not null && await submarine.HandleAsync(token)) continue;
             if (await popups.ConfirmAsync(token)) continue;
             if (await IsExecutingAsync(token)) continue;
             if (await rank.ObserveBattleStatusAsync(token) is { } result)
-            { await ui.ClickAsync(CombatRankProbe.AssetFor(result), token); return true; }
-            if (await ClickItemsAsync(token)) return true;
+            { await ui.ClickAsync(CombatRankProbe.AssetFor(result), token); submarine?.End(); return true; }
+            if (await ClickItemsAsync(token)) { submarine?.End(); return true; }
         }
     }
 

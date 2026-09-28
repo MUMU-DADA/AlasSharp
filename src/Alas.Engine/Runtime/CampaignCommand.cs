@@ -34,7 +34,8 @@ public sealed record CampaignCommandOptions(
     bool ClearMode = true,
     bool DoubleBook = false,
     MapAchievement MapAchievement = MapAchievement.NonStop,
-    bool StageIncrease = false);
+    bool StageIncrease = false,
+    SubmarineMode SubmarineMode = SubmarineMode.DoNotUse);
 
 /// <summary>Translates CLI chapter arguments into typed C# task requests.</summary>
 public static class CampaignCommand
@@ -48,6 +49,7 @@ public static class CampaignCommand
             throw new ArgumentException("时间上限必须为正数", nameof(options));
         _ = options.EmotionMode.Name();
         _ = options.MapAchievement.Name();
+        _ = options.SubmarineMode.Name();
         return options.Chapters.Select((chapter, index) => new TaskRequest(
             Id: $"campaign-{index + 1:D4}",
             Kind: "campaign_run",
@@ -57,6 +59,7 @@ public static class CampaignCommand
                 ["fleet1"] = options.Fleet1,
                 ["fleet2"] = options.Fleet2,
                 ["submarine"] = options.Submarine,
+                ["submarineMode"] = options.SubmarineMode.Name(),
                 ["emotionMode"] = options.EmotionMode.Name(),
                 ["fleetLock"] = options.FleetLock,
                 ["clearMode"] = options.ClearMode,

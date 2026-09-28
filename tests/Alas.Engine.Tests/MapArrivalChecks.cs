@@ -225,6 +225,21 @@ internal static class MapArrivalChecks
         }
 
         var clock = new TestClock();
+        foreach (var mode in Enum.GetValues<SubmarineMode>())
+        foreach (bool combat in new[] { false, true })
+        {
+            var hunted = State();
+            hunted[destination].IsEnemy = combat;
+            var huntingClock = new TestClock();
+            var huntingCamera = new Camera(huntingClock, [new(true, new(true, true))]);
+            var arrivalWithHunting = new MapArrivalCheck(huntingCamera, hunted, huntingCamera.InMapAsync, huntingClock,
+                combat ? new Probe(MapEncounterKind.Combat) : null, combat ? new Handler(huntingCamera, huntingClock) : null);
+            var moving = new MapMovement(hunted, new() { SubmarineMode = mode }, huntingCamera, () => arrivalWithHunting);
+            var result = combat ? await moving.FightAsync(destination) : await moving.MoveAsync(destination);
+            int expectedFrames = mode is SubmarineMode.HuntOnly or SubmarineMode.HuntAndBoss ? 22 : 4;
+            Check(result.Outcome == MapMoveOutcome.Committed && result.Arrival.FreshFrames == expectedFrames + (combat ? 1 : 0),
+                "Submarine hunting delay was lost before or after combat: " + mode);
+        }
         var state = State();
         var camera = new Camera(clock, [new(true, new(true, true))]);
         var arrival = new MapArrivalCheck(camera, state, camera.InMapAsync, clock);

@@ -19,6 +19,10 @@ internal static class CampaignCommandChecks
             Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead,
             FleetOrder: FleetOrder.Fleet1BossFleet2Mob);
         var requests = CampaignCommand.BuildRequests(options);
+        foreach (var mode in Enum.GetValues<SubmarineMode>())
+            Check(CampaignCommand.BuildRequests(options with { SubmarineMode = mode })
+                .All(request => request.Input!["submarineMode"]!.GetValue<string>() == mode.Name()),
+                "Command lost submarine mode");
         Check(requests.All(request => request.Input!["clearMode"]!.GetValue<bool>() &&
             !request.Input["doubleBook"]!.GetValue<bool>()), "Command lost native preparation defaults");
         Check(CampaignCommand.BuildRequests(options with { ClearMode = false, DoubleBook = true })

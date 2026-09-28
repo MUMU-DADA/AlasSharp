@@ -512,6 +512,11 @@ try
         await SubmarineChecks.RunAsync(Path.GetFullPath(submarinePython), Path.GetFullPath(submarineUpstream), Path.GetFullPath(submarineArtifacts));
         return 0;
     }
+    if (args is ["--submarine-call", var callPython, var callUpstream, var callArtifacts])
+    {
+        await SubmarineCallChecks.RunAsync(Path.GetFullPath(callPython), Path.GetFullPath(callUpstream), Path.GetFullPath(callArtifacts));
+        return 0;
+    }
     if (args is ["--map-initializer"])
     {
         await CampaignMapInitializerChecks.RunAsync();

@@ -43,6 +43,8 @@ run.json 原子替换，报告只展示当前尝试；断点跳过项指向以�
 
 地图初始化的潜艇定位写入任务证据 `submarine`，会话另存 `submarine-location.json`。其中区分观测、规则推定与中心假设；异常时保留已检查点及当前待检查点，下一任务不复用。报告检查文件存在、定位来源、观察顺序及其与任务结果的一致性。该证据只说明定位过程，不证明潜艇战斗或战役通关。
 
+会话将各场潜艇呼叫另存 `submarine-calls.json`，任务边界清空列表和共享点击计时器。记录实际呼叫模式、加载/最后观察/确认帧及每次点击是否完成；准备失败时状态为失败、加载帧仍为空，后续异常不会丢弃已确认的图标。报告检查固定文件名、普通文件、有效帧顺序、禁用模式无动作以及呼叫状态一致性。`called_observed` 仅表示看见 CALLED 图标，不证明潜艇伤害或战役通关。CLI `--submarine-mode` 与任务 `submarineMode` 对应，支持范围和未迁入的 BOSS 模式见[任务模型](tasks.md)。
+
 ## 服务与桌面组合
 
 Server 只运行控制 API 和预构建 Web UI 托管，不再转发旧 Core CLI。使用 `Alas.Engine.Cli --help` 查看新命令。Server 参数 `--root`、`--engine-root`、`--instance-store`、`--assets`、`--workspace`、`--artifacts`、`--ui-root` 和 `--port` 指定布局；旧上游仓库和 Python 宿主参数已移除。

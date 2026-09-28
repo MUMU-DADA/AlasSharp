@@ -21,8 +21,7 @@ public static class CampaignMapInitializer
         MapRounds.Validate(configuration);
         if (scanTimeout <= TimeSpan.Zero || scanTimeout.TotalMilliseconds > int.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(scanTimeout));
-        if (configuration.Submarine != 0 && configuration.SubmarineMode != SubmarineMode.DoNotUse)
-            throw new NotSupportedException("Submarine hunting, relocation and combat calls are not yet ported");
+        SubmarineRules.RequireSupported(configuration);
         if (selected.FrameSequence <= 0 || selected.Clicks < 0 || selected.LogicalIndex is not (1 or 2) ||
             selected.DisplayedIndex is not (1 or 2) ||
             selected.LogicalIndex != FleetRoles.LogicalIndex(selected.DisplayedIndex, configuration) ||

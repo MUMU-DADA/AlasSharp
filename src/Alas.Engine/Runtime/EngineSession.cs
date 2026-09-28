@@ -32,6 +32,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     private readonly MapAmmoProbe _ammoProbe;
     private readonly ImageStability _imageStability;
     private readonly IntervalTimer _automationSet;
+    private readonly IntervalTimer _submarineClick;
+    private readonly List<CombatSubmarineCall> _submarineCalls = [];
     private readonly List<CombatHealthPreparation> _combatHealth = [];
     private readonly RetirementHandler _retirement;
     private readonly CampaignInterruptions _interruptions;
@@ -57,6 +59,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         Driver = new UiDriver(options.Server, _device, _vision, _assets);
         _imageStability = new(Driver, _vision, () => Driver.Frame ?? throw new InvalidOperationException("No stability screenshot"));
         _automationSet = new(Driver.Clock, 1);
+        _submarineClick = new(Driver.Clock, 1);
         var visuals = new UiVisuals(_vision, () => Driver.Frame ?? throw new InvalidOperationException("No dock screenshot"));
         var info = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No dock screenshot"),
             _vision, _assets, Driver.Server);
@@ -248,6 +251,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     internal CombatFlow CreateCampaignCombatFlow(CampaignState state, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal)
     {
+        SubmarineRules.RequireSupported(configuration);
         _interruptions.Configure(configuration.Retirement, configuration.EmotionMode);
         var preparation = new CombatHealthPreparation(Driver,
             () => Driver.Frame ?? throw new InvalidOperationException("No combat preparation screenshot"),
@@ -259,17 +263,20 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
                 FleetRoles.Reversed(configuration) ? 3 - state.FleetIndex : state.FleetIndex,
                 () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No battle loading frame"),
                 configuration.IsDoubleBook) : null;
+        var submarine = new CombatSubmarineCall(Driver, () => Driver.Frame?.Sequence ?? 0,
+            configuration.Submarine == 0 ? SubmarineMode.DoNotUse : configuration.SubmarineMode, _submarineClick);
+        _submarineCalls.Add(submarine);
         return CreateCombatFlow(entrances, preparation, emotion,
-            state.Rule is { } rule ? token => rule.AllowExperienceAsync(Driver, token) : null);
+            state.Rule is { } rule ? token => rule.AllowExperienceAsync(Driver, token) : null, submarine);
     }
     public CombatFlow CreateCombatFlow(StageEntranceKind entrances = StageEntranceKind.Normal,
         CombatHealthPreparation? healthPreparation = null, ICombatEmotion? emotion = null,
-        Func<CancellationToken, ValueTask<bool>>? allowExperience = null)
+        Func<CancellationToken, ValueTask<bool>>? allowExperience = null, CombatSubmarineCall? submarine = null)
     {
         var recovery = new UiRecovery(Driver, _application, Pages, new UiRecoveryOptions());
         var observations = new MapUiObservations(() => Driver.Frame ?? throw new InvalidOperationException("No combat screenshot"),
             _vision, _assets, Driver.Server, entrances);
-        return new(Driver, recovery, recovery, observations, healthPreparation, _automationSet, _interruptions, emotion, allowExperience);
+        return new(Driver, recovery, recovery, observations, healthPreparation, _automationSet, _interruptions, emotion, allowExperience, submarine);
     }
     public async ValueTask<MapVisualObservation> ObserveMapAsync(CampaignRule rule, CancellationToken token)
     {
@@ -330,6 +337,8 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     {
         _device.Actions.Clear();
         _combatHealth.Clear();
+        _submarineCalls.Clear();
+        _submarineClick.Clear();
         _fleetSwitchers.Clear();
         _emotion = null;
         _emotionConfiguration = null;
@@ -392,6 +401,13 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             submarineFile = "submarine-location.json";
             await File.WriteAllTextAsync(Path.Combine(directory, submarineFile), JsonSerializer.Serialize(submarine, json));
         }
+        string? submarineCallsFile = null;
+        if (_submarineCalls.Count > 0)
+        {
+            submarineCallsFile = "submarine-calls.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, submarineCallsFile),
+                JsonSerializer.Serialize(_submarineCalls.Select(call => call.Evidence), TaskQueue.Json));
+        }
         long? sequence = null;
         if (Driver.Frame is { } frame)
         {
@@ -400,12 +416,12 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             hash = Convert.ToHexStringLower(SHA256.HashData(frame.Png.Span));
             sequence = frame.Sequence;
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile);
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile, submarineCallsFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
         string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null, string? MapPreparationFile = null,
-        string? FleetSwitchFile = null, string? MapStopFile = null, string? SubmarineFile = null);
+        string? FleetSwitchFile = null, string? MapStopFile = null, string? SubmarineFile = null, string? SubmarineCallsFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

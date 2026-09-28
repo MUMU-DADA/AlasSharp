@@ -118,12 +118,16 @@ internal static class CampaignMapInitializerChecks
         map = new MapDefinition("C2", "SP -- __\n-- -- --", ["B1"], ["B1"], [new SpawnWave(0)]);
         state = new CampaignState(map);
         camera = new Camera(new MapObservation([new(new(0, 0), new(IsFleet: true, IsCurrentFleet: true))], new(2, 1), new(1, 0)));
-        ready = await CampaignMapInitializer.InitializeAsync(state, new() { Submarine = 1 }, new(1, 1, 0, 1),
-            (_, _) => ValueTask.FromResult<IMapScanCamera>(camera), TimeSpan.FromSeconds(3));
-        Check(state.SubmarineLocation == new Cell(3, 1) && state.SubmarineEvidence?.Method == "single_spawn" &&
-            !state[new(3, 1)].IsSubmarine && state.Rounds.Initialized && ready.Fleet1 == new Cell(1, 1),
-            "Initialized campaign lost the submarine assumption or marked it as an observation");
-        foreach (var mode in Enum.GetValues<SubmarineMode>().Where(mode => mode != SubmarineMode.DoNotUse))
+        foreach (var mode in new[] { SubmarineMode.DoNotUse, SubmarineMode.HuntOnly, SubmarineMode.EveryCombat })
+        {
+            state = new CampaignState(map);
+            ready = await CampaignMapInitializer.InitializeAsync(state, new() { Submarine = 1, SubmarineMode = mode }, new(1, 1, 0, 1),
+                (_, _) => ValueTask.FromResult<IMapScanCamera>(camera), TimeSpan.FromSeconds(3));
+            Check(state.SubmarineLocation == new Cell(3, 1) && state.SubmarineEvidence?.Method == "single_spawn" &&
+                !state[new(3, 1)].IsSubmarine && state.Rounds.Initialized && ready.Fleet1 == new Cell(1, 1),
+                "Initialized campaign lost the submarine assumption or marked it as an observation");
+        }
+        foreach (var mode in new[] { SubmarineMode.BossOnly, SubmarineMode.HuntAndBoss })
             await Rejects<NotSupportedException>(() => CampaignMapInitializer.InitializeAsync(new CampaignState(map),
                 new() { Submarine = 1, SubmarineMode = mode }, new(1, 1, 0, 1),
                 (_, _) => throw new InvalidOperationException("Unsupported combat modes must stop before creating a camera"), TimeSpan.FromSeconds(3)).AsTask());

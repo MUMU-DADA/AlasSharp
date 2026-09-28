@@ -11,8 +11,8 @@ if (args.Length == 0 || args is ["--help"])
     Console.WriteLine("observe: capture and identify one frame, with device actions disabled.");
     Console.WriteLine("navigate: additionally requires --package <Android package> --page <destination>; --timeout <seconds> defaults to 120. Performs game clicks and recovery.");
     Console.WriteLine("run: --queue <JSON task array> [--models <ONNX directory>] [--allow-actions --package <Android package>] [--dry-run] [--continue-on-failure] [--resume <run directory>]. Task kinds: observe, navigate, data_key, map_observe, campaign_stages (read-only OCR; optional entrances array), campaign_select (input: campaign; stops at map preparation), campaign_fleet_prepare (input: campaign; stops at fleet preparation), campaign_run (input: campaign, fleet1, fleet2, submarine; default emotionMode=calculate), campaign_resume (input: campaign; default emotionMode=ignore; requires a freshly entered map and never records cleared).");
-    Console.WriteLine("campaign: --chapter <compiled C# rule[,rule...]> --models <OCR model directory>; IDs use campaign_main/campaign_1_1 and never Python module paths. Defaults to dry-run. Add --run --allow-actions --package <Android package> to execute; optional --fleet1/--fleet2/--submarine/--timeout/--continue-on-failure/--resume. --fleet1-formation/--fleet2-formation accept line_ahead, double_line (default), diamond.");
-    Console.WriteLine("--fleet-order: fleet1_mob_fleet2_boss (default), fleet1_boss_fleet2_mob, fleet1_all_fleet2_standby, fleet1_standby_fleet2_all; current campaign rules may disable fleet 2.");
+    Console.WriteLine("campaign: --chapter <compiled C# rule[,rule...]> --models <OCR model directory>; IDs use campaign_main/campaign_1_1 and never Python module paths. Defaults to dry-run. Add --run --allow-actions --package <Android package> to execute; optional --fleet1/--fleet2/--submarine/--submarine-mode/--timeout/--continue-on-failure/--resume. --fleet1-formation/--fleet2-formation accept line_ahead, double_line (default), diamond.");
+    Console.WriteLine("--fleet-order: fleet1_mob_fleet2_boss (default), fleet1_boss_fleet2_mob, fleet1_all_fleet2_standby, fleet1_standby_fleet2_all; current campaign rules may disable fleet 2. --submarine-mode: do_not_use (default), hunt_only, every_combat; boss_only and hunt_and_boss are not yet supported when a submarine is enabled.");
     Console.WriteLine("run/campaign: --profile-root <Engine profile root> --instance <profile name> bind persistent Engine state to the same device. campaign: --emotion-mode <calculate|calculate_ignore|ignore|nothing> (default ignore). Calculated modes require a profile binding; deferred recovery is recorded in the profile and this task is skipped.");
     Console.WriteLine("campaign: --clear-mode <true|false> (default true), --double-book <true|false> (default false). Effective settings are observed on map/fleet preparation before entry.");
     Console.WriteLine("campaign: --map-achievement <non_stop|100_percent_clear|map_3_stars|threat_safe|threat_safe_without_3_stars>, --stage-increase <true|false>. Achievement stops require --profile-root and --instance to update Engine state.");
@@ -27,7 +27,7 @@ try
     string[] required = ["--adb", "--serial", "--server", "--assets", "--vision-runtime", "--artifacts",
         .. navigate ? new[] { "--package", "--page" } : run ? new[] { "--queue" } : campaign ? new[] { "--chapter", "--models" } : []];
     var allowed = required.Concat(navigate ? ["--timeout"] : run ? ["--models", "--package", "--resume", "--profile-root", "--instance"] : campaign
-        ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--timeout", "--fleet1-formation", "--fleet2-formation", "--fleet-order", "--profile-root", "--instance", "--emotion-mode", "--clear-mode", "--double-book", "--map-achievement", "--stage-increase"]
+        ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--submarine-mode", "--timeout", "--fleet1-formation", "--fleet2-formation", "--fleet-order", "--profile-root", "--instance", "--emotion-mode", "--clear-mode", "--double-book", "--map-achievement", "--stage-increase"]
         : Array.Empty<string>()).ToHashSet(StringComparer.Ordinal);
     var switches = (run ? new[] { "--allow-actions", "--dry-run", "--continue-on-failure" } : campaign
         ? new[] { "--run", "--allow-actions", "--continue-on-failure" } : []).ToHashSet(StringComparer.Ordinal);
@@ -75,7 +75,7 @@ try
                 DryRun: !flags.Contains("--run"), AllowActions: flags.Contains("--allow-actions"),
                 ContinueOnFailure: flags.Contains("--continue-on-failure"), ResumeDirectory: values.GetValueOrDefault("--resume"),
                 Fleet1: ParseFleet("--fleet1", 1), Fleet2: ParseFleet("--fleet2", 0),
-                Submarine: ParseFleet("--submarine", 0), TimeoutSeconds: timeout.TotalSeconds,
+                Submarine: ParseFleet("--submarine", 0), SubmarineMode: SubmarineRules.Parse(values.GetValueOrDefault("--submarine-mode", "do_not_use")), TimeoutSeconds: timeout.TotalSeconds,
                 Fleet1Formation: CampaignStrategy.ParseFormation(values.GetValueOrDefault("--fleet1-formation", "double_line")),
                 Fleet2Formation: CampaignStrategy.ParseFormation(values.GetValueOrDefault("--fleet2-formation", "double_line")),
                 FleetOrder: FleetRoles.Parse(values.GetValueOrDefault("--fleet-order", "fleet1_mob_fleet2_boss")),

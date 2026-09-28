@@ -28,7 +28,7 @@ def main():
                     MAP_HAS_MOVABLE_NORMAL_ENEMY=False, MAP_HAS_MAZE=False, MAP_HAS_DECOY_ENEMY=False,
                     MAP_HAS_BOUNCING_ENEMY=False, MAP_HAS_FORTRESS=False, MAP_HAS_AMBUSH=False,
                     MAP_HAS_FLEET_STEP=False, MAP_HAS_PORTAL=False, Campaign_UseFleetLock=False,
-                    MAP_WALK_USE_CURRENT_FLEET=False, Submarine_Mode='do_not_use')
+                    MAP_WALK_USE_CURRENT_FLEET=False, Submarine_Mode=case.get('submarineMode', 'do_not_use'))
                 self.map = CampaignMap('offline-mechanism')
                 self.map.shape, self.map.map_data = 'E5', case['tiles']
                 self.map.load_map_data()

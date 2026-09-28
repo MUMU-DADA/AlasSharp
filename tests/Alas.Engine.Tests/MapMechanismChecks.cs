@@ -9,7 +9,8 @@ namespace Alas.Engine.Tests;
 internal static partial class MapMechanismChecks
 {
     private const string Tiles = "-- -- -- -- --\n-- -- -- -- --\n-- -- ++ -- --\n-- -- -- -- --\n-- -- -- -- --";
-    private sealed record Sample(string Direction, string Start, bool Enabled, double Wait, string[]? Selection, string Tiles, int[] Weights);
+    private sealed record Sample(string Direction, string Start, bool Enabled, double Wait, string[]? Selection, string Tiles, int[] Weights,
+        string SubmarineMode = "do_not_use");
     private static void Check(bool value, string message)
     { if (!value) throw new InvalidOperationException(message); }
     public static async Task RunAsync(string python, string upstream, string artifacts)
@@ -21,6 +22,9 @@ internal static partial class MapMechanismChecks
         foreach (double wait in new[] { 0, 2, 3.25 })
         foreach (string[]? selection in new string[]?[] { null, [], ["C2", "D3"], ["B3"] })
             samples.Add(new(direction, start, enabled, wait, selection, Tiles, Enumerable.Range(0, 25).Select(i => 1 + i % 4).ToArray()));
+        var hunting = samples.Where(s => s.Direction == "right" && s.Start == "A1" && s.Selection is null).ToArray();
+        foreach (var mode in Enum.GetValues<SubmarineMode>().Where(mode => mode != SubmarineMode.DoNotUse))
+            samples.AddRange(hunting.Select(sample => sample with { SubmarineMode = mode.Name() }));
         string inputs = Path.Combine(artifacts, "mechanism-input.json"), output = Path.Combine(artifacts, "mechanism-native.json");
         await File.WriteAllTextAsync(inputs, JsonSerializer.Serialize(samples, TaskJson));
         var result = await new ProcessRunner().RunAsync(python,
@@ -34,7 +38,8 @@ internal static partial class MapMechanismChecks
             var sample = samples[i]; var expected = reference["results"]![i]!;
             var state = State(sample.Direction, sample.Start);
             for (int j = 0; j < state.Cells.Count; j++) { state.Cells[j].Weight = sample.Weights[j]; state.Cells[j].MechanismWait = sample.Wait; }
-            var config = new CampaignConfiguration { HasLandBased = sample.Enabled, HasAmbush = false, EmotionMode = CampaignEmotionMode.Ignore };
+            var config = new CampaignConfiguration { HasLandBased = sample.Enabled, HasAmbush = false, EmotionMode = CampaignEmotionMode.Ignore,
+                SubmarineMode = SubmarineRules.Parse(sample.SubmarineMode) };
             state.RefreshFleetPaths(config);
             var camera = new Camera(state);
             var combat = Combat(state, config, camera);

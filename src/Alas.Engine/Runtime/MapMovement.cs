@@ -169,6 +169,16 @@ public sealed class MapMovement(CampaignState state, CampaignConfiguration confi
              landingGrid.IsMechanismTrigger || landingGrid.IsMechanismBlock))
             throw new NotSupportedException("Portal exit requires an interaction that is not committed by ordinary movement");
 
+        // Native _goto reserves time for submarine hunting before confirming arrival,
+        // including unexpected arrival and retries after an ambush. This delay survives combat.
+        if (configuration.SubmarineMode is SubmarineMode.HuntOnly or SubmarineMode.HuntAndBoss)
+        {
+            options ??= MapArrivalOptions.Default;
+            var hunting = TimeSpan.FromSeconds(4.5);
+            options = options with { ConfirmDelay = options.ConfirmDelay + hunting,
+                AfterCombatConfirmDelay = (options.AfterCombatConfirmDelay ?? options.ConfirmDelay) + hunting };
+        }
+
         // Native _goto waits for the trigger animation before wipe_out releases
         // the whole linked group. Apply this to every landing, including combat
         // or a route's intermediate stop, not only explicit clear_mechanism calls.
