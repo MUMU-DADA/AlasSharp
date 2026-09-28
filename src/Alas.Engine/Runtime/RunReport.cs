@@ -176,6 +176,16 @@ public sealed class RunReport
             if (timeouts is null || timeouts.Length == 0) throw new InvalidDataException("缺少行走超时记录");
             foreach (var timeout in timeouts) ValidateWalkTimeout(timeout);
         }
+        if (boundary.WalkInterruptionsFile is { } interruptionFile)
+        {
+            if (interruptionFile != "walk-interruptions.json") throw new InvalidDataException("行走中断工件必须位于当前任务目录");
+            string interruptionPath = Path.Combine(taskRoot, interruptionFile);
+            if ((File.GetAttributes(interruptionPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("行走中断工件必须是普通文件");
+            var interruptions = JsonSerializer.Deserialize<WalkInterruptionEvidence[]>(ArtifactReader.ReadAllText(interruptionPath), TaskQueue.Json);
+            if (interruptions is null || interruptions.Length == 0) throw new InvalidDataException("缺少行走中断记录");
+            foreach (var interruption in interruptions) ValidateWalkInterruption(interruption);
+        }
         if (boundary.MapStopFile is { } stopFile)
         {
             if (stopFile != "map-stop.json") throw new InvalidDataException("成就停止工件必须位于当前任务目录");
@@ -283,6 +293,16 @@ public sealed class RunReport
             _ => false
         };
         if (!consistent) throw new InvalidDataException("潜艇定位结果与观察来源不一致");
+    }
+
+    internal static void ValidateWalkInterruption(WalkInterruptionEvidence? interruption)
+    {
+        if (interruption is null || interruption.ObservedFrame <= 0 ||
+            interruption.FinishedFrame is { } finished && finished < interruption.ObservedFrame ||
+            interruption.OffensiveCompleted && !interruption.RetirementHandled ||
+            interruption.LowEmotionHandled && interruption.FinishedFrame is null ||
+            interruption.FinishedFrame is not null && interruption.RetirementHandled && !interruption.OffensiveCompleted)
+            throw new InvalidDataException("行走中断缺少一致的帧和处理阶段");
     }
 
     internal static void ValidateWalkTimeout(WalkTimeoutEvidence? timeout)

@@ -6,6 +6,37 @@ namespace Alas.Engine.Tests;
 
 internal static partial class MapViewChecks
 {
+    internal static async Task SharedInterruptionImageAsync(string upstream)
+    {
+        foreach (string failure in new[] { "", "stale", "suspended", "cancelled" })
+        {
+            var clock = new FakeClock(); var patches = new EmptyPatches();
+            var frame = new ScreenFrame(1, DateTimeOffset.UnixEpoch, ReadOnlyMemory<byte>.Empty);
+            var geometry = Regular(new(262, 227.5), new(Left: true, Upper: true));
+            var source = new Source(_ => throw new InvalidOperationException("Image adoption must not recapture"), clock);
+            var input = new Input(); var state = Map(); state.Fleet1Location = new(5, 4);
+            var camera = new MapCamera(state, new(5, 4), new(frame, geometry), source, input,
+                new(patches, new AssetFiles(Path.Combine(upstream, "assets")), GameServer.Cn, new()),
+                new(new FixedEvidence(null)), new() { Predict = false }, clock: clock, correctInitialEdges: false);
+            _ = await camera.ObserveAsync(MapScanMode.Normal, default);
+            int before = patches.Calls;
+            using var cancelled = new CancellationTokenSource();
+            if (failure == "suspended") camera.Suspend();
+            if (failure == "cancelled") cancelled.Cancel();
+            bool rejected = false;
+            try { await camera.AdoptImageAsync(frame with { Sequence = failure == "stale" ? 1 : 3 }, cancelled.Token); }
+            catch (Exception error) when (error is InvalidDataException or MapRelocalizationRequiredException or OperationCanceledException) { rejected = true; }
+            Check(rejected == (failure != "") && source.Captures == 0 && input.Gestures.Count == 0 &&
+                state.Fleet1Location == new Cell(5, 4), "Shared interruption frame recaptured, moved authority, or ignored failure");
+            if (!rejected)
+            {
+                Check(camera.FrameSequence == 3 && ReferenceEquals(camera.View.Geometry, geometry), "Shared frame changed map geometry");
+                _ = await camera.ObserveAsync(MapScanMode.Normal, default);
+                Check(patches.Calls > before, "Shared frame retained old grid recognition");
+            }
+        }
+    }
+
     internal static async Task WalkTimeoutCameraAsync(string upstream)
     {
         foreach (string failure in new[] { "", "stale", "transport", "cancel" })

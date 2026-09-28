@@ -16,9 +16,11 @@ public interface IMapEncounterProbe
 
 /// <summary>Read-only upstream interaction priority; CV returns colors and template matches, not decisions.</summary>
 public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe? ammo = null, bool mysteryHasCarrier = false,
-    MapOverlayRules? overlays = null, MapWalkStep? walkStep = null, MapWalkPopups? walkPopups = null) : IMapEncounterProbe
+    MapOverlayRules? overlays = null, MapWalkStep? walkStep = null, MapWalkPopups? walkPopups = null,
+    CombatAppearance? combat = null) : IMapEncounterProbe
 {
     private readonly MapOverlayRules _overlays = (overlays ?? new()).Validate();
+    private readonly CombatAppearance _combat = combat ?? new(ui, false, _ => ValueTask.FromResult(false));
     public static readonly SourceFile CombatSource = new("module/combat/combat.py",
         "abbe4e2f1017cbdc5b6ca8595bd5411f9a9616b47105066be16b6e7f3910d4b7");
     public static readonly SourceFile AmbushSource = new("module/handler/ambush.py",
@@ -38,8 +40,7 @@ public sealed class MapEncounterProbe(IUiDriver ui, bool hasAmbush, MapAmmoProbe
     public async ValueTask<MapEncounterKind> InspectAsync(long frameSequence, CancellationToken token)
     {
         AmbushFromOverlay = false;
-        if (await ui.AppearsAsync(UiAssets.Combat.BATTLE_PREPARATION, ButtonOffset.Expand(30, 20), token: token) ||
-            await ui.AppearsAsync(UiAssets.Combat.BATTLE_PREPARATION_WITH_OVERLAY, threshold: 30, token: token))
+        if (await _combat.AppearsAsync(token))
             return MapEncounterKind.Combat;
         if (hasAmbush)
         {

@@ -86,15 +86,8 @@ public sealed class CombatFlow(IUiDriver ui, IStoryHandler story, IPopupHandler 
     private async ValueTask CaptureAsync(CancellationToken token)
     { await ui.ScreenshotAsync(token); _frames++; }
 
-    private async ValueTask<bool> AutomationConfirmAsync(CancellationToken token)
-    {
-        if (!await ui.AppearsAsync(UiAssets.Combat.AUTOMATION_CONFIRM_CHECK, interval: 1, threshold: 30, token: token))
-            return false;
-        if (await ui.AppearsAsync(UiAssets.Combat.AUTOMATION_CONFIRM, ButtonOffset.Expand(20, 20),
-                threshold: 30, token: token))
-            await ui.ClickAsync(UiAssets.Combat.AUTOMATION_CONFIRM, token);
-        return true;
-    }
+    private ValueTask<bool> AutomationConfirmAsync(CancellationToken token)
+        => CombatAppearance.ConfirmAutomationAsync(ui, token);
 
     private async ValueTask<bool> IsExecutingAsync(CancellationToken token)
     {

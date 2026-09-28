@@ -38,6 +38,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     private readonly List<SubmarineMovement> _submarineMovements = [];
     private readonly List<MapMovement> _mapMovements = [];
     private readonly List<MapArrivalCheck> _mapArrivals = [];
+    private readonly List<MapWalkInterruptions> _walkInterruptions = [];
     private readonly List<CombatHealthPreparation> _combatHealth = [];
     private readonly RetirementHandler _retirement;
     private readonly CampaignInterruptions _interruptions;
@@ -107,19 +108,37 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         IMapEncounterHandler? handler = null, Func<CancellationToken, ValueTask>? recoverAfterCombat = null,
         Func<MapEncounterProbe, IMapEncounterHandler>? createHandler = null)
     {
+        _interruptions.Configure(configuration.Retirement, configuration.EmotionMode);
+        var combat = CreateCombatAppearance(configuration.UseFleetLock);
         var popups = new MapWalkPopups(Driver, new UiVisuals(_vision,
             () => Driver.Frame ?? throw new InvalidOperationException("No map popup screenshot")),
             () => Driver.Frame?.Sequence ?? 0, configuration.IsClearMode, _mapCatAttack);
         var probe = new MapEncounterProbe(Driver, configuration.HasAmbush, _ammoProbe, configuration.MysteryHasCarrier,
-            camera.State.Rule?.Overlays, configuration.HasFleetStep ? CreateWalkStep() : null, popups);
+            camera.State.Rule?.Overlays, configuration.HasFleetStep ? CreateWalkStep() : null, popups, combat);
         handler = createHandler?.Invoke(probe) ?? handler;
+        MapWalkInterruptions? interruptions = null;
+        if (configuration.UseFleetLock)
+        {
+            interruptions = new(Driver, () => Driver.Frame?.Sequence ?? 0, _interruptions, combat);
+            _walkInterruptions.Add(interruptions);
+        }
+        async ValueTask<WalkInterruptionResult> HandleInterruptions(long sequence, CancellationToken token)
+        {
+            var result = await interruptions!.HandleAsync(sequence, token);
+            if (Driver.Frame is { } frame && frame.Sequence > camera.FrameSequence)
+                await camera.AdoptImageAsync(frame, token);
+            return result;
+        }
         var arrival = new MapArrivalCheck(camera, camera.State, token => Driver.AppearsAsync(UiAssets.Handler.IN_MAP, token: token), Driver.Clock,
             probe, new MapAirRaidHandler(Driver, probe,
                 () => Driver.Frame?.Sequence ?? throw new InvalidOperationException("No air raid screenshot"), handler), recoverAfterCombat, popups,
-            camera.RecoverWalkTimeoutAsync);
+            camera.RecoverWalkTimeoutAsync, interruptions is null ? null : HandleInterruptions);
         _mapArrivals.Add(arrival);
         return arrival;
     }
+    private CombatAppearance CreateCombatAppearance(bool useFleetLock)
+        => new(Driver, useFleetLock, new CombatLoadingProbe(_vision, _assets, Driver.Server,
+            () => Driver.Frame ?? throw new InvalidOperationException("No combat-loading screenshot")).ObserveAsync);
     public MapMovement CreateMapMovement(MapCamera camera, CampaignConfiguration configuration)
         => TrackMovement(new(camera.State, configuration, camera, () => CreateMapArrivalCheck(camera, configuration), EnsureNoMapInfoBarAsync,
             token => WithdrawCampaignAsync("low_hp", token), CreateMovableScan(camera, configuration), new MapScanner(camera.State, camera, Driver.Clock),
@@ -366,6 +385,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         _submarineMovements.Clear();
         _mapMovements.Clear();
         _mapArrivals.Clear();
+        _walkInterruptions.Clear();
         _submarineClick.Clear();
         _mapCatAttack.Clear();
         _fleetSwitchers.Clear();
@@ -466,13 +486,21 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             hash = Convert.ToHexStringLower(SHA256.HashData(frame.Png.Span));
             sequence = frame.Sequence;
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile, submarineCallsFile, submarineMovesFile, walkRecoveriesFile, walkTimeoutsFile);
+        string? walkInterruptionsFile = null;
+        var interruptions = _walkInterruptions.SelectMany(walk => walk.Evidence).ToArray();
+        if (interruptions.Length > 0)
+        {
+            walkInterruptionsFile = "walk-interruptions.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, walkInterruptionsFile), JsonSerializer.Serialize(interruptions, TaskQueue.Json));
+        }
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile, submarineCallsFile, submarineMovesFile, walkRecoveriesFile, walkTimeoutsFile, walkInterruptionsFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
         string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null, string? MapPreparationFile = null,
         string? FleetSwitchFile = null, string? MapStopFile = null, string? SubmarineFile = null, string? SubmarineCallsFile = null,
-        string? SubmarineMovesFile = null, string? WalkRecoveriesFile = null, string? WalkTimeoutsFile = null);
+        string? SubmarineMovesFile = null, string? WalkRecoveriesFile = null, string? WalkTimeoutsFile = null,
+        string? WalkInterruptionsFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

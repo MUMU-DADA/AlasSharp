@@ -10,7 +10,7 @@ public interface ICampaignInterruptions
     ValueTask<bool> LowEmotionAsync(CancellationToken token);
 }
 
-/// <summary>Shared entry/combat interruption chain, with C# rules and no upstream business process.</summary>
+/// <summary>Shared entry, map movement and combat interruptions, with no upstream business process.</summary>
 public sealed class CampaignInterruptions(IUiDriver ui, UiVisuals visuals, RetirementHandler retire) : ICampaignInterruptions
 {
     public static readonly SourceFile Source = UiRecovery.InfoSource;

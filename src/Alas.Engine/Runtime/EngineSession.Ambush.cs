@@ -24,7 +24,8 @@ public sealed partial class EngineSession
         var ambush = new MapAmbushHandler(Driver, observations, () => Driver.Frame?.Sequence ?? 0, info.ReadAsync,
             (searching, token) => CreateCampaignCombatFlow(state, configuration, entrances).RunAutoAsync(
                 CombatFlowOptions.Default with { WaitForEnemySearch = searching }, token),
-            configuration.AmbushEvade, () => probe.AmbushFromOverlay, ReadStatus, _interruptions, carrier);
+            configuration.AmbushEvade, () => probe.AmbushFromOverlay, ReadStatus, _interruptions, carrier,
+            combatAppearance: CreateCombatAppearance(configuration.UseFleetLock));
         return new MapCombatHandler(token => CreateCampaignCombatFlow(state, configuration, entrances).RunAutoAsync(token: token),
             ambush, ReadStatus);
     }

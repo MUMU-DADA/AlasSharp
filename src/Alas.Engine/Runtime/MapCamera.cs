@@ -419,6 +419,16 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera, ISubmarineMov
             return true;
         }, token);
 
+    /// <summary>Use a newer screenshot captured by a shared UI interruption without taking another frame.</summary>
+    internal async ValueTask AdoptImageAsync(ScreenFrame frame, CancellationToken token)
+        => await RunAsync(ct =>
+        {
+            _camera.UpdateImage(frame);
+            _observation = null;
+            _requiresRefresh = false;
+            return ValueTask.FromResult(true);
+        }, token);
+
     public async ValueTask EnsureEdgesAsync(bool skipFirstUpdate, CancellationToken token)
         => await EnsureEdgesAsync(skipFirstUpdate, reverse: false, preset: null, new(3, 2), token);
 

@@ -62,7 +62,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
     Func<CancellationToken, ValueTask<bool>> isInMap, TimeProvider? clock = null,
     IMapEncounterProbe? probe = null, IMapEncounterHandler? handler = null,
     Func<CancellationToken, ValueTask>? recoverAfterCombat = null, MapWalkPopups? walkPopups = null,
-    Func<CancellationToken, ValueTask>? recoverAfterWalkTimeout = null)
+    Func<CancellationToken, ValueTask>? recoverAfterWalkTimeout = null,
+    Func<long, CancellationToken, ValueTask<WalkInterruptionResult>>? walkInterruptions = null)
 {
     public static readonly SourceFile Source = CampaignState.InitializationSource;
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
@@ -143,6 +144,21 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                                 throw new InvalidDataException("Arrival check reused a stale map frame");
                             sequence = camera.FrameSequence;
                             frames++;
+                            if (walkInterruptions is not null)
+                            {
+                                // Retirement can take longer than a movement observation. The enclosing
+                                // task owns its deadline; it must not inherit the short capture timeout.
+                                linked.Token.ThrowIfCancellationRequested();
+                                deadline.CancelAfter(Timeout.InfiniteTimeSpan);
+                                var interruption = await walkInterruptions(sequence, token);
+                                token.ThrowIfCancellationRequested();
+                                deadline.CancelAfter(options.WalkTimeout);
+                                if (camera.FrameSequence < sequence)
+                                    throw new InvalidDataException("Walk interruption restored an older camera frame");
+                                sequence = camera.FrameSequence;
+                                if (interruption.ResetWalk) walk.Reset();
+                                if (interruption.OffMap) waitingForPopup = true;
+                            }
                             encounter = probe is null ? MapEncounterKind.None : await probe.InspectAsync(sequence, linked.Token);
                             // Native ammo messages do not interrupt movement or
                             // require re-localization. Retain each throttled

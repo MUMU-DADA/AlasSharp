@@ -57,5 +57,6 @@
     <None Include="native_walk_recovery_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_walk_popups_reference.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="native_walk_timeout_reference.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native_walk_interruptions_reference.py" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

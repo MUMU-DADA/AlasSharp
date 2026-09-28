@@ -23,13 +23,13 @@ internal static partial class MapWalkPopupChecks
                     ApplicationPackage: "org.example.game", AllowActions: true),
                 new(Path.Combine(artifacts, "sessions"), ContinueOnFailure: true));
             Check(result.Tasks is [{ Outcome: TaskOutcome.Failed, Reason: "IOException" },
-                { Outcome: TaskOutcome.Failed, Reason: "IOException" }, { Outcome: TaskOutcome.Succeeded }, { Outcome: TaskOutcome.Succeeded }],
+                { Outcome: TaskOutcome.Failed, Reason: "IOException" }, { Outcome: TaskOutcome.Failed, Reason: "IOException" }, { Outcome: TaskOutcome.Succeeded }],
                 "Session did not follow popup click/failure/clear-mode boundaries: " + string.Join(';', result.Tasks.Select(r => r.Reason + ":" + r.Error)));
             for (int i = 0; i < result.Tasks.Count; i++)
             {
                 var boundary = result.Tasks[i].Evidence!["boundary"]!;
                 Check(boundary["actionAttempts"]!.GetValue<int>() == (i < 2 ? 1 : 0), "Popup action or timer leaked across tasks");
-                if (i < 2) Check(result.Tasks[i].FailureFrames is ["failure.png"], "Popup recovery failure has no registered frame");
+                if (i < 3) Check(result.Tasks[i].FailureFrames is ["failure.png"], "Popup recovery failure has no registered frame");
             }
             Check(runner.Invalidated == 3 && RunReport.Build(result.Directory).ToJson()["evidence_complete"]!.GetValue<bool>(),
                 "Session map usability or popup failure artifacts are inconsistent");
@@ -58,9 +58,10 @@ internal static partial class MapWalkPopupChecks
                     new(io, new AssetFiles(assets), GameServer.Cn, new()), new(io), new(), gridInput: io);
                 try
                 {
-                    var moved = await session.CreateMapCombatMovement(camera, config).MoveAsync(new(3, 2), token: token);
-                    Check(request.Id == "clear" && moved.Outcome == MapMoveOutcome.Interrupted,
-                        "Popup failed to click through the production factory");
+                    // With fleet lock, an unhandled off-map frame waits for the next frame too.
+                    // Clear mode skips the cat click, but must still surface this fixture's transport failure.
+                    await session.CreateMapCombatMovement(camera, config).MoveAsync(new(3, 2), token: token);
+                    throw new InvalidOperationException("Popup movement ignored the next-frame transport failure");
                 }
                 finally { if (state.MovementInvalidated) Invalidated++; }
             }
@@ -73,7 +74,7 @@ internal static partial class MapWalkPopupChecks
         private int _captures;
         public async ValueTask<ScreenFrame> CaptureImageAsync(CancellationToken token)
         {
-            if (++_captures > 2) throw new IOException("Synthetic next-frame transport failure after popup click");
+            if (++_captures > 2) throw new IOException("Synthetic next-frame transport failure during popup wait");
             await session.Driver.ScreenshotAsync(token); return session.Driver.Frame!;
         }
         public async ValueTask<MapViewFrame> CaptureAsync(CancellationToken token)

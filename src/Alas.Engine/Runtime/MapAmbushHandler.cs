@@ -46,9 +46,10 @@ public sealed class MapAmbushHandler(IUiDriver ui, IMapUiObservations observatio
     Func<bool, CancellationToken, ValueTask<CombatFlowResult>> combat, bool evade,
     Func<bool> refreshFleetStatus, Func<CancellationToken, ValueTask> readFleetStatus,
     ICampaignInterruptions? interruptions = null, IMapEncounterHandler? next = null,
-    TimeSpan? preparationTimeout = null) : IMapEncounterHandler
+    TimeSpan? preparationTimeout = null, CombatAppearance? combatAppearance = null) : IMapEncounterHandler
 {
     public static readonly SourceFile Source = MapEncounterProbe.AmbushSource;
+    private readonly CombatAppearance _combatAppearance = combatAppearance ?? new(ui, false, _ => ValueTask.FromResult(false));
     private static ButtonOffset Offset => ButtonOffset.Expand(30, 30);
 
     public async ValueTask<MapEncounterHandling> HandleAsync(MapEncounterKind encounter, CancellationToken token)
@@ -135,7 +136,6 @@ public sealed class MapAmbushHandler(IUiDriver ui, IMapUiObservations observatio
 
     private long Frame() => currentFrame() is > 0 and var frame ? frame :
         throw new InvalidDataException("Ambush handling requires a current screenshot");
-    private async ValueTask<bool> CombatAppearedAsync(CancellationToken token)
-        => await ui.AppearsAsync(UiAssets.Combat.BATTLE_PREPARATION, ButtonOffset.Expand(30, 20), token: token) ||
-            await ui.AppearsAsync(UiAssets.Combat.BATTLE_PREPARATION_WITH_OVERLAY, threshold: 30, token: token);
+    private ValueTask<bool> CombatAppearedAsync(CancellationToken token)
+        => _combatAppearance.AppearsAsync(token);
 }
