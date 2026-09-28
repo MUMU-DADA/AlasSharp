@@ -12,6 +12,16 @@ public sealed class MapWalkPopups(IUiDriver ui, UiVisuals visuals, Func<long> fr
     private readonly IntervalTimer _catTimer = catTimer ?? new(ui.Clock, 2);
     private (MapEncounterKind Kind, long Frame)? _pending;
 
+    public async ValueTask<bool> HandleCatAsync(CancellationToken token)
+    {
+        long sequence = frameSequence();
+        RequireFrame(sequence, token);
+        if (!_catTimer.Reached() || !(await CatAsync(UiAssets.Map.MAP_CAT_ATTACK, 100, token) ||
+            !isClearMode && await CatAsync(UiAssets.Map.MAP_CAT_ATTACK_MIRROR, 200, token))) return false;
+        RequireFrame(sequence, token);
+        await ui.ClickAsync(UiAssets.Map.MAP_CAT_ATTACK, token); _catTimer.Reset(); return true;
+    }
+
     public async ValueTask<MapEncounterKind> ObserveAsync(long sequence, CancellationToken token)
     {
         _pending = null;

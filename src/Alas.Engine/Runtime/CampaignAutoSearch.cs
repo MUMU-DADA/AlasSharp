@@ -19,14 +19,20 @@ public sealed class CampaignAutoSearch(IUiDriver ui, IImagePatchVision vision, F
         return await EnsureManualOnFrameAsync(TimeSpan.FromSeconds(45), token);
     }
 
-    public async ValueTask<AutoSearchObservation> EnsureManualOnFrameAsync(TimeSpan timeout, CancellationToken token)
+    public ValueTask<AutoSearchObservation> EnsureManualOnFrameAsync(TimeSpan timeout, CancellationToken token)
+        => EnsureModeOnFrameAsync(false, timeout, token);
+
+    public async ValueTask<AutoSearchObservation> EnsureModeOnFrameAsync(bool enabled, TimeSpan timeout,
+        CancellationToken token)
     {
-        if (await ReadAsync(token) is null) return new(false, false, false);
+        string? current = await ReadAsync(token);
+        if (current is null) return new(false, false, false);
         bool changed = await new UiSwitch(ui,
             [new("on", UiAssets.Handler.AUTO_SEARCH_TITLE, UiAssets.Handler.AUTO_SEARCH_CHECK),
              new("off", UiAssets.Handler.AUTO_SEARCH_TITLE, UiAssets.Handler.AUTO_SEARCH_CHECK)],
-            Offset, read: ReadAsync, frameSequence: () => currentFrame().Sequence).SetAsync("off", timeout, token: token);
-        return new(true, changed, false);
+            Offset, read: ReadAsync, frameSequence: () => currentFrame().Sequence)
+            .SetAsync(enabled ? "on" : "off", timeout, token: token);
+        return new(true, changed, enabled);
     }
 
     public async ValueTask<string?> ReadAsync(CancellationToken token)

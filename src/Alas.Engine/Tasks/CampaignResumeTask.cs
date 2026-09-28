@@ -102,6 +102,7 @@ public sealed class CampaignResumeTask : ITaskRunner
             result.CarrierEncounters,
             result.CarrierScans,
             result.Submarine,
+            autoSearchExecution = result.AutoSearch,
             stageReturn = result.StageReturn, settlementVerified = cleared, cleared,
             sortie = new
             {

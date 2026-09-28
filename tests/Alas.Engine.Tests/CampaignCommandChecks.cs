@@ -19,6 +19,10 @@ internal static class CampaignCommandChecks
             Fleet1Formation: FleetFormation.Diamond, Fleet2Formation: FleetFormation.LineAhead,
             FleetOrder: FleetOrder.Fleet1BossFleet2Mob);
         var requests = CampaignCommand.BuildRequests(options);
+        Check(CampaignCommand.BuildRequests(options with { AutoSearch = true, SubmarineAutoCall = true, OilLimit = 1800 })
+            .All(request => request.Input!["autoSearch"]!.GetValue<bool>() && request.Input["submarineAutoCall"]!.GetValue<bool>() &&
+                request.Input["oilLimit"]!.GetValue<int>() == 1800), "Command lost automatic search inputs");
+        Reject<ArgumentOutOfRangeException>(() => CampaignCommand.BuildRequests(options with { OilLimit = -1 }));
         foreach (string distance in new[] { "to_boss_position", "1_grid_to_boss", "2_grid_to_boss", "use_open_ocean_support" })
             Check(CampaignCommand.BuildRequests(options with { SubmarineDistanceToBoss = distance })
                 .All(request => request.Input!["submarineDistanceToBoss"]!.GetValue<string>() == distance), "Command lost submarine distance");

@@ -18,6 +18,15 @@ public interface ICampaignInMapHost
     CampaignMapCombat CreateCombat(IMapScanCamera camera, CampaignConfiguration configuration,
         Func<CancellationToken, ValueTask> refocusBoss);
     ValueTask RefocusBossAsync(IMapScanCamera camera, (int X, int Y)? preset, CancellationToken token);
+    ValueTask ResetAutoSearchLevelsAsync(CampaignState state, CampaignConfiguration configuration, CancellationToken token)
+        => throw new NotSupportedException("C# auto-search level state is unavailable");
+    ValueTask ReadAutoSearchLevelsAsync(CampaignState state, CampaignConfiguration configuration, CancellationToken token)
+        => throw new NotSupportedException("C# auto-search level observation is unavailable");
+    ValueTask AutoSearchMoveAsync(CampaignState state, CampaignConfiguration configuration, CancellationToken token)
+        => throw new NotSupportedException("C# auto-search movement is unavailable");
+    ValueTask AutoSearchCombatAsync(CampaignState state, CampaignConfiguration configuration, int fleetIndex,
+        CancellationToken token)
+        => throw new NotSupportedException("C# auto-search combat is unavailable");
 }
 
 public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount, MapArrivalResult? StageReturn,
@@ -28,7 +37,7 @@ public sealed record CampaignResumeResult(CampaignLoopExit Exit, int BattleCount
     IReadOnlyList<DecoyArrivalEvidence>? DecoyArrivals = null,
     IReadOnlyList<AmbushEncounterEvidence>? AmbushEncounters = null,
     IReadOnlyList<CarrierEncounterEvidence>? CarrierEncounters = null, IReadOnlyList<CarrierScanEvidence>? CarrierScans = null,
-    SubmarineLocationEvidence? Submarine = null);
+    SubmarineLocationEvidence? Submarine = null, AutoSearchEvidence? AutoSearch = null);
 public interface ICampaignExecutionService
 {
     ValueTask<CampaignResumeResult> ResumeInMapAsync(CampaignRule rule,
@@ -125,16 +134,14 @@ public sealed class InMapCampaignOperations(ICampaignInMapHost host, CampaignSta
     public ValueTask RefocusBossAsync((int X, int Y)? preset)
         => host.RefocusBossAsync(_camera ?? throw new InvalidOperationException("Initialize the map before boss refocus"),
             preset ?? configuration.BossAppearRefocusSwipe, token);
-    public ValueTask ResetLevelsAsync() => throw Missing("auto-search level reset");
-    public ValueTask ReadLevelsAsync() => throw Missing("auto-search level read");
-    public ValueTask AutoSearchMoveAsync() => throw Missing("auto-search movement");
-    public ValueTask AutoSearchCombatAsync(int fleetIndex) => throw Missing("auto-search combat");
+    public ValueTask ResetLevelsAsync() => host.ResetAutoSearchLevelsAsync(state, configuration, token);
+    public ValueTask ReadLevelsAsync() => host.ReadAutoSearchLevelsAsync(state, configuration, token);
+    public ValueTask AutoSearchMoveAsync() => host.AutoSearchMoveAsync(state, configuration, token);
+    public ValueTask AutoSearchCombatAsync(int fleetIndex) => host.AutoSearchCombatAsync(state, configuration, fleetIndex, token);
     public async ValueTask WithdrawAsync()
     {
         state.Withdrawal = await host.WithdrawAsync("campaign_error", token);
         throw new CampaignEndedException("Withdraw: campaign error");
     }
 
-    private static NotSupportedException Missing(string operation)
-        => new($"C# campaign resume has not ported {operation}");
 }

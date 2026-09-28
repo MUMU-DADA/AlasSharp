@@ -13,7 +13,7 @@ public sealed class CampaignRunTask : ITaskRunner
 
     public void Validate(JsonObject? input)
     {
-        TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock",
+        TaskInput.Fields(input, "campaign", "fleet1", "fleet2", "submarine", "emotionMode", "fleetLock", "autoSearch", "submarineAutoCall", "oilLimit",
             "fleet1Formation", "fleet2Formation", "fleetOrder", "hpControl", "reachLevel", "retirement",
             "clearMode", "doubleBook", "mapAchievement", "stageIncrease", "ambushEvade", "submarineMode", "submarineDistanceToBoss");
         var id = input?["campaign"]?.GetValue<string>() ??
@@ -28,6 +28,9 @@ public sealed class CampaignRunTask : ITaskRunner
         if (input.ContainsKey("fleetLock") && input["fleetLock"] is null)
             throw new ArgumentException("Fleet lock setting cannot be null");
         if (input["fleetLock"] is not null) _ = input["fleetLock"]!.GetValue<bool>();
+        _ = Option(input, "autoSearch", false);
+        _ = Option(input, "submarineAutoCall", false);
+        _ = OilLimit(input);
         _ = Formation(input, "fleet1Formation");
         _ = Formation(input, "fleet2Formation");
         _ = Order(input);
@@ -74,7 +77,10 @@ public sealed class CampaignRunTask : ITaskRunner
             MapAchievement = Achievement(request.Input),
             StageIncrease = Option(request.Input, "stageIncrease", false),
             AmbushEvade = Option(request.Input, "ambushEvade", true),
-            UseFleetLock = request.Input["fleetLock"]?.GetValue<bool>() ?? true
+            UseFleetLock = request.Input["fleetLock"]?.GetValue<bool>() ?? true,
+            UseAutoSearch = Option(request.Input, "autoSearch", false),
+            SubmarineAutoCall = Option(request.Input, "submarineAutoCall", false),
+            OilLimit = OilLimit(request.Input)
         };
         // Config inheritance is authoritative. Apply it before touching the
         // fleet page so the device selection and map state use identical values.
@@ -99,6 +105,7 @@ public sealed class CampaignRunTask : ITaskRunner
             ["emotionMode"] = configuration.EmotionMode.Name(),
             ["fleetLockRequested"] = configuration.UseFleetLock,
             ["clearModeRequested"] = configuration.UseClearMode,
+            ["autoSearchRequested"] = configuration.UseAutoSearch,
             ["doubleBookRequested"] = configuration.UseDoubleBook
         };
         evidence["fleet1Formation"] = CampaignStrategy.FormationName(configuration.Fleet1Formation);
@@ -132,9 +139,17 @@ public sealed class CampaignRunTask : ITaskRunner
             evidence["selection"] = JsonSerializer.SerializeToNode(selection, TaskQueue.Json);
             phase = "map_state";
             var prepared = await mapPreparation.PrepareMapAsync(configuration, context.Timeout, token);
+            if (prepared.AutoSearch.Enabled && (!prepared.AutoSearch.Available || !prepared.ClearMode ||
+                !configuration.UseAutoSearch || CampaignObjectives.Apply(configuration with { PreparationInfo = prepared.Info }).ClearAllThisTime))
+                throw new InvalidDataException("Auto-search observation contradicts the requested preparation state");
             evidence["mapPreparation"] = JsonSerializer.SerializeToNode(prepared, TaskQueue.Json);
             evidence["autoSearch"] = JsonSerializer.SerializeToNode(prepared.AutoSearch, TaskQueue.Json);
-            configuration = CampaignObjectives.Apply(configuration with { IsClearMode = prepared.ClearMode, PreparationInfo = prepared.Info });
+            configuration = CampaignObjectives.Apply(configuration with
+            {
+                IsClearMode = prepared.ClearMode,
+                PreparationInfo = prepared.Info,
+                UseAutoSearch = prepared.AutoSearch.Enabled
+            });
             evidence["clearAllThisTime"] = configuration.ClearAllThisTime;
             evidence["hasMapStory"] = configuration.HasMapStory;
             if (CampaignObjectives.Reached(configuration.MapAchievement, prepared.Info))
@@ -154,7 +169,9 @@ public sealed class CampaignRunTask : ITaskRunner
                 IsDoubleBook = book.Enabled ?? throw new InvalidDataException("Double-book state was not confirmed")
             };
             phase = "fleet_setup";
-            plan = plan with { IsClearMode = configuration.IsClearMode };
+            plan = plan with { IsClearMode = configuration.IsClearMode,
+                AutoSearch = configuration.UseAutoSearch, FleetOrder = configuration.FleetOrder,
+                SubmarineAutoCall = configuration.SubmarineAutoCall };
             evidence["fleetPlan"] = JsonSerializer.SerializeToNode(plan, TaskQueue.Json);
             var setup = await fleets.ConfigureFleetAsync(plan, context.Popups, token);
             evidence["fleetSetup"] = JsonSerializer.SerializeToNode(setup, TaskQueue.Json);
@@ -175,6 +192,13 @@ public sealed class CampaignRunTask : ITaskRunner
             evidence["cleared"] = false;
             throw new TaskEvidenceException(phase, evidence, error);
         }
+    }
+
+    private static int OilLimit(JsonObject input)
+    {
+        int value = input.TryGetPropertyValue("oilLimit", out var node)
+            ? node?.GetValue<int>() ?? throw new ArgumentException("oilLimit cannot be null") : 1000;
+        return value >= 0 ? value : throw new ArgumentException("oilLimit cannot be negative");
     }
 
     private static string SubmarineDistanceInput(JsonObject input) => input.TryGetPropertyValue("submarineDistanceToBoss", out var value)

@@ -63,6 +63,10 @@ public sealed record CampaignConfiguration
     public bool HasClearPercentage { get; init; } = true;
     public bool ClearPercentageShort { get; init; }
     public bool IsOneTimeStage { get; init; }
+    /// <summary>Upstream Campaign_UseAutoSearch. Manual mode remains the safe task default.</summary>
+    public bool UseAutoSearch { get; init; }
+    public bool SubmarineAutoCall { get; init; }
+    public int OilLimit { get; init; } = 1000;
     public bool HasFleetStep { get; init; }
     public int Fleet1Step { get; init; } = 3;
     public int Fleet2Step { get; init; } = 2;

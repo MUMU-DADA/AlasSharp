@@ -243,13 +243,15 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     {
         var execution = CreateInMapCampaignExecution(rule, configuration, token);
         var exit = await execution.RunAsync();
+        if (configuration.UseAutoSearch && _autoSearch is not null)
+            await _autoSearch.ExitMenuAsync(TimeSpan.FromMinutes(1), token);
         var operations = (InMapCampaignOperations)execution.Context.Operations;
         return new(exit, execution.Context.State.BattleCount, operations.StageReturn, operations.InitialFleet, operations.AmmoPickups,
             execution.Context.State.Health.Observations, execution.Context.State.Withdrawal,
             execution.Context.State.Levels.Evidence(execution.Context.Config.Levels), execution.Context.State.MechanismReleases,
             execution.Context.State.MovableScans, execution.Context.State.MazeWaits, execution.Context.State.DecoyArrivals,
             execution.Context.State.AmbushEncounters, execution.Context.State.CarrierEncounters, execution.Context.State.CarrierScans,
-            execution.Context.State.SubmarineEvidence);
+            execution.Context.State.SubmarineEvidence, _autoSearch?.Evidence);
     }
     async ValueTask<bool> ICampaignInMapHost.VerifyInMapAsync(CancellationToken token)
     {
@@ -294,6 +296,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
     ValueTask ICampaignInMapHost.RefocusBossAsync(IMapScanCamera camera, (int X, int Y)? preset, CancellationToken token)
         => camera is MapCamera mapCamera ? mapCamera.RefocusBossAsync(preset, token) :
             throw new ArgumentException("Campaign camera does not belong to this session", nameof(camera));
+
     public CombatRankProbe CreateCombatRankProbe() => new(Driver);
     internal CombatFlow CreateCampaignCombatFlow(CampaignState state, CampaignConfiguration configuration,
         StageEntranceKind entrances = StageEntranceKind.Normal)
@@ -395,7 +398,7 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
         _emotion = null;
         _emotionConfiguration = null;
         _mapPreparation = null;
-        _campaignState = null;
+        _campaignState = null; _autoSearch = null; _autoSearchHandlers = null;
         _achievement = null;
         _retirement.ResetEvidence();
         _interruptions.Configure(new() { Mode = RetirementMode.Disabled }, CampaignEmotionMode.Calculate);
@@ -502,14 +505,22 @@ public sealed partial class EngineSession : IAsyncDisposable, IMapObservationSer
             watchdogFile = "device-watchdog.json";
             await File.WriteAllTextAsync(Path.Combine(directory, watchdogFile), JsonSerializer.Serialize(_device.Watchdog.Evidence, TaskQueue.Json));
         }
-        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile, submarineCallsFile, submarineMovesFile, walkRecoveriesFile, walkTimeoutsFile, walkInterruptionsFile, watchdogFile);
+        string? autoSearchFile = null;
+        if (_autoSearch is not null)
+        {
+            autoSearchFile = "auto-search.json";
+            await File.WriteAllTextAsync(Path.Combine(directory, autoSearchFile),
+                JsonSerializer.Serialize(new AutoSearchArtifact(_autoSearch.Evidence,
+                    _autoSearchHandlers!.Resources.Readings), TaskQueue.Json));
+        }
+        return new(image, hash, sequence, _device.Actions.Count, healthFile, retirementFile, emotionFile, preparationFile, fleetSwitchFile, mapStopFile, submarineFile, submarineCallsFile, submarineMovesFile, walkRecoveriesFile, walkTimeoutsFile, walkInterruptionsFile, watchdogFile, autoSearchFile);
     }
     public ValueTask DisposeAsync() => _vision.DisposeAsync();
     public sealed record JsonObjectEvidence(string? Image, string? Sha256, long? FrameSequence, int ActionAttempts,
         string? CombatHealthFile = null, string? RetirementFile = null, string? EmotionFile = null, string? MapPreparationFile = null,
         string? FleetSwitchFile = null, string? MapStopFile = null, string? SubmarineFile = null, string? SubmarineCallsFile = null,
         string? SubmarineMovesFile = null, string? WalkRecoveriesFile = null, string? WalkTimeoutsFile = null,
-        string? WalkInterruptionsFile = null, string? DeviceWatchdogFile = null);
+        string? WalkInterruptionsFile = null, string? DeviceWatchdogFile = null, string? AutoSearchFile = null);
     private sealed record DeviceAction(string Kind, DateTimeOffset StartedAt, object Parameters)
     {
         public bool Completed { get; set; }

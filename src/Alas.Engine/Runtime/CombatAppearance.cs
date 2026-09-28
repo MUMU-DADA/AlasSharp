@@ -4,7 +4,7 @@ using Alas.Engine.Rules;
 namespace Alas.Engine.Runtime;
 
 /// <summary>Native combat_appear, including the fleet-lock loading shortcut and automation overlay.</summary>
-public sealed class CombatAppearance(IUiDriver ui, bool useFleetLock,
+public sealed partial class CombatAppearance(IUiDriver ui, bool useFleetLock,
     Func<CancellationToken, ValueTask<bool>> loading)
 {
     public static readonly SourceFile Source = MapEncounterProbe.CombatSource;

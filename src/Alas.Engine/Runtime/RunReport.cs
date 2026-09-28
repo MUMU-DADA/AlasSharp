@@ -123,6 +123,34 @@ public sealed class RunReport
         }
         if (boundary.ActionAttempts != actionAttempts)
             throw new InvalidDataException("任务边界动作次数与动作工件不同");
+        if (boundary.AutoSearchFile is { } autoSearchFile)
+        {
+            if (autoSearchFile != "auto-search.json") throw new InvalidDataException("自动寻敌工件必须位于当前任务目录");
+            string autoSearchPath = Path.Combine(taskRoot, autoSearchFile);
+            if ((File.GetAttributes(autoSearchPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("自动寻敌工件必须是普通文件");
+            var stored = JsonSerializer.Deserialize<AutoSearchArtifact>(ArtifactReader.ReadAllText(autoSearchPath), TaskQueue.Json);
+            if (stored is not { Flow: { } flow, Resources: { } resources } || flow.Battles is null ||
+                flow.Phase is not ("not_started" or "moving" or "combat_ready" or "loading" or "executing" or "status" or "moving_ready" or "exiting" or "ended") ||
+                flow.EndReason is not (null or "result_menu" or "menu_missing") ||
+                (flow.EndReason is null) != (flow.EndFrame is null) ||
+                (flow.Phase is "ended" or "exiting" && flow.EndReason is null) ||
+                flow.EndFrame is <= 0 || flow.EndFrame > boundary.FrameSequence ||
+                flow.StageFrame is <= 0 || flow.StageFrame > boundary.FrameSequence ||
+                flow.StageFrame is not null && (flow.EndFrame is null || flow.StageFrame < flow.EndFrame) ||
+                flow.Battles.Any(b => b is null || b.Fleet is not (1 or 2) || b.StartedFrame <= 0 ||
+                    b.LastFrame < b.StartedFrame || b.LastFrame > boundary.FrameSequence ||
+                    b.Rank is { } rank && !CombatRankProbe.IsRecognized(rank) ||
+                    b.ReturnedToSearch && b.Phase != "moving_ready") ||
+                resources.Any(r => r is null || r.FrameSequence <= 0 || r.FrameSequence > boundary.FrameSequence ||
+                    r.Resource is not ("oil" or "coin") || r.Amount < 0))
+                throw new InvalidDataException("自动寻敌工件缺少一致的阶段、资源或观测帧");
+            if (result.Evidence?["autoSearchExecution"] is { } reported &&
+                !JsonNode.DeepEquals(reported, JsonSerializer.SerializeToNode(flow, TaskQueue.Json)))
+                throw new InvalidDataException("自动寻敌报告与会话工件不一致");
+        }
+        else if (result.Evidence?["autoSearchExecution"] is not null)
+            throw new InvalidDataException("任务缺少自动寻敌工件");
         if (boundary.DeviceWatchdogFile is { } watchdogFile)
         {
             if (watchdogFile != "device-watchdog.json") throw new InvalidDataException("设备进度工件必须位于当前任务目录");

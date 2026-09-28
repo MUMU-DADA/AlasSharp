@@ -59,7 +59,9 @@ public sealed class CampaignMapPreparation(IUiDriver ui, IImagePatchVision patch
                 if (changed) await WaitAutoSearchAsync(limit, linked.Token);
             }
             else Evidence = Evidence with { ClearMode = false };
-            var auto = await _auto.EnsureManualOnFrameAsync(timeout, linked.Token);
+            var objectives = CampaignObjectives.Apply(configuration with { PreparationInfo = info });
+            var auto = await _auto.EnsureModeOnFrameAsync(clear && configuration.UseAutoSearch &&
+                !objectives.ClearAllThisTime, timeout, linked.Token);
             Evidence = Evidence with { AutoSearch = auto };
             return new(info, clear, changed, auto);
         }

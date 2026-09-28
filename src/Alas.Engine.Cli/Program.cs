@@ -15,6 +15,7 @@ if (args.Length == 0 || args is ["--help"])
     Console.WriteLine("--fleet-order: fleet1_mob_fleet2_boss (default), fleet1_boss_fleet2_mob, fleet1_all_fleet2_standby, fleet1_standby_fleet2_all; current campaign rules may disable fleet 2. --submarine-mode: do_not_use (default), hunt_only, boss_only, hunt_and_boss, every_combat. --submarine-distance-to-boss: to_boss_position, 1_grid_to_boss, 2_grid_to_boss (default), use_open_ocean_support.");
     Console.WriteLine("run/campaign: --profile-root <Engine profile root> --instance <profile name> bind persistent Engine state to the same device. campaign: --emotion-mode <calculate|calculate_ignore|ignore|nothing> (default ignore). Calculated modes require a profile binding; deferred recovery is recorded in the profile and this task is skipped.");
     Console.WriteLine("campaign: --clear-mode <true|false> (default true), --double-book <true|false> (default false). Effective settings are observed on map/fleet preparation before entry.");
+    Console.WriteLine("campaign: --auto-search <true|false> (default false), --submarine-auto-call <true|false> (default false), --oil-limit <number> (default 1000). Automatic result menus alone do not establish a cleared sortie.");
     Console.WriteLine("campaign: --map-achievement <non_stop|100_percent_clear|map_3_stars|threat_safe|threat_safe_without_3_stars>, --stage-increase <true|false>. Achievement stops require --profile-root and --instance to update Engine state.");
     return 0;
 }
@@ -27,7 +28,7 @@ try
     string[] required = ["--adb", "--serial", "--server", "--assets", "--vision-runtime", "--artifacts",
         .. navigate ? new[] { "--package", "--page" } : run ? new[] { "--queue" } : campaign ? new[] { "--chapter", "--models" } : []];
     var allowed = required.Concat(navigate ? ["--timeout"] : run ? ["--models", "--package", "--resume", "--profile-root", "--instance"] : campaign
-        ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--submarine-mode", "--submarine-distance-to-boss", "--timeout", "--fleet1-formation", "--fleet2-formation", "--fleet-order", "--profile-root", "--instance", "--emotion-mode", "--clear-mode", "--double-book", "--map-achievement", "--stage-increase"]
+        ? ["--models", "--package", "--resume", "--fleet1", "--fleet2", "--submarine", "--submarine-mode", "--submarine-distance-to-boss", "--timeout", "--fleet1-formation", "--fleet2-formation", "--fleet-order", "--profile-root", "--instance", "--emotion-mode", "--clear-mode", "--double-book", "--auto-search", "--submarine-auto-call", "--oil-limit", "--map-achievement", "--stage-increase"]
         : Array.Empty<string>()).ToHashSet(StringComparer.Ordinal);
     var switches = (run ? new[] { "--allow-actions", "--dry-run", "--continue-on-failure" } : campaign
         ? new[] { "--run", "--allow-actions", "--continue-on-failure" } : []).ToHashSet(StringComparer.Ordinal);
@@ -83,6 +84,9 @@ try
                 ProfileRoot: values.GetValueOrDefault("--profile-root"), ProfileInstance: values.GetValueOrDefault("--instance"),
                 ClearMode: bool.Parse(values.GetValueOrDefault("--clear-mode", "true")),
                 DoubleBook: bool.Parse(values.GetValueOrDefault("--double-book", "false")),
+                AutoSearch: bool.Parse(values.GetValueOrDefault("--auto-search", "false")),
+                SubmarineAutoCall: bool.Parse(values.GetValueOrDefault("--submarine-auto-call", "false")),
+                OilLimit: ParseFleet("--oil-limit", 1000),
                 MapAchievement: CampaignObjectives.Parse(values.GetValueOrDefault("--map-achievement", "non_stop")),
                 StageIncrease: bool.Parse(values.GetValueOrDefault("--stage-increase", "false")));
             var campaignResult = await CampaignCommand.RunAsync(options, cancellation.Token);

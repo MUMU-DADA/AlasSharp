@@ -31,8 +31,8 @@ def main():
                     MAP_CLEAR_PERCENTAGE_SHORT=case.get('short', False),
                     MAP_IS_ONE_TIME_STAGE=case.get('oneTime', False),
                     Campaign_Name='1-1', MAP_HAS_MAP_STORY=True, STAR_REQUIRE_3=3,
-                    StopCondition_MapAchievement='non_stop', Campaign_UseClearMode=case.get('useClear', True),
-                    Campaign_UseAutoSearch=False, Campaign_Use2xBook=case.get('useBook', False))
+                    StopCondition_MapAchievement=case.get('achievement', 'non_stop'), Campaign_UseClearMode=case.get('useClear', True),
+                    Campaign_UseAutoSearch=case.get('useAuto', False), Campaign_Use2xBook=case.get('useBook', False))
                 self.map_clear_percentage_prev = -1
                 timers.time = lambda: self.now
                 self.map_clear_percentage_timer = timers.Timer(.3, count=1).start()
@@ -108,6 +108,16 @@ def main():
                     [{}], [dict(book='on' if desired else 'off')],
                     [dict(book='off' if desired else 'on')] * 20 + [dict(book='on' if desired else 'off')],
                     [dict(book='off' if desired else 'on')]]]
+        for use_auto in [False, True]:
+            for use_clear in [False, True]:
+                for stars in [[36, 36, 36], [36, 36, 0]]:
+                    for achievement in ['non_stop', 'map_3_stars']:
+                        enabled = use_auto and use_clear and (achievement == 'non_stop' or stars[2] > 35)
+                        initial = dict(clear='on' if use_clear else 'off', stars=stars, auto='off' if enabled else 'on')
+                        final = dict(initial, auto='on' if enabled else 'off')
+                        scenarios.append(dict(kind='map', useAuto=use_auto, useClear=use_clear, achievement=achievement,
+                                              frames=[initial] * 6 + [final] * 8))
+        scenarios.append(dict(kind='map', useAuto=True, frames=[dict(clear='on')]))
         results = []
         for case in scenarios:
             actor = Replay(case)
@@ -123,9 +133,9 @@ def main():
                             clearModeAvailable=actor.map_has_clear_mode)
                 changed = actor.handle_fast_forward()
                 available = fast.AUTO_SEARCH.appear(actor)
-                auto_changed = fast.AUTO_SEARCH.set('off', actor) if available else False
+                auto_changed = actor.handle_auto_search()
                 expected = dict(info=info, clearMode=actor.map_is_clear_mode, clearModeChanged=changed,
-                                autoSearch=dict(available=available, changed=auto_changed, enabled=False))
+                                autoSearch=dict(available=available, changed=auto_changed, enabled=actor.map_is_auto_search))
             else:
                 actor.screenshot()
                 result = actor._set_2x_book_status('on' if case['useBook'] else 'off',

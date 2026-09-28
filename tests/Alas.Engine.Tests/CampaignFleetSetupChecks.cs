@@ -63,7 +63,26 @@ internal static class CampaignFleetSetupChecks
             if (!hard && available && clear) Check(probe.Trace.IndexOf("standby") > probe.Trace.IndexOf("FLEET_1_CHOOSE"),
                 "Standby opened before fleet configuration finished");
         }
-        Console.WriteLine("Fleet setup: normal, second fleet, submarine, hard restrictions and invalid plans passed offline.");
+        foreach (var order in Enum.GetValues<FleetOrder>())
+        foreach (bool autoCall in new[] { false, true })
+        foreach (bool available in new[] { false, true })
+        {
+            probe = new Probe();
+            probe.State(FleetSlot.Submarine).Allowed = available;
+            result = await probe.Setup.ApplyAsync(new(1, 2, 1, SubmarineMode.BossOnly, true)
+                { AutoSearch = true, FleetOrder = order, SubmarineAutoCall = autoCall });
+            Check(result.AutoSearchFleetOrder == FleetRoles.Name(order) &&
+                result.AutoSearchSubmarine == (!available ? null : autoCall ? "sub_auto_call" : "sub_standby"),
+                "Fleet setup did not apply the effective automatic roles");
+            Check(probe.ActiveRoles.Contains((int)order) &&
+                (!available || probe.ActiveRoles.Contains(autoCall ? 4 : 5)),
+                "Final fleet/sidebar role differs from the confirmed plan");
+            if (available && autoCall)
+                Check(probe.Trace.Last() == "AUTO_SEARCH_SET_SUB_AUTO",
+                    "Boss-only standby incorrectly overwrote the later automatic submarine setting");
+        }
+        await Throws<ArgumentException>(() => new Probe().Setup.ApplyAsync(new(1, 2, 0) { AutoSearch = true }).AsTask());
+        Console.WriteLine("Fleet setup: normal, second fleet, submarine, hard restrictions, automatic roles and invalid plans passed offline.");
     }
 
     private static void Check(bool value, string message)
@@ -90,6 +109,7 @@ internal static class CampaignFleetSetupChecks
         public CampaignFleetSetup Setup => new(this, this, () => new ScreenFrame(_sequence, DateTimeOffset.UnixEpoch,
             ReadOnlyMemory<byte>.Empty), this);
         public List<string> Trace { get; } = [];
+        public HashSet<int> ActiveRoles { get; } = [0, 5];
         public SlotState State(FleetSlot slot) => _states.Single(state => state.Slot.Clear == slot.Clear);
         public override Rectangle ButtonArea(AssetRule asset)
             => asset.For(Server).ClickArea ?? throw new InvalidDataException("Missing test button");
@@ -134,7 +154,8 @@ internal static class CampaignFleetSetupChecks
             double value;
             if (request.Color is { } color && color == new PixelColor(99, 235, 255)) value = request.Area.Y == 377 ? 51 : 0;
             else if (request.Color == new PixelColor(255, 255, 255)) value = 101;
-            else if (request.Color == new PixelColor(156, 255, 82)) value = request.Area == ButtonArea(UiAssets.Handler.AUTO_SEARCH_SET_SUB_STANDBY).Area ? 21 : 0;
+            else if (request.Color == new PixelColor(156, 255, 82)) value =
+                CampaignAutoSearchSettings.Settings.Where((a, i) => ActiveRoles.Contains(i)).Any(a => ButtonArea(a).Area == request.Area) ? 21 : 0;
             else if (request.Measure == PatchMeasure.RowPeakCount)
             {
                 var state = _states.Single(s => ButtonArea(s.Slot.HardSatisfied).Area == request.Area);
@@ -155,6 +176,12 @@ internal static class CampaignFleetSetupChecks
         {
             token.ThrowIfCancellationRequested();
             Trace.Add(asset.Name);
+            int role = Array.IndexOf(CampaignAutoSearchSettings.Settings, asset);
+            if (role >= 0)
+            {
+                ActiveRoles.RemoveWhere(i => role < 4 ? i < 4 : i >= 4); ActiveRoles.Add(role);
+                return ValueTask.CompletedTask;
+            }
             var state = _states.Single(s => s.Slot.Choose == asset || s.Slot.Clear == asset);
             if (state.Slot.Choose == asset) state.Open = !state.Open;
             else { state.InUse = false; state.Selected.Clear(); }

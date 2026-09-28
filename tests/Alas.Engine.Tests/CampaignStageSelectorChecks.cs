@@ -227,7 +227,9 @@ internal static partial class CampaignStageSelectorChecks
                 Entry: new EntryService(driver), MapPreparation: new PreparationService(), Interruptions: interruptions), default);
         Check(interruptions.Options is { Mode: RetirementMode.OneClick, KeepLimitBreak: true },
             "Campaign run did not configure native retirement defaults before entry");
-        Check(result.Outcome == TaskOutcome.Failed && runFleet.Plan == new FleetPlan(1, 0, 0) &&
+        Check(runFleet.Plan == new FleetPlan(1, 0, 0) { FleetOrder = FleetOrder.Fleet1BossFleet2Mob },
+            "Campaign fleet setup lost the requested role order");
+        Check(result.Outcome == TaskOutcome.Failed &&
             result.Evidence?["campaignIdentityVerified"]?.GetValue<bool>() == true &&
             result.Evidence["entry"]?["fleetClicks"]?.GetValue<int>() == 1 &&
             result.Evidence["sortie"]?["outcome"]?.GetValue<string>() == "ended_unknown" &&
@@ -279,22 +281,26 @@ internal static partial class CampaignStageSelectorChecks
         }
         foreach (bool clear in new[] { false, true })
         foreach (bool book in new[] { false, true })
+        foreach (bool automatic in new[] { false, true })
         {
             driver = new Driver { Chapter = 1 };
             var input = runInput.DeepClone().AsObject();
             input["clearMode"] = clear; input["doubleBook"] = book;
+            input["autoSearch"] = automatic; input["submarineAutoCall"] = automatic; input["oilLimit"] = 1800;
             input["submarineMode"] = "boss_only"; input["submarineDistanceToBoss"] = "use_open_ocean_support";
-            var preparation = new PreparationService { ClearMode = clear, DoubleBook = clear && book };
+            var preparation = new PreparationService { ClearMode = clear, DoubleBook = clear && book, AutoSearch = clear && automatic };
             var observedFleet = new FleetService();
             result = await runTask.RunAsync(configured with { Kind = runTask.Kind, Input = input },
                 new(driver, new Navigator(), null!, TimeSpan.FromSeconds(60),
-                    Campaign: new CampaignService { ClearMode = clear, DoubleBook = clear && book },
+                    Campaign: new CampaignService { ClearMode = clear, DoubleBook = clear && book, AutoSearch = clear && automatic, OilLimit = 1800 },
                     Stages: new Stages(driver), Fleets: observedFleet, Entry: new EntryService(driver),
                     MapPreparation: preparation), default);
             Check(preparation.BookConfiguration is { } observed && observed.IsClearMode == clear &&
                 observed.UseDoubleBook == book && result.Evidence!["doubleBook"]!["enabled"]!.GetValue<bool>() == (clear && book),
                 "Task lost requested versus observed preparation/book state");
             Check(observedFleet.Plan is { } fleet && fleet.IsClearMode == clear && fleet.SubmarineMode == SubmarineMode.BossOnly &&
+                fleet.AutoSearch == (clear && automatic) && fleet.SubmarineAutoCall == automatic &&
+                fleet.FleetOrder == FleetOrder.Fleet1BossFleet2Mob &&
                 result.Evidence!["submarineDistanceToBoss"]!.GetValue<string>() == "use_open_ocean_support",
                 "Fleet preparation lost observed clear mode or requested submarine settings");
         }
@@ -384,6 +390,7 @@ internal static partial class CampaignStageSelectorChecks
     }
     private sealed class PreparationService : ICampaignMapPreparationService
     {
+        public bool AutoSearch { get; init; }
         public CampaignMapInfo Info { get; init; } = new(1, .99, true, false, false, false, true);
         public bool ClearMode { get; init; }
         public bool DoubleBook { get; init; }
@@ -392,7 +399,7 @@ internal static partial class CampaignStageSelectorChecks
         public ValueTask<CampaignMapPreparationResult> PrepareMapAsync(CampaignConfiguration configuration,
             TimeSpan timeout, CancellationToken token)
         { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(new CampaignMapPreparationResult(
-            Info, ClearMode, false, new(false, false, false))); }
+            Info, ClearMode, false, new(AutoSearch, false, AutoSearch))); }
         public ValueTask<DoubleBookObservation> PrepareDoubleBookAsync(CampaignConfiguration configuration,
             TimeSpan timeout, CancellationToken token)
         {
@@ -415,6 +422,8 @@ internal static partial class CampaignStageSelectorChecks
     }
     private sealed class CampaignService : ICampaignExecutionService
     {
+        public bool AutoSearch { get; init; }
+        public int OilLimit { get; init; } = 1000;
         public bool AmbushEvade { get; init; } = true;
         public RetirementMode Retirement { get; init; } = RetirementMode.OneClick;
         public bool ClearMode { get; init; }
@@ -425,6 +434,8 @@ internal static partial class CampaignStageSelectorChecks
             CampaignConfiguration configuration, CancellationToken token)
         {
             if (Fail) throw new IOException("Injected map execution failure");
+            Check(configuration.UseAutoSearch == AutoSearch && configuration.OilLimit == OilLimit,
+                "Campaign execution lost observed automatic mode or resource limit");
             Check(configuration.IsClearMode == ClearMode && configuration.IsDoubleBook == DoubleBook,
                 "Campaign execution lost confirmed map/book state");
             Check(configuration.Retirement.Mode == Retirement, "Campaign execution lost the requested retirement mode");

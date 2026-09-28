@@ -15,7 +15,23 @@ public sealed class CampaignAutoSearchSettings(IUiDriver ui, IImagePatchVision v
         UiAssets.Handler.AUTO_SEARCH_SET_STANDBY, UiAssets.Handler.AUTO_SEARCH_SET_SUB_AUTO,
         UiAssets.Handler.AUTO_SEARCH_SET_SUB_STANDBY];
 
-    public async ValueTask EnsureSubmarineStandbyAsync(CancellationToken token = default)
+    public ValueTask EnsureSubmarineStandbyAsync(CancellationToken token = default)
+        => EnsureAsync(UiAssets.Handler.AUTO_SEARCH_SET_SUB_STANDBY, token);
+
+    public ValueTask EnsureFleetOrderAsync(FleetOrder order, CancellationToken token = default)
+        => EnsureAsync(order switch
+        {
+            FleetOrder.Fleet1MobFleet2Boss => UiAssets.Handler.AUTO_SEARCH_SET_MOB,
+            FleetOrder.Fleet1BossFleet2Mob => UiAssets.Handler.AUTO_SEARCH_SET_BOSS,
+            FleetOrder.Fleet1AllFleet2Standby => UiAssets.Handler.AUTO_SEARCH_SET_ALL,
+            FleetOrder.Fleet1StandbyFleet2All => UiAssets.Handler.AUTO_SEARCH_SET_STANDBY,
+            _ => throw new ArgumentOutOfRangeException(nameof(order))
+        }, token);
+
+    public ValueTask EnsureSubmarineAsync(bool autoCall, CancellationToken token = default)
+        => EnsureAsync(autoCall ? UiAssets.Handler.AUTO_SEARCH_SET_SUB_AUTO : UiAssets.Handler.AUTO_SEARCH_SET_SUB_STANDBY, token);
+
+    private async ValueTask EnsureAsync(AssetRule target, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         await CaptureAsync(token);
@@ -41,14 +57,14 @@ public sealed class CampaignAutoSearchSettings(IUiDriver ui, IImagePatchVision v
             var active = new List<AssetRule>();
             foreach (var setting in Settings)
                 if (await _visuals.ColorCountAsync(ui.ButtonArea(setting), new(156, 255, 82), 30, 20, token)) active.Add(setting);
-            if (active.Contains(UiAssets.Handler.AUTO_SEARCH_SET_SUB_STANDBY)) return;
+            if (active.Contains(target)) return;
             // Native never clicks an option when no active setting is visible.
-            if (active.Count > 0) await ui.ClickAsync(UiAssets.Handler.AUTO_SEARCH_SET_SUB_STANDBY, token);
+            if (active.Count > 0) await ui.ClickAsync(target, token);
             if (attempt == 5) break;
             await ui.DelayAsync(TimeSpan.FromMilliseconds(400), token);
             await CaptureAsync(token);
         }
-        throw new TimeoutException("Submarine standby setting was not observed");
+        throw new TimeoutException("Auto-search setting was not observed: " + target.Id);
     }
 
     private async ValueTask<Rectangle[]> SidebarAsync(CancellationToken token)

@@ -35,6 +35,8 @@ internal static class CampaignPreparationChecks
             var configuration = new CampaignConfiguration
             {
                 UseClearMode = scenario["useClear"]?.GetValue<bool>() ?? true,
+                UseAutoSearch = scenario["useAuto"]?.GetValue<bool>() ?? false,
+                MapAchievement = CampaignObjectives.Parse(scenario["achievement"]?.GetValue<string>() ?? "non_stop"),
                 UseDoubleBook = scenario["useBook"]?.GetValue<bool>() ?? false,
                 HasClearPercentage = scenario["hasPercentage"]?.GetValue<bool>() ?? true,
                 ClearPercentageShort = scenario["short"]?.GetValue<bool>() ?? false,
@@ -129,7 +131,7 @@ internal static class CampaignPreparationChecks
         await Rejects<OperationCanceledException>(() => preparation.PrepareMapAsync(new(), Timeout, cancelled.Token).AsTask());
         Check(ui.Clicks.Count == 0, "Rejected observation caused actions");
         var invalid = new JsonObject { ["campaign"] = "campaign_main/campaign_1_1", ["fleet1"] = 1, ["fleet2"] = 0, ["submarine"] = 0 };
-        foreach (string field in new[] { "clearMode", "doubleBook" })
+        foreach (string field in new[] { "clearMode", "doubleBook", "autoSearch", "submarineAutoCall", "oilLimit" })
         {
             var input = (JsonObject)invalid.DeepClone(); input[field] = null;
             await Rejects<ArgumentException>(() => { new CampaignRunTask().Validate(input); return Task.CompletedTask; });

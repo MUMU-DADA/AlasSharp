@@ -44,6 +44,11 @@ async Task Throws<T>(Func<Task> action, string message) where T : Exception
 
 try
 {
+    if (args is ["--auto-search", var autoPython, var autoUpstream, var autoArtifacts])
+    {
+        await AutoSearchChecks.RunAsync(Path.GetFullPath(autoPython), Path.GetFullPath(autoUpstream), Path.GetFullPath(autoArtifacts));
+        return 0;
+    }
     if (args is ["--device-watchdog", var watchdogPython, var watchdogUpstream, var watchdogArtifacts])
     {
         await DeviceWatchdogChecks.RunAsync(Path.GetFullPath(watchdogPython), Path.GetFullPath(watchdogUpstream), Path.GetFullPath(watchdogArtifacts));

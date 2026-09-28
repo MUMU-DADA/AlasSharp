@@ -7,17 +7,26 @@ namespace Alas.Engine.Runtime;
 public sealed record FleetPlan(int First, int Second, int Submarine,
     SubmarineMode SubmarineMode = SubmarineMode.DoNotUse, bool IsClearMode = false)
 {
+    public bool AutoSearch { get; init; }
+    public FleetOrder FleetOrder { get; init; } = FleetOrder.Fleet1MobFleet2Boss;
+    public bool SubmarineAutoCall { get; init; }
+
     public void Validate()
     {
         if (First is < 1 or > 6 || Second is < 0 or > 6 || Submarine is < 0 or > 2)
             throw new ArgumentOutOfRangeException(nameof(FleetPlan), "Fleet indices exceed upstream dropdown ranges");
         _ = SubmarineMode.Name();
+        _ = FleetRoles.Name(FleetOrder);
+        if (AutoSearch && !IsClearMode)
+            throw new ArgumentException("Auto search requires confirmed clear mode");
     }
 }
 
 public sealed record FleetSetupResult(bool HardMode, bool Changed, bool SubmarineAvailable, int EffectiveSubmarine)
 {
     public string? SubmarineStandby { get; init; }
+    public string? AutoSearchFleetOrder { get; init; }
+    public string? AutoSearchSubmarine { get; init; }
 }
 
 public interface ICampaignFleetPreparationService
@@ -96,11 +105,28 @@ public sealed class CampaignFleetSetup(IUiDriver ui, IImagePatchVision vision,
 
         async ValueTask<FleetSetupResult> FinishAsync(FleetSetupResult result)
         {
-            if (result.EffectiveSubmarine == 0 || plan.SubmarineMode is not (SubmarineMode.BossOnly or SubmarineMode.HuntAndBoss)) return result;
-            // Native skips locked role settings before clear mode. Record the assumption, never a confirmation.
-            if (!plan.IsClearMode) return result with { SubmarineStandby = "unavailable_clear_mode" };
-            await new CampaignAutoSearchSettings(ui, vision, currentFrame).EnsureSubmarineStandbyAsync(token);
-            return result with { SubmarineStandby = "confirmed" };
+            var settings = new CampaignAutoSearchSettings(ui, vision, currentFrame);
+            if (result.EffectiveSubmarine > 0 && plan.SubmarineMode is (SubmarineMode.BossOnly or SubmarineMode.HuntAndBoss))
+            {
+                // Native disables the manual boss-call role first, then applies automatic roles.
+                if (plan.IsClearMode)
+                {
+                    await settings.EnsureSubmarineStandbyAsync(token);
+                    result = result with { SubmarineStandby = "confirmed" };
+                }
+                else result = result with { SubmarineStandby = "unavailable_clear_mode" };
+            }
+            if (plan.AutoSearch)
+            {
+                await settings.EnsureFleetOrderAsync(plan.FleetOrder, token);
+                result = result with { AutoSearchFleetOrder = FleetRoles.Name(plan.FleetOrder) };
+                if (result.EffectiveSubmarine > 0)
+                {
+                    await settings.EnsureSubmarineAsync(plan.SubmarineAutoCall, token);
+                    result = result with { AutoSearchSubmarine = plan.SubmarineAutoCall ? "sub_auto_call" : "sub_standby" };
+                }
+            }
+            return result;
         }
     }
 }

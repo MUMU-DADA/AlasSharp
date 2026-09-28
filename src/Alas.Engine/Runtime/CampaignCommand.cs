@@ -36,7 +36,10 @@ public sealed record CampaignCommandOptions(
     MapAchievement MapAchievement = MapAchievement.NonStop,
     bool StageIncrease = false,
     SubmarineMode SubmarineMode = SubmarineMode.DoNotUse,
-    string SubmarineDistanceToBoss = "2_grid_to_boss");
+    string SubmarineDistanceToBoss = "2_grid_to_boss",
+    bool AutoSearch = false,
+    bool SubmarineAutoCall = false,
+    int OilLimit = 1000);
 
 /// <summary>Translates CLI chapter arguments into typed C# task requests.</summary>
 public static class CampaignCommand
@@ -49,6 +52,7 @@ public static class CampaignCommand
         if (!double.IsFinite(options.TimeoutSeconds) || options.TimeoutSeconds <= 0)
             throw new ArgumentException("时间上限必须为正数", nameof(options));
         _ = options.EmotionMode.Name();
+        if (options.OilLimit < 0) throw new ArgumentOutOfRangeException(nameof(options.OilLimit));
         _ = options.MapAchievement.Name();
         _ = options.SubmarineMode.Name();
         _ = new CampaignConfiguration { SubmarineDistanceToBoss = options.SubmarineDistanceToBoss }.BossDistance();
@@ -67,6 +71,9 @@ public static class CampaignCommand
                 ["fleetLock"] = options.FleetLock,
                 ["clearMode"] = options.ClearMode,
                 ["doubleBook"] = options.DoubleBook,
+                ["autoSearch"] = options.AutoSearch,
+                ["submarineAutoCall"] = options.SubmarineAutoCall,
+                ["oilLimit"] = options.OilLimit,
                 ["mapAchievement"] = options.MapAchievement.Name(),
                 ["stageIncrease"] = options.StageIncrease,
                 ["fleet1Formation"] = CampaignStrategy.FormationName(options.Fleet1Formation),

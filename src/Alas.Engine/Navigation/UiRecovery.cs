@@ -71,6 +71,11 @@ public sealed class UiRecovery : IUiRecovery, IPopupHandler, IStoryHandler
     }
     public ValueTask<bool> ConfirmAsync(CancellationToken token) => PopupConfirm(token);
     public ValueTask<bool> UrgentCommissionAsync(CancellationToken token) => UrgentCommission(token);
+    public async ValueTask<bool> MissionPopupAckAsync(CancellationToken token)
+    {
+        if (!await Appear(MISSION_POPUP_GO, Popup, 0, token) || !await Appear(MISSION_POPUP_ACK, Popup, 2, token)) return false;
+        await _driver.ClickAsync(MISSION_POPUP_ACK, token); return true;
+    }
     public async ValueTask<bool> GuildPopupCancelAsync(CancellationToken token)
     {
         if (!await GuildPopupAppearsAsync(_driver, token)) return false;
