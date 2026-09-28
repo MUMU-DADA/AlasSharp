@@ -53,9 +53,9 @@ internal static class MapArrivalChecks
         var currentOnly = new Camera(clock, [new(true, new(false, true))]);
         reached = await new MapArrivalCheck(currentOnly, map, currentOnly.InMapAsync, clock)
             .TapAndCheckAsync(destination, new(TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(1)));
-        Check(reached.Outcome == MapArrivalOutcome.Unconfirmed && currentOnly.Invalidated &&
-            map.Fleet1Location == new Cell(1, 1),
-            "Current-fleet marker alone confirmed an ordinary destination");
+        Check(reached.Outcome == MapArrivalOutcome.MarkerConfirmed && !currentOnly.Invalidated &&
+            reached.FreshFrames == 8 && map.Fleet1Location == new Cell(1, 1),
+            "Native timeout current-marker branch must wait for timeout and then stable confirmation");
 
         clock = new TestClock();
         currentOnly = new Camera(clock, [new(true, new(false, true))]);

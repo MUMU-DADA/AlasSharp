@@ -132,6 +132,12 @@ internal static class AmmoPickupChecks
             Check(failure == "cancel" ? run.Trace.Count == 0 : run.Camera.Invalidated,
                 "Failed supply left stale geometry usable: " + failure);
         }
+        var currentState = State(3);
+        var currentRun = new Harness(currentState) { Failure = "current-only" };
+        await currentRun.Combat.PickUpAmmoAsync();
+        Check(currentState is { AmmoCount: 0, FleetAmmo: 5, BattleCount: 3 } && currentRun.Combat.AmmoPickups.Count == 1 &&
+            currentRun.Camera.FrameSequence > 80 && currentRun.Trace.SequenceEqual(["tap:D1", "tap:D1", "wait:start", "wait:end"]),
+            "Current-only timeout arrival lost supply acknowledgement or replenished before confirmation");
         var invalid = State(3);
         invalid[new(4, 1)].IsEnemy = true;
         var rejectedRun = new Harness(invalid);
@@ -254,7 +260,7 @@ internal static class AmmoPickupChecks
             return ValueTask.CompletedTask;
         }
         public ValueTask<FleetMarker> ReadFleetMarkerAsync(Cell destination, CancellationToken token = default)
-            => ValueTask.FromResult(new FleetMarker(run.Failure != "marker", true));
+            => ValueTask.FromResult(new FleetMarker(run.Failure is not ("marker" or "current-only"), run.Failure != "marker"));
         public ValueTask<FleetMarker> ReadCenterMarkerAsync(CancellationToken token = default) => throw new InvalidOperationException();
         public ValueTask RelocalizeAsync(CancellationToken token = default) => throw new InvalidOperationException("Passive notification must not relocalize");
         public ValueTask AnchorAtAsync(Cell location, CancellationToken token = default) => throw new InvalidOperationException();

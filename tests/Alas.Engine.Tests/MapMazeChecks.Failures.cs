@@ -45,8 +45,9 @@ internal static partial class MapMazeChecks
             var options = new MapArrivalOptions(TimeSpan.FromSeconds(.5), TimeSpan.FromSeconds(3));
             state[C("C1")].MayBoss = boss;
             var result = boss ? await move.ProbeBossAsync(C("C1"), options) : await move.MoveAsync(C("C1"), options);
-            Check(result.Outcome == (useCurrent && !boss ? MapMoveOutcome.Committed : MapMoveOutcome.Unconfirmed),
-                "Native current-marker option or boss exclusion was lost");
+            Check(result.Outcome == MapMoveOutcome.Committed && (camera.Frames <= 12) == (useCurrent && !boss) &&
+                state.BattleCount == 0,
+                "Current-marker option/boss exclusion must defer to timeout confirmation without claiming a boss victory");
         }
         {
             var state = State(); state.Rounds.Initialize(config); state.RefreshFleetPaths(config);

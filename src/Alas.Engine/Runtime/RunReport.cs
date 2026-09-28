@@ -166,6 +166,16 @@ public sealed class RunReport
             if (walks is null || walks.Length == 0) throw new InvalidDataException("缺少移动恢复记录");
             foreach (var walk in walks) ValidateWalkRecovery(walk);
         }
+        if (boundary.WalkTimeoutsFile is { } timeoutFile)
+        {
+            if (timeoutFile != "walk-timeouts.json") throw new InvalidDataException("行走超时工件必须位于当前任务目录");
+            string timeoutPath = Path.Combine(taskRoot, timeoutFile);
+            if ((File.GetAttributes(timeoutPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("行走超时工件必须是普通文件");
+            var timeouts = JsonSerializer.Deserialize<WalkTimeoutEvidence[]>(ArtifactReader.ReadAllText(timeoutPath), TaskQueue.Json);
+            if (timeouts is null || timeouts.Length == 0) throw new InvalidDataException("缺少行走超时记录");
+            foreach (var timeout in timeouts) ValidateWalkTimeout(timeout);
+        }
         if (boundary.MapStopFile is { } stopFile)
         {
             if (stopFile != "map-stop.json") throw new InvalidDataException("成就停止工件必须位于当前任务目录");
@@ -273,6 +283,15 @@ public sealed class RunReport
             _ => false
         };
         if (!consistent) throw new InvalidDataException("潜艇定位结果与观察来源不一致");
+    }
+
+    internal static void ValidateWalkTimeout(WalkTimeoutEvidence? timeout)
+    {
+        if (timeout is null || timeout.Fleet is not (1 or 2) || timeout.Target.Column < 1 || timeout.Target.Row < 1 ||
+            timeout.ObservedFrame <= 0 || timeout.RecoveredFrame is { } recovered && recovered <= timeout.ObservedFrame ||
+            timeout.RetapFrame is { } retap && (timeout.RecoveredFrame is null || retap < timeout.RecoveredFrame) ||
+            timeout.RetapCompleted && timeout.RetapFrame is null)
+            throw new InvalidDataException("行走超时缺少一致的观察、恢复或重试记录");
     }
 
     internal static void ValidateWalkRecovery(WalkRecoveryEvidence? walk)

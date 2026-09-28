@@ -35,7 +35,10 @@ public sealed record MapArrivalResult(MapArrivalOutcome Outcome, long FrameSeque
     public bool AmbushesConfirmed => Ambushes.Length == HandledEncounters.Count(kind => kind == MapEncounterKind.Ambush) &&
         Ambushes.All(ambush => ambush.CanContinue);
     public bool SupplyClickCompleted { get; init; }
+    public ImmutableArray<WalkTimeoutEvidence> WalkTimeouts { get; init; } = [];
 }
+public sealed record WalkTimeoutEvidence(int Fleet, Cell Target, long ObservedFrame,
+    long? RecoveredFrame = null, long? RetapFrame = null, bool RetapCompleted = false);
 public sealed record MapArrivalOptions(TimeSpan ConfirmDelay, TimeSpan WalkTimeout, bool AllowCurrentMarker = false)
 {
     public TimeSpan? AfterCombatConfirmDelay { get; init; }
@@ -58,10 +61,13 @@ public interface IMapEncounterHandler
 public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState state,
     Func<CancellationToken, ValueTask<bool>> isInMap, TimeProvider? clock = null,
     IMapEncounterProbe? probe = null, IMapEncounterHandler? handler = null,
-    Func<CancellationToken, ValueTask>? recoverAfterCombat = null, MapWalkPopups? walkPopups = null)
+    Func<CancellationToken, ValueTask>? recoverAfterCombat = null, MapWalkPopups? walkPopups = null,
+    Func<CancellationToken, ValueTask>? recoverAfterWalkTimeout = null)
 {
     public static readonly SourceFile Source = CampaignState.InitializationSource;
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+    private readonly List<WalkTimeoutEvidence> _walkTimeouts = [];
+    public IReadOnlyList<WalkTimeoutEvidence> WalkTimeouts => _walkTimeouts.AsReadOnly();
     private int _started;
 
     public async ValueTask<MapArrivalResult> TapAndCheckAsync(Cell destination, MapArrivalOptions? options = null,
@@ -76,7 +82,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
         if ((options.ExpectCombat || options.ExpectMystery) && options.ConfirmDelay + TimeSpan.FromSeconds(1) >= options.WalkTimeout)
             throw new ArgumentOutOfRangeException(nameof(options), "Unexpected-arrival confirmation must fit the walk deadline");
         if (Interlocked.Exchange(ref _started, 1) != 0)
-            throw new InvalidOperationException("An arrival check belongs to one grid tap");
+            throw new InvalidOperationException("An arrival check belongs to one movement attempt");
         bool portal = state[destination].IsPortal;
         Cell? portalExit = portal
             ? state[destination].PortalLink ?? throw new InvalidDataException("Portal has no linked exit") : null;
@@ -103,7 +109,8 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
             { HandledEncounters = handled.ToImmutable(), Combats = combats.ToImmutable(),
                 AmmoNotificationFrames = ammoFrames.ToImmutable(), SupplyClickCompleted = supplyClickCompleted,
                 Ambushes = ambushes.ToImmutable(), RetryTaps = retryTaps,
-                Carriers = carriers.ToImmutable(), LastMysteryWasCarrier = lastMysteryWasCarrier };
+                Carriers = carriers.ToImmutable(), LastMysteryWasCarrier = lastMysteryWasCarrier,
+                WalkTimeouts = _walkTimeouts.ToImmutableArray() };
         try
         {
             await camera.PrepareTapAsync(destination, token);
@@ -115,6 +122,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
             {
                 MapEncounterKind encounter = MapEncounterKind.None;
                 bool retryTap = false;
+                bool walkTimedOut = false;
                 walk.Reset();
                 confirm.Clear();
                 unexpected.Clear();
@@ -126,6 +134,9 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                         while (true)
                         {
                             linked.Token.ThrowIfCancellationRequested();
+                            // Bound one capture/inspection iteration independently of the walk timer:
+                            // a stable current marker can finish its confirmation after walk_timeout.
+                            deadline.CancelAfter(options.WalkTimeout);
                             if (portal) await camera.RelocalizeAsync(linked.Token);
                             else await camera.RefreshImageAsync(linked.Token);
                             if (camera.FrameSequence <= sequence)
@@ -159,7 +170,7 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                                 else if (waitingForPopup)
                                 {
                                     if (confirm.Started) { confirm.Reset(); unexpected.Reset(); }
-                                    if (walk.Reached()) return Result(MapArrivalOutcome.Unconfirmed);
+                                    if (walk.Reached()) { walkTimedOut = true; break; }
                                     continue;
                                 }
                                 else encounter = MapEncounterKind.UnknownPage;
@@ -168,7 +179,9 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                             var marker = portal ? await camera.ReadCenterMarkerAsync(linked.Token) :
                                 await camera.ReadFleetMarkerAsync(destination, linked.Token);
                             bool present = (submarineAbove ? marker.Current : marker.Fleet) ||
-                                options.AllowCurrentMarker && (marker.Fleet || marker.Current);
+                                options.AllowCurrentMarker && (marker.Fleet || marker.Current) ||
+                                walk.Reached() && marker.Current;
+                            linked.Token.ThrowIfCancellationRequested();
                             if (present)
                             {
                                 if (!confirm.Started) { confirm.Reset(); unexpected.Reset(); }
@@ -186,24 +199,46 @@ public sealed class MapArrivalCheck(IMapArrivalCamera camera, CampaignState stat
                                     confirmed = true;
                                     return Result(MapArrivalOutcome.MarkerConfirmed);
                                 }
+                                // Native waits for a stable marker or the expected-result grace timer
+                                // even after walk_timeout. A current marker does not prove combat success.
+                                continue;
                             }
                             else
                             {
                                 if (confirm.Started) { confirm.Clear(); unexpected.Clear(); }
                                 if (ambushedRetry.Started && ambushedRetry.Reached()) { retryTap = true; break; }
                             }
-                            if (walk.Reached()) return Result(MapArrivalOutcome.Unconfirmed);
+                            if (walk.Reached()) { walkTimedOut = true; break; }
                         }
                     }
                     catch (OperationCanceledException) when (!token.IsCancellationRequested && deadline.IsCancellationRequested)
                     { return Result(MapArrivalOutcome.Unconfirmed); }
+                }
+                int? timeoutIndex = null;
+                if (walkTimedOut)
+                {
+                    timeoutIndex = _walkTimeouts.Count;
+                    _walkTimeouts.Add(new(state.FleetIndex, destination, sequence));
+                    if (recoverAfterWalkTimeout is null) return Result(MapArrivalOutcome.Unconfirmed);
+                    camera.Suspend();
+                    await recoverAfterWalkTimeout(token);
+                    if (camera.FrameSequence <= sequence)
+                        throw new InvalidDataException("Walk timeout recovery reused a stale map frame");
+                    sequence = camera.FrameSequence;
+                    _walkTimeouts[timeoutIndex.Value] = _walkTimeouts[timeoutIndex.Value] with { RecoveredFrame = sequence };
+                    waitingForPopup = false;
+                    retryTap = true;
                 }
                 if (retryTap)
                 {
                     await camera.PrepareTapAsync(destination, token);
                     sequence = camera.FrameSequence;
                     if (probe is not null) await probe.InitializeAsync(sequence, token);
+                    if (timeoutIndex is { } index)
+                        _walkTimeouts[index] = _walkTimeouts[index] with { RetapFrame = sequence };
                     await camera.TapCellAsync(destination, token);
+                    if (timeoutIndex is { } completed)
+                        _walkTimeouts[completed] = _walkTimeouts[completed] with { RetapCompleted = true };
                     sequence = camera.FrameSequence;
                     retryTaps++;
                     ambushedRetry.Clear();

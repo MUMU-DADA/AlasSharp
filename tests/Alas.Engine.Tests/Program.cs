@@ -182,6 +182,17 @@ try
         await MapWalkPopupChecks.RunAsync(Path.GetFullPath(popupPython), Path.GetFullPath(popupUpstream), Path.GetFullPath(popupArtifacts));
         return 0;
     }
+    if (args is ["--walk-timeout"])
+    {
+        await MapWalkTimeoutChecks.RunAsync();
+        return 0;
+    }
+    if (args is ["--walk-timeout", var timeoutPython, var timeoutUpstream, var timeoutArtifacts])
+    {
+        await MapWalkTimeoutChecks.RunAsync();
+        await MapWalkTimeoutChecks.NativeAsync(Path.GetFullPath(timeoutPython), Path.GetFullPath(timeoutUpstream), Path.GetFullPath(timeoutArtifacts));
+        return 0;
+    }
     if (args is ["--walk-recovery", var walkPython, var walkUpstream, var walkArtifacts])
     {
         await MapWalkRecoveryChecks.RunAsync();

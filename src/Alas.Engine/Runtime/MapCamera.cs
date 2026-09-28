@@ -379,6 +379,17 @@ public sealed class MapCamera : IMapScanCamera, IMapArrivalCamera, ISubmarineMov
             return true;
         }, token, allowSuspended: true);
 
+    /// <summary>Native _goto timeout: predict the observed view, then ensure_edge_insight(skip_first_update=False).</summary>
+    public async ValueTask RecoverWalkTimeoutAsync(CancellationToken token = default)
+        => await RunAsync(async ct =>
+        {
+            _observation = await _recognition.ObserveAsync(View, Position, token: ct);
+            await EnsureEdgesCoreAsync(false, false, null, new(3, 2), ct);
+            _requiresRefresh = false;
+            Volatile.Write(ref _suspended, false);
+            return true;
+        }, token, requiresFreshImage: true, allowSuspended: true);
+
     /// <summary>Native handle_boss_appear_refocus: localize, recover by the rule's preset only on geometry failure,
     /// find the edges, then focus the camera position saved before the boss animation.</summary>
     public async ValueTask RefocusBossAsync((int X, int Y)? preset, CancellationToken token = default)
