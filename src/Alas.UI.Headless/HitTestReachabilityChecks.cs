@@ -221,7 +221,7 @@ internal static class HitTestReachabilityChecks
         ["remote access page"] = "RemoteToggleButton",
         ["updater page"] = "UpdaterFetchButton",
         ["developer tools page"] = "DevToolsSimulateRunningButton",
-        // 系统设置页没有「应用改动」这类常驻主操作：它按上游 useDeploySettings 的语义
+        // 系统设置页没有「应用改动」这类常驻主操作：它按共享设置会话 的语义
         // **输入即提交**（改动进草稿队列后立即发送），因此页面上的按钮是逐字段的
         // 「重试保存」，只在对应字段失败时出现——"有数据时必须有可见主操作"不适用于它。
         // 该页的可达性仍由下面按可见控件逐个命中测试覆盖。

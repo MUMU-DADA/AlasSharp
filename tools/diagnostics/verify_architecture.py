@@ -102,6 +102,39 @@ def product_boundary() -> list[str]:
             if LEGACY_IMPORT.search(text):
                 problems.append(f"活动诊断脚本导入退役 Python 宿主: {script.relative_to(ROOT)}")
 
+    # Deployment settings are Engine-owned JSON. The old upstream deploy
+    # exporter/YAML storage may remain only under the historical archive.
+    for relative in ("export_deploy_settings.py", "deploy_storage.py", "diagnostics/verify_deploy_settings.py"):
+        if (tools_root / relative).is_file():
+            problems.append(f"活动目录仍保留退役部署配置工具: tools/{relative}")
+    active_deploy_markers = (
+        "DeploySettings", "deploy-settings.json",
+        "upstream-deploy-settings/", "config/deploy.yaml", "PythonExecutable",
+        "PypiMirror", "InstallDependencies", "GitExecutable", "UseOcrServer",
+        "StartOcrServer", "OcrServerPort",
+    )
+    for source_root in (ROOT / "src/Alas.Engine", ROOT / "src/Alas.Server", ROOT / "src/Alas.Client",
+                        ROOT / "src/Alas.Contracts", ROOT / "src/Alas.UI", ROOT / "src/Alas.UI.Desktop",
+                        ROOT / "src/Alas.UI.Browser"):
+        for source in source_root.rglob("*"):
+            if not source.is_file() or any(part in {"bin", "obj"} for part in source.parts):
+                continue
+            if source.suffix.lower() not in {".cs", ".csproj", ".json"}:
+                continue
+            text = source.read_text(encoding="utf-8-sig")
+            for marker in active_deploy_markers:
+                if marker in text:
+                    problems.append(f"产品路径保留退役部署配置字段 {marker}: {source.relative_to(ROOT)}")
+    for relative in ("src/Alas.Engine/Runtime/DeploySettingsWorkspace.cs",
+                     "src/Alas.Engine/Runtime/Resources/deploy-settings.json"):
+        if (ROOT / relative).exists():
+            problems.append(f"退役部署配置仍存在: {relative}")
+    for relative in ("src/Alas.Server/ControlServer.cs", "src/Alas.UI.Desktop/DirectEngineBackend.cs"):
+        if "EngineSettingsWorkspace" not in read(relative):
+            problems.append(f"产品入口未使用 Engine 自有设置: {relative}")
+    if "_settings.ReadRuntime()" not in read("src/Alas.Engine/Runtime/EngineControlWorkspace.cs"):
+        problems.append("Engine 控制会话没有消费已保存的运行时设置")
+
     retired_core = ROOT / "src/Alas.Core"
     if retired_core.exists():
         tracked = list(retired_core.rglob("*"))

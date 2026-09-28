@@ -153,19 +153,19 @@ public sealed record MeowfficerRequest
     public int Limit { get; init; } = 100;
 }
 
-public sealed record DeploySettingsResponse
+public sealed record EngineSettingsResponse
 {
     public required JsonArray Groups { get; init; }
     public required string Notice { get; init; }
     public required bool Demo { get; init; }
 }
 
-public sealed record DeploySettingsPatchRequest
+public sealed record EngineSettingsPatchRequest
 {
     public required JsonObject Values { get; init; }
 }
 
-public sealed record DeploySettingsPatchResponse
+public sealed record EngineSettingsPatchResponse
 {
     public required IReadOnlyList<string> Updated { get; init; }
 }
@@ -181,13 +181,12 @@ public sealed record StartupRunResponse
     public required string Instance { get; init; }
     public required bool Enabled { get; init; }
     public required IReadOnlyList<string> Run { get; init; }
-    public JsonNode? Raw { get; init; }
 }
 
 // Explicit generated metadata also works when WASM trimming disables reflection.
-[JsonSerializable(typeof(DeploySettingsResponse))]
-[JsonSerializable(typeof(DeploySettingsPatchRequest))]
-[JsonSerializable(typeof(DeploySettingsPatchResponse))]
+[JsonSerializable(typeof(EngineSettingsResponse))]
+[JsonSerializable(typeof(EngineSettingsPatchRequest))]
+[JsonSerializable(typeof(EngineSettingsPatchResponse))]
 [JsonSerializable(typeof(StartupRunRequest))]
 [JsonSerializable(typeof(StartupRunResponse))]
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]

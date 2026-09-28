@@ -10,13 +10,13 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Alas.UI.DeploySettings;
+using Alas.UI.EngineSettings;
 using Alas.UI.Settings;
 
 namespace Alas.UI.Headless;
 
 /// <summary>
-/// 系统设置页（上游 /settings）的离屏检查，按上游 useDeploySettings 的状态对齐：
+/// 系统设置页（上游 /settings）的离屏检查，按共享设置会话 的状态对齐：
 /// ① 未接 Engine → 停在加载态 + 显示真实原因，不渲染任何设置项；
 /// ② 读取错误 → 错误框显示真实消息（上游 error）；
 /// ③ 本地暂存错误 → 第二条错误框（上游 edits.storageError），与读取错误互不覆盖；
@@ -44,7 +44,7 @@ internal static class SettingsChecks
         var transport = new FakeTransport();
         var hold = transport.Hold();
         var backend = new FakeBackend(Snapshot(("host", "TEST")));
-        var session = new DeploySettingsSession(transport, backend.ReadSchemaAsync, new FakeStore(), new FakeClock());
+        var session = new EngineSettingsSession(transport, backend.ReadSchemaAsync, new FakeStore(), new FakeClock());
         var view = new SettingsView(backend, session);
         var window = Show(view);
         var notifications = 0;
@@ -55,7 +55,7 @@ internal static class SettingsChecks
         };
         try
         {
-            var input = Find<Control>(view, "DeployFieldRowhost").GetVisualDescendants().OfType<TextBox>().First();
+            var input = Find<Control>(view, "SettingsEditorFieldRowhost").GetVisualDescendants().OfType<TextBox>().First();
             Check(input.Text == "TEST", "ordinary text keeps capital T characters");
             window.Width = 390;
             Pump();
@@ -71,12 +71,12 @@ internal static class SettingsChecks
             window.KeyTextInput("a");
             Pump();
             Check(input.IsFocused && ReferenceEquals(input,
-                Find<Control>(view, "DeployFieldRowhost").GetVisualDescendants().OfType<TextBox>().First()),
+                Find<Control>(view, "SettingsEditorFieldRowhost").GetVisualDescendants().OfType<TextBox>().First()),
                 "typing keeps the same focused input control while saving");
             Task.Run(() => hold.SetResult()).GetAwaiter().GetResult();
-            WaitFor(() => session.Edits.Edit("host")?.Status == DeployEditStatus.Saved);
+            WaitFor(() => session.Edits.Edit("host")?.Status == SettingsEditorEditStatus.Saved);
             Pump();
-            Check(session.Edits.Edit("host")?.Status == DeployEditStatus.Saved,
+            Check(session.Edits.Edit("host")?.Status == SettingsEditorEditStatus.Saved,
                 "a real background completion saves without cross-thread UI exceptions");
             window.KeyTextInput("b");
             Pump();
@@ -91,7 +91,7 @@ internal static class SettingsChecks
     {
         var first = new FakeTransport { Generation = 1 };
         var hold = first.Hold();
-        var queue = new DeployEditQueue("actual-swap", first, new FakeStore());
+        var queue = new SettingsEditorEditQueue("actual-swap", first, new FakeStore());
         queue.Change("port", "8080", "8080");
         var second = new FakeTransport { Identity = "other", Generation = 2 };
         queue.UseTransport(second);
@@ -101,16 +101,16 @@ internal static class SettingsChecks
         Check(first.Sent.Select(item => item.Payload).SequenceEqual(new[] { "8080" })
             && second.Sent.Select(item => item.Payload).SequenceEqual(new[] { "9090" }),
             "the same queue sends each input through its actual backend generation");
-        Check(queue.Edit("port") is { Status: DeployEditStatus.Saved, BackendGeneration: 2, Value: "9090" },
+        Check(queue.Edit("port") is { Status: SettingsEditorEditStatus.Saved, BackendGeneration: 2, Value: "9090" },
             "an old backend response cannot overwrite the newer confirmed input");
 
-        var slowRead = new TaskCompletionSource<DeploySchema?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var session = new DeploySettingsSession(first, _ => slowRead.Task, new FakeStore());
+        var slowRead = new TaskCompletionSource<SettingsEditorSchema?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var session = new EngineSettingsSession(first, _ => slowRead.Task, new FakeStore());
         var oldRead = session.AttachAndReadAsync();
-        var current = DeploySchemaAdapter.ToSchema(Snapshot(("host", "current")));
+        var current = SettingsEditorSchemaAdapter.ToSchema(Snapshot(("host", "current")));
         session.Reader = _ => Task.FromResult(current);
         session.AttachAndReadAsync(second).GetAwaiter().GetResult();
-        Task.Run(() => slowRead.SetResult(DeploySchemaAdapter.ToSchema(Snapshot(("host", "obsolete")))))
+        Task.Run(() => slowRead.SetResult(SettingsEditorSchemaAdapter.ToSchema(Snapshot(("host", "obsolete")))))
             .GetAwaiter().GetResult();
         WaitFor(() => oldRead.IsCompleted);
         oldRead.GetAwaiter().GetResult();
@@ -125,28 +125,28 @@ internal static class SettingsChecks
     {
         var store = new FakeStore();
         var offline = new FakeTransport { Ready = false };
-        var draft = new DeployEditQueue("multiline", offline, store);
+        var draft = new SettingsEditorEditQueue("multiline", offline, store);
         const string value = "Title: TEST\n  list:\tvalue\n  path: \\tmp\\notes";
         draft.Change("yaml", value, value);
-        var restored = new DeployEditQueue("multiline", offline, store);
+        var restored = new SettingsEditorEditQueue("multiline", offline, store);
         Check(restored.Edit("yaml")?.Payload == value && restored.Edit("yaml")?.Value == value,
             "multiline, tabs and backslashes survive draft persistence exactly");
         offline.Ready = true;
         restored.FlushAsync().GetAwaiter().GetResult();
-        Check(store.Read("deploy-edits.multiline") is null,
+        Check(store.Read("engine-settings-edits.multiline") is null,
             "confirming a restored draft removes its persisted copy");
 
         var canceled = new FakeTransport { FailWith = new OperationCanceledException() };
         var retryClock = new FakeClock();
-        var queue = new DeployEditQueue("canceled", canceled, new FakeStore(), retryClock);
+        var queue = new SettingsEditorEditQueue("canceled", canceled, new FakeStore(), retryClock);
         queue.Change("port", "8080", "8080");
         queue.FlushAsync().GetAwaiter().GetResult();
-        Check(queue.Edit("port") is { Status: DeployEditStatus.Error, Retryable: true, Value: "8080" },
+        Check(queue.Edit("port") is { Status: SettingsEditorEditStatus.Error, Retryable: true, Value: "8080" },
             "a canceled transport keeps a retryable draft instead of leaving Saving forever");
         canceled.FailWith = null;
         retryClock.Advance();
         queue.FlushAsync().GetAwaiter().GetResult();
-        Check(queue.Edit("port")?.Status == DeployEditStatus.Saved, "a canceled save can recover on retry");
+        Check(queue.Edit("port")?.Status == SettingsEditorEditStatus.Saved, "a canceled save can recover on retry");
     }
 
     /// <summary>
@@ -158,7 +158,7 @@ internal static class SettingsChecks
     {
         // ① 串行提交：多次输入按序号依次发出，不会并发乱序。
         var transport = new FakeTransport();
-        var queue = new DeployEditQueue("test-serial", transport, new FakeStore());
+        var queue = new SettingsEditorEditQueue("test-serial", transport, new FakeStore());
         queue.Change("a", "1");
         queue.Change("b", "2");
         queue.FlushAsync().GetAwaiter().GetResult();
@@ -168,10 +168,10 @@ internal static class SettingsChecks
 
         // ② 旧响应只确认自己那一次输入：提交在途时用户又改了，回执不能把新输入标成已保存。
         var slow = new FakeTransport();
-        var backlog = new DeployEditQueue("test-stale", slow, new FakeStore());
+        var backlog = new SettingsEditorEditQueue("test-stale", slow, new FakeStore());
         var pending = slow.Hold();
         backlog.Change("port", "8080");
-        Check(backlog.Edit("port")?.Status == DeployEditStatus.Saving,
+        Check(backlog.Edit("port")?.Status == SettingsEditorEditStatus.Saving,
             $"the first input goes in flight (got {backlog.Edit("port")?.Status})");
         Check(slow.Sent.Count == 0, "the held submission has not been recorded yet");
         backlog.Change("port", "9090");
@@ -182,7 +182,7 @@ internal static class SettingsChecks
             $"status {backlog.Edit("port")?.Status})");
         pending.SetResult();
         backlog.FlushAsync().GetAwaiter().GetResult();
-        Check(backlog.Edit("port")?.Payload == "9090" && backlog.Edit("port")?.Status == DeployEditStatus.Saved,
+        Check(backlog.Edit("port")?.Payload == "9090" && backlog.Edit("port")?.Status == SettingsEditorEditStatus.Saved,
             $"the newer input is what ends up confirmed (got {backlog.Edit("port")?.Status})");
         // 在途的那一笔不会因为被超越就取消（它已经在网络上），但**只有新输入会成为最终草稿**：
         // 旧回执只确认它自己那一次输入，因此不会把新输入标成已保存。
@@ -191,65 +191,65 @@ internal static class SettingsChecks
             $"(got {string.Join(",", slow.Sent.Select(e => e.Payload))})");
 
         // ③ 永久校验错误：保留原文，且不自动重试（重试也一定失败）。
-        var permanent = new FakeTransport { FailWith = new DeployTransportException("该值不被接受", retryable: false) };
-        var permanentQueue = new DeployEditQueue("test-permanent", permanent, new FakeStore());
+        var permanent = new FakeTransport { FailWith = new SettingsEditorTransportException("该值不被接受", retryable: false) };
+        var permanentQueue = new SettingsEditorEditQueue("test-permanent", permanent, new FakeStore());
         permanentQueue.Change("mode", "bogus", "bogus");
         permanentQueue.FlushAsync().GetAwaiter().GetResult();
         var failed = permanentQueue.Edit("mode");
-        Check(failed?.Status == DeployEditStatus.Error && failed.Value == "bogus" && failed.Error == "该值不被接受",
+        Check(failed?.Status == SettingsEditorEditStatus.Error && failed.Value == "bogus" && failed.Error == "该值不被接受",
             $"a permanent error keeps the original text (got {failed?.Status}/{failed?.Value}/{failed?.Error})");
         Check(!failed!.Retryable, "a permanent error is not marked retryable");
         permanent.FailWith = null;
         permanentQueue.Retry();
         permanentQueue.FlushAsync().GetAwaiter().GetResult();
-        Check(permanentQueue.Edit("mode")?.Status == DeployEditStatus.Error,
+        Check(permanentQueue.Edit("mode")?.Status == SettingsEditorEditStatus.Error,
             "the permanent error is not retried (it would fail again)");
 
         // ④ 可重试失败：保留输入，重连后重试并确认。
-        var flaky = new FakeTransport { FailWith = new DeployTransportException("连接中断", retryable: true) };
-        var flakyQueue = new DeployEditQueue("test-retry", flaky, new FakeStore(), new FakeClock());
+        var flaky = new FakeTransport { FailWith = new SettingsEditorTransportException("连接中断", retryable: true) };
+        var flakyQueue = new SettingsEditorEditQueue("test-retry", flaky, new FakeStore(), new FakeClock());
         flakyQueue.Change("host", "10.0.0.9", "10.0.0.9");
         flakyQueue.FlushAsync().GetAwaiter().GetResult();
         var retryable = flakyQueue.Edit("host");
-        Check(retryable?.Status == DeployEditStatus.Error && retryable.Retryable && retryable.Value == "10.0.0.9",
+        Check(retryable?.Status == SettingsEditorEditStatus.Error && retryable.Retryable && retryable.Value == "10.0.0.9",
             $"a retryable failure keeps the input (got {retryable?.Status}/{retryable?.Retryable})");
         flaky.FailWith = null;
         Check(flakyQueue.ShouldRetryOnReconnect(), "a retryable failure is expected to retry after reconnect");
         flakyQueue.ResumeAfterReconnect(flaky.Generation);
         flakyQueue.FlushAsync().GetAwaiter().GetResult();
-        Check(flakyQueue.Edit("host")?.Status == DeployEditStatus.Saved,
+        Check(flakyQueue.Edit("host")?.Status == SettingsEditorEditStatus.Saved,
             $"a reconnect retries the pending input (got {flakyQueue.Edit("host")?.Status})");
 
         // ⑤ 另一后端的草稿不被当前后端提交，也不被它的回执清掉。
         var first = new FakeTransport { Generation = 1 };
-        var shared = new DeployEditQueue("test-backends", first, new FakeStore());
+        var shared = new SettingsEditorEditQueue("test-backends", first, new FakeStore());
         shared.Change("port", "8080");
         shared.FlushAsync().GetAwaiter().GetResult();
         Check(first.Sent.Count == 1, "the first backend submits its own draft");
         var second = new RecordingTransport(first) { Identity = "second", Generation = 2 };
-        var swapped = new DeployEditQueue("test-backends-2", second, new FakeStore());
+        var swapped = new SettingsEditorEditQueue("test-backends-2", second, new FakeStore());
         swapped.Change("port", "9090");
         swapped.FlushAsync().GetAwaiter().GetResult();
         Check(second.Sent.Count == 1 && second.Sent[0].Payload == "9090",
             $"the second backend submits its own draft (got {string.Join(",", second.Sent.Select(e => e.Payload))})");
-        Check(swapped.Edit("port")?.Status == DeployEditStatus.Saved,
+        Check(swapped.Edit("port")?.Status == SettingsEditorEditStatus.Saved,
             "the second backend's response confirms its own draft");
 
         // ⑥ 持久化失败：单独报告，内存草稿照旧可用、照旧提交。
-        var noStore = new DeployEditQueue("test-nostore", new FakeTransport(), new ThrowingStore());
+        var noStore = new SettingsEditorEditQueue("test-nostore", new FakeTransport(), new ThrowingStore());
         noStore.Change("port", "8080");
         noStore.FlushAsync().GetAwaiter().GetResult();
         Check(noStore.StorageError?.Contains("草稿无法写入本地存储") == true,
             $"a persistence failure is reported separately (got {noStore.StorageError})");
-        Check(noStore.Edit("port")?.Status == DeployEditStatus.Saved,
+        Check(noStore.Edit("port")?.Status == SettingsEditorEditStatus.Saved,
             "the draft is still submitted when persistence fails");
 
         // ⑦ 会话把队列的持久化错误单独暴露出来（上游 edits.storageError 那条通道），与读取错误互不覆盖。
         var sessionStore = new ThrowingStore();
-        var sessionQueue = new DeployEditQueue("test-session-storage", new FakeTransport(), sessionStore);
+        var sessionQueue = new SettingsEditorEditQueue("test-session-storage", new FakeTransport(), sessionStore);
         sessionQueue.Change("port", "8080");
         sessionQueue.FlushAsync().GetAwaiter().GetResult();
-        var session = new DeploySettingsSession(new FakeTransport(), _ => Task.FromResult<DeploySchema?>(null), sessionStore);
+        var session = new EngineSettingsSession(new FakeTransport(), _ => Task.FromResult<SettingsEditorSchema?>(null), sessionStore);
         session.Edits.Change("port", "8080");
         Check(session.StorageError?.Contains("草稿无法写入本地存储") == true,
             $"the session surfaces the persistence failure on its own channel (got `{session.StorageError}`)");
@@ -257,11 +257,11 @@ internal static class SettingsChecks
 
         // ⑧ 恢复：未确认的输入被读回并重新排队；空的永久错误草稿被丢弃（否则字段会被永久钉死）。
         var store = new FakeStore();
-        store.Write("deploy-edits.test-restore", "port\t8080\t8080\t3\tQueued\t0\t1\t");
-        var restored = new DeployEditQueue("test-restore", new FakeTransport(), store);
+        store.Write("engine-settings-edits.test-restore", "port\t8080\t8080\t3\tQueued\t0\t1\t");
+        var restored = new SettingsEditorEditQueue("test-restore", new FakeTransport(), store);
         Check(restored.Edit("port")?.Value == "8080", "unconfirmed drafts are restored and requeued");
-        store.Write("deploy-edits.test-empty-error", "mode\t\t\t4\tError\t0\t1\tbad");
-        var restoredEmpty = new DeployEditQueue("test-empty-error", new FakeTransport(), store);
+        store.Write("engine-settings-edits.test-empty-error", "mode\t\t\t4\tError\t0\t1\tbad");
+        var restoredEmpty = new SettingsEditorEditQueue("test-empty-error", new FakeTransport(), store);
         Check(restoredEmpty.Edit("mode") is null,
             "an empty permanent-error draft is dropped so the field is not pinned");
     }
@@ -277,7 +277,7 @@ internal static class SettingsChecks
             new SettingsGroup("数值", new[] { new SettingsField("count", "数量", "5", true, "int", IsInteger: true) },
                 "Numbers"),
         }, Values: new Dictionary<string, string?> { ["count"] = "5" }));
-        var numericSession = new DeploySettingsSession(
+        var numericSession = new EngineSettingsSession(
             new SettingsTransport(backend, 1), backend.ReadSchemaAsync, new FakeStore());
         var view = new SettingsView(backend, numericSession);
         var window = Show(view);
@@ -285,7 +285,7 @@ internal static class SettingsChecks
         {
             WaitIdle(view);
             string? Status() => view.GetVisualDescendants().OfType<TextBlock>()
-                .FirstOrDefault(block => block.Name == "DeployFieldStatuscount" && block.IsVisible)?.Text;
+                .FirstOrDefault(block => block.Name == "SettingsEditorFieldStatuscount" && block.IsVisible)?.Text;
 
             Check(Status() is null, $"a clean field shows no status (got {Status()})");
 
@@ -300,13 +300,13 @@ internal static class SettingsChecks
                 $"an out-of-range value reports the allowed range (got {Status()})");
 
             // 清空数值字段：回落到原值（上游 prepareValue），输入框同步改写为默认值。
-            var prepared = DeployValuePreparer.Prepare(string.Empty,
-                new DeployFieldSpec("count", "数量", "int", Integer: true), "5");
+            var prepared = SettingsEditorValuePreparer.Prepare(string.Empty,
+                new SettingsEditorFieldSpec("count", "数量", "int", Integer: true), "5");
             Check(prepared.Payload == "5" && prepared.DisplayText == "5",
                 $"clearing a numeric field falls back to the configured value (got {prepared.Payload})");
             // preserve_empty 的字段不做回落：空值本身有意义。
-            var preserved = DeployValuePreparer.Prepare(string.Empty,
-                new DeployFieldSpec("note", "备注", "string", PreserveEmpty: true), "note");
+            var preserved = SettingsEditorValuePreparer.Prepare(string.Empty,
+                new SettingsEditorFieldSpec("note", "备注", "string", PreserveEmpty: true), "note");
             Check(preserved.Payload == string.Empty && preserved.DisplayText is null,
                 "a preserve_empty field keeps the cleared value");
         }
@@ -331,10 +331,10 @@ internal static class SettingsChecks
             WaitIdle(view);
             var rendered = view.GetVisualDescendants().OfType<Control>()
                 .Select(control => control.Name ?? string.Empty).ToHashSet();
-            Check(rendered.Contains("DeployGroupConnection"), "an ordinary system group renders on this page");
-            Check(rendered.Contains("DeployGroupBrandNewGroup"),
+            Check(rendered.Contains("SettingsEditorGroupConnection"), "an ordinary system group renders on this page");
+            Check(rendered.Contains("SettingsEditorGroupBrandNewGroup"),
                 "a backend-added system group renders too (no silent disappearance)");
-            Check(!rendered.Contains("DeployGroupRemoteAccess") && !rendered.Contains("DeployGroupWebui"),
+            Check(!rendered.Contains("SettingsEditorGroupRemoteAccess") && !rendered.Contains("SettingsEditorGroupWebui"),
                 "the remote-access groups are excluded here (they belong to the remote page)");
             Check(view.Model.Groups.Count == 2,
                 $"the page owns the complement of the remote groups (got {view.Model.Groups.Count})");
@@ -383,7 +383,7 @@ internal static class SettingsChecks
     {
         // 上游把本地暂存错误放在第二条通道：它必须与读取状态同时可见、互不覆盖。
         var backend = new FakeBackend(Snapshot(("host", "127.0.0.1")));
-        var session = new DeploySettingsSession(
+        var session = new EngineSettingsSession(
             new SettingsTransport(backend, 1), backend.ReadSchemaAsync, new ThrowingStore());
         var view = new SettingsView(backend, session);
         var window = Show(view);
@@ -391,7 +391,7 @@ internal static class SettingsChecks
         {
             WaitIdle(view);
             Check(!view.Model.HasStorageError, "no storage error before anything is typed");
-            var box = Find<Control>(view, "DeployGroupConnection");
+            var box = Find<Control>(view, "SettingsEditorGroupConnection");
             var input = box.GetVisualDescendants().OfType<TextBox>().First();
             input.Text = "10.0.0.9";
             Check(Find<StackPanel>(view, "SettingsGroups").IsVisible,
@@ -410,7 +410,7 @@ internal static class SettingsChecks
     {
         var backend = new FakeBackend(Snapshot(
             ("host", "127.0.0.1"), ("port", "22267"), ("enabled", "true"), ("channels", "alpha")));
-        var session = new DeploySettingsSession(
+        var session = new EngineSettingsSession(
             new SettingsTransport(backend, 1), backend.ReadSchemaAsync, new FakeStore());
         var view = new SettingsView(backend, session);
         var window = Show(view);
@@ -423,7 +423,7 @@ internal static class SettingsChecks
             Check(view.GetVisualDescendants().OfType<Border>().Any(border => border.Classes.Contains("panel")),
                 "the settings group uses the shell panel style");
             var rows = view.GetVisualDescendants().OfType<Control>()
-                .Where(control => control.Name?.StartsWith("DeployFieldRow") == true).ToList();
+                .Where(control => control.Name?.StartsWith("SettingsEditorFieldRow") == true).ToList();
             Check(rows.Count == 6, $"every field renders a row (got {rows.Count})");
             var boxes = rows.SelectMany(row => row.GetVisualDescendants().OfType<TextBox>())
                 .Where(box => box.FindAncestorOfType<ComboBox>() is null).ToList();
@@ -437,9 +437,9 @@ internal static class SettingsChecks
             Check(rows.SelectMany(row => row.GetVisualDescendants().OfType<CheckBox>())
                     .Count(box => box.Content is "alpha" or "beta") == 2,
                 "multiselect renders one box per option");
-            // 标签与说明（上游 DeployGroups 在标签下渲染 field.help；没有说明的字段不占位）。
+            // 标签与说明（共享分组渲染器 在标签下渲染 field.help；没有说明的字段不占位）。
             var helps = view.GetVisualDescendants().OfType<TextBlock>()
-                .Where(block => block.Name == "DeployFieldHelp").Select(block => block.Text).ToList();
+                .Where(block => block.Name == "SettingsEditorFieldHelp").Select(block => block.Text).ToList();
             Check(helps.Count == 1 && helps[0] == "主机地址。",
                 $"only fields with help text render a description (got {string.Join("|", helps)})");
             // 密码字段必须遮挡（上游 FieldInput 的 password 分支）。
@@ -448,7 +448,7 @@ internal static class SettingsChecks
                 "a password field masks its input");
 
             // 输入立即进草稿（上游输入即提交）：真实键盘输入到文本框，草稿与提交都要跟上。
-            var hostRow = Find<Control>(view, "DeployFieldRowhost");
+            var hostRow = Find<Control>(view, "SettingsEditorFieldRowhost");
             var hostInput = hostRow.GetVisualDescendants().OfType<TextBox>().First();
             hostInput.Focus();
             Pump();
@@ -456,7 +456,7 @@ internal static class SettingsChecks
             WaitFor(() => backend.LastChanges.Any(change => change.Key == "host" && change.Value == "10.0.0.9"));
             Check(backend.LastChanges.Any(change => change.Key == "host" && change.Value == "10.0.0.9"),
                 $"typing submits immediately (got {string.Join(",", backend.LastChanges.Select(c => c.Key + "=" + c.Value))})");
-            var status = Find<TextBlock>(view, "DeployFieldStatushost");
+            var status = Find<TextBlock>(view, "SettingsEditorFieldStatushost");
             Check(status.IsVisible && status.Text == "已保存",
                 $"a confirmed input shows 已保存 (got {status.Text})");
             Check(!view.Model.HasError && !view.Model.HasStorageError, "no error boxes on a clean read");
@@ -566,12 +566,12 @@ internal static class SettingsChecks
         }
 
         /// <summary>把后端快照翻译成共享会话模型（与页面用的是同一条翻译，避免检查与实现漂移）。</summary>
-        public Task<DeploySchema?> ReadSchemaAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(DeploySchemaAdapter.ToSchema(snapshot));
+        public Task<SettingsEditorSchema?> ReadSchemaAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(SettingsEditorSchemaAdapter.ToSchema(snapshot));
     }
 
     /// <summary>可控制就绪状态与失败的假通道。</summary>
-    private sealed class FakeTransport : IDeployTransport
+    private sealed class FakeTransport : ISettingsEditorTransport
     {
         private TaskCompletionSource? _hold;
 
@@ -613,7 +613,7 @@ internal static class SettingsChecks
     }
 
     /// <summary>记录提交但按另一后端身份工作的通道（用于"另一后端的草稿"检查）。</summary>
-    private sealed class RecordingTransport(IDeployTransport inner) : IDeployTransport
+    private sealed class RecordingTransport(ISettingsEditorTransport inner) : ISettingsEditorTransport
     {
         public List<(string Key, string Payload)> Sent { get; } = new();
 
@@ -631,7 +631,7 @@ internal static class SettingsChecks
     }
 
     /// <summary>内存草稿存储。</summary>
-    private sealed class FakeStore : IDeployDraftStore
+    private sealed class FakeStore : ISettingsDraftStore
     {
         private readonly Dictionary<string, string> _values = new();
 
@@ -646,7 +646,7 @@ internal static class SettingsChecks
     /// 读得到、写不进去的草稿存储（模拟浏览器禁用存储的写入路径）：
     /// 读取返回空内容，写入/删除抛错，用来检查"持久化失败单独报告、草稿照旧提交"。
     /// </summary>
-    private sealed class ThrowingStore : IDeployDraftStore
+    private sealed class ThrowingStore : ISettingsDraftStore
     {
         public string? Read(string key) => null;
 
@@ -656,7 +656,7 @@ internal static class SettingsChecks
     }
 
     /// <summary>手动推进的延迟：重试不用真实等待。</summary>
-    private sealed class FakeClock : IDeployClock
+    private sealed class FakeClock : ISettingsEditorClock
     {
         private readonly List<Action> _pending = new();
 

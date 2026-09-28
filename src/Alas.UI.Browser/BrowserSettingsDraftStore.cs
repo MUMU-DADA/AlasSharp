@@ -1,12 +1,12 @@
 using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
-using Alas.UI.DeploySettings;
+using Alas.UI.EngineSettings;
 
 namespace Alas.UI.Browser;
 
 /// <summary>Tab-session storage for unconfirmed deploy edits; never uses persistent localStorage.</summary>
 [SupportedOSPlatform("browser")]
-public sealed partial class BrowserDeployDraftStore : IDeployDraftStore
+public sealed partial class BrowserSettingsDraftStore : ISettingsDraftStore
 {
     public string? Read(string key)
     {

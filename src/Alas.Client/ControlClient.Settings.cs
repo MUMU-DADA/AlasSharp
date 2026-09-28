@@ -5,15 +5,15 @@ namespace Alas.Client;
 
 public sealed partial class ControlClient
 {
-    public async Task<DeploySettingsResponse> GetDeploySettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
+    public async Task<EngineSettingsResponse> GetEngineSettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_endpoint, "api/settings?language=" + Uri.EscapeDataString(language)));
-        return await SendAsync(request, HttpStatusCode.OK, ControlJsonContext.Default.DeploySettingsResponse, cancellationToken).ConfigureAwait(false);
+        return await SendAsync(request, HttpStatusCode.OK, ControlJsonContext.Default.EngineSettingsResponse, cancellationToken).ConfigureAwait(false);
     }
 
-    public Task<DeploySettingsPatchResponse> PatchDeploySettingsAsync(DeploySettingsPatchRequest request, CancellationToken cancellationToken = default)
-        => WriteReadAsync("api/settings", request, ControlJsonContext.Default.DeploySettingsPatchRequest,
-            ControlJsonContext.Default.DeploySettingsPatchResponse, HttpMethod.Patch, HttpStatusCode.OK, cancellationToken);
+    public Task<EngineSettingsPatchResponse> PatchEngineSettingsAsync(EngineSettingsPatchRequest request, CancellationToken cancellationToken = default)
+        => WriteReadAsync("api/settings", request, ControlJsonContext.Default.EngineSettingsPatchRequest,
+            ControlJsonContext.Default.EngineSettingsPatchResponse, HttpMethod.Patch, HttpStatusCode.OK, cancellationToken);
 
     public async Task<StartupRunResponse> GetStartupRunAsync(string instance, CancellationToken cancellationToken = default)
     {

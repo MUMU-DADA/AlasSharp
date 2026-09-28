@@ -8,10 +8,10 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 
-namespace Alas.UI.DeploySettings;
+namespace Alas.UI.EngineSettings;
 
 /// <summary>一次输入的准备结果：提交值、要不要改写输入框显示的原文、以及本地校验错误。</summary>
-public sealed record DeployPrepared(string Payload, string? DisplayText = null, string? Error = null);
+public sealed record SettingsEditorPrepared(string Payload, string? DisplayText = null, string? Error = null);
 
 /// <summary>
 /// 输入值的归一化与校验（上游 <c>config/editors.ts</c> 的 <c>prepareValue</c>，逐条保留语义）：
@@ -22,48 +22,48 @@ public sealed record DeployPrepared(string Payload, string? DisplayText = null, 
 /// ③ 非法数字 → invalidNumber；整数字段的小数或超精度 → invalidInteger；
 ///    超出 [Min, Max] → validateRange；错误时**保留用户原文**供修正。
 /// </summary>
-public static class DeployValuePreparer
+public static class SettingsEditorValuePreparer
 {
     private static readonly Regex NumberPattern =
         new(@"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$", RegexOptions.Compiled);
 
-    public static DeployPrepared Prepare(string? value, DeployFieldSpec field, string? current)
+    public static SettingsEditorPrepared Prepare(string? value, SettingsEditorFieldSpec field, string? current)
     {
         var text = value ?? string.Empty;
         var numeric = IsNumeric(field);
         if ((numeric || field.Kind == "datetime") && !field.PreserveEmpty && text.Trim().Length == 0)
         {
             var fallback = current ?? string.Empty;
-            if (fallback.Length > 0) return new DeployPrepared(fallback, fallback);
+            if (fallback.Length > 0) return new SettingsEditorPrepared(fallback, fallback);
         }
-        if (!numeric) return new DeployPrepared(text);
+        if (!numeric) return new SettingsEditorPrepared(text);
         var trimmed = text.Trim();
         if (!NumberPattern.IsMatch(trimmed)
             || !double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
             || double.IsNaN(number) || double.IsInfinity(number))
         {
-            return new DeployPrepared(text, null, "请输入完整、有效的数字；输入内容已保留。");
+            return new SettingsEditorPrepared(text, null, "请输入完整、有效的数字；输入内容已保留。");
         }
         if (field.Integer && number != Math.Floor(number))
         {
-            return new DeployPrepared(text, null, "请输入有效整数；输入内容已保留。");
+            return new SettingsEditorPrepared(text, null, "请输入有效整数；输入内容已保留。");
         }
         if (field.Integer && Math.Abs(number) > 9007199254740991d)
         {
-            return new DeployPrepared(text, null, "请输入有效整数；输入内容已保留。");
+            return new SettingsEditorPrepared(text, null, "请输入有效整数；输入内容已保留。");
         }
         if (field.Min is { } min && number < min)
         {
-            return new DeployPrepared(text, null, RangeMessage(min, field.Max));
+            return new SettingsEditorPrepared(text, null, RangeMessage(min, field.Max));
         }
         if (field.Max is { } max && number > max)
         {
-            return new DeployPrepared(text, null, RangeMessage(field.Min, max));
+            return new SettingsEditorPrepared(text, null, RangeMessage(field.Min, max));
         }
-        return new DeployPrepared(NumberText(number));
+        return new SettingsEditorPrepared(NumberText(number));
     }
 
-    private static bool IsNumeric(DeployFieldSpec field) =>
+    private static bool IsNumeric(SettingsEditorFieldSpec field) =>
         field.Kind is "number" or "int" or "float";
 
     private static string NumberText(double number) =>
@@ -85,12 +85,12 @@ public static class DeployValuePreparer
 /// 控件只把「用户输入了什么」交回调用方，提交与重试由草稿队列负责——这与上游一致：
 /// 字段控件不自己保存，保存队列在页面之外。
 /// </summary>
-public static class DeployFieldFactory
+public static class SettingsEditorFieldFactory
 {
     /// <summary>
     /// 生成输入控件。<paramref name="onInput"/> 收到用户输入的原文（每次改动都调用，立即进草稿）。
     /// </summary>
-    public static Control Create(DeployFieldSpec field, string? value, bool editable, Action<string> onInput)
+    public static Control Create(SettingsEditorFieldSpec field, string? value, bool editable, Action<string> onInput)
     {
         var text = value ?? string.Empty;
         if (field.Kind == "datetime" && !editable)
@@ -188,7 +188,7 @@ public static class DeployFieldFactory
     }
 
     /// <summary>读取回执更新现有控件；调用方抑制此更新触发的输入回调。</summary>
-    public static void UpdateValue(Control control, DeployFieldSpec field, string? value)
+    public static void UpdateValue(Control control, SettingsEditorFieldSpec field, string? value)
     {
         var text = value ?? string.Empty;
         switch (control)
@@ -222,7 +222,7 @@ public static class DeployFieldFactory
     /// <summary>
     /// 取值用于展示：草稿原文优先，否则配置值（上游 <c>edits.edits[key]?.value ?? field.value</c>）。
     /// </summary>
-    public static string? DisplayValue(DeployFieldSpec field, DeployEditQueue edits, string? configured) =>
+    public static string? DisplayValue(SettingsEditorFieldSpec field, SettingsEditorEditQueue edits, string? configured) =>
         edits.Edit(field.Key)?.Value ?? configured;
 
     private static void Watch(TextBox box, bool editable, Action<string> onInput)

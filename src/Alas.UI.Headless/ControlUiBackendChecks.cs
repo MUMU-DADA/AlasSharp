@@ -217,16 +217,16 @@ internal static class ControlUiBackendChecks
 
     internal sealed class FixtureBackend : IAlasUiBackend
     {
-        public Func<Task<DeploySettingsResponse>>? DeployRead;
-        public DeploySettingsPatchRequest? DeployPatch;
-        public Func<DeploySettingsPatchRequest, Task<DeploySettingsPatchResponse>>? DeployPatchHandler;
-        public Task<DeploySettingsResponse> ReadDeploySettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
-            => DeployRead?.Invoke() ?? Task.FromException<DeploySettingsResponse>(new NotSupportedException());
-        public Task<DeploySettingsPatchResponse> PatchDeploySettingsAsync(DeploySettingsPatchRequest request, CancellationToken cancellationToken = default)
+        public Func<Task<EngineSettingsResponse>>? SettingsEditorRead;
+        public EngineSettingsPatchRequest? SettingsEditorPatch;
+        public Func<EngineSettingsPatchRequest, Task<EngineSettingsPatchResponse>>? SettingsEditorPatchHandler;
+        public Task<EngineSettingsResponse> ReadEngineSettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
+            => SettingsEditorRead?.Invoke() ?? Task.FromException<EngineSettingsResponse>(new NotSupportedException());
+        public Task<EngineSettingsPatchResponse> PatchEngineSettingsAsync(EngineSettingsPatchRequest request, CancellationToken cancellationToken = default)
         {
-            DeployPatch = request;
-            if (DeployPatchHandler is not null) return DeployPatchHandler(request);
-            return Task.FromResult(new DeploySettingsPatchResponse { Updated = request.Values.Select(item => item.Key).ToArray() });
+            SettingsEditorPatch = request;
+            if (SettingsEditorPatchHandler is not null) return SettingsEditorPatchHandler(request);
+            return Task.FromResult(new EngineSettingsPatchResponse { Updated = request.Values.Select(item => item.Key).ToArray() });
         }
         public Task<StartupRunResponse> ReadStartupRunAsync(string instance, CancellationToken cancellationToken = default) => Task.FromException<StartupRunResponse>(new NotSupportedException());
         public Task<StartupRunResponse> SetStartupRunAsync(StartupRunRequest request, CancellationToken cancellationToken = default) => Task.FromException<StartupRunResponse>(new NotSupportedException());

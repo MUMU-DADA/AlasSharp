@@ -32,7 +32,7 @@ internal static class Program
         bool anchorPerformance = args.Contains("--perf-log-anchors", StringComparer.Ordinal);
         bool taskLoad = args.Contains("--perf-task-load", StringComparer.Ordinal);
         bool taskLoadCold = args.Contains("--perf-task-load-cold", StringComparer.Ordinal);
-        bool deployDraftPerformance = args.Contains("--perf-deploy-drafts", StringComparer.Ordinal);
+        bool settingsDraftPerformance = args.Contains("--perf-deploy-drafts", StringComparer.Ordinal);
         bool resourceSettingsPerformance = args.Contains("--perf-resource-settings", StringComparer.Ordinal);
         string output = Path.GetFullPath(args.FirstOrDefault(arg => !arg.StartsWith("--", StringComparison.Ordinal)) ?? ".runtime/ui-headless");
         Directory.CreateDirectory(output);
@@ -44,10 +44,10 @@ internal static class Program
                 await coldSession.Dispatch(() => TaskEditorLoadChecks.RunCold(output), CancellationToken.None);
                 return 0;
             }
-            if (deployDraftPerformance)
+            if (settingsDraftPerformance)
             {
                 await using var deploySession = HeadlessUnitTestSession.StartNew(typeof(Program));
-                await deploySession.Dispatch(() => DeployDraftIntegrationChecks.RunPerformance(output), CancellationToken.None);
+                await deploySession.Dispatch(() => SettingsDraftIntegrationChecks.RunPerformance(output), CancellationToken.None);
                 return 0;
             }
             if (resourceSettingsPerformance)
@@ -121,7 +121,7 @@ internal static class Program
         CommandReachabilityChecks.Run();
         HitTestReachabilityChecks.Run();
         AgentIntegrationChecks.Run();
-        DeployDraftIntegrationChecks.Run();
+        SettingsDraftIntegrationChecks.Run();
         // 1) 对照帧：每种尺寸/主题用全新的视图与窗口，避免交互状态（筛选行、日志条数、指针悬停）进入对照图。
         CaptureClean(output, 1280, 820, dark: false, "overview-light-1280x820.png");
         CaptureClean(output, 1280, 820, dark: true, "overview-dark-1280x820.png");

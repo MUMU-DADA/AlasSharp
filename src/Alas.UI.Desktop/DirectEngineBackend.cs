@@ -14,7 +14,7 @@ namespace Alas.UI.Desktop;
 internal sealed partial class DirectEngineBackend : IAlasUiBackend
 {
     private readonly EngineProfileStore? _configs;
-    private readonly DeploySettingsWorkspace? _deploy;
+    private readonly EngineSettingsWorkspace? _settings;
     private readonly EngineControlWorkspace? _workspace;
     private readonly List<InstanceCardViewModel> _instances = [];
     private bool _disposed;
@@ -31,7 +31,7 @@ internal sealed partial class DirectEngineBackend : IAlasUiBackend
         try
         {
             _configs = new EngineProfileStore(engineRoot);
-            _deploy = new DeploySettingsWorkspace(engineRoot, _configs);
+            _settings = new EngineSettingsWorkspace(engineRoot, _configs);
             _workspace = new EngineControlWorkspace(root, engineRoot, Path.Combine(root, "data"),
                 Path.Combine(root, "assets"), Path.Combine(root, ".runtime", "control", "runs"),
                 Path.Combine(root, ".runtime", "control"));

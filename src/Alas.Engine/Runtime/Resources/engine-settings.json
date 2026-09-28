@@ -1,0 +1,93 @@
+{
+  "contract": "engine-settings/1",
+  "groups": [
+    {
+      "key": "Device",
+      "label": "GroupDevice",
+      "fields": [
+        {
+          "key": "AdbPath",
+          "type": "string",
+          "label": "AdbPath",
+          "help": "AdbPathHelp"
+        }
+      ]
+    },
+    {
+      "key": "Vision",
+      "label": "GroupVision",
+      "fields": [
+        {
+          "key": "VisionRuntime",
+          "type": "string",
+          "label": "VisionRuntime",
+          "help": "VisionRuntimeHelp"
+        },
+        {
+          "key": "OcrModelDirectory",
+          "type": "nullable_string",
+          "label": "OcrModelDirectory",
+          "help": "OcrModelDirectoryHelp"
+        }
+      ]
+    }
+  ],
+  "notice": "Notice",
+  "translations": {
+    "zh-CN": {
+      "Notice": "设置保存在 Engine 自有 JSON 中；运行中的任务不会因保存设置而中断。",
+      "GroupDevice": "设备",
+      "GroupVision": "纯视觉 Worker",
+      "AdbPath": "ADB 可执行文件",
+      "AdbPathHelp": "设备连接使用的 adb 路径或命令名。",
+      "VisionRuntime": "视觉 Worker 运行时",
+      "VisionRuntimeHelp": "仅用于启动纯 CV/OCR worker，例如 python 或绝对路径。",
+      "OcrModelDirectory": "OCR 模型目录",
+      "OcrModelDirectoryHelp": "OCR 模型目录；留空时不启用需要 OCR 的任务。相对路径以 Engine 根目录为准。"
+    },
+    "zh-MIAO": {
+      "Notice": "设置保存在 Engine 自有 JSON 中；运行中的任务不会因保存设置而中断。",
+      "GroupDevice": "设备",
+      "GroupVision": "纯视觉 Worker",
+      "AdbPath": "ADB 可执行文件",
+      "AdbPathHelp": "设备连接使用的 adb 路径或命令名。",
+      "VisionRuntime": "视觉 Worker 运行时",
+      "VisionRuntimeHelp": "仅用于启动纯 CV/OCR worker，例如 python 或绝对路径。",
+      "OcrModelDirectory": "OCR 模型目录",
+      "OcrModelDirectoryHelp": "OCR 模型目录；留空时不启用需要 OCR 的任务。相对路径以 Engine 根目录为准。"
+    },
+    "zh-TW": {
+      "Notice": "設定儲存後供下一個任務佇列使用，不會中斷執行中的任務。",
+      "GroupDevice": "裝置",
+      "GroupVision": "視覺辨識",
+      "AdbPath": "ADB 執行檔",
+      "AdbPathHelp": "裝置連線使用的 adb 路徑或命令名稱。",
+      "VisionRuntime": "視覺程序執行環境",
+      "VisionRuntimeHelp": "只用於啟動 CV/OCR 程序。相對路徑以 Engine 根目錄為準。",
+      "OcrModelDirectory": "OCR 模型目錄",
+      "OcrModelDirectoryHelp": "留空時停用需要 OCR 的任務。相對路徑以 Engine 根目錄為準。"
+    },
+    "en-US": {
+      "Notice": "Settings are stored in Engine-owned JSON; running tasks are not interrupted by a save.",
+      "GroupDevice": "Device",
+      "GroupVision": "Pure Vision Worker",
+      "AdbPath": "ADB executable",
+      "AdbPathHelp": "ADB path or command used by the device backend.",
+      "VisionRuntime": "Vision worker runtime",
+      "VisionRuntimeHelp": "Runtime used only by the pure CV/OCR worker, such as python or an absolute path.",
+      "OcrModelDirectory": "OCR model directory",
+      "OcrModelDirectoryHelp": "OCR model directory; empty disables tasks requiring OCR. Relative paths use the Engine root."
+    },
+    "ja-JP": {
+      "Notice": "保存した設定は次のタスクキューから適用されます。実行中のタスクは中断しません。",
+      "GroupDevice": "デバイス",
+      "GroupVision": "画像認識",
+      "AdbPath": "ADB 実行ファイル",
+      "AdbPathHelp": "デバイスへの接続に使用する adb のパスまたはコマンド名。",
+      "VisionRuntime": "画像認識の実行環境",
+      "VisionRuntimeHelp": "CV/OCR プロセスの起動専用です。相対パスは Engine ルートを基準にします。",
+      "OcrModelDirectory": "OCR モデルのディレクトリ",
+      "OcrModelDirectoryHelp": "空の場合、OCR が必要なタスクは無効になります。相対パスは Engine ルートを基準にします。"
+    }
+  }
+}

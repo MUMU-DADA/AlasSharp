@@ -9,8 +9,8 @@ namespace Alas.UI.ViewModels;
 /// </summary>
 public interface IAlasControlBackend
 {
-    Task<DeploySettingsResponse> ReadDeploySettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default);
-    Task<DeploySettingsPatchResponse> PatchDeploySettingsAsync(DeploySettingsPatchRequest request, CancellationToken cancellationToken = default);
+    Task<EngineSettingsResponse> ReadEngineSettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default);
+    Task<EngineSettingsPatchResponse> PatchEngineSettingsAsync(EngineSettingsPatchRequest request, CancellationToken cancellationToken = default);
     Task<StartupRunResponse> ReadStartupRunAsync(string instance, CancellationToken cancellationToken = default);
     Task<StartupRunResponse> SetStartupRunAsync(StartupRunRequest request, CancellationToken cancellationToken = default);
     Task<InstanceListResponse> ReadInstancesAsync(CancellationToken cancellationToken = default);

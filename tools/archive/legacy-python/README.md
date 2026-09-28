@@ -10,3 +10,5 @@
 
 归档脚本保留原始依赖路径，移动后不保证可直接执行。需要对照上游时应在隔离的离线
 环境中显式指定脚本路径，不得把它们移回 `tools/` 或 `tools/diagnostics/`。
+
+旧部署 schema 导出器、deploy_storage.py 与原生部署对拍也已归档。当前设置由 C# Engine 直接定义和保存，不应重新生成旧 deploy-settings.json 或写入生产目录。

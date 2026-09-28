@@ -3,20 +3,20 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Alas.Contracts;
-using Alas.UI.DeploySettings;
+using Alas.UI.EngineSettings;
 using Alas.UI.Settings;
 
 namespace Alas.UI.ViewModels;
 
-/// <summary>Translate the Engine deployment schema; desktop remains an in-process capability call.</summary>
-public sealed class EngineDeploySettingsBackend(IAlasUiBackend backend) : ISettingsBackend
+/// <summary>Translate the Engine settings schema; desktop remains an in-process capability call.</summary>
+public sealed class EngineSettingsBackend(IAlasUiBackend backend) : ISettingsBackend
 {
     private Dictionary<string, string> _types = new(StringComparer.Ordinal);
     public async Task<SettingsSnapshot?> ReadAsync(CancellationToken cancellationToken = default)
     {
         if (!backend.IsConnected)
             return new SettingsSnapshot([], DisconnectedSettingsBackend.Notice);
-        var response = await backend.ReadDeploySettingsAsync(cancellationToken: cancellationToken);
+        var response = await backend.ReadEngineSettingsAsync(cancellationToken: cancellationToken);
         var groups = response.Groups.Select(node =>
         {
             var group = node!.AsObject();
@@ -36,13 +36,13 @@ public sealed class EngineDeploySettingsBackend(IAlasUiBackend backend) : ISetti
 
     public async Task SaveAsync(SettingsChange change, CancellationToken cancellationToken = default)
     {
-        if (!backend.IsConnected) throw new DeployTransportException(DisconnectedSettingsBackend.Notice, retryable: true);
+        if (!backend.IsConnected) throw new SettingsEditorTransportException(DisconnectedSettingsBackend.Notice, retryable: true);
         try
         {
-            if (!_types.TryGetValue(change.Key, out var kind)) throw new ArgumentException("部署字段尚未加载");
+            if (!_types.TryGetValue(change.Key, out var kind)) throw new ArgumentException("设置字段尚未加载");
             // Boolean fields require a JSON boolean; text (including numeric-looking text) stays text.
             JsonNode? value = kind == "bool" ? JsonValue.Create(bool.Parse(change.Value)) : JsonValue.Create(change.Value);
-            await backend.PatchDeploySettingsAsync(new DeploySettingsPatchRequest
+            await backend.PatchEngineSettingsAsync(new EngineSettingsPatchRequest
             {
                 Values = new JsonObject { [change.Key] = value },
             }, cancellationToken);
@@ -51,7 +51,7 @@ public sealed class EngineDeploySettingsBackend(IAlasUiBackend backend) : ISetti
         {
             bool retryable = failure is IOException or TimeoutException ||
                 failure is HttpRequestException http && (http.StatusCode is null || (int)http.StatusCode >= 500);
-            throw new DeployTransportException(failure.Message, retryable);
+            throw new SettingsEditorTransportException(failure.Message, retryable);
         }
     }
 

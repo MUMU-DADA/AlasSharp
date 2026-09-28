@@ -199,21 +199,21 @@ public sealed class SimulatedUiBackend : IAlasUiBackend
     private StartupRunResponse Startup(string instance) => new() { Instance = instance,
         Enabled = _startup.Contains(instance), Run = _startup.Order(StringComparer.Ordinal).ToArray() };
 
-    public Task<DeploySettingsResponse> ReadDeploySettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
-        => Read(() => new DeploySettingsResponse { Demo = true, Notice = Notice, Groups = new JsonArray(
-            DeployGroup("Gui", "界面测试设置", ("Theme", "样本主题", "text"), ("CheckUpdate", "模拟更新检查", "bool")),
-            DeployGroup("RemoteAccess", "远程访问模拟", ("EnableRemoteAccess", "模拟开关", "bool")),
-            DeployGroup("Webui", "网页模拟", ("WebuiPort", "模拟端口", "int"))) }, cancellationToken);
-    private JsonObject DeployGroup(string key, string label, params (string Key, string Label, string Type)[] fields)
+    public Task<EngineSettingsResponse> ReadEngineSettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
+        => Read(() => new EngineSettingsResponse { Demo = true, Notice = Notice, Groups = new JsonArray(
+            SettingsEditorGroup("Gui", "界面测试设置", ("Theme", "样本主题", "text"), ("CheckUpdate", "模拟更新检查", "bool")),
+            SettingsEditorGroup("RemoteAccess", "远程访问模拟", ("EnableRemoteAccess", "模拟开关", "bool")),
+            SettingsEditorGroup("Webui", "网页模拟", ("WebuiPort", "模拟端口", "int"))) }, cancellationToken);
+    private JsonObject SettingsEditorGroup(string key, string label, params (string Key, string Label, string Type)[] fields)
         => new() { ["key"] = key, ["label"] = label, ["fields"] = new JsonArray(fields.Select(field => (JsonNode)new JsonObject
             { ["key"] = field.Key, ["label"] = field.Label, ["type"] = field.Type, ["value"] = _deploy[field.Key]?.DeepClone(),
                 ["help"] = "仅修改本次 UI 模拟数据" }).ToArray()) };
-    public Task<DeploySettingsPatchResponse> PatchDeploySettingsAsync(DeploySettingsPatchRequest request, CancellationToken cancellationToken = default)
+    public Task<EngineSettingsPatchResponse> PatchEngineSettingsAsync(EngineSettingsPatchRequest request, CancellationToken cancellationToken = default)
         => Read(() =>
         {
             if (request.Values.Any(pair => !_deploy.ContainsKey(pair.Key))) throw new ArgumentException("未知模拟设置");
             foreach (var pair in request.Values) _deploy[pair.Key] = pair.Value?.DeepClone();
-            return new DeploySettingsPatchResponse { Updated = request.Values.Select(pair => pair.Key).ToArray() };
+            return new EngineSettingsPatchResponse { Updated = request.Values.Select(pair => pair.Key).ToArray() };
         }, cancellationToken);
 
     public Task<JsonObject> ReadStatisticsAsync(StatisticsRequest request, CancellationToken cancellationToken = default)

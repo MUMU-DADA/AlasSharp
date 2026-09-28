@@ -11,25 +11,25 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Alas.UI.DeploySettings;
+using Alas.UI.EngineSettings;
 
 namespace Alas.UI.Settings;
 
 /// <summary>
-/// 系统设置页（上游 <c>/settings</c>）需要的**页面局部能力**：读取部署设置分组、提交改动。
-/// 上游该页由 useDeploySettings 提供 data / error / edits.storageError / queue 四个状态，
+/// 系统设置页（上游 <c>/settings</c>）需要的**页面局部能力**：读取引擎设置分组、提交改动。
+/// 共享设置会话提供 data / error / edits.storageError / queue 四个状态，
 /// 页面按这四种状态如实渲染（含两条独立的错误通道）。只依赖局部接口，不触碰共享外壳接线。
 /// </summary>
 public interface ISettingsBackend
 {
-    /// <summary>读取部署设置；返回 null 表示尚未取得数据（上游显示 Loading）。</summary>
+    /// <summary>读取引擎设置；返回 null 表示尚未取得数据（上游显示 Loading）。</summary>
     Task<SettingsSnapshot?> ReadAsync(CancellationToken cancellationToken = default);
 
     /// <summary>提交一条改动；失败必须抛出（可重试的连接类错误与不可重试的校验类错误都如实抛出）。</summary>
     Task SaveAsync(SettingsChange change, CancellationToken cancellationToken = default);
 }
 
-/// <summary>部署设置快照：分组 + 当前值 + 读取错误 + 本地暂存错误（上游 error 与 edits.storageError 两条通道）。</summary>
+/// <summary>引擎设置快照：分组 + 当前值 + 读取错误 + 本地暂存错误（上游 error 与 edits.storageError 两条通道）。</summary>
 public sealed record SettingsSnapshot(
     IReadOnlyList<SettingsGroup> Groups,
     string? Error = null,
@@ -43,7 +43,7 @@ public sealed record SettingsSnapshot(
 }
 
 /// <summary>
-/// 一个设置分组（上游 DeployGroups 渲染的单元）。
+/// 一个设置分组（共享分组渲染器 渲染的单元）。
 /// Key 是上游用于归属过滤与 i18n 的分组键（<c>Gui.DeploySetting.Group{key}</c>），Title 是渲染出来的标题；
 /// 上游按 **key** 过滤，因此标题被翻译成中文也不影响归属判断。缺省 key 时按标题处理。
 /// </summary>
@@ -63,7 +63,7 @@ public static class RemoteAccessGroups
 /// <summary>
 /// 一条设置项。Kind 对应上游 FieldInput 的分支：text / number / int / checkbox(布尔开关) / select(有 options) /
 /// multiselect / textarea / password / datetime / yaml；Options 供 select 与 multiselect 使用。
-/// Help 对应上游 DeployGroups 在标签下渲染的字段说明（上游会剥掉其中的 HTML 标签）。
+/// Help 对应共享分组渲染器 在标签下渲染的字段说明（上游会剥掉其中的 HTML 标签）。
 /// </summary>
 public sealed record SettingsField(
     string Key,
@@ -90,10 +90,10 @@ public sealed record SettingsField(
 public sealed record SettingsChange(string Key, string Value);
 
 /// <summary>
-/// 把 <see cref="ISettingsBackend"/> 适配成部署设置提交通道。每次注入后端代数 +1：
+/// 把 <see cref="ISettingsBackend"/> 适配成引擎设置提交通道。每次注入后端代数 +1：
 /// 队列据此丢弃旧后端的在途回执，不会把旧连接的结果算到新连接头上。
 /// </summary>
-public sealed class SettingsTransport(ISettingsBackend backend, long generation) : IDeployTransport
+public sealed class SettingsTransport(ISettingsBackend backend, long generation) : ISettingsEditorTransport
 {
     public string Identity => backend.GetType().Name;
 
@@ -110,25 +110,25 @@ public sealed class DisconnectedSettingsBackend : ISettingsBackend
 {
     public static DisconnectedSettingsBackend Instance { get; } = new();
 
-    public const string Notice = "部署设置尚未启用，当前不可用。";
+    public const string Notice = "引擎设置尚未启用，当前不可用。";
 
     public Task<SettingsSnapshot?> ReadAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<SettingsSnapshot?>(new SettingsSnapshot(Array.Empty<SettingsGroup>(), Notice));
 
     public Task SaveAsync(SettingsChange change, CancellationToken cancellationToken = default) =>
-        throw new DeployTransportException(Notice, retryable: false);
+        throw new SettingsEditorTransportException(Notice, retryable: false);
 }
 
 /// <summary>
 /// 系统设置页：标题「系统设置」+ 读取错误框 + 本地暂存错误框 +（加载中 / 设置分组）。
-/// 分组渲染由两组页面共享的 <see cref="DeploySettingsSession"/> 提供：本页负责
+/// 分组渲染由两组页面共享的 <see cref="EngineSettingsSession"/> 提供：本页负责
 /// 「除远程访问/WebUI 之外的全部」分组，按**分组键**归属，后端新增分组不会静默消失。
 /// 无数据时停在加载态并显示原因，**不伪造任何设置项**。
 /// </summary>
 public sealed class SettingsView : UserControl
 {
     private readonly SettingsViewModel _model;
-    private readonly DeploySettingsSession _session;
+    private readonly EngineSettingsSession _session;
     private long _generation;
     private readonly bool _ownsSession;
     private ISettingsBackend _backend;
@@ -147,7 +147,7 @@ public sealed class SettingsView : UserControl
     /// 用**已有的**部署草稿会话构造：系统设置页与远程访问页共用同一个会话实例，
     /// 因此来回导航不会丢未确认的输入，也不会各自建一条保存队列。
     /// </summary>
-    public SettingsView(ISettingsBackend backend, DeploySettingsSession? session)
+    public SettingsView(ISettingsBackend backend, EngineSettingsSession? session)
     {
         _backend = backend;
         _generation = 1;
@@ -163,8 +163,8 @@ public sealed class SettingsView : UserControl
 
     public SettingsViewModel Model => _model;
 
-    /// <summary>本页与远程访问页共享的部署设置会话（草稿队列就在里面）。</summary>
-    public DeploySettingsSession Session => _session;
+    /// <summary>本页与远程访问页共享的引擎设置会话（草稿队列就在里面）。</summary>
+    public EngineSettingsSession Session => _session;
 
     /// <summary>
     /// 外壳注入点（按 master 的承载约定）：设置后按新后端重新读取。
@@ -179,14 +179,14 @@ public sealed class SettingsView : UserControl
             _generation++;
             if (_ownsSession)
             {
-                _session.Reader = DeploySchemaAdapter.Read(ReadAsync);
+                _session.Reader = SettingsEditorSchemaAdapter.Read(ReadAsync);
                 _session.AttachBackend(new SettingsTransport(value, _generation));
             }
         }
     }
 
-    private DeploySettingsSession CreateSession(ISettingsBackend backend) =>
-        new(new SettingsTransport(backend, _generation), DeploySchemaAdapter.Read(ReadAsync));
+    private EngineSettingsSession CreateSession(ISettingsBackend backend) =>
+        new(new SettingsTransport(backend, _generation), SettingsEditorSchemaAdapter.Read(ReadAsync));
 
     /// <summary>读取后端快照；翻译交给共享适配器（分组键沿用后端的归属键）。</summary>
     private Task<SettingsSnapshot?> ReadAsync(CancellationToken cancellationToken) =>
@@ -209,10 +209,10 @@ public sealed class SettingsView : UserControl
         {
             Name = "SettingsStorageErrorBox", FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false,
         };
-        var loading = new TextBlock { Name = "SettingsLoading", Text = "正在加载部署设置…", FontSize = 13 };
+        var loading = new TextBlock { Name = "SettingsLoading", Text = "正在加载引擎设置…", FontSize = 13 };
         var empty = new TextBlock
         {
-            Name = "SettingsEmptyState", Text = "没有可显示的部署设置。", FontSize = 12, IsVisible = false,
+            Name = "SettingsEmptyState", Text = "没有可显示的引擎设置。", FontSize = 12, IsVisible = false,
         };
         var groups = new StackPanel { Name = "SettingsGroups", Spacing = 0 };
         // 页面级的重试入口：与每个字段行上的「重试保存」是同一个命令，失败时按失败条数说明。
@@ -240,13 +240,13 @@ public sealed class SettingsView : UserControl
             empty.IsVisible = _session.HasData && !_session.HasError && _session.SystemGroups.Count == 0;
             groups.IsVisible = _session.SystemGroups.Count > 0;
             var failures = _session.Edits.Snapshot().Values
-                .Count(edit => edit.Status == DeployEditStatus.Error && edit.Retryable);
+                .Count(edit => edit.Status == SettingsEditorEditStatus.Error && edit.Retryable);
             retryAll.IsEnabled = failures > 0;
             retryLabel.IsVisible = failures > 0;
             retryLabel.Text = failures > 0
                 ? $"有 {failures} 项改动保存失败，可重试；具体原因见对应字段。"
                 : string.Empty;
-            DeployGroupsView.Render(groups, _session.SystemGroups, _session);
+            SettingsEditorGroupsView.Render(groups, _session.SystemGroups, _session);
         }
 
         void SessionChanged(object? sender, PropertyChangedEventArgs args) => Refresh();
@@ -276,20 +276,20 @@ public sealed class SettingsView : UserControl
 /// <summary>页面状态：直接转发共享会话的分组、两条错误通道与加载态，页面不自己保存任何草稿。</summary>
 public sealed class SettingsViewModel : INotifyPropertyChanged
 {
-    private readonly DeploySettingsSession _session;
+    private readonly EngineSettingsSession _session;
     private bool _subscribed;
 
-    public SettingsViewModel(DeploySettingsSession session)
+    public SettingsViewModel(EngineSettingsSession session)
     {
         _session = session;
         Connect();
     }
 
     /// <summary>本页与远程访问页共享的草稿会话。</summary>
-    public DeploySettingsSession Session => _session;
+    public EngineSettingsSession Session => _session;
 
     /// <summary>本页负责渲染的分组（除远程访问/WebUI 之外的全部）。</summary>
-    public IReadOnlyList<DeployGroup> Groups => _session.SystemGroups;
+    public IReadOnlyList<SettingsEditorGroup> Groups => _session.SystemGroups;
 
     /// <summary>
     /// 草稿队列的重试入口（上游 EditStatus 的「重试保存」）：把可重试的失败输入重新排队并立即冲刷。
@@ -308,7 +308,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public bool IsEmpty => _session.HasData && !_session.HasError && _session.SystemGroups.Count == 0;
 
     /// <summary>草稿队列里未确认的输入条数（上游 queue 语义：应用完成后归零）。</summary>
-    public int QueuedChanges => _session.Edits.Snapshot().Values.Count(edit => edit.Status != DeployEditStatus.Saved);
+    public int QueuedChanges => _session.Edits.Snapshot().Values.Count(edit => edit.Status != SettingsEditorEditStatus.Saved);
 
     public bool HasQueuedChanges => QueuedChanges > 0;
 
@@ -317,15 +317,15 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     /// <summary>用户在输入框里改过的值（键 → 原文）；未改过的键不出现。上游 <c>edits.edits[key]?.value</c>。</summary>
     public IReadOnlyDictionary<string, string?> Edits => _session.Edits.Snapshot()
-        .Where(pair => pair.Value.Status != DeployEditStatus.Saved)
+        .Where(pair => pair.Value.Status != SettingsEditorEditStatus.Saved)
         .ToDictionary(pair => pair.Key, pair => pair.Value.Value);
 
     /// <summary>该字段当前的本地校验错误（无则 null）；与后端下发的错误分开。</summary>
     public string? ValidationError(string key) =>
-        _session.Edits.Edit(key) is { Status: DeployEditStatus.Error } edit && !edit.Retryable ? edit.Error : null;
+        _session.Edits.Edit(key) is { Status: SettingsEditorEditStatus.Error } edit && !edit.Retryable ? edit.Error : null;
 
     public bool HasValidationError => _session.Edits.Snapshot().Values
-        .Any(edit => edit.Status == DeployEditStatus.Error && !edit.Retryable);
+        .Any(edit => edit.Status == SettingsEditorEditStatus.Error && !edit.Retryable);
 
     /// <summary>直接取值（测试与诊断用）。</summary>
     public string? EditedValue(string key) => _session.Edits.Edit(key)?.Value;

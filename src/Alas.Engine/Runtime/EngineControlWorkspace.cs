@@ -12,6 +12,7 @@ public sealed class EngineControlWorkspace
     private readonly string _control;
     private readonly string _artifacts;
     private readonly EngineProfileStore _profiles;
+    private readonly EngineSettingsWorkspace _settings;
     private readonly object _gate = new();
     private Task? _worker;
     private string? _mode, _kind, _instance, _startedAt, _finishedAt, _error, _runDirectory;
@@ -30,6 +31,7 @@ public sealed class EngineControlWorkspace
         Directory.CreateDirectory(_control);
         Directory.CreateDirectory(_artifacts);
         _profiles = new EngineProfileStore(_engineRoot);
+        _settings = new EngineSettingsWorkspace(_engineRoot, _profiles);
     }
 
     public JsonObject State(string? selectedInstance = null)
@@ -261,11 +263,10 @@ public sealed class EngineControlWorkspace
         GameServer server = profile is not null
             ? EngineProfileStore.ParseServer(device?["server"]?.GetValue<string>() ?? "")
             : GameServerRules.FromPackage(Environment.GetEnvironmentVariable("ALAS_SERVER") ?? "cn");
-        string? models = Environment.GetEnvironmentVariable("ALAS_OCR_MODELS");
+        var settings = _settings.ReadRuntime();
         return new EngineSessionOptions(
-            Environment.GetEnvironmentVariable("ALAS_ADB") ?? "adb", actualSerial, server,
-            Path.Combine(_engineRoot, "assets"), Environment.GetEnvironmentVariable("ALAS_CV_RUNTIME") ?? "python",
-            package, string.IsNullOrWhiteSpace(models) ? null : Path.GetFullPath(models), allowActions,
+            settings.Adb, actualSerial, server, Path.Combine(_engineRoot, "assets"), settings.VisionRuntime,
+            package, settings.ModelDirectory, allowActions,
             profile is null ? null : _engineRoot, profile?.Instance);
     }
 

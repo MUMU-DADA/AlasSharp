@@ -19,7 +19,7 @@ internal static class AgentIntegrationChecks
     {
         var backend = new ControlUiBackendChecks.FixtureBackend
         {
-            DeployRead = () => Task.FromResult(new DeploySettingsResponse
+            SettingsEditorRead = () => Task.FromResult(new EngineSettingsResponse
             {
                 Groups = JsonNode.Parse("""
                     [{"key":"Git","label":"版本","fields":[{"key":"Branch","label":"分支","type":"string","value":"master","help":"<b>分支说明</b>","options":[]},{"key":"SSLVerify","label":"验证证书","type":"bool","value":true,"help":"","options":[]}]},
@@ -28,14 +28,14 @@ internal static class AgentIntegrationChecks
                     """)!.AsArray(), Notice = "fixture", Demo = false,
             }),
         };
-        var adapter = new EngineDeploySettingsBackend(backend);
+        var adapter = new EngineSettingsBackend(backend);
         var snapshot = adapter.ReadAsync().GetAwaiter().GetResult()!;
         Check(snapshot.Groups[0].Fields[0].Help == "分支说明", "Engine help strips markup without changing the label");
         adapter.SaveAsync(new SettingsChange("SSLVerify", "false")).GetAwaiter().GetResult();
-        Check(backend.DeployPatch!.Values["SSLVerify"]!.GetValue<bool>() == false, "boolean changes retain JSON boolean type");
+        Check(backend.SettingsEditorPatch!.Values["SSLVerify"]!.GetValue<bool>() == false, "boolean changes retain JSON boolean type");
         adapter.SaveAsync(new SettingsChange("Branch", "123")).GetAwaiter().GetResult();
-        Check(backend.DeployPatch!.Values["Branch"]!.GetValue<string>() == "123", "numeric-looking strings stay strings");
-        backend.DeployPatch = null;
+        Check(backend.SettingsEditorPatch!.Values["Branch"]!.GetValue<string>() == "123", "numeric-looking strings stay strings");
+        backend.SettingsEditorPatch = null;
         foreach (var width in new[] { 1280, 390 })
         {
             var view = new MainView(new MemoryThemeStore(), backend);
@@ -68,8 +68,8 @@ internal static class AgentIntegrationChecks
                 Click(window, input); input.SelectAll();
                 foreach (char c in "release") { window.KeyTextInput(c.ToString()); Pump(); }
                 var deadline = DateTime.UtcNow.AddSeconds(3);
-                while (backend.DeployPatch is null && DateTime.UtcNow < deadline) { Pump(); Thread.Sleep(5); }
-                Check(backend.DeployPatch?.Values["Branch"]?.GetValue<string>() == "release", "real settings input invokes the shared Engine capability");
+                while (backend.SettingsEditorPatch is null && DateTime.UtcNow < deadline) { Pump(); Thread.Sleep(5); }
+                Check(backend.SettingsEditorPatch?.Values["Branch"]?.GetValue<string>() == "release", "real settings input invokes the shared Engine capability");
                 Check(input.IsFocused && input.Text == "release", "save notification preserves the active editor");
                 var skip = view.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SkipLink");
                 skip.Focus(); Pump();
@@ -84,11 +84,11 @@ internal static class AgentIntegrationChecks
                 Check(cards.Flyout is Flyout { IsOpen: true, Content: Overview.ResourceSelectionPanel },
                     "instance settings opens the delivered resource selection component");
                 cards.Flyout!.Hide();
-                backend.DeployPatch = null;
+                backend.SettingsEditorPatch = null;
             }
             finally { window.Close(); }
         }
-        Console.WriteLine("PASS: integrated agent routes, shared Engine deployment settings and narrow-screen pointer input");
+        Console.WriteLine("PASS: integrated agent routes, shared Engine settings and narrow-screen pointer input");
     }
 
     private static void Click(Window window, Control control)

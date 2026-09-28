@@ -27,10 +27,10 @@ internal sealed class BrowserControlBackend : IAlasUiBackend
     }
 
     public event EventHandler? Changed;
-    public Task<DeploySettingsResponse> ReadDeploySettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
-        => _client.GetDeploySettingsAsync(language, cancellationToken);
-    public Task<DeploySettingsPatchResponse> PatchDeploySettingsAsync(DeploySettingsPatchRequest request, CancellationToken cancellationToken = default)
-        => _client.PatchDeploySettingsAsync(request, cancellationToken);
+    public Task<EngineSettingsResponse> ReadEngineSettingsAsync(string language = "zh-CN", CancellationToken cancellationToken = default)
+        => _client.GetEngineSettingsAsync(language, cancellationToken);
+    public Task<EngineSettingsPatchResponse> PatchEngineSettingsAsync(EngineSettingsPatchRequest request, CancellationToken cancellationToken = default)
+        => _client.PatchEngineSettingsAsync(request, cancellationToken);
     public Task<StartupRunResponse> ReadStartupRunAsync(string instance, CancellationToken cancellationToken = default)
         => _client.GetStartupRunAsync(instance, cancellationToken);
     public Task<StartupRunResponse> SetStartupRunAsync(StartupRunRequest request, CancellationToken cancellationToken = default)

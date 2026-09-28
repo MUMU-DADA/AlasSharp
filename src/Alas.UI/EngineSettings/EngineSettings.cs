@@ -8,13 +8,13 @@ using System.Threading.Tasks;
 using System.Text.Json.Nodes;
 using Avalonia.Threading;
 
-namespace Alas.UI.DeploySettings;
+namespace Alas.UI.EngineSettings;
 
 /// <summary>
 /// 一条草稿输入的状态。取值对应上游 <c>EditQueue</c> 的 <c>Edit.status</c>：
-/// queued（等待提交）/ saving（正在提交）/ saved（已确认）/ error（失败，另见 <see cref="DeployEdit"/>）。
+/// queued（等待提交）/ saving（正在提交）/ saved（已确认）/ error（失败，另见 <see cref="SettingsEditorEdit"/>）。
 /// </summary>
-public enum DeployEditStatus
+public enum SettingsEditorEditStatus
 {
     Queued,
     Saving,
@@ -25,17 +25,17 @@ public enum DeployEditStatus
 /// <summary>
 /// 一条草稿输入：用户看到的原文 <see cref="Value"/> 与真正提交的 <see cref="Payload"/> 分开存放。
 /// </summary>
-public sealed record DeployEdit(
+public sealed record SettingsEditorEdit(
     string Payload,
     string? Value,
     long Sequence,
-    DeployEditStatus Status,
+    SettingsEditorEditStatus Status,
     string? Error = null,
     bool Retryable = false,
     long BackendGeneration = 0);
 
 /// <summary>提交失败：<see cref="Retryable"/> 为 false 表示服务端明确拒绝，重试也一定失败。</summary>
-public sealed class DeployTransportException(string message, bool retryable = true) : Exception(message)
+public sealed class SettingsEditorTransportException(string message, bool retryable = true) : Exception(message)
 {
     public bool Retryable { get; } = retryable;
 }
@@ -46,7 +46,7 @@ public sealed class DeployTransportException(string message, bool retryable = tr
 /// <see cref="Generation"/> 标识当前后端实例：换后端（重连、切换实例）时必须改变它，
 /// 队列据此丢弃旧后端的在途回执——旧回执只能确认它自己那一代、且序号未变的那条输入。
 /// </summary>
-public interface IDeployTransport
+public interface ISettingsEditorTransport
 {
     string Identity { get; }
 
@@ -58,7 +58,7 @@ public interface IDeployTransport
 }
 
 /// <summary>草稿的本地持久化（上游用 sessionStorage）；实现由平台层提供，失败不抛出而是由队列报告。</summary>
-public interface IDeployDraftStore
+public interface ISettingsDraftStore
 {
     string? Read(string key);
 
@@ -68,22 +68,22 @@ public interface IDeployDraftStore
 }
 
 /// <summary>延迟接口：重试用它排队，离屏检查注入假时钟即可确定性推进。</summary>
-public interface IDeployClock
+public interface ISettingsEditorClock
 {
     void Delay(TimeSpan delay, Action action);
 }
 
 /// <summary>按真实时间延迟（产品路径用）。</summary>
-public sealed class SystemDeployClock : IDeployClock
+public sealed class SystemSettingsEditorClock : ISettingsEditorClock
 {
-    public static SystemDeployClock Instance { get; } = new();
+    public static SystemSettingsEditorClock Instance { get; } = new();
 
     public void Delay(TimeSpan delay, Action action) =>
         _ = Task.Delay(delay).ContinueWith(_ => action(), TaskScheduler.Default);
 }
 
 /// <summary>
-/// 部署设置草稿队列（上游 <c>config/EditQueue.ts</c> 的部署作用域）。
+/// 引擎设置草稿队列（上游 <c>config/EditQueue.ts</c> 的部署作用域）。
 ///
 /// 契约来自上游，逐条保留：
 /// ① 输入立即保留为草稿并按序号**串行**提交，不按到达顺序并发写；
@@ -91,28 +91,28 @@ public sealed class SystemDeployClock : IDeployClock
 /// ③ 可重试失败保留输入、延迟重试；永久失败保留原文供用户修正，但不再自动重试；
 /// ④ 只有未确认的输入参与持久化，持久化失败单独报告，不影响内存中的草稿。
 /// </summary>
-public sealed class DeployEditQueue
+public sealed class SettingsEditorEditQueue
 {
     private readonly object _gate = new();
-    private IDeployTransport _transport;
+    private ISettingsEditorTransport _transport;
     private long _transportRevision;
-    private readonly IDeployDraftStore? _store;
-    private readonly IDeployClock _clock;
+    private readonly ISettingsDraftStore? _store;
+    private readonly ISettingsEditorClock _clock;
     private readonly string _storageKey;
-    private readonly Dictionary<string, DeployEdit> _edits = new();
+    private readonly Dictionary<string, SettingsEditorEdit> _edits = new();
     private long _sequence;
     private TaskCompletionSource? _running;
     private bool _retryScheduled;
     private bool _persisted;
     private TimeSpan _retryDelay = TimeSpan.FromSeconds(1);
 
-    public DeployEditQueue(string scope, IDeployTransport transport, IDeployDraftStore? store = null,
-        IDeployClock? clock = null)
+    public SettingsEditorEditQueue(string scope, ISettingsEditorTransport transport, ISettingsDraftStore? store = null,
+        ISettingsEditorClock? clock = null)
     {
         _transport = transport;
         _store = store;
-        _clock = clock ?? SystemDeployClock.Instance;
-        _storageKey = "deploy-edits." + scope;
+        _clock = clock ?? SystemSettingsEditorClock.Instance;
+        _storageKey = "engine-settings-edits." + scope;
         Restore();
     }
 
@@ -122,7 +122,7 @@ public sealed class DeployEditQueue
     public bool Ready { get { lock (_gate) return _transport.Ready; } }
 
     /// <summary>替换实际发送通道；另一后端的草稿保留，旧连接的在途回执不确认新连接。</summary>
-    public void UseTransport(IDeployTransport transport)
+    public void UseTransport(ISettingsEditorTransport transport)
     {
         lock (_gate)
         {
@@ -132,38 +132,38 @@ public sealed class DeployEditQueue
             foreach (var key in _edits.Keys.ToList())
             {
                 var edit = _edits[key];
-                if (edit.Status == DeployEditStatus.Saving)
-                    _edits[key] = edit with { Status = DeployEditStatus.Queued };
+                if (edit.Status == SettingsEditorEditStatus.Saving)
+                    _edits[key] = edit with { Status = SettingsEditorEditStatus.Queued };
             }
         }
         Publish();
     }
 
-    public DeployEdit? Edit(string key)
+    public SettingsEditorEdit? Edit(string key)
     {
         lock (_gate) return _edits.TryGetValue(key, out var edit) ? edit : null;
     }
 
-    public IReadOnlyDictionary<string, DeployEdit> Snapshot()
+    public IReadOnlyDictionary<string, SettingsEditorEdit> Snapshot()
     {
-        lock (_gate) return new Dictionary<string, DeployEdit>(_edits);
+        lock (_gate) return new Dictionary<string, SettingsEditorEdit>(_edits);
     }
 
     public bool HasPending(string key)
     {
-        lock (_gate) return _edits.TryGetValue(key, out var edit) && edit.Status != DeployEditStatus.Saved;
+        lock (_gate) return _edits.TryGetValue(key, out var edit) && edit.Status != SettingsEditorEditStatus.Saved;
     }
 
     public bool HasPendingFor(long generation)
     {
         lock (_gate) return _edits.Values.Any(edit =>
-            edit.Status != DeployEditStatus.Saved && edit.BackendGeneration == generation);
+            edit.Status != SettingsEditorEditStatus.Saved && edit.BackendGeneration == generation);
     }
 
     public bool ShouldRetryOnReconnect()
     {
         lock (_gate) return _transport.Ready && _edits.Values.Any(edit =>
-            edit.Status == DeployEditStatus.Error && edit.Retryable
+            edit.Status == SettingsEditorEditStatus.Error && edit.Retryable
             && edit.BackendGeneration == _transport.Generation);
     }
 
@@ -171,8 +171,8 @@ public sealed class DeployEditQueue
     {
         lock (_gate)
         {
-            _edits[key] = new DeployEdit(payload, value, ++_sequence,
-                error is null ? DeployEditStatus.Queued : DeployEditStatus.Error, error,
+            _edits[key] = new SettingsEditorEdit(payload, value, ++_sequence,
+                error is null ? SettingsEditorEditStatus.Queued : SettingsEditorEditStatus.Error, error,
                 Retryable: false, _transport.Generation);
         }
         Publish();
@@ -193,9 +193,9 @@ public sealed class DeployEditQueue
             foreach (var key in _edits.Keys.ToList())
             {
                 var edit = _edits[key];
-                if (edit.Status == DeployEditStatus.Error && edit.Retryable
+                if (edit.Status == SettingsEditorEditStatus.Error && edit.Retryable
                     && edit.BackendGeneration == generation)
-                    _edits[key] = edit with { Status = DeployEditStatus.Queued, Error = null, Retryable = false };
+                    _edits[key] = edit with { Status = SettingsEditorEditStatus.Queued, Error = null, Retryable = false };
             }
         }
         Publish();
@@ -207,7 +207,7 @@ public sealed class DeployEditQueue
         lock (_gate)
         {
             foreach (var (key, sequence) in confirmed)
-                if (_edits.TryGetValue(key, out var edit) && edit.Status == DeployEditStatus.Saved
+                if (_edits.TryGetValue(key, out var edit) && edit.Status == SettingsEditorEditStatus.Saved
                     && edit.Sequence == sequence && edit.BackendGeneration == _transport.Generation)
                     _edits.Remove(key);
         }
@@ -216,7 +216,7 @@ public sealed class DeployEditQueue
 
     public IReadOnlyDictionary<string, long> Confirmed()
     {
-        lock (_gate) return _edits.Where(pair => pair.Value.Status == DeployEditStatus.Saved
+        lock (_gate) return _edits.Where(pair => pair.Value.Status == SettingsEditorEditStatus.Saved
             && pair.Value.BackendGeneration == _transport.Generation)
             .ToDictionary(pair => pair.Key, pair => pair.Value.Sequence);
     }
@@ -242,8 +242,8 @@ public sealed class DeployEditQueue
             while (true)
             {
                 string key;
-                DeployEdit entry;
-                IDeployTransport transport;
+                SettingsEditorEdit entry;
+                ISettingsEditorTransport transport;
                 long revision;
                 lock (_gate)
                 {
@@ -258,7 +258,7 @@ public sealed class DeployEditQueue
                     (key, entry) = next.Value;
                     transport = _transport;
                     revision = _transportRevision;
-                    _edits[key] = entry with { Status = DeployEditStatus.Saving };
+                    _edits[key] = entry with { Status = SettingsEditorEditStatus.Saving };
                 }
                 Publish();
                 Exception? failure = null;
@@ -275,16 +275,16 @@ public sealed class DeployEditQueue
                     {
                         if (failure is null)
                         {
-                            _edits[key] = entry with { Status = DeployEditStatus.Saved };
+                            _edits[key] = entry with { Status = SettingsEditorEditStatus.Saved };
                             _retryDelay = TimeSpan.FromSeconds(1);
                         }
                         else
                         {
                             // 通道取消同样保留可重试草稿，不能永久卡在 Saving。
-                            retry = failure is not DeployTransportException rejected || rejected.Retryable;
+                            retry = failure is not SettingsEditorTransportException rejected || rejected.Retryable;
                             _edits[key] = entry with
                             {
-                                Status = DeployEditStatus.Error,
+                                Status = SettingsEditorEditStatus.Error,
                                 Error = failure is OperationCanceledException ? "保存被取消，输入已保留。" : failure.Message,
                                 Retryable = retry,
                             };
@@ -302,12 +302,12 @@ public sealed class DeployEditQueue
         }
     }
 
-    private (string Key, DeployEdit Entry)? NextQueuedLocked()
+    private (string Key, SettingsEditorEdit Entry)? NextQueuedLocked()
     {
-        (string Key, DeployEdit Entry)? best = null;
+        (string Key, SettingsEditorEdit Entry)? best = null;
         foreach (var (key, edit) in _edits)
         {
-            if (edit.Status != DeployEditStatus.Queued || edit.BackendGeneration != _transport.Generation) continue;
+            if (edit.Status != SettingsEditorEditStatus.Queued || edit.BackendGeneration != _transport.Generation) continue;
             if (best is null || edit.Sequence < best.Value.Entry.Sequence) best = (key, edit);
         }
         return best;
@@ -338,7 +338,7 @@ public sealed class DeployEditQueue
             try
             {
                 if (_store is null) throw new InvalidOperationException("没有可用的草稿存储。");
-                var pending = _edits.Where(pair => pair.Value.Status != DeployEditStatus.Saved)
+                var pending = _edits.Where(pair => pair.Value.Status != SettingsEditorEditStatus.Saved)
                     .ToDictionary(pair => pair.Key, pair => pair.Value);
                 if (pending.Count == 0)
                 {
@@ -377,61 +377,61 @@ public sealed class DeployEditQueue
                 : DeserializeLegacy(content).ToDictionary(pair => pair.Key, pair => pair.Value);
             foreach (var (key, edit) in restored)
             {
-                if (edit.Status == DeployEditStatus.Error && !edit.Retryable && string.IsNullOrEmpty(edit.Value)) continue;
-                _edits[key] = edit.Status == DeployEditStatus.Error && !edit.Retryable
-                    ? edit : edit with { Status = DeployEditStatus.Queued };
+                if (edit.Status == SettingsEditorEditStatus.Error && !edit.Retryable && string.IsNullOrEmpty(edit.Value)) continue;
+                _edits[key] = edit.Status == SettingsEditorEditStatus.Error && !edit.Retryable
+                    ? edit : edit with { Status = SettingsEditorEditStatus.Queued };
                 _sequence = Math.Max(_sequence, edit.Sequence);
             }
         }
         catch (Exception failure) { StorageError = "草稿无法从本地存储读取：" + failure.Message; }
     }
 
-    private static string Serialize(IReadOnlyDictionary<string, DeployEdit> edits)
+    private static string Serialize(IReadOnlyDictionary<string, SettingsEditorEdit> edits)
     {
         var root = new JsonObject();
         foreach (var (key, edit) in edits)
             root[key] = new JsonObject
             {
-                [nameof(DeployEdit.Payload)] = edit.Payload,
-                [nameof(DeployEdit.Value)] = edit.Value,
-                [nameof(DeployEdit.Sequence)] = edit.Sequence,
-                [nameof(DeployEdit.Status)] = (int)edit.Status,
-                [nameof(DeployEdit.Error)] = edit.Error,
-                [nameof(DeployEdit.Retryable)] = edit.Retryable,
-                [nameof(DeployEdit.BackendGeneration)] = edit.BackendGeneration,
+                [nameof(SettingsEditorEdit.Payload)] = edit.Payload,
+                [nameof(SettingsEditorEdit.Value)] = edit.Value,
+                [nameof(SettingsEditorEdit.Sequence)] = edit.Sequence,
+                [nameof(SettingsEditorEdit.Status)] = (int)edit.Status,
+                [nameof(SettingsEditorEdit.Error)] = edit.Error,
+                [nameof(SettingsEditorEdit.Retryable)] = edit.Retryable,
+                [nameof(SettingsEditorEdit.BackendGeneration)] = edit.BackendGeneration,
             };
         return root.ToJsonString();
     }
 
-    private static Dictionary<string, DeployEdit> Deserialize(string content)
+    private static Dictionary<string, SettingsEditorEdit> Deserialize(string content)
     {
-        var result = new Dictionary<string, DeployEdit>();
+        var result = new Dictionary<string, SettingsEditorEdit>();
         var root = JsonNode.Parse(content)?.AsObject()
             ?? throw new FormatException("草稿必须是 JSON 对象。");
         foreach (var (key, value) in root)
         {
             var edit = value?.AsObject() ?? throw new FormatException("草稿字段必须是对象。");
-            result[key] = new DeployEdit(
-                edit[nameof(DeployEdit.Payload)]?.GetValue<string>() ?? string.Empty,
-                edit[nameof(DeployEdit.Value)]?.GetValue<string>(),
-                edit[nameof(DeployEdit.Sequence)]?.GetValue<long>() ?? 0,
-                (DeployEditStatus)(edit[nameof(DeployEdit.Status)]?.GetValue<int>() ?? 0),
-                edit[nameof(DeployEdit.Error)]?.GetValue<string>(),
-                edit[nameof(DeployEdit.Retryable)]?.GetValue<bool>() ?? false,
-                edit[nameof(DeployEdit.BackendGeneration)]?.GetValue<long>() ?? 0);
+            result[key] = new SettingsEditorEdit(
+                edit[nameof(SettingsEditorEdit.Payload)]?.GetValue<string>() ?? string.Empty,
+                edit[nameof(SettingsEditorEdit.Value)]?.GetValue<string>(),
+                edit[nameof(SettingsEditorEdit.Sequence)]?.GetValue<long>() ?? 0,
+                (SettingsEditorEditStatus)(edit[nameof(SettingsEditorEdit.Status)]?.GetValue<int>() ?? 0),
+                edit[nameof(SettingsEditorEdit.Error)]?.GetValue<string>(),
+                edit[nameof(SettingsEditorEdit.Retryable)]?.GetValue<bool>() ?? false,
+                edit[nameof(SettingsEditorEdit.BackendGeneration)]?.GetValue<long>() ?? 0);
         }
         return result;
     }
 
     // 兼容旧版单行草稿；新写入采用 JSON 保留多行 YAML、制表符和空值的区别。
-    private static IEnumerable<KeyValuePair<string, DeployEdit>> DeserializeLegacy(string content)
+    private static IEnumerable<KeyValuePair<string, SettingsEditorEdit>> DeserializeLegacy(string content)
     {
         foreach (var line in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             var parts = line.Split('\t');
             if (parts.Length < 6) continue;
-            var status = Enum.TryParse<DeployEditStatus>(parts[4], out var parsed) ? parsed : DeployEditStatus.Queued;
-            yield return new KeyValuePair<string, DeployEdit>(parts[0], new DeployEdit(
+            var status = Enum.TryParse<SettingsEditorEditStatus>(parts[4], out var parsed) ? parsed : SettingsEditorEditStatus.Queued;
+            yield return new KeyValuePair<string, SettingsEditorEdit>(parts[0], new SettingsEditorEdit(
                 parts[1], parts[2], long.TryParse(parts[3], out var sequence) ? sequence : 0, status,
                 parts.Length > 7 ? parts[7].Replace("\\n", "\n").Replace("\\t", "\t").Replace("\\\\", "\\") : null,
                 parts[5] == "1", parts.Length > 6 && long.TryParse(parts[6], out var generation) ? generation : 0));
@@ -440,30 +440,30 @@ public sealed class DeployEditQueue
 }
 
 /// <summary>
-/// 部署设置会话（上游 <c>useDeploySettings</c> + <c>editor('deploy')</c> 的合并体）：
+/// 引擎设置会话（共享草稿与读取状态）：
 /// **同一份数据与同一条草稿队列**由系统设置页与远程访问页共享，来回导航不丢未确认的输入。
 /// </summary>
-public sealed class DeploySettingsSession : INotifyPropertyChanged
+public sealed class EngineSettingsSession : INotifyPropertyChanged
 {
     private const string RemoteAccessKey = "RemoteAccess";
     private const string WebuiKey = "Webui";
 
-    private IDeployTransport _transport;
-    private Func<CancellationToken, Task<DeploySchema?>> _read;
+    private ISettingsEditorTransport _transport;
+    private Func<CancellationToken, Task<SettingsEditorSchema?>> _read;
     private long _generation;
     private long _readSequence;
-    private DeploySchema? _schema;
+    private SettingsEditorSchema? _schema;
     private string _error = string.Empty;
     private bool _loading = true;
     private string? _storageError;
 
-    public DeploySettingsSession(IDeployTransport transport, Func<CancellationToken, Task<DeploySchema?>> read,
-        IDeployDraftStore? store = null, IDeployClock? clock = null)
+    public EngineSettingsSession(ISettingsEditorTransport transport, Func<CancellationToken, Task<SettingsEditorSchema?>> read,
+        ISettingsDraftStore? store = null, ISettingsEditorClock? clock = null)
     {
         _transport = transport;
         _read = read;
-        Edits = new DeployEditQueue("deploy", transport, store, clock);
-        RetryFailedCommand = new DeployCommand(_ => Edits.Retry());
+        Edits = new SettingsEditorEditQueue("runtime", transport, store, clock);
+        RetryFailedCommand = new SettingsEditorCommand(_ => Edits.Retry());
         Edits.Changed += () =>
         {
             StorageError = Edits.StorageError;
@@ -473,7 +473,7 @@ public sealed class DeploySettingsSession : INotifyPropertyChanged
     }
 
     /// <summary>切换读取函数（外壳换后端时与提交通道一起更新）。</summary>
-    public Func<CancellationToken, Task<DeploySchema?>> Reader
+    public Func<CancellationToken, Task<SettingsEditorSchema?>> Reader
     {
         get => _read;
         set => _read = value;
@@ -483,7 +483,7 @@ public sealed class DeploySettingsSession : INotifyPropertyChanged
     /// 只换提交通道、不重新读取：同一个会话已经挂到另一个页面上时，
     /// 后挂的页面只改变"草稿提交到哪一代后端"，不改变已读到的数据由谁提供。
     /// </summary>
-    public void UseTransport(IDeployTransport? transport)
+    public void UseTransport(ISettingsEditorTransport? transport)
     {
         if (transport is not null)
         {
@@ -496,16 +496,16 @@ public sealed class DeploySettingsSession : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>两个页面共享的草稿队列。</summary>
-    public DeployEditQueue Edits { get; }
+    public SettingsEditorEditQueue Edits { get; }
 
     /// <summary>「重试保存」入口：把可重试的失败输入重新排队并立即冲刷。</summary>
     public System.Windows.Input.ICommand RetryFailedCommand { get; }
 
     /// <summary>读取到的分组（系统设置页与远程访问页各取所需，按**分组键**归属，不看翻译后的标题）。</summary>
-    public IReadOnlyList<DeployGroup> Groups => _schema?.Groups ?? Array.Empty<DeployGroup>();
+    public IReadOnlyList<SettingsEditorGroup> Groups => _schema?.Groups ?? Array.Empty<SettingsEditorGroup>();
 
     /// <summary>远程访问的原始状态（未启用/启动中/已连接/连接失败的归并前形态）与地址。</summary>
-    public DeployRemoteStatus RemoteRaw => _schema?.Remote ?? DeployRemoteStatus.Disabled;
+    public SettingsEditorRemoteStatus RemoteRaw => _schema?.Remote ?? SettingsEditorRemoteStatus.Disabled;
 
     /// <summary>读取失败的真实消息（上游 error 通道）。</summary>
     public string Error { get => _error; private set => SetField(ref _error, value); }
@@ -522,18 +522,18 @@ public sealed class DeploySettingsSession : INotifyPropertyChanged
     public bool HasData => _schema is not null;
 
     /// <summary>系统设置页负责的分组：除远程访问/WebUI 之外的全部（后端新增分组不会静默消失）。</summary>
-    public IReadOnlyList<DeployGroup> SystemGroups => Groups
+    public IReadOnlyList<SettingsEditorGroup> SystemGroups => Groups
         .Where(group => !IsRemoteGroup(group)).ToList();
 
     /// <summary>远程访问页负责的分组（上游 REMOTE_ACCESS_GROUPS）。</summary>
-    public IReadOnlyList<DeployGroup> RemoteGroups => Groups.Where(IsRemoteGroup).ToList();
+    public IReadOnlyList<SettingsEditorGroup> RemoteGroups => Groups.Where(IsRemoteGroup).ToList();
 
     /// <summary>上游 app/settingsGroups.ts：被远程访问页认领的分组键。</summary>
-    public static bool IsRemoteGroup(DeployGroup group) =>
+    public static bool IsRemoteGroup(SettingsEditorGroup group) =>
         group.Key is RemoteAccessKey or WebuiKey;
 
     /// <summary>上游 app/remoteStatus.ts 的四档归并结果。</summary>
-    public DeployRemoteState RemoteKind => DeployRemoteStatus.ToState(RemoteRaw);
+    public SettingsEditorRemoteState RemoteKind => SettingsEditorRemoteStatus.ToState(RemoteRaw);
 
     /// <summary>某字段当前生效的配置值（后端下发；缺失返回 null）。</summary>
     public string? CurrentValue(string key) => _schema?.Value(key);
@@ -541,10 +541,10 @@ public sealed class DeploySettingsSession : INotifyPropertyChanged
     /// <summary>
     /// 绑定/切换后端（外壳注入新连接）：代数 +1，清掉读取错误与加载态并按新后端重新读取。
     /// 草稿**不清**——上游队列按作用域取单例，未确认的输入跨后端切换照旧保留；
-    /// 它们只会提交给它自己那一代的后端（见 <see cref="DeployEditQueue"/>）。
+    /// 它们只会提交给它自己那一代的后端（见 <see cref="SettingsEditorEditQueue"/>）。
     /// <paramref name="transport"/> 为空表示沿用当前通道，只按新代数重新读取。
     /// </summary>
-    public void AttachBackend(IDeployTransport? transport = null)
+    public void AttachBackend(ISettingsEditorTransport? transport = null)
     {
         if (transport is not null)
         {
@@ -560,7 +560,7 @@ public sealed class DeploySettingsSession : INotifyPropertyChanged
     /// 绑定后端并等待本次读取落定（页面构造用）：返回时数据、错误与加载态都已就位，
     /// 首次渲染不会停在"还在加载"。
     /// </summary>
-    public Task AttachAndReadAsync(IDeployTransport? transport = null,
+    public Task AttachAndReadAsync(ISettingsEditorTransport? transport = null,
         CancellationToken cancellationToken = default)
     {
         if (transport is not null)
@@ -628,7 +628,7 @@ public sealed class DeploySettingsSession : INotifyPropertyChanged
     public Task SettleAsync(CancellationToken cancellationToken = default) => RefreshAsync(cancellationToken);
 
     /// <summary>未接能力时的固定说明（不伪造设置项，也不假装是空配置）。</summary>
-    public const string DisconnectedNotice = "部署设置尚未启用，当前不可用。";
+    public const string DisconnectedNotice = "引擎设置尚未启用，当前不可用。";
 
     private void Loading(bool value)
     {
@@ -673,7 +673,7 @@ public sealed class DeploySettingsSession : INotifyPropertyChanged
 }
 
 /// <summary>远程访问的四种展示状态（上游 app/remoteStatus.ts）。</summary>
-public enum DeployRemoteState
+public enum SettingsEditorRemoteState
 {
     Disabled,
     Starting,
@@ -682,37 +682,37 @@ public enum DeployRemoteState
 }
 
 /// <summary>后端给出的原始远程访问状态串。</summary>
-public sealed record DeployRemoteStatus(string? State, bool Enabled, string Address = "", string Error = "")
+public sealed record SettingsEditorRemoteStatus(string? State, bool Enabled, string Address = "", string Error = "")
 {
-    public static DeployRemoteStatus Disabled { get; } = new(null, false);
+    public static SettingsEditorRemoteStatus Disabled { get; } = new(null, false);
 
     /// <summary>
     /// 上游 remoteStatus()：未启用 → 未启用；已可用地址（等待连接/直连/中继/SSH 转发）→ 已连接；
     /// 仍在连接或重连 → 启动中；**未知取值一律按失败处理**，避免界面显示成正常。
     /// </summary>
-    public static DeployRemoteState ToState(DeployRemoteStatus status)
+    public static SettingsEditorRemoteState ToState(SettingsEditorRemoteStatus status)
     {
-        if (!status.Enabled) return DeployRemoteState.Disabled;
+        if (!status.Enabled) return SettingsEditorRemoteState.Disabled;
         return status.State switch
         {
-            "waiting_peer" or "direct_p2p" or "turn_relay" or "ssh_forward" => DeployRemoteState.Ready,
-            "starting" or "signaling" or "reconnecting" => DeployRemoteState.Starting,
-            _ => DeployRemoteState.Failed,
+            "waiting_peer" or "direct_p2p" or "turn_relay" or "ssh_forward" => SettingsEditorRemoteState.Ready,
+            "starting" or "signaling" or "reconnecting" => SettingsEditorRemoteState.Starting,
+            _ => SettingsEditorRemoteState.Failed,
         };
     }
 
     /// <summary>状态文案（上游 remote.stateDisabled / Starting / Ready / Failed）。</summary>
-    public static string Label(DeployRemoteState state) => state switch
+    public static string Label(SettingsEditorRemoteState state) => state switch
     {
-        DeployRemoteState.Starting => "启动中",
-        DeployRemoteState.Ready => "已连接",
-        DeployRemoteState.Failed => "连接失败",
+        SettingsEditorRemoteState.Starting => "启动中",
+        SettingsEditorRemoteState.Ready => "已连接",
+        SettingsEditorRemoteState.Failed => "连接失败",
         _ => "未启用",
     };
 }
 
-/// <summary>一条部署设置字段（键、类型、标签、说明、校验与选项；值与草稿分开存放）。</summary>
-public sealed record DeployFieldSpec(
+/// <summary>一条引擎设置字段（键、类型、标签、说明、校验与选项；值与草稿分开存放）。</summary>
+public sealed record SettingsEditorFieldSpec(
     string Key,
     string Label,
     string Kind,
@@ -724,14 +724,14 @@ public sealed record DeployFieldSpec(
     bool Integer = false,
     bool ReadOnly = false);
 
-/// <summary>一个部署设置分组；<see cref="Key"/> 是归属判断依据（不看翻译后的标题）。</summary>
-public sealed record DeployGroup(string Key, string Title, IReadOnlyList<DeployFieldSpec> Fields);
+/// <summary>一个引擎设置分组；<see cref="Key"/> 是归属判断依据（不看翻译后的标题）。</summary>
+public sealed record SettingsEditorGroup(string Key, string Title, IReadOnlyList<SettingsEditorFieldSpec> Fields);
 
 /// <summary>一次读取的完整结果：分组、当前值、远程访问状态。值缺失表示该字段尚未取到。</summary>
-public sealed record DeploySchema(
-    IReadOnlyList<DeployGroup> Groups,
+public sealed record SettingsEditorSchema(
+    IReadOnlyList<SettingsEditorGroup> Groups,
     IReadOnlyDictionary<string, string?> Values,
-    DeployRemoteStatus Remote,
+    SettingsEditorRemoteStatus Remote,
     string? Error = null)
 {
     public string? Value(string key) => Values.TryGetValue(key, out var value) ? value : null;
@@ -740,9 +740,9 @@ public sealed record DeploySchema(
 /// <summary>
 /// 未接能力时的默认会话：读取返回固定的"不可用"说明，提交一律失败，不伪造设置项或成功。
 /// </summary>
-public sealed class DisconnectedDeployTransport : IDeployTransport
+public sealed class DisconnectedSettingsEditorTransport : ISettingsEditorTransport
 {
-    public static DisconnectedDeployTransport Instance { get; } = new();
+    public static DisconnectedSettingsEditorTransport Instance { get; } = new();
 
     public string Identity => "disconnected";
 
@@ -751,11 +751,11 @@ public sealed class DisconnectedDeployTransport : IDeployTransport
     public bool Ready => false;
 
     public Task SendAsync(string key, string payload, CancellationToken cancellationToken = default) =>
-        throw new DeployTransportException(DeploySettingsSession.DisconnectedNotice, retryable: false);
+        throw new SettingsEditorTransportException(EngineSettingsSession.DisconnectedNotice, retryable: false);
 }
 
-/// <summary>部署设置里的简单命令（只转发一次动作，不维护可用状态）。</summary>
-internal sealed class DeployCommand(Action<object?> execute) : System.Windows.Input.ICommand
+/// <summary>引擎设置里的简单命令（只转发一次动作，不维护可用状态）。</summary>
+internal sealed class SettingsEditorCommand(Action<object?> execute) : System.Windows.Input.ICommand
 {
     public event EventHandler? CanExecuteChanged { add { } remove { } }
 

@@ -62,7 +62,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
         InterfaceSettings = new InterfaceSettingsViewModel(Theme);
         _backend = backend ?? DisconnectedInstanceSource.Instance;
         ConfigManagerBackend = new EngineConfigInstancesBackend(_backend);
-        SettingsBackend = new EngineDeploySettingsBackend(_backend);
+        SettingsBackend = new EngineSettingsBackend(_backend);
         Home = new HomeViewModel(_backend);
         Home.InstanceSelected += (_, instance) => SelectInstance(instance);
         Overview = new OverviewViewModel(previewData, previewData ? null : _backend, resourceStore);
@@ -136,7 +136,7 @@ public sealed class ShellViewModel : INotifyPropertyChanged
     public HomeViewModel Home { get; }
     public OverviewViewModel Overview { get; }
     public EngineConfigInstancesBackend ConfigManagerBackend { get; }
-    public EngineDeploySettingsBackend SettingsBackend { get; }
+    public EngineSettingsBackend SettingsBackend { get; }
     public bool IsBackendConnected => _backend.IsConnected;
     public bool IsUiOnly => _backend.IsSimulation;
     public string UiOnlyNotice => Simulation.SimulatedUiBackend.Notice;

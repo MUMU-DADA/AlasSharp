@@ -5,7 +5,7 @@ R0 证据、R1 运行时、R2 任务模型与 R4 UI 为现有基础；主线转�
 
 产品组合已收敛为 **桌面 UI → Alas.Engine**、**浏览器 UI → Alas.Server → Alas.Engine**。旧 Core 已从仓库删除，不在产品依赖图，也不作为 Engine 的业务代理或失败回退；导出器和历史 oracle 仅作离线对照。Engine 自身承载规则、设备、导航、状态和业务执行，不再下接上游业务引擎。控制状态的运行活动使用 `engine-activity/1`，由 Engine 队列直接生成；生产状态不再发布旧 `scheduler` 字段。
 
-当前配置与部署设置、Engine runner 队列及其报告已接入产品。统计、指挥喵服务和策略校验尚未迁入 Engine，接口明确返回不可用；旧任务名、周期调度和脚本入口已经移除。控制入口的报告读取新 `engine-queue/1` 快照，旧报告与原生成功样本不算新引擎通过。
+当前配置与 Engine 自有设置、Engine runner 队列及其报告已接入产品。设置合同已替换旧上游部署 YAML，Server 和桌面 UI 直接使用 EngineSettingsWorkspace；ADB、CV runtime、OCR 模型目录在下一个队列创建时生效。旧安装/更新/OCR 服务配置及未实现的远程开关已退出设置 schema；启动列表仅保存偏好，自动启动调度未实现。统计、指挥喵服务和策略校验尚未迁入 Engine，接口明确返回不可用；旧任务名、周期调度和脚本入口已经移除。控制入口的报告读取新 `engine-queue/1` 快照，旧报告与原生成功样本不算新引擎通过。
 
 ## 阶段门槛
 

@@ -6,7 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Runtime/Resources/deploy-settings.json" />
+    <EmbeddedResource Include="Runtime/Resources/engine-settings.json" />
     <None Update="Imaging/Worker/vision_worker.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="YamlDotNet" Version="13.7.1" />
   </ItemGroup>

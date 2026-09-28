@@ -8,7 +8,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Alas.UI.DeploySettings;
+using Alas.UI.EngineSettings;
 using Alas.UI.RemoteAccess;
 using Alas.UI.Settings;
 
@@ -117,14 +117,14 @@ internal static class RemoteAccessChecks
             WaitIdle(view);
             var names = view.GetVisualDescendants().OfType<Control>()
                 .Select(control => control.Name ?? string.Empty).ToHashSet();
-            Check(names.Contains("DeployGroupRemoteAccess"), "the remote-access group renders on this page");
-            Check(names.Contains("DeployGroupWebui"), "the WebUI group renders on this page too");
-            Check(!names.Contains("DeployGroupGit"),
+            Check(names.Contains("SettingsEditorGroupRemoteAccess"), "the remote-access group renders on this page");
+            Check(names.Contains("SettingsEditorGroupWebui"), "the WebUI group renders on this page too");
+            Check(!names.Contains("SettingsEditorGroupGit"),
                 "a system group does not render on the remote page (it belongs to system settings)");
             Check(view.Session.RemoteGroups.Count == 2 && view.Session.SystemGroups.Count == 1,
                 $"the two pages split the groups by key (remote {view.Session.RemoteGroups.Count}, " +
                 $"system {view.Session.SystemGroups.Count})");
-            var portBox = Find<Control>(view, "DeployFieldRowPort")
+            var portBox = Find<Control>(view, "SettingsEditorFieldRowPort")
                 .GetVisualDescendants().OfType<TextBox>().First();
             Check(portBox.Text == "8080", $"the WebUI group shows its value (got {portBox.Text})");
         }
@@ -216,14 +216,14 @@ internal static class RemoteAccessChecks
             Group("RemoteAccess", "远程访问", ("Tunnel", "隧道", "on")),
             Group("Webui", "网页界面", ("Port", "网页端口", "8080")),
         }));
-        var session = new DeploySettingsSession(new NoopTransport(), backend.ReadSchemaAsync);
+        var session = new EngineSettingsSession(new NoopTransport(), backend.ReadSchemaAsync);
         var remote = new RemoteAccessView(backend, session, _ => Task.FromResult(true));
         var remoteWindow = Show(remote);
         try
         {
             WaitIdle(remote);
             Check(ReferenceEquals(remote.Session, session), "the remote page uses the injected session");
-            var port = Find<Control>(remote, "DeployFieldRowPort").GetVisualDescendants().OfType<TextBox>().First();
+            var port = Find<Control>(remote, "SettingsEditorFieldRowPort").GetVisualDescendants().OfType<TextBox>().First();
             port.Text = "9090";
             // 输入**立即**进草稿（上游输入即提交）：这一步不等异步，草稿里就该有新值。
             Check(session.Edits.Edit("Port")?.Value == "9090",
@@ -244,7 +244,7 @@ internal static class RemoteAccessChecks
         }));
         // 提交通道故意停在"未连接"：输入的草稿因此留在队列里不被确认，
         // 这正是"导航不丢输入"要覆盖的状态（已保存的草稿按上游 reconcile 语义本就会被清掉）。
-        var settingsSession = new DeploySettingsSession(
+        var settingsSession = new EngineSettingsSession(
             new OfflineTransport(), settingsBackend.ReadSchemaAsync);
         settingsSession.Reader = settingsBackend.ReadSchemaAsync;
         var remoteAgain = new RemoteAccessView(backend, settingsSession, _ => Task.FromResult(true));
@@ -252,10 +252,10 @@ internal static class RemoteAccessChecks
         try
         {
             WaitIdle(remoteAgain);
-            var port = Find<Control>(remoteAgain, "DeployFieldRowPort").GetVisualDescendants().OfType<TextBox>().First();
+            var port = Find<Control>(remoteAgain, "SettingsEditorFieldRowPort").GetVisualDescendants().OfType<TextBox>().First();
             port.Text = "9090";
             Check(settingsSession.Edits.Edit("Port")?.Value == "9090", "the draft is kept in the session");
-            Check(settingsSession.Edits.Edit("Port")?.Status == DeployEditStatus.Queued,
+            Check(settingsSession.Edits.Edit("Port")?.Status == SettingsEditorEditStatus.Queued,
                 $"an unsubmitted draft stays queued (got {settingsSession.Edits.Edit("Port")?.Status})");
 
             // 系统设置页拿着**同一个会话实例**：它不渲染远程分组（分流互补），但会话里的草稿必须还是同一条。
@@ -269,10 +269,10 @@ internal static class RemoteAccessChecks
                 // 系统设置页不渲染远程分组：分流是互补的。
                 var names = settings.GetVisualDescendants().OfType<Control>()
                     .Select(control => control.Name ?? string.Empty).ToHashSet();
-                Check(!names.Contains("DeployGroupWebui") && names.Contains("DeployGroupGit"),
+                Check(!names.Contains("SettingsEditorGroupWebui") && names.Contains("SettingsEditorGroupGit"),
                     "the system settings page renders the complement of the remote groups");
                 // 在系统设置页输入：走的是同一条队列。
-                var repository = Find<Control>(settings, "DeployFieldRowRepository")
+                var repository = Find<Control>(settings, "SettingsEditorFieldRowRepository")
                     .GetVisualDescendants().OfType<TextBox>().First();
                 repository.Text = "https://example.invalid/repo.git";
                 WaitIdle(settings);
@@ -289,7 +289,7 @@ internal static class RemoteAccessChecks
             try
             {
                 WaitIdle(remoteBack);
-                var portBox = Find<Control>(remoteBack, "DeployFieldRowPort")
+                var portBox = Find<Control>(remoteBack, "SettingsEditorFieldRowPort")
                     .GetVisualDescendants().OfType<TextBox>().First();
                 Check(portBox.Text == "9090",
                     $"navigating back to the remote page restores the draft (got {portBox.Text})");
@@ -321,7 +321,7 @@ internal static class RemoteAccessChecks
         {
             Group("Webui", "网页界面", ("Port", "网页端口", "8080")),
         }));
-        var session = new DeploySettingsSession(new NoopTransport(), settings.ReadSchemaAsync);
+        var session = new EngineSettingsSession(new NoopTransport(), settings.ReadSchemaAsync);
         var shared = new RemoteAccessView(DisconnectedRemoteAccessBackend.Instance, session, null);
         var sharedWindow = Show(shared);
         try
@@ -329,7 +329,7 @@ internal static class RemoteAccessChecks
             WaitIdle(shared);
             Check(shared.Model.Notice.Contains("不可用") && !shared.Model.CanToggle && !shared.Model.HasAddress,
                 "shared deployment data does not pretend that a remote service is available");
-            Check(Find<Control>(shared, "DeployFieldRowPort") is not null,
+            Check(Find<Control>(shared, "SettingsEditorFieldRowPort") is not null,
                 "shared deployment WebUI fields remain visible while remote status is unavailable");
         }
         finally { sharedWindow.Close(); }
@@ -433,15 +433,15 @@ internal static class RemoteAccessChecks
         public Task SaveAsync(SettingsChange change, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
-        public Task<DeploySchema?> ReadSchemaAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(DeploySchemaAdapter.ToSchema(snapshot));
+        public Task<SettingsEditorSchema?> ReadSchemaAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(SettingsEditorSchemaAdapter.ToSchema(snapshot));
 
         /// <summary>系统设置页要看到的分组（与远程页共用时用同一份后端数据）。</summary>
         public SettingsSnapshot Shown => snapshot;
     }
 
     /// <summary>总是成功的提交通道：只记录本次会话里提交了什么，不访问任何真实后端。</summary>
-    private sealed class RecordingTransport(long generation = 1) : IDeployTransport
+    private sealed class RecordingTransport(long generation = 1) : ISettingsEditorTransport
     {
         public List<(string Key, string Payload)> Sent { get; } = new();
 
@@ -459,7 +459,7 @@ internal static class RemoteAccessChecks
     }
 
     /// <summary>不落到任何后端的通道：共享会话的检查只关心草稿与页面接线。</summary>
-    private sealed class NoopTransport : IDeployTransport
+    private sealed class NoopTransport : ISettingsEditorTransport
     {
         public string Identity => "noop";
 
@@ -472,7 +472,7 @@ internal static class RemoteAccessChecks
     }
 
     /// <summary>未连接的通道：草稿排队等待，不被提交也不被确认（检查"导航后草稿仍在"用）。</summary>
-    private sealed class OfflineTransport : IDeployTransport
+    private sealed class OfflineTransport : ISettingsEditorTransport
     {
         public string Identity => "offline";
 
@@ -481,7 +481,7 @@ internal static class RemoteAccessChecks
         public bool Ready => false;
 
         public Task SendAsync(string key, string payload, CancellationToken cancellationToken = default) =>
-            throw new DeployTransportException("未连接", retryable: true);
+            throw new SettingsEditorTransportException("未连接", retryable: true);
     }
 
     /// <summary>
@@ -509,13 +509,13 @@ internal static class RemoteAccessChecks
         }
 
         /// <summary>读取并翻译成共享会话模型（与远程页走的是同一条读取路径）。</summary>
-        public Task<DeploySchema?> ReadSchemaAsync(CancellationToken cancellationToken = default) =>
+        public Task<SettingsEditorSchema?> ReadSchemaAsync(CancellationToken cancellationToken = default) =>
             RemoteSchema.ToSchema(status);
 
         /// <summary>被两个页面共用时的读取：远程状态 + 分组。</summary>
         internal static class RemoteSchema
         {
-            public static Task<DeploySchema?> ToSchema(RemoteAccessSchema schema) =>
+            public static Task<SettingsEditorSchema?> ToSchema(RemoteAccessSchema schema) =>
                 RemoteAccessSchemaReader.Read(new Constant(schema), CancellationToken.None);
         }
 

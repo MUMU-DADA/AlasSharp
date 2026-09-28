@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 
-namespace Alas.UI.DeploySettings;
+namespace Alas.UI.EngineSettings;
 
 /// <summary>Process-session draft storage; contents never leave memory.</summary>
-public sealed class MemoryDeployDraftStore : IDeployDraftStore
+public sealed class MemorySettingsDraftStore : ISettingsDraftStore
 {
     private readonly ConcurrentDictionary<string, string> _values = new(StringComparer.Ordinal);
 

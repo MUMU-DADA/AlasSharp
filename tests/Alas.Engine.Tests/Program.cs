@@ -483,6 +483,12 @@ try
         return 0;
     }
 
+    if (args is ["--settings", var settingsArtifacts])
+    {
+        await EngineSettingsChecks.RunAsync(settingsArtifacts);
+        return 0;
+    }
+
     if (args is ["--control-workspace", var controlArtifacts])
     {
         string folder = Path.GetFullPath(controlArtifacts);

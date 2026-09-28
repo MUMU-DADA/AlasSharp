@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using Alas.Contracts;
 using Alas.UI.Overview;
-using Alas.UI.DeploySettings;
+using Alas.UI.EngineSettings;
 using Alas.UI.Settings;
 using Alas.UI.Simulation;
 using Alas.UI.Statistics;
@@ -28,12 +28,12 @@ internal static class UiOnlyChecks
         using var backend = options.CreateBackend(() => { liveFactories++; throw new Exception("Live backend constructed"); });
         var theme = options.CreateThemeStore(() => { liveFactories++; throw new Exception("Live theme store constructed"); });
         var resources = options.CreateResourceStore(() => { liveFactories++; throw new Exception("Live resource store constructed"); });
-        var drafts = options.CreateDeployDraftStore(() => { liveFactories++; throw new Exception("Live draft store constructed"); });
+        var drafts = options.CreateSettingsDraftStore(() => { liveFactories++; throw new Exception("Live draft store constructed"); });
         Check(liveFactories == 0 && backend is SimulatedUiBackend && backend.IsSimulation
             && theme is MemoryThemeStore && resources is MemoryResourceSelectionStore
-            && drafts is MemoryDeployDraftStore, "isolation precedes all live factories");
-        var processDrafts = new MemoryDeployDraftStore();
-        Check(ReferenceEquals(UiLaunchOptions.Parse([]).CreateDeployDraftStore(() => processDrafts), processDrafts),
+            && drafts is MemorySettingsDraftStore, "isolation precedes all live factories");
+        var processDrafts = new MemorySettingsDraftStore();
+        Check(ReferenceEquals(UiLaunchOptions.Parse([]).CreateSettingsDraftStore(() => processDrafts), processDrafts),
             "normal launch retains the platform's process-session draft store");
         var live = UiLaunchOptions.Parse([]).CreateBackend(() => { liveFactories++; return DisconnectedInstanceSource.Instance; });
         Check(liveFactories == 1 && ReferenceEquals(live, DisconnectedInstanceSource.Instance) && !live.IsSimulation,
@@ -57,7 +57,7 @@ internal static class UiOnlyChecks
         await backend.StartRunAsync(new() { Queue = new JsonObject { ["tasks"] = new JsonArray() } });
         Check(await backend.RequestStopAsync(), "queue intent remains in memory");
 
-        var settings = new EngineDeploySettingsBackend(backend);
+        var settings = new EngineSettingsBackend(backend);
         var settingsSnapshot = await settings.ReadAsync();
         Check(settingsSnapshot!.Groups.SelectMany(group => group.Fields).All(field => field.Editable), "simulation settings allow edits");
         await settings.SaveAsync(new("CheckUpdate", "true"));

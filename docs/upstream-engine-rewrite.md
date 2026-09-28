@@ -78,9 +78,9 @@ MAP 初始化不能仅复制最后的字段值：上游 `shape` setter 还会生
 
 ## 规则与引擎一起迁移
 
-现有实验链路为 Python 规则源码 → AST 导出步骤 → JSON 计划 → C# 计划解释器。`export_upstream_data.py` 的 `derive_plan` / `campaign_method_plans` 编码条件、返回和调用，`CampaignPlanStep` 建模，`CampaignHookRunner` 再实现求值、局部变量和调用绑定。这已经包含一套 Python 子集语言的转换与解释，继续扩张会同时增加导出器、数据合同和解释器的维护负担。
+历史实验链路曾把 Python 规则源码转换成 AST 步骤、JSON 计划，再由 C# 解释器执行。这条链路已从活动产品导出器和 Engine 中移除；旧实现只留在 `tools/archive/legacy-python` 作为离线对照，不能作为新引擎的规则来源。
 
-推荐链路改为：上游 Python 规则与公共引擎 → 一次语义迁移 → C# 规则类直接调用 C# 公共引擎。条件、循环、局部变量、方法参数和普通覆写交给 C# 编译器；不先生成 `plan_steps`，也不让新规则通过旧解释器执行。
+当前链路为：上游 Python 规则与公共引擎 → 一次语义迁移 → C# 规则类直接调用 C# 公共引擎。条件、循环、局部变量、方法参数和普通覆写交给 C# 编译器；不先生成 `plan_steps`，也不让新规则通过旧解释器执行。
 
 | 上游内容 | C# 表达与责任 |
 | --- | --- |
@@ -153,19 +153,19 @@ Server 与桌面使用 EngineControlWorkspace；配置、部署、队列与新�
 
 当前导航及资料密钥任务支持取消和期限到期，不把超时当成任务完成。后续战役任务须独立保留关卡边界取消与冻结结果合同；不能把通用任务成功、页面到达或库存读取当作战役通关。
 
-现有架构守卫中“必须调用原生调度器”“不保留 C# 导航类”等检查只是 legacy 路径的过渡保护；新 Engine 验收须使用原生语义与新执行归属的行为证据，不能永久阻止 C# 实现，也不能简单删除检查来掩盖功能丢失。
+当前架构守卫要求 Engine 是唯一业务核心，禁止活动产品引用 Core、Python 业务宿主、执行计划及上游部署设置。行为验收仍须独立核对上游语义，不能以依赖边界检查代替功能完整性。
 
 ## 现有离线导出契约
 
-以下约束保护仍在使用的导出消费者，不要求把计划格式补成完整语言后才能开始 C# 规则迁移。导出步骤的覆盖率与 C# 规则迁移覆盖率分开记录。
+以下约束保护仍在使用的离线导出消费者；它们只记录来源、声明和漂移，不向产品提供可执行计划。声明覆盖率与 C# 规则迁移覆盖率分开记录。
 
-导出器使用静态 AST 和通用符号解析。方法步骤、分支、终止、父类委托、参数声明顺序、必选参数、默认 `None`、仅位置参数和仅关键字参数都必须保留；无法表达的真实语句生成 `plan_complete=false` 和原因，不能删除后宣称完整。`campaign.initial_state` 只包含源类自身已解析的标量初态，范围标为 `declared`，不代表完整继承或运行时状态。
+活动导出器使用静态 AST 和通用符号解析，保存 MAP、Config、Campaign 方法来源、签名及未解析原因；它不生成 `plan_steps`、`plan_complete` 或运行时控制流。`campaign.initial_state` 只包含源类自身已解析的标量初态，范围标为 `declared`，不代表完整继承或运行时状态。
 
 页面图、Campaign 声明、Config、MAP、素材和 manifest 由源码重建并做完整性校验。上游缺失入口素材符号仍是失败，ImportError、`cannot import` 或静态摘要不能豁免缺失、篡改和未解析项。完整快照检查目前保留三个既有 ENTRANCE 源缺失失败；不能把它们归类为成功，也不能增加逐地图替代规则。
 
 ## 旧实验执行器与宿主语义（仅离线对照）
 
-以下是现有解释器的验证边界。迁入 C# 规则的行为仍须保持这些已核对的上游语义；新规则不依赖解释器，现有缺口也不能因更换架构而改记为通过。
+以下是退役解释器的历史验证边界。迁入 C# 规则的行为仍须保持这些已核对的上游语义；新规则不依赖解释器，现有缺口也不能因更换架构而改记为通过。
 
 执行器区分分支自然落空与显式返回，保留 `None`、`False`、`and/or` 操作数和局部变量真实类型。tuple 与 list 分开编码；父类委托虽然保留方法名与参数，但尚缺词法定义类和完整 MRO，执行器与宿主翻译明确拒绝，不能以同名原语替代。`CampaignEnd` 与 `MapEnemyMoved` 按类型化控制流处理；错误消息子串不能代替异常类型。
 
@@ -194,7 +194,7 @@ Server 与桌面使用 EngineControlWorkspace；配置、部署、队列与新�
 | `invoked_ops` 覆盖 | 夹具运行确实进入的原语 | 静态注册、日志文字或相邻原语 |
 | 原生真机结算 | 对应本次原生出击的合同结果 | C# 替换路径或其他章节 |
 
-各检查必须分别报告完整、阻塞、结构步骤、静态编码、运行期解析、跳过、失败和成功结算；不把未执行、导入失败、超时或空样本计入通过。主要入口包括 `verify_plan_export.py`、`verify_pages_export.py`、`verify_export_integrity.py`、`verify_r5_execution_semantics.py`、`verify_r5_host_contract.py`、`verify_r5_observation.py`、`verify_r5_calls.py` 和 `verify_r5_coverage.py`。整体回归使用 `python tools/diagnostics/verify_all.py --docs-only`，并追加架构、隐私和结果合同检查。
+各检查必须分别报告完整、阻塞、结构步骤、静态编码、运行期解析、跳过、失败和成功结算；不把未执行、导入失败、超时或空样本计入通过。活动来源检查包括 `verify_pages_export.py`、`verify_export_integrity.py`、`verify_campaign_export.py` 和 `compile_campaign_rules.py --check`；旧 plan/R5 诊断只留在归档，不能用来验收当前产品。整体回归使用 `python tools/diagnostics/verify_all.py --docs-only`，并追加架构、隐私和结果合同检查。
 
 ## 后续流程
 

@@ -32,25 +32,25 @@ public partial class MainView : UserControl
 
     public MainView(Theming.IThemeStore themeStore, IAlasUiBackend? backend = null, Platform.IUiFiles? files = null,
         Overview.IResourceSelectionStore? resourceStore = null,
-        DeploySettings.IDeployDraftStore? deployDraftStore = null)
+        EngineSettings.ISettingsDraftStore? settingsDraftStore = null)
     {
         InitializeComponent();
         files ??= new Platform.UiFiles(() => TopLevel.GetTopLevel(this)?.StorageProvider);
         Model = new ShellViewModel(themeStore, backend, previewData: backend is null, files: files, resourceStore: resourceStore);
         DataContext = Model;
         Model.PropertyChanged += OnModelChanged;
-        var deploySession = new DeploySettings.DeploySettingsSession(
+        var settingsSession = new EngineSettings.EngineSettingsSession(
             new Settings.SettingsTransport(Model.SettingsBackend, 1), async cancellationToken =>
             {
-                var schema = DeploySettings.DeploySchemaAdapter.ToSchema(await Model.SettingsBackend.ReadAsync(cancellationToken));
+                var schema = EngineSettings.SettingsEditorSchemaAdapter.ToSchema(await Model.SettingsBackend.ReadAsync(cancellationToken));
                 return schema is null ? null : schema with
                 {
-                    Remote = new DeploySettings.DeployRemoteStatus(null, false, string.Empty,
-                        "远程连接服务尚未接通；下方设置可保存，保存不会启动远程服务。"),
+                    Remote = new EngineSettings.SettingsEditorRemoteStatus(null, false, string.Empty,
+                        "远程连接服务尚未迁入 Engine，当前不可用。"),
                 };
-            }, Model.IsUiOnly ? new DeploySettings.MemoryDeployDraftStore()
-                : deployDraftStore ?? new DeploySettings.MemoryDeployDraftStore());
-        SettingsPage = new Settings.SettingsView(Model.SettingsBackend, deploySession);
+            }, Model.IsUiOnly ? new EngineSettings.MemorySettingsDraftStore()
+                : settingsDraftStore ?? new EngineSettings.MemorySettingsDraftStore());
+        SettingsPage = new Settings.SettingsView(Model.SettingsBackend, settingsSession);
         RemotePage = new RemoteAccess.RemoteAccessView(
             RemoteAccess.DisconnectedRemoteAccessBackend.Instance, SettingsPage.Session, async address =>
             {

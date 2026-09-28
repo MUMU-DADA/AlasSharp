@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Alas.Contracts;
-using Alas.UI.DeploySettings;
+using Alas.UI.EngineSettings;
 using Alas.UI.Simulation;
 using Alas.UI.Theming;
 using Alas.UI.Views;
@@ -13,22 +13,23 @@ using Avalonia.VisualTree;
 
 namespace Alas.UI.Headless;
 
-internal static class DeployDraftIntegrationChecks
+internal static class SettingsDraftIntegrationChecks
 {
-    private const string DraftKey = "deploy-edits.deploy";
+    private const string DraftKey = "engine-settings-edits.runtime";
 
     public static void Run()
     {
-        var store = new MemoryDeployDraftStore();
+        VerifyEngineSchema();
+        var store = new MemorySettingsDraftStore();
         var rejected = Backend("master", "22267", _ =>
-            Task.FromException<DeploySettingsPatchResponse>(new ArgumentException("字段被拒绝")));
+            Task.FromException<EngineSettingsPatchResponse>(new ArgumentException("字段被拒绝")));
         var (first, firstWindow) = Show(rejected, store);
         try
         {
             Open(first, "settings");
-            var branch = Input(first.SettingsPage, "Branch");
+            var branch = Input(first.SettingsPage, "AdbPath");
             branch.Text = "release";
-            WaitFor(() => first.SettingsPage.Session.Edits.Edit("Branch")?.Status == DeployEditStatus.Error);
+            WaitFor(() => first.SettingsPage.Session.Edits.Edit("AdbPath")?.Status == SettingsEditorEditStatus.Error);
             Check(ReferenceEquals(first.SettingsPage.Session, first.RemotePage.Session),
                 "settings and remote share the same persisted draft queue");
             Check(store.Read(DraftKey)?.Contains("release", StringComparison.Ordinal) == true,
@@ -40,39 +41,39 @@ internal static class DeployDraftIntegrationChecks
         string savedPort = "22267";
         var accepted = Backend(savedBranch, savedPort, request =>
         {
-            if (request.Values["Branch"] is { } branch) savedBranch = branch.GetValue<string>();
+            if (request.Values["AdbPath"] is { } branch) savedBranch = branch.GetValue<string>();
             if (request.Values["WebuiPort"] is { } port) savedPort = port.GetValue<string>();
-            return Task.FromResult(new DeploySettingsPatchResponse
+            return Task.FromResult(new EngineSettingsPatchResponse
             {
                 Updated = request.Values.Select(item => item.Key).ToArray(),
             });
         });
-        accepted.DeployRead = () => Task.FromResult(Response(savedBranch, savedPort));
+        accepted.SettingsEditorRead = () => Task.FromResult(Response(savedBranch, savedPort));
         var (restored, restoredWindow) = Show(accepted, store);
         try
         {
             Open(restored, "settings");
-            var branch = Input(restored.SettingsPage, "Branch");
+            var branch = Input(restored.SettingsPage, "AdbPath");
             Check(branch.Text == "release" &&
-                restored.SettingsPage.Session.Edits.Edit("Branch")?.Status == DeployEditStatus.Error,
+                restored.SettingsPage.Session.Edits.Edit("AdbPath")?.Status == SettingsEditorEditStatus.Error,
                 "rebuilding MainView restores the unconfirmed input and its error state");
             Check(ReferenceEquals(restored.SettingsPage.Session, restored.RemotePage.Session),
                 "both rebuilt pages use the one restored session");
             branch.Text = "release2";
-            WaitFor(() => restored.SettingsPage.Session.Edits.Edit("Branch")?.Status == DeployEditStatus.Saved);
+            WaitFor(() => restored.SettingsPage.Session.Edits.Edit("AdbPath")?.Status == SettingsEditorEditStatus.Saved);
             var refresh = restored.SettingsPage.Session.RefreshAsync();
             WaitFor(() => refresh.IsCompleted);
             refresh.GetAwaiter().GetResult();
-            Check(restored.SettingsPage.Session.Edits.Edit("Branch") is null && store.Read(DraftKey) is null,
+            Check(restored.SettingsPage.Session.Edits.Edit("AdbPath") is null && store.Read(DraftKey) is null,
                 "the acknowledged edit is reconciled and removed from session storage");
 
             Open(restored, "remote");
             var port = Input(restored.RemotePage, "WebuiPort");
             port.Text = "9090";
-            WaitFor(() => restored.RemotePage.Session.Edits.Edit("WebuiPort")?.Status == DeployEditStatus.Saved);
+            WaitFor(() => restored.RemotePage.Session.Edits.Edit("WebuiPort")?.Status == SettingsEditorEditStatus.Saved);
             Check(restored.SettingsPage.Session.Edits.Edit("WebuiPort")?.Value == "9090",
                 "remote input is visible through the settings page's shared queue");
-            Check(accepted.DeployPatch?.Values["WebuiPort"]?.GetValue<string>() == "9090",
+            Check(accepted.SettingsEditorPatch?.Values["WebuiPort"]?.GetValue<string>() == "9090",
                 "the shared draft submits through the real settings capability");
         }
         finally { restoredWindow.Close(); }
@@ -88,8 +89,8 @@ internal static class DeployDraftIntegrationChecks
                 .Single(block => block.Name == "SettingsStorageErrorBox").IsVisible,
                 "the storage error is rendered separately from the settings read error");
             Check(!failed.SettingsPage.Model.HasError, "storage failure does not replace schema data");
-            Input(failed.SettingsPage, "Branch").Text = "blocked";
-            WaitFor(() => accepted.DeployPatch?.Values["Branch"]?.GetValue<string>() == "blocked");
+            Input(failed.SettingsPage, "AdbPath").Text = "blocked";
+            WaitFor(() => accepted.SettingsEditorPatch?.Values["AdbPath"]?.GetValue<string>() == "blocked");
             Check(failedStore.Writes > 0 && failed.SettingsPage.Session.HasStorageError,
                 "write failure is reported while the edit still reaches the backend");
         }
@@ -97,17 +98,48 @@ internal static class DeployDraftIntegrationChecks
 
         using var simulation = new SimulatedUiBackend();
         var forbiddenStore = new ThrowingStore();
-        var isolated = new MainView(new MemoryThemeStore(), simulation, deployDraftStore: forbiddenStore);
+        var isolated = new MainView(new MemoryThemeStore(), simulation, settingsDraftStore: forbiddenStore);
         isolated.SettingsPage.Session.Edits.Change("CheckUpdate", "true", "true");
         Check(forbiddenStore.Reads == 0 && forbiddenStore.Writes == 0 &&
             !isolated.SettingsPage.Session.HasStorageError,
             "UI-only MainView never reads or writes an injected live draft store");
-        Console.WriteLine("PASS: deploy drafts restore across views, share pages, clear on confirmation and isolate storage errors");
+        Console.WriteLine("PASS: Engine settings drafts restore across views, share pages, clear on confirmation and isolate storage errors");
+    }
+
+    private static void VerifyEngineSchema()
+    {
+        var rules = JsonNode.Parse(File.ReadAllText(FindSettingsEditorRules()))!.AsObject();
+        var groups = rules["groups"]!.DeepClone().AsArray();
+        foreach (var group in groups)
+            foreach (var field in group!["fields"]!.AsArray())
+                field!["value"] = field["key"]!.GetValue<string>() == "OcrModelDirectory" ? "models" : "fixture-runtime";
+        var backend = new ControlUiBackendChecks.FixtureBackend
+        {
+            SettingsEditorRead = () => Task.FromResult(new EngineSettingsResponse
+            { Groups = groups.DeepClone().AsArray(), Notice = "fixture", Demo = false }),
+        };
+        var (view, window) = Show(backend, new MemorySettingsDraftStore());
+        try
+        {
+            Open(view, "settings");
+            Check(view.SettingsPage.Session.SystemGroups.SelectMany(group => group.Fields).Select(field => field.Key)
+                .SequenceEqual(new[] { "AdbPath", "VisionRuntime", "OcrModelDirectory" }),
+                "Engine exposes only implemented runtime settings");
+            Check(view.RemotePage.Session.RemoteGroups.Count == 0 && !view.RemotePage.Model.CanToggle,
+                "unavailable remote settings are not advertised as implemented");
+            Input(view.SettingsPage, "OcrModelDirectory").Text = string.Empty;
+            WaitFor(() => backend.SettingsEditorPatch?.Values["OcrModelDirectory"]?.GetValue<string>() == string.Empty);
+            Input(view.SettingsPage, "VisionRuntime").Text = "changed-runtime";
+            WaitFor(() => backend.SettingsEditorPatch?.Values["VisionRuntime"]?.GetValue<string>() == "changed-runtime");
+            Check(view.SettingsPage.Session.Edits.Edit("VisionRuntime")?.Status == SettingsEditorEditStatus.Saved,
+                "Engine runtime editor acknowledges saved values");
+        }
+        finally { window.Close(); }
     }
 
     public static void RunPerformance(string output)
     {
-        var source = FindDeployRules();
+        var source = FindSettingsEditorRules();
         var rules = JsonNode.Parse(File.ReadAllText(source))!.AsObject();
         var groups = (JsonArray)rules["groups"]!.DeepClone();
         foreach (var group in groups)
@@ -129,13 +161,13 @@ internal static class DeployDraftIntegrationChecks
             .Sum(group => group!["fields"]!.AsArray().Count);
         var backend = new ControlUiBackendChecks.FixtureBackend
         {
-            DeployRead = () => Task.FromResult(new DeploySettingsResponse
+            SettingsEditorRead = () => Task.FromResult(new EngineSettingsResponse
             {
                 Groups = (JsonArray)groups.DeepClone(), Notice = "offline fixture", Demo = false,
             }),
         };
         var watch = Stopwatch.StartNew();
-        var (view, window) = Show(backend, new MemoryDeployDraftStore());
+        var (view, window) = Show(backend, new MemorySettingsDraftStore());
         try
         {
             Open(view, "settings");
@@ -143,14 +175,14 @@ internal static class DeployDraftIntegrationChecks
             Pump();
             double coldMs = watch.Elapsed.TotalMilliseconds;
             int systemRows = view.SettingsPage.GetVisualDescendants().OfType<Control>()
-                .Count(control => control.Name?.StartsWith("DeployFieldRow", StringComparison.Ordinal) == true);
+                .Count(control => control.Name?.StartsWith("SettingsEditorFieldRow", StringComparison.Ordinal) == true);
             Check(systemRows == expectedSystemFields,
                 $"all {expectedSystemFields} system fields must be built on first entry (got {systemRows})");
             Open(view, "remote");
             int remoteRows = view.RemotePage.GetVisualDescendants().OfType<Control>()
-                .Count(control => control.Name?.StartsWith("DeployFieldRow", StringComparison.Ordinal) == true);
+                .Count(control => control.Name?.StartsWith("SettingsEditorFieldRow", StringComparison.Ordinal) == true);
             Check(systemRows + remoteRows == expectedFields,
-                $"both pages must preserve all {expectedFields} upstream fields");
+                $"both pages must preserve all {expectedFields} Engine fields");
             var switches = new List<FrameSample>();
             for (int index = 0; index < 20; index++)
             {
@@ -158,7 +190,7 @@ internal static class DeployDraftIntegrationChecks
                 switches.Add(MeasureFrame(window, () => view.Model.SelectNavCommand.Execute(page)));
             }
             Open(view, "settings");
-            var branch = Input(view.SettingsPage, "Branch");
+            var branch = Input(view.SettingsPage, "AdbPath");
             var idle = new List<FrameSample>();
             for (int index = 0; index < 20; index++)
                 idle.Add(MeasureFrame(window, () => { }));
@@ -178,7 +210,7 @@ internal static class DeployDraftIntegrationChecks
                 @switch = Stats(switches),
                 idle = Stats(idle),
                 input = Stats(edits),
-                environment = "Release Avalonia Headless, offscreen Skia; exported field declarations with neutral values",
+                environment = "Release Avalonia Headless, offscreen Skia; Engine field declarations with neutral values",
             };
             Directory.CreateDirectory(output);
             File.WriteAllText(Path.Combine(output, "deploy-drafts-perf.json"),
@@ -191,15 +223,15 @@ internal static class DeployDraftIntegrationChecks
         finally { window.Close(); }
     }
 
-    private static string FindDeployRules()
+    private static string FindSettingsEditorRules()
     {
         for (string? current = Directory.GetCurrentDirectory(); current is not null;
              current = Directory.GetParent(current)?.FullName)
         {
-            var path = Path.Combine(current, "src", "Alas.Engine", "Runtime", "Resources", "deploy-settings.json");
+            var path = Path.Combine(current, "src", "Alas.Engine", "Runtime", "Resources", "engine-settings.json");
             if (File.Exists(path)) return path;
         }
-        throw new FileNotFoundException("找不到上游部署字段声明，性能测量不能使用缩减样本。");
+        throw new FileNotFoundException("找不到上游设置字段声明，性能测量不能使用缩减样本。");
     }
 
     private readonly record struct FrameSample(double ActionMs, double LayoutMs, double PumpMs, long AllocatedBytes)
@@ -241,27 +273,27 @@ internal static class DeployDraftIntegrationChecks
     }
 
     private static ControlUiBackendChecks.FixtureBackend Backend(string branch, string port,
-        Func<DeploySettingsPatchRequest, Task<DeploySettingsPatchResponse>> patch) => new()
+        Func<EngineSettingsPatchRequest, Task<EngineSettingsPatchResponse>> patch) => new()
     {
-        DeployRead = () => Task.FromResult(Response(branch, port)),
-        DeployPatchHandler = patch,
+        SettingsEditorRead = () => Task.FromResult(Response(branch, port)),
+        SettingsEditorPatchHandler = patch,
     };
 
-    private static DeploySettingsResponse Response(string branch, string port)
+    private static EngineSettingsResponse Response(string branch, string port)
     {
         var groups = JsonNode.Parse("""
-            [{"key":"Git","label":"版本","fields":[{"key":"Branch","label":"分支","type":"string","value":"master","help":"分支说明","options":[]}]},
+            [{"key":"Device","label":"设备","fields":[{"key":"AdbPath","label":"ADB 路径","type":"string","value":"master","help":"设备命令路径","options":[]}]},
              {"key":"Webui","label":"网页","fields":[{"key":"WebuiPort","label":"端口","type":"int","value":22267,"help":"","options":[]}]}]
             """)!.AsArray();
         groups[0]!["fields"]![0]!["value"] = branch;
         groups[1]!["fields"]![0]!["value"] = int.Parse(port);
-        return new DeploySettingsResponse { Groups = groups, Notice = "fixture", Demo = false };
+        return new EngineSettingsResponse { Groups = groups, Notice = "fixture", Demo = false };
     }
 
     private static (MainView View, Window Window) Show(ControlUiBackendChecks.FixtureBackend backend,
-        IDeployDraftStore store)
+        ISettingsDraftStore store)
     {
-        var view = new MainView(new MemoryThemeStore(), backend, deployDraftStore: store);
+        var view = new MainView(new MemoryThemeStore(), backend, settingsDraftStore: store);
         var window = new Window { Width = 1280, Height = 820, Content = view };
         window.Show();
         Pump();
@@ -275,7 +307,7 @@ internal static class DeployDraftIntegrationChecks
     }
 
     private static TextBox Input(Control page, string key) => page.GetVisualDescendants()
-        .OfType<Control>().Single(control => control.Name == "DeployFieldRow" + key)
+        .OfType<Control>().Single(control => control.Name == "SettingsEditorFieldRow" + key)
         .GetVisualDescendants().OfType<TextBox>().First();
 
     private static void WaitFor(Func<bool> ready)
@@ -302,7 +334,7 @@ internal static class DeployDraftIntegrationChecks
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private sealed class ThrowingStore : IDeployDraftStore
+    private sealed class ThrowingStore : ISettingsDraftStore
     {
         public int Reads { get; private set; }
         public int Writes { get; private set; }

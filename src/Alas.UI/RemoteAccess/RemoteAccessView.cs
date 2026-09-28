@@ -11,12 +11,12 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Alas.UI.DeploySettings;
+using Alas.UI.EngineSettings;
 
 namespace Alas.UI.RemoteAccess;
 
 /// <summary>异步剪贴板委托：成功返回 true。实现由平台层提供，界面只消费结果。</summary>
-public delegate Task<bool> DeployClipboard(string text);
+public delegate Task<bool> SettingsEditorClipboard(string text);
 
 /// <summary>
 /// 远程访问页（上游 <c>/remote</c>）需要的**页面局部能力**：读取远程访问状态与地址。
@@ -34,7 +34,7 @@ public interface IRemoteAccessBackend
 /// <summary>
 /// 远程访问页的一次读取结果：远程连接的**原始状态串**（上游 provider 的 get_connection_state 取值）
 /// 与地址，以及本页负责渲染的分组（按**分组键**归属：RemoteAccess / Webui，与系统设置页互补）。
-/// 四档归并由 <see cref="DeployRemoteStatus"/> 按上游 remoteStatus() 完成，页面不自己推断。
+/// 四档归并由 <see cref="SettingsEditorRemoteStatus"/> 按上游 remoteStatus() 完成，页面不自己推断。
 /// </summary>
 public sealed record RemoteAccessSchema(
     string State,
@@ -88,7 +88,7 @@ public sealed class DisconnectedRemoteAccessBackend : IRemoteAccessBackend
 /// 远程访问页与系统设置页共用同一份会话，因此这里只承担"这一代后端是谁"，
 /// 具体提交仍由系统设置页通道承担（远程页只负责渲染远程访问/WebUI 两组设置）。
 /// </summary>
-internal sealed class RemoteAccessTransport(IRemoteAccessBackend backend, long generation) : IDeployTransport
+internal sealed class RemoteAccessTransport(IRemoteAccessBackend backend, long generation) : ISettingsEditorTransport
 {
     public string Identity => backend.GetType().Name;
 
@@ -97,7 +97,7 @@ internal sealed class RemoteAccessTransport(IRemoteAccessBackend backend, long g
     public bool Ready => backend is not DisconnectedRemoteAccessBackend;
 
     public Task SendAsync(string key, string payload, CancellationToken cancellationToken = default) =>
-        throw new DeployTransportException(
+        throw new SettingsEditorTransportException(
             "远程访问页负责展示远程连接与 WebUI 分组；提交由系统设置页的通道承担。", retryable: false);
 }
 
@@ -107,13 +107,13 @@ internal sealed class RemoteAccessTransport(IRemoteAccessBackend backend, long g
 /// </summary>
 public static class RemoteAccessSchemaReader
 {
-    public static async Task<DeploySchema?> Read(IRemoteAccessBackend backend, CancellationToken cancellationToken)
+    public static async Task<SettingsEditorSchema?> Read(IRemoteAccessBackend backend, CancellationToken cancellationToken)
     {
         var schema = await backend.ReadStatusAsync(cancellationToken);
         var groups = (schema.Groups ?? Array.Empty<Settings.SettingsGroup>())
-            .Select(group => new DeployGroup(
+            .Select(group => new SettingsEditorGroup(
                 group.GroupKey, group.Title,
-                group.Fields.Select(field => new DeployFieldSpec(
+                group.Fields.Select(field => new SettingsEditorFieldSpec(
                     field.Key, field.Label, field.Kind, field.Help, field.Options,
                     PreserveEmpty: false, field.Min, field.Max, field.IsInteger || field.Kind == "int",
                     ReadOnly: !field.Editable)).ToList()))
@@ -124,18 +124,18 @@ public static class RemoteAccessSchemaReader
         {
             values[field.Key] = field.Value;
         }
-        var remote = new DeployRemoteStatus(
+        var remote = new SettingsEditorRemoteStatus(
             schema.State,
             // 已启用＝已经拿到连接状态（上游 remote.enabled）：未启用的 provider 不报连接状态。
             !string.IsNullOrEmpty(schema.State) && schema.State != "disabled",
             schema.Address, schema.Error ?? string.Empty);
-        return new DeploySchema(groups, values, remote, schema.Error);
+        return new SettingsEditorSchema(groups, values, remote, schema.Error);
     }
 }
 
 /// <summary>
 /// 远程访问页：标题「远程访问地址」+ 远程卡片（地址、四状态、错误、复制、启用/停用）
-/// + 远程访问与 WebUI 两组设置（上游 DeployGroups only={REMOTE_ACCESS_GROUPS}）。
+/// + 远程访问与 WebUI 两组设置（共享分组渲染器 only={REMOTE_ACCESS_GROUPS}）。
 ///
 /// 「只交地址卡」是不合格的：分包与 WebUI 设置必须一起渲染，且分组按 **key** 归属。
 /// 未连接时显示真实空/错误态与原因，不显示任何伪造地址或“已连接”。
@@ -143,7 +143,7 @@ public static class RemoteAccessSchemaReader
 public sealed class RemoteAccessView : UserControl
 {
     private readonly RemoteAccessViewModel _model;
-    private readonly DeploySettingsSession _session;
+    private readonly EngineSettingsSession _session;
     private IRemoteAccessBackend _backend;
     private long _generation;
     private readonly bool _ownsSession;
@@ -163,12 +163,12 @@ public sealed class RemoteAccessView : UserControl
     /// 因此来回导航不丢输入，也不会各自建独立保存队列。
     /// <paramref name="clipboard"/> 是注入的异步剪贴板；为空时「复制」如实报告不可用，不假装已复制。
     /// </summary>
-    public RemoteAccessView(IRemoteAccessBackend backend, DeploySettingsSession? session, DeployClipboard? clipboard)
+    public RemoteAccessView(IRemoteAccessBackend backend, EngineSettingsSession? session, SettingsEditorClipboard? clipboard)
     {
         _backend = backend;
         _generation = 1;
         _ownsSession = session is null;
-        _session = session ?? new DeploySettingsSession(
+        _session = session ?? new EngineSettingsSession(
             new RemoteAccessTransport(backend, _generation), ReadSchemaAsync);
 
         _model = new RemoteAccessViewModel(_session, clipboard)
@@ -182,8 +182,8 @@ public sealed class RemoteAccessView : UserControl
 
     public RemoteAccessViewModel Model => _model;
 
-    /// <summary>本页与系统设置页共享的部署设置会话（草稿队列就在里面）。</summary>
-    public DeploySettingsSession Session => _session;
+    /// <summary>本页与系统设置页共享的引擎设置会话（草稿队列就在里面）。</summary>
+    public EngineSettingsSession Session => _session;
 
     /// <summary>
     /// 外壳注入点：XAML 里声明的视图无法传构造参数，所以按 master 的承载约定暴露一个可写属性
@@ -206,7 +206,7 @@ public sealed class RemoteAccessView : UserControl
     }
 
     /// <summary>读取远程状态，并把远程访问/WebUI 两组设置交给共享会话渲染。</summary>
-    private Task<DeploySchema?> ReadSchemaAsync(CancellationToken cancellationToken) =>
+    private Task<SettingsEditorSchema?> ReadSchemaAsync(CancellationToken cancellationToken) =>
         RemoteAccessSchemaReader.Read(_backend, cancellationToken);
 
     private Control Build()
@@ -294,7 +294,7 @@ public sealed class RemoteAccessView : UserControl
             error.IsVisible = _model.HasError;
             toggle.Content = _model.IsEnabled ? "停用" : "启用";
             toggle.IsEnabled = _model.CanToggle;
-            DeployGroupsView.Render(remoteGroups, _session.RemoteGroups, _session);
+            SettingsEditorGroupsView.Render(remoteGroups, _session.RemoteGroups, _session);
         }
 
         void SessionChanged(object? sender, PropertyChangedEventArgs args) => Refresh();
@@ -342,15 +342,15 @@ public sealed class RemoteAccessView : UserControl
 /// </summary>
 public sealed class RemoteAccessViewModel : INotifyPropertyChanged
 {
-    private readonly DeploySettingsSession _session;
+    private readonly EngineSettingsSession _session;
     private bool _subscribed;
-    private readonly DeployClipboard? _clipboard;
+    private readonly SettingsEditorClipboard? _clipboard;
     private IRemoteAccessBackend? _backend;
     private bool _copied;
     private string? _copyError;
     private string? _toggleError;
 
-    public RemoteAccessViewModel(DeploySettingsSession session, DeployClipboard? clipboard = null)
+    public RemoteAccessViewModel(EngineSettingsSession session, SettingsEditorClipboard? clipboard = null)
     {
         _session = session;
         _clipboard = clipboard;
@@ -375,10 +375,10 @@ public sealed class RemoteAccessViewModel : INotifyPropertyChanged
         }
     }
 
-    public DeploySettingsSession Session => _session;
+    public EngineSettingsSession Session => _session;
 
     /// <summary>四种状态文案（上游 remote.stateDisabled / Starting / Ready / Failed）。</summary>
-    public string StateLabel => DeployRemoteStatus.Label(_session.RemoteKind);
+    public string StateLabel => SettingsEditorRemoteStatus.Label(_session.RemoteKind);
 
     public string Address => _session.RemoteRaw.Address;
 

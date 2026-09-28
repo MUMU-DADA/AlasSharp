@@ -22,7 +22,7 @@ public partial class App : Application
     /// </summary>
     public static Func<IAlasUiBackend>? BackendFactory { get; set; }
     public static Func<Overview.IResourceSelectionStore>? ResourceStoreFactory { get; set; }
-    public static Func<DeploySettings.IDeployDraftStore>? DeployDraftStoreFactory { get; set; }
+    public static Func<EngineSettings.ISettingsDraftStore>? SettingsDraftStoreFactory { get; set; }
 
     private IAlasUiBackend? _backend;
 
@@ -33,7 +33,7 @@ public partial class App : Application
         var store = ThemeStoreFactory?.Invoke() ?? new MemoryThemeStore();
         _backend = BackendFactory?.Invoke();
         var view = new MainView(store, _backend, resourceStore: ResourceStoreFactory?.Invoke(),
-            deployDraftStore: DeployDraftStoreFactory?.Invoke());
+            settingsDraftStore: SettingsDraftStoreFactory?.Invoke());
         // 启动即恢复持久化偏好（上游在首次渲染前读 localStorage 并写 <html> 属性）。
         view.Model.Theme.ApplyStored();
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
