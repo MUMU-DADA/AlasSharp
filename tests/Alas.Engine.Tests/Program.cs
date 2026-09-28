@@ -60,6 +60,10 @@ try
     Check(RuleCatalog.Create("campaign_main/campaign_1_2").Map.Tiles[3] == MapTile.LowPriorityEnemy, "ME/Me distinction lost");
     var mapIds = CampaignMapCatalog.Ids.ToArray();
     Check(mapIds.Length >= 1370, $"Compiled map catalog is incomplete: {mapIds.Length}");
+    Check(CampaignRuleSourceCatalog.All.Length >= 1437,
+        $"Campaign source contract is incomplete: {CampaignRuleSourceCatalog.All.Length}");
+    Check(RuleCatalog.Ids.All(id => CampaignRuleSourceCatalog.TryGet(id, out var source) && source.HasCampaign),
+        "A registered C# campaign rule has no upstream Campaign source contract");
     var eventMap = CampaignMapCatalog.Get("event_20220224_cn/a1").Map;
     Check(eventMap.Mechanisms.FortressEnemies.Contains(Cell.Parse("E3")) &&
           eventMap.Mechanisms.FortressBlocks.Contains(Cell.Parse("E2")) &&

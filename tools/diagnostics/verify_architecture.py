@@ -266,7 +266,10 @@ def runtime_contract() -> list[str]:
     for path in (ROOT / "src").rglob("*.cs"):
         if any(part in {"bin", "obj"} for part in path.parts):
             continue
-        if path.relative_to(ROOT).as_posix() == "src/Alas.Engine/Rules/Generated/CampaignMaps.g.cs":
+        if path.relative_to(ROOT).as_posix() in {
+            "src/Alas.Engine/Rules/Generated/CampaignMaps.g.cs",
+            "src/Alas.Engine/Rules/Generated/CampaignRuleSources.g.cs",
+        }:
             continue
         if map_literal.search(path.read_text(encoding="utf-8")):
             problems.append(f"生产代码含地图特例字面量: {path.relative_to(ROOT)}")
@@ -278,6 +281,29 @@ def runtime_contract() -> list[str]:
                 problems.append("C# 地图声明生成漂移检查失败")
         except (OSError, subprocess.TimeoutExpired):
             problems.append("C# 地图声明生成漂移检查无法完成")
+    campaign_compiler = ROOT / "tools/migration/compile_campaign_rules.py"
+    campaign_contract = ROOT / "src/Alas.Engine/Rules/Generated/CampaignRuleSources.g.cs"
+    if not campaign_compiler.is_file() or not campaign_contract.is_file():
+        problems.append("缺少直接 C# Campaign 来源合同；不能用 JSON 计划代替规则迁移")
+    else:
+        try:
+            result = subprocess.run([
+                sys.executable, str(campaign_compiler),
+                "--upstream", os.environ.get("ALAS_FORK", str(ROOT / ".runtime/engine")),
+                "--output", str(campaign_contract), "--check"],
+                cwd=ROOT, capture_output=True, text=True, timeout=60)
+            if result.returncode:
+                problems.append("C# Campaign 来源合同生成漂移检查失败")
+            contract_text = campaign_contract.read_text(encoding="utf-8-sig")
+            if re.search(r"\b(?:plan_steps|plan_complete|steps|derive_plan|campaign_method_plans)\b", contract_text):
+                problems.append("C# Campaign 来源合同包含 JSON 计划或解释器字段")
+        except (OSError, subprocess.TimeoutExpired):
+            problems.append("C# Campaign 来源合同漂移检查无法完成")
+    exporter = ROOT / "tools/export_upstream_data.py"
+    if exporter.is_file():
+        exporter_text = exporter.read_text(encoding="utf-8-sig")
+        if re.search(r"\b(?:derive_plan|campaign_method_plans|plan_complete|plan_steps)\b", exporter_text):
+            problems.append("活动上游导出器仍包含已退役的 Campaign 计划转换逻辑")
     return problems
 
 

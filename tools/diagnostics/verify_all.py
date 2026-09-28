@@ -40,7 +40,6 @@ STEPS = [
     ("verify_map_export.py", "MAP 声明导出", False, 300),
     ("verify_campaign_export.py", "Campaign 声明导出", False, 300),
     ("verify_pages_export.py", "页面规则导出", False, 180),
-    ("verify_plan_export.py", "历史计划仅作离线导出完整性校验", False, 180),
 ]
 
 

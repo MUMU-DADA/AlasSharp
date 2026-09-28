@@ -7,16 +7,19 @@
      上游 Python 只作为构建期来源、离线 oracle 和漂移检查输入；产品运行时由
      `Alas.Engine` 的 C# 规则与状态机执行，Python 发布物只提供纯 CV/OCR worker。
 
-  B. **需要重导**：关卡 IR（`data/campaign/**`）+ assets/schema/manifest
-     → `tools/export_upstream_data.py`（有 `--check`，无差异返回 0、有差异返回 1）
+  B. **需要重导**：静态素材/Config/MAP 展示合同（`data/**`）
+     → `tools/export_upstream_data.py`（只作离线声明审计）
 
-  C. **需要刷新快照**：`vendor/upstream/`（素材逐字节镜像 + 漂移守卫）
+  C. **需要编译**：Campaign 来源合同（可审阅 C# 来源清单）
+     → `tools/migration/compile_campaign_rules.py`
+
+  D. **需要刷新快照**：`vendor/upstream/`（素材逐字节镜像 + 漂移守卫）
      → `tools/sync_upstream_assets.py`（`--check` / `--strict-drift`）
 
 用法：
   python tools/sync_all.py                    # 检查（默认）：B/C 是否过期，非 0 退出
   python tools/sync_all.py --strict-drift     # 检查时把"上游已走在我们前面"也算失败（CI 守卫）
-  python tools/sync_all.py --update           # 更新：重导 IR + 刷新素材快照 + 复检
+  python tools/sync_all.py --update           # 更新：重导声明 + 刷新素材快照 + 复检
   python tools/sync_all.py --verify           # 检查后运行免设备验收
   python tools/sync_all.py --update --verify  # 更新后再跑免设备的验收
   python tools/sync_all.py --fetch            # 先在 fork 里 `git fetch upstream --no-tags`（只读）
@@ -35,6 +38,8 @@ ROOT = os.path.normpath(os.path.join(HERE, '..'))
 FORK = os.path.normpath(os.path.join(ROOT, '.runtime', 'engine'))
 EXPORT = os.path.join(HERE, 'export_upstream_data.py')
 ASSETS = os.path.join(HERE, 'sync_upstream_assets.py')
+RULES = os.path.join(HERE, 'migration', 'compile_campaign_rules.py')
+RULES_OUTPUT = os.path.join(ROOT, 'src', 'Alas.Engine', 'Rules', 'Generated', 'CampaignRuleSources.g.cs')
 MAPS = os.path.join(HERE, 'migration', 'compile_campaign_maps.py')
 MAPS_OUTPUT = os.path.join(ROOT, 'src', 'Alas.Engine', 'Rules', 'Generated', 'CampaignMaps.g.cs')
 DIAG = os.path.join(HERE, 'diagnostics')
@@ -46,7 +51,6 @@ VERIFY_STEPS = [
     (os.path.join(DIAG, 'verify_campaign_export.py'), []),
     (os.path.join(DIAG, 'verify_config_export.py'), []),
     (os.path.join(DIAG, 'verify_pages_export.py'), []),
-    (os.path.join(DIAG, 'verify_plan_export.py'), []),
     (os.path.join(DIAG, 'verify_result_contract.py'), []),
     (os.path.join(DIAG, 'verify_export_integrity.py'), []),
     (os.path.join(DIAG, 'verify_all.py'), ['--docs-only']),
@@ -78,15 +82,18 @@ def check(strict_drift):
     """检查 B/C 是否过期；返回 (ok, 明细)。"""
     details = {}
     details['ir'] = run([sys.executable, EXPORT, '--check'],
-                        'B. 关卡 IR / assets / schema 是否与上游一致')
+                        'B. 关卡声明 / assets / schema 是否与上游一致')
     cmd = [sys.executable, ASSETS, '--check']
     if strict_drift:
         cmd.append('--strict-drift')
     details['assets'] = run(cmd, 'C. vendor 素材快照是否与上游一致%s'
                             % ('（strict：把上游领先也算失败）' if strict_drift else ''))
+    details['rules'] = run([sys.executable, RULES, '--upstream', FORK,
+                            '--output', RULES_OUTPUT, '--check'],
+                           'D. C# Campaign 来源合同是否与上游一致')
     details['maps'] = run([sys.executable, MAPS, '--upstream', FORK,
                            '--output', MAPS_OUTPUT, '--check'],
-                          'D. C# 地图规则声明是否与上游一致')
+                          'E. C# 地图规则声明是否与上游一致')
     return details
 
 
@@ -139,10 +146,12 @@ def main(argv=None):
     # ---- 更新
     rc = {}
     rc['ir'] = run([sys.executable, EXPORT, '--out', os.path.join(ROOT, 'data')],
-                   'B. 重导关卡 IR / assets / schema')
+                   'B. 重导关卡声明 / assets / schema')
     rc['assets'] = run([sys.executable, ASSETS], 'C. 刷新 vendor 素材快照')
+    rc['rules'] = run([sys.executable, RULES, '--upstream', FORK,
+                       '--output', RULES_OUTPUT], 'D. 编译 C# Campaign 来源合同')
     rc['maps'] = run([sys.executable, MAPS, '--upstream', FORK,
-                      '--output', MAPS_OUTPUT], 'D. 编译 C# 地图规则声明')
+                      '--output', MAPS_OUTPUT], 'E. 编译 C# 地图规则声明')
     if any(v != 0 for v in rc.values()):
         print('\n更新阶段有失败项：%s' % {k: v for k, v in rc.items() if v})
         return 1

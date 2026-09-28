@@ -180,7 +180,7 @@ class Campaign:
         path.write_text(json.dumps(ir), encoding='utf-8')
         self.assertFalse(check(str(self.repo), str(dest))['ok'])
 
-    def test_verifier_reconstructs_method_steps_and_completeness(self):
+    def test_verifier_reconstructs_method_declarations_without_plan_fields(self):
         self.resolve('class Campaign:\n    def battle_0(self):\n        self.clear_siren()\n        return self.battle_default()')
         dest = Path(self.temp.name) / 'data'
         manifest = {'errors': []}
@@ -191,20 +191,16 @@ class Campaign:
         ir_path = dest / rows[0]['json']
         baseline = ir_path.read_text(encoding='utf-8')
         self.assertTrue(check(str(self.repo), str(dest))['ok'])
-        for mutation in ('drop_step', 'changed_argument', 'false_incomplete', 'drop_method'):
+        for mutation in ('drop_method', 'add_plan', 'changed_line'):
             with self.subTest(mutation=mutation):
                 ir = json.loads(baseline)
-                method = ir['campaign']['battles'][0]
-                if mutation == 'drop_step': method['steps'].pop(0)
-                elif mutation == 'changed_argument': method['steps'][0]['args']['keyword']['fleet'] = 2
-                elif mutation == 'false_incomplete':
-                    method['steps'] = []
-                    method['plan_complete'] = False
-                elif mutation == 'drop_method': ir['campaign']['battles'] = []
+                if mutation == 'drop_method': ir['campaign']['methods'] = []
+                elif mutation == 'add_plan': ir['campaign']['methods'][0]['steps'] = []
+                elif mutation == 'changed_line': ir['campaign']['methods'][0]['line'] += 1
                 ir_path.write_text(json.dumps(ir), encoding='utf-8')
                 result = check(str(self.repo), str(dest))
                 self.assertFalse(result['ok'])
-                self.assertGreater(result['stats']['plan_issues'], 0)
+                self.assertGreater(result['stats']['method_issues'], 0)
 
 
 if __name__ == '__main__':

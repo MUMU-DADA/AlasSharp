@@ -6,9 +6,9 @@ S0 产物校验：确认导出的 JSON 真的可用、且与源码一致。
 检查项：
   1. 计数与源码规模一致（素材文件数、关卡文件数）
   2. 每个素材引用的 PNG/GIF 文件在磁盘上真实存在
-  3. 每个关卡 IR 的 map_data 网格与 shape 自洽（行列数 = shape）
-  4. 战斗计划语义正确：对 tier A/B 关卡，steps 首尾与上游模板语义一致
-  5. 抽查：把 IR 的步骤重新渲染成 Python 文本，与源码逐行比对（模板化关卡）
+  3. 每个关卡声明的 map_data 网格与 shape 自洽（行列数 = shape）
+  4. Campaign 方法声明与源码签名、调用摘要一致
+  5. JSON 不包含可执行计划字段
 """
 from __future__ import annotations
 
@@ -49,8 +49,8 @@ def check(repo: str, data: str) -> dict:
     manifest = json.loads(Path(data, 'manifest.json').read_text(encoding='utf-8'))
 
     # 以当前源码决定页面图是否存在，不能靠可被删改的 manifest 关闭校验。
-    from export_upstream_data import (SERVERS, TEMPLATE_VOCAB, campaign_class_state_defaults,
-                                      campaign_method_plans, page_documents)
+    from export_upstream_data import (SERVERS, campaign_class_state_defaults,
+                                      campaign_method_declarations, page_documents)
     expected_pages, expected_page_meta = page_documents(repo)
     page_meta = manifest.get('pages')
     if page_meta != expected_page_meta:
@@ -149,16 +149,14 @@ def check(repo: str, data: str) -> dict:
     if missing:
         problems.append(f'{len(missing)} 个素材引用的图片不存在')
 
-    # ---- 3. 网格自洽 + 4/5. 计划与源码比对
-    grid_bad, plan_bad, config_bad, rendered_ok, rendered_checked = [], [], [], 0, 0
+    # ---- 3. 网格自洽 + 4/5. Campaign 声明与源码比对
+    grid_bad, method_bad, config_bad = [], [], []
     config_resolver = ConfigResolver(repo)
     map_resolver = MapResolver(repo)
     campaign_resolver = CampaignResolver(repo)
     campaign_bad = []
     map_bad = []
-    tier_count = {'A': 0, 'B': 0, 'C': 0}
     for entry in index['chapters']:
-        tier_count[entry['tier']] = tier_count.get(entry['tier'], 0) + 1
         ir = json.loads(Path(data, entry['json']).read_text(encoding='utf-8'))
         if ir.get('source') != entry['source'] or entry['json'] != entry['source'][:-3] + '.json':
             config_bad.append({'file': entry['source'], 'differences': ['index.source/json']})
@@ -240,21 +238,21 @@ def check(repo: str, data: str) -> dict:
                             'unresolved': expected_map['unresolved']})
 
         source_tree = ast.parse(Path(repo, entry['source']).read_text(encoding='utf-8'))
-        expected_battles = campaign_method_plans(source_tree, module[len('campaign.'):], repo,
-                                                expected_map['values'].get('shape'))
-        if campaign.get('battles') != expected_battles:
-            plan_bad.append({'file': entry['source'], 'issue': '方法、步骤、实参、签名或完整性与源码不一致'})
-        battle_methods = [method for method in expected_battles if method['method'].startswith('battle_')]
-        expected_complete = bool(battle_methods) and all(method['plan_complete'] for method in battle_methods)
-        calls = {call for method in battle_methods for call in method['calls']}
-        expected_template = expected_complete and calls <= TEMPLATE_VOCAB
-        expected_tier = 'A' if expected_template else ('B' if expected_complete else 'C')
-        for key, expected in (('plan_complete', expected_complete), ('template_only', expected_template),
-                              ('tier', expected_tier)):
-            if campaign.get(key) != expected or entry.get(key) != expected:
-                plan_bad.append({'file': entry['source'], 'issue': f'计划汇总 {key} 与源码不一致'})
-        if entry.get('battle_methods') != [method['method'] for method in battle_methods]:
-            plan_bad.append({'file': entry['source'], 'issue': 'index.battle_methods 与源码不一致'})
+        expected_methods = campaign_method_declarations(source_tree)
+        if campaign.get('methods') != expected_methods:
+            method_bad.append({'file': entry['source'], 'issue': 'Campaign 方法来源、签名或调用摘要与源码不一致'})
+        expected_battles = [method['method'] for method in expected_methods if method['kind'] == 'battle']
+        expected_hooks = [method['method'] for method in expected_methods if method['kind'] == 'hook']
+        if entry.get('method_count') != len(expected_methods):
+            method_bad.append({'file': entry['source'], 'issue': 'index.method_count 与源码不一致'})
+        if entry.get('battle_methods') != expected_battles:
+            method_bad.append({'file': entry['source'], 'issue': 'index.battle_methods 与源码不一致'})
+        if entry.get('hook_methods') != expected_hooks:
+            method_bad.append({'file': entry['source'], 'issue': 'index.hook_methods 与源码不一致'})
+        forbidden = {'plan_steps', 'plan_complete', 'steps', 'derive_plan', 'campaign_method_plans'}
+        present = forbidden & set(campaign)
+        if present or any(any(key in method for key in forbidden) for method in campaign.get('methods', [])):
+            method_bad.append({'file': entry['source'], 'issue': 'Campaign 声明包含已退役的计划字段'})
 
         shape = ir['map'].get('shape')
         grid = ir['map'].get('map_data')
@@ -277,51 +275,9 @@ def check(repo: str, data: str) -> dict:
             else:
                 grid_bad.append({'file': entry['source'], 'shape': shape})
 
-        # 计划完整性：plan_complete=false 的关卡 steps 必须全为空
-        for b in ir['campaign']['battles']:
-            if not b['plan_complete'] and b['steps']:
-                plan_bad.append({'file': entry['source'], 'method': b['method'],
-                                 'issue': 'plan_complete=false 但有 steps'})
-            # 空方法/仅 pass 的完整计划合法；是否漏步骤由上面的源码重建检查证明。
-
-        # 抽查：模板化关卡（tier A）应能由 steps 还原出源码里的调用序列
-        if entry['tier'] == 'A':
-            rendered_checked += 1
-            src = Path(repo, entry['source']).read_text(encoding='utf-8')
-            ok = True
-            # 结构化步骤（分支/返回/信号/日志/整图设标志/状态/局部绑定）**没有 `op`**：
-            # 它们不是"源码里的一次调用"，跳过；分支体要递归进去查（`body`/`orelse`）。
-            structural = {'branch', 'return', 'raise', 'log', 'map_set', 'state_set', 'local_set'}
-
-            def check_steps(steps):
-                good = True
-                for s in steps:
-                    if s.get('kind') in structural:
-                        good = check_steps(s.get('body') or []) and good
-                        good = check_steps(s.get('orelse') or []) and good
-                        continue
-                    if not s.get('op'):
-                        plan_bad.append({'file': entry['source'],
-                                         'issue': f"步骤 {s.get('kind')} 既不是结构化步骤也没有 op"})
-                        good = False
-                        continue
-                    if s['kind'] == 'super_delegate':
-                        # op 形如 super().X，源码里应出现 `super().X(`
-                        pat = re.escape(s['op']) + r'\('
-                    else:
-                        pat = r'self\.' + re.escape(s['op']) + r'\('
-                    if not re.search(pat, src):
-                        good = False
-                return good
-
-            for b in ir['campaign']['battles']:
-                if not check_steps(b['steps']):
-                    ok = False
-            if ok:
-                rendered_ok += 1
-            else:
-                plan_bad.append({'file': entry['source'],
-                                 'issue': 'steps 里的算子未在源码中出现'})
+        if any(key in ir.get('campaign', {}) for key in
+               ('plan_steps', 'plan_complete', 'steps', 'derive_plan', 'campaign_method_plans')):
+            method_bad.append({'file': entry['source'], 'issue': 'Campaign JSON 包含已退役的计划字段'})
 
     for key, expected in (
             ('map_modules', sum(bool(r.get('map_present')) for r in index['chapters'])),
@@ -347,20 +303,18 @@ def check(repo: str, data: str) -> dict:
     if map_bad:
         problems.append(f'{len(map_bad)} 个模块的 MAP 声明导出不完整或不一致')
     stats['grid_mismatch'] = len(grid_bad)
-    stats['plan_issues'] = len(plan_bad)
+    stats['method_issues'] = len(method_bad)
     stats['config_checked'] = len(index['chapters'])
     stats['config_issues'] = len(config_bad)
-    stats['tier_A_render_check'] = f'{rendered_ok}/{rendered_checked}'
-    stats['tiers'] = tier_count
     if grid_bad:
         problems.append(f'{len(grid_bad)} 个关卡网格与 shape 不自洽')
-    if plan_bad:
-        problems.append(f'{len(plan_bad)} 个关卡计划有问题')
+    if method_bad:
+        problems.append(f'{len(method_bad)} 个关卡 Campaign 声明有问题')
     if config_bad:
         problems.append(f'{len(config_bad)} 个模块的有效 Config 导出不完整或不一致')
 
     return {'ok': not problems, 'problems': problems, 'stats': stats,
-            'grid_bad_sample': grid_bad[:5], 'plan_bad_sample': plan_bad[:5],
+            'grid_bad_sample': grid_bad[:5], 'method_bad_sample': method_bad[:5],
             'config_bad_sample': config_bad[:5], 'map_bad_sample': map_bad[:5],
             'campaign_bad_sample': campaign_bad[:5],
             'missing_sample': missing[:5]}
